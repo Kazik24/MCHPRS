@@ -31,7 +31,7 @@ fn get_power_on_side(world: &impl World, pos: BlockPos, side: BlockDirection) ->
     }
 }
 
-fn get_power_on_sides(comp: RedstoneComparator, world: &impl World, pos: BlockPos) -> u8 {
+pub(crate) fn get_power_on_sides(comp: RedstoneComparator, world: &impl World, pos: BlockPos) -> u8 {
     std::cmp::max(
         get_power_on_side(world, pos, comp.facing.rotate()),
         get_power_on_side(world, pos, comp.facing.rotate_ccw()),
@@ -82,7 +82,7 @@ pub fn get_far_input(world: &impl World, pos: BlockPos, facing: BlockDirection) 
     }
 }
 
-fn calculate_input_strength(comp: RedstoneComparator, world: &impl World, pos: BlockPos) -> u8 {
+pub(crate) fn calculate_input_strength(comp: RedstoneComparator, world: &impl World, pos: BlockPos) -> u8 {
     let base_input_strength = super::diode_get_input_strength(world, pos, comp.facing);
     let input_pos = pos.offset(comp.facing.block_face());
     let input_block = world.get_block(input_pos);

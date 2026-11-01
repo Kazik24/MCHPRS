@@ -9,6 +9,34 @@ use mchprs_blocks::{
     blocks::{Lever, RedstonePiston, RedstonePistonHead, RedstoneRepeater, RedstoneWire},
 };
 use mchprs_world::TickPriority;
+
+#[test]
+#[ignore = "large saved-plot regression; run explicitly"]
+fn chungus_block_trace_matches_native() {
+    #[path = "../../../test_support/chungus.rs"]
+    mod chungus;
+    let mut native = chungus::init_world();
+    let mut compiled = chungus::init_world();
+    let mut compiler = crate::redpiler::Compiler::default();
+    compiler
+        .compile(
+            &compiled,
+            compiled.get_corners(),
+            Default::default(),
+            compiled.scheduler().iter_entries().collect(),
+            Default::default(),
+        )
+        .unwrap();
+    for tick in 1..=512 {
+        native.tick_interpreted();
+        compiler.tick().unwrap();
+        compiler.try_flush_complete(&mut compiled).unwrap();
+        let runtime = compiler.runtime.as_ref().unwrap();
+        for &pos in &runtime.program.positions {
+            assert_eq!(native.get_block(pos), compiled.get_block(pos), "Chungus tick {tick} at {pos:?}");
+        }
+    }
+}
 fn test_program(
     positions: Vec<BlockPos>,
     initial: Vec<Block>,
@@ -2204,7 +2232,9 @@ fn command_block_without_entity_uses_native_default() {
     let component = runtime.program.component_indices[&pos];
     runtime.update(component);
     crate::redstone::command_block::update(&mut w, pos);
-    let Some(BlockEntity::CommandBlock(expected)) = w.get_block_entity(pos) else { panic!("missing native command entity"); };
+    let Some(BlockEntity::CommandBlock(expected)) = w.get_block_entity(pos) else {
+        panic!("missing native command entity");
+    };
     assert_eq!(&runtime.command_blocks[&pos], expected);
 }
 #[test]

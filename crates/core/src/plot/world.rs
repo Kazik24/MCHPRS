@@ -401,6 +401,10 @@ impl World for PlotWorld {
             return;
         }
         let input_on = match block {
+            Block::RedstoneComparator { comparator } => Some((
+                crate::redstone::comparator::calculate_input_strength(comparator, self, pos) > 0,
+                crate::redstone::comparator::get_power_on_sides(comparator, self, pos) > 0,
+            )),
             Block::RedstoneRepeater { repeater } => {
                 let rear = crate::redstone::diode_get_input_strength(self, pos, repeater.facing) > 0;
                 let side = crate::redstone::repeater::get_state_for_placement(self, pos, repeater.facing).locked;

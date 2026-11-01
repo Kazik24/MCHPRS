@@ -85,6 +85,13 @@ pub(in super::super) fn run<'a>(
                     let at = rear.offset(side);
                     let source = scratch.world().get_block(at);
                     if crate::redstone::power::emits_strong_power(source, scratch.world(), at, side, true) {
+                        if matches!(source, Block::RedstoneWire { .. }) {
+                            for mut source in crate::redpiler::scratch::discover_wire_sources(scratch.world(), &[at])? {
+                                source.wire = pos;
+                                dependencies.push(source);
+                            }
+                            continue;
+                        }
                         dependencies.push(crate::redpiler::scratch::WireSource {
                             wire: pos,
                             source: at,

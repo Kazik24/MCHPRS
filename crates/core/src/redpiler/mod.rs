@@ -2,6 +2,8 @@
 
 mod options;
 #[cfg(test)]
+mod classic_fuzz_tests;
+#[cfg(test)]
 mod publication_tests;
 mod sampled;
 mod scratch;
