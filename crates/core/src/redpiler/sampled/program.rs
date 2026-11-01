@@ -210,30 +210,53 @@ pub(super) struct PistonBinding {
 
 #[derive(Clone)]
 pub(crate) struct Program {
-    /// captured command-block state keyed by world position.
-    pub(super) command_blocks: HashMap<BlockPos, Box<mchprs_blocks::block_entities::CommandBlockEntity>>,
-    /// world-level command output state needed to restore interpreter behavior.
-    pub(super) command_output_state: Option<crate::world::CommandBlockOutputState>,
-    /// reverse map from component index to `piston_bindings` index plus one.
-    pub(super) piston_by_component: Vec<Option<NonZeroUsize>>,
-    /// piston projection bindings and their home/far cell state.
-    pub(super) piston_bindings: Vec<PistonBinding>,
-    /// reverse map from component index to `repeaters` record index plus one.
-    pub(super) repeater_by_component: Vec<Option<NonZeroUsize>>,
-    /// reverse map from component index to `comparators` record index plus one.
-    pub(super) comparator_by_component: Vec<Option<NonZeroUsize>>,
-    /// reverse map from component index to `watched_wires` record index plus one.
-    pub(super) watched_by_component: Vec<Option<NonZeroUsize>>,
-    /// component-indexed flags for nodes that can source movable-token inputs.
-    pub(super) movable_sources: Vec<bool>,
-    /// cached summary indicating at least one component has reactive behavior.
-    pub(super) has_reactive: bool,
-    /// per-comparator captured output and override metadata.
-    pub(super) comparators: Vec<ComparatorRecord>,
-    /// per-component lists of comparator indices depending on that component's override value.
-    pub(super) comparators_by_override: Vec<Vec<usize>>,
+    // Components and output instructions
+    /// component-indexed world positions; index is the canonical component ID throughout the program.
+    pub(super) positions: Vec<BlockPos>,
+    /// world-position to component index lookup matching `positions`.
+    pub(super) component_indices: HashMap<BlockPos, usize>,
+    /// initial component blocks, parallel to `positions` by component index.
+    pub(super) initial: Vec<Block>,
+    /// component indices of external input sources such as levers and buttons.
+    pub(super) sources: Vec<usize>,
+    /// per component, slicing `operations` for its two output transitions.
+    pub(super) output_programs: Vec<[std::ops::Range<usize>; 2]>,
+    /// flattened compiled output operations referenced by `output_programs` ranges.
+    pub(super) operations: Vec<Operation>,
+
+    // Electrical connections
+    /// ordinary source-to-target input links; IDs index this vector.
+    pub(super) links: Vec<ElectricalLink>,
+    /// per target component, listing incoming indices into `links`.
+    pub(super) incoming: Vec<Vec<usize>>,
+    /// per source component, listing outgoing indices into `links`.
+    pub(super) outgoing: Vec<Vec<usize>>,
+    /// indexed by ordinary link ID, indicating whether that link contributes to its target.
+    pub(super) effective_links: Vec<bool>,
     /// comparator/repeater side-input connections, separate from ordinary incoming links.
     pub(super) side_links: Vec<ElectricalLink>,
+    /// per source component, with target component and attenuation for side outputs.
+    pub(super) side_outputs: Vec<Vec<(usize, u8)>>,
+
+    // Repeaters, comparators, and watched wires
+    /// per-repeater output and side-lock metadata.
+    pub(super) repeaters: Vec<RepeaterRecord>,
+    /// reverse map from component index to `repeaters` record index plus one.
+    pub(super) repeater_by_component: Vec<Option<NonZeroUsize>>,
+    /// per-comparator captured output and override metadata.
+    pub(super) comparators: Vec<ComparatorRecord>,
+    /// reverse map from component index to `comparators` record index plus one.
+    pub(super) comparator_by_component: Vec<Option<NonZeroUsize>>,
+    /// per-component lists of comparator indices depending on that component's override value.
+    pub(super) comparators_by_override: Vec<Vec<usize>>,
+    /// records mapping monitored wire components to their watcher components.
+    pub(super) watched_wires: Vec<WatchedWire>,
+    /// reverse map from component index to `watched_wires` record index plus one.
+    pub(super) watched_by_component: Vec<Option<NonZeroUsize>>,
+
+    // Reactive dependencies
+    /// cached summary indicating at least one component has reactive behavior.
+    pub(super) has_reactive: bool,
     /// component-indexed flags identifying nodes that require reactive reevaluation.
     pub(super) reactive: Vec<bool>,
     /// watched wires and their sources/recipient components.
@@ -242,18 +265,63 @@ pub(crate) struct Program {
     pub(super) reactive_by_source: Vec<Vec<usize>>,
     /// per-component lists of neighboring reactive component indices.
     pub(super) reactive_neighbours: Vec<Vec<usize>>,
+
+    // Pistons, tokens, and movement notifications
     /// discovered piston bases, orientations, and group identities.
     pub(super) pistons: Vec<super::compiler::PistonActor>,
+    /// reverse map from component index to `piston_bindings` index plus one.
+    pub(super) piston_by_component: Vec<Option<NonZeroUsize>>,
+    /// piston projection bindings and their home/far cell state.
+    pub(super) piston_bindings: Vec<PistonBinding>,
     /// movable blocks and their legal positions/cells.
     pub(super) tokens: Vec<super::compiler::PistonToken>,
-    /// non-component scenery positions reserved for piston projection.
-    pub(super) piston_scenery: Vec<BlockPos>,
+    /// component-indexed flags for nodes that can source movable-token inputs.
+    pub(super) movable_sources: Vec<bool>,
+    /// per token, piston component indices whose motion can move that token.
+    pub(super) token_piston_components: Vec<Vec<usize>>,
+    /// indexed token, token cell, then source component/attenuation dependencies.
+    pub(super) token_sources: Vec<Vec<Vec<(usize, u8)>>>,
+    /// indexed token and cell, with separate ordered component updates for departure and arrival.
+    pub(super) token_updates: Vec<Vec<[Vec<usize>; 2]>>,
+    /// indexed token and cell, listing component indices watching movement at that cell.
+    pub(super) token_watchers: Vec<Vec<Vec<usize>>>,
+    /// per source component, listing components notified by source changes.
+    pub(super) source_watchers: Vec<Vec<usize>>,
+    /// per piston component, listing components notified by changes around its home cell.
+    pub(super) home_watchers: Vec<SmallVec<[usize; 2]>>,
+
+    // Arrangements and movement instructions
+    /// joint token-position states that change component input connectivity.
+    pub(super) input_arrangements: Vec<InputArrangement>,
+    /// per target component, listing its token-dependent input-arrangement indices.
+    pub(super) input_groups_by_target: Vec<Vec<usize>>,
+    /// token-dependent electrical links and their active arrangement states.
+    pub(super) arrangement_links: Vec<ArrangementLink>,
+    /// per source component, listing outgoing indices into `arrangement_links`.
+    pub(super) outgoing_arrangements: Vec<Vec<usize>>,
+    /// grouped token movement axes and their callback ranges.
+    pub(super) movement_groups: Vec<MovementGroup>,
+    /// per token, mapping movement-group indices to that token's group-axis index.
+    pub(super) token_movement_groups: Vec<Vec<(usize, usize)>>,
+    /// ordered conditional-link enter/leave events for token movement.
+    pub(super) movement_flips: Vec<ArrangementFlip>,
+    /// indexed token and cell, slicing `movement_steps` for departure and arrival.
+    pub(super) move_steps: Vec<Vec<[std::ops::Range<usize>; 2]>>,
+    /// flattened ordered movement callbacks referenced by `move_steps` ranges.
+    pub(super) movement_steps: Vec<MoveStep>,
+    /// flattened watched-wire indices referenced by `MoveStep::wires` ranges.
+    pub(super) movement_wires: Vec<usize>,
+    pub(super) movement_cells: Vec<Vec<std::ops::Range<usize>>>,
+    pub(super) movement_transitions: Vec<MovementTransition>,
+    pub(super) movement_ranges: Vec<std::ops::Range<usize>>,
+
+    // Geometry and projection indexes
     /// captured non-air blocks outside the component list.
     pub(super) geometry: Vec<(BlockPos, Block)>,
-    /// world-position to component index lookup matching `positions`.
-    pub(super) component_indices: HashMap<BlockPos, usize>,
     /// world-position to captured scenery block lookup matching `geometry`.
     pub(super) geometry_indices: HashMap<BlockPos, Block>,
+    /// non-component scenery positions reserved for piston projection.
+    pub(super) piston_scenery: Vec<BlockPos>,
     /// world positions represented by projection-cell indices.
     pub(super) projection_positions: Vec<BlockPos>,
     /// world-position to projection-cell index lookup.
@@ -272,65 +340,12 @@ pub(crate) struct Program {
     pub(super) cell_observers: Vec<SmallVec<[usize; 2]>>,
     /// projection-cell-indexed scenery blocks, with air for cells without static geometry.
     pub(super) cell_geometry: Vec<Block>,
-    /// per token, piston component indices whose motion can move that token.
-    pub(super) token_piston_components: Vec<Vec<usize>>,
-    /// indexed token, token cell, then source component/attenuation dependencies.
-    pub(super) token_sources: Vec<Vec<Vec<(usize, u8)>>>,
-    /// indexed token and cell, with separate ordered component updates for departure and arrival.
-    pub(super) token_updates: Vec<Vec<[Vec<usize>; 2]>>,
-    /// indexed token and cell, listing component indices watching movement at that cell.
-    pub(super) token_watchers: Vec<Vec<Vec<usize>>>,
-    /// indexed token and cell, slicing `movement_steps` for departure and arrival.
-    pub(super) move_steps: Vec<Vec<[std::ops::Range<usize>; 2]>>,
-    /// flattened ordered movement callbacks referenced by `move_steps` ranges.
-    pub(super) movement_steps: Vec<MoveStep>,
-    /// flattened watched-wire indices referenced by `MoveStep::wires` ranges.
-    pub(super) movement_wires: Vec<usize>,
-    /// joint token-position states that change component input connectivity.
-    pub(super) input_arrangements: Vec<InputArrangement>,
-    /// grouped token movement axes and their callback ranges.
-    pub(super) movement_groups: Vec<MovementGroup>,
-    /// ordered conditional-link enter/leave events for token movement.
-    pub(super) movement_flips: Vec<ArrangementFlip>,
-    /// per token, mapping movement-group indices to that token's group-axis index.
-    pub(super) token_movement_groups: Vec<Vec<(usize, usize)>>,
-    pub(super) movement_cells: Vec<Vec<std::ops::Range<usize>>>,
-    pub(super) movement_transitions: Vec<MovementTransition>,
-    pub(super) movement_ranges: Vec<std::ops::Range<usize>>,
-    /// token-dependent electrical links and their active arrangement states.
-    pub(super) arrangement_links: Vec<ArrangementLink>,
-    /// per source component, listing components notified by source changes.
-    pub(super) source_watchers: Vec<Vec<usize>>,
-    /// per piston component, listing components notified by changes around its home cell.
-    pub(super) home_watchers: Vec<SmallVec<[usize; 2]>>,
-    /// component-indexed world positions; index is the canonical component ID throughout the program.
-    pub(super) positions: Vec<BlockPos>,
-    /// initial component blocks, parallel to `positions` by component index.
-    pub(super) initial: Vec<Block>,
-    /// component indices of external input sources such as levers and buttons.
-    pub(super) sources: Vec<usize>,
-    /// per component, slicing `operations` for its two output transitions.
-    pub(super) output_programs: Vec<[std::ops::Range<usize>; 2]>,
-    /// flattened compiled output operations referenced by `output_programs` ranges.
-    pub(super) operations: Vec<Operation>,
-    /// ordinary source-to-target input links; IDs index this vector.
-    pub(super) links: Vec<ElectricalLink>,
-    /// per target component, listing incoming indices into `links`.
-    pub(super) incoming: Vec<Vec<usize>>,
-    /// per source component, listing outgoing indices into `links`.
-    pub(super) outgoing: Vec<Vec<usize>>,
-    /// per source component, listing outgoing indices into `arrangement_links`.
-    pub(super) outgoing_arrangements: Vec<Vec<usize>>,
-    /// per target component, listing its token-dependent input-arrangement indices.
-    pub(super) input_groups_by_target: Vec<Vec<usize>>,
-    /// indexed by ordinary link ID, indicating whether that link contributes to its target.
-    pub(super) effective_links: Vec<bool>,
-    /// per source component, with target component and attenuation for side outputs.
-    pub(super) side_outputs: Vec<Vec<(usize, u8)>>,
-    /// records mapping monitored wire components to their watcher components.
-    pub(super) watched_wires: Vec<WatchedWire>,
-    /// per-repeater output and side-lock metadata.
-    pub(super) repeaters: Vec<RepeaterRecord>,
+
+    // Captured command state
+    /// captured command-block state keyed by world position.
+    pub(super) command_blocks: HashMap<BlockPos, Box<mchprs_blocks::block_entities::CommandBlockEntity>>,
+    /// world-level command output state needed to restore interpreter behavior.
+    pub(super) command_output_state: Option<crate::world::CommandBlockOutputState>,
 }
 
 fn validate_operation(
@@ -1350,76 +1365,7 @@ impl Program {
             .and_then(|n| n.checked_add(self.tokens.len()))
             .expect("validated motion capacity");
         let mut runtime = Runtime {
-            command_blocks: self.command_blocks.clone(),
-            command_output_state: self.command_output_state.clone(),
-            command_emissions: Vec::new(),
-            piston_state: mchprs_world::PistonState::default(),
-            comparator_outputs: {
-                let mut outputs = vec![0; self.initial.len()];
-                for record in &self.comparators {
-                    outputs[record.component] = record.stored;
-                }
-                outputs
-            },
-            reactive_wire_strengths: self
-                .reactive_wires
-                .iter()
-                .map(|record| match self.initial[record.wire] {
-                    Block::RedstoneWire { wire } => wire.power,
-                    _ => unreachable!(),
-                })
-                .collect(),
-            piston_extended: self.pistons.iter().map(|p| p.extended).collect(),
-            piston_head_present: self.pistons.iter().map(|p| p.head_present).collect(),
-            piston_head_moving: vec![false; self.pistons.len()],
-            piston_base_moving: vec![false; self.pistons.len()],
-            token_positions: self.tokens.iter().map(|t| t.position).collect(),
-            group_arrangements: self
-                .movement_groups
-                .iter()
-                .map(|group| {
-                    group
-                        .axes
-                        .iter()
-                        .map(|axis| {
-                            self.tokens[axis.token]
-                                .position
-                                .and_then(|pos| self.tokens[axis.token].cells.iter().position(|&cell| cell == pos))
-                                .map_or(0, |cell| cell + 1)
-                                * axis.stride
-                        })
-                        .sum()
-                })
-                .collect(),
-            arrangement_contributions: vec![0; self.arrangement_links.len()],
-            piston_events: std::collections::VecDeque::with_capacity(self.pistons.len() * 3),
-            queued_piston_events: vec![0; self.pistons.len()],
-            motions: Vec::with_capacity(motion_capacity),
-            active_motions: std::collections::VecDeque::with_capacity(motion_capacity),
-            free_motion_slots: Vec::with_capacity(motion_capacity),
-            piston_motion: vec![None; self.pistons.len()],
-            cell_motion: vec![None; cell_count],
-            dirty_cells: (0..cell_count).collect(),
-            dirty: vec![true; cell_count],
-            needs_full_publication: false,
-            movement_switched: Vec::with_capacity(self.initial.len()),
-            movement_changed_wires: Vec::with_capacity(self.watched_wires.len()),
-            switched: vec![false; self.initial.len()],
-            changed_wires: vec![false; self.initial.len()],
-            motion_time: 0,
-            motion_phase: false,
-            landing_cursor: None,
-            accepted_piston_actions: 0,
-            token_movements: 0,
-            motion_completions: 0,
             blocks: self.initial.clone(),
-            pending: super::scheduler::Scheduler::new(self.initial.len().checked_mul(2).expect("validated scheduled capacity").max(64)),
-            pending_counts: vec![0; self.initial.len()],
-            pending_passive_positions: Vec::new(),
-            input_levels: vec![[super::input::InputState::default(); 2]; self.initial.len()],
-            input_histograms: Vec::new(),
-            notes: Vec::with_capacity(self.initial.iter().filter(|block| matches!(block, Block::NoteBlock { .. })).count()),
-            note_queued: vec![false; self.initial.len()],
             contributions: self
                 .links
                 .iter()
@@ -1484,6 +1430,25 @@ impl Program {
                     strength.saturating_sub(link.attenuation)
                 })
                 .collect(),
+            arrangement_contributions: vec![0; self.arrangement_links.len()],
+            input_levels: vec![[super::input::InputState::default(); 2]; self.initial.len()],
+            input_histograms: Vec::new(),
+            comparator_outputs: {
+                let mut outputs = vec![0; self.initial.len()];
+                for record in &self.comparators {
+                    outputs[record.component] = record.stored;
+                }
+                outputs
+            },
+            wire_input_cache: vec![u8::MAX; self.initial.len()],
+            reactive_wire_strengths: self
+                .reactive_wires
+                .iter()
+                .map(|record| match self.initial[record.wire] {
+                    Block::RedstoneWire { wire } => wire.power,
+                    _ => unreachable!(),
+                })
+                .collect(),
             watched_strengths: self
                 .watched_wires
                 .iter()
@@ -1492,8 +1457,59 @@ impl Program {
                     _ => unreachable!(),
                 })
                 .collect(),
+            pending: super::scheduler::Scheduler::new(self.initial.len().checked_mul(2).expect("validated scheduled capacity").max(64)),
+            pending_counts: vec![0; self.initial.len()],
+            pending_passive_positions: Vec::new(),
             phase: 1,
             updated_in_phase: vec![0; self.initial.len()],
+            piston_state: mchprs_world::PistonState::default(),
+            piston_extended: self.pistons.iter().map(|p| p.extended).collect(),
+            piston_head_present: self.pistons.iter().map(|p| p.head_present).collect(),
+            piston_head_moving: vec![false; self.pistons.len()],
+            piston_base_moving: vec![false; self.pistons.len()],
+            token_positions: self.tokens.iter().map(|t| t.position).collect(),
+            group_arrangements: self
+                .movement_groups
+                .iter()
+                .map(|group| {
+                    group
+                        .axes
+                        .iter()
+                        .map(|axis| {
+                            self.tokens[axis.token]
+                                .position
+                                .and_then(|pos| self.tokens[axis.token].cells.iter().position(|&cell| cell == pos))
+                                .map_or(0, |cell| cell + 1)
+                                * axis.stride
+                        })
+                        .sum()
+                })
+                .collect(),
+            piston_events: std::collections::VecDeque::with_capacity(self.pistons.len() * 3),
+            queued_piston_events: vec![0; self.pistons.len()],
+            motions: Vec::with_capacity(motion_capacity),
+            active_motions: std::collections::VecDeque::with_capacity(motion_capacity),
+            free_motion_slots: Vec::with_capacity(motion_capacity),
+            piston_motion: vec![None; self.pistons.len()],
+            cell_motion: vec![None; cell_count],
+            motion_time: 0,
+            motion_phase: false,
+            landing_cursor: None,
+            movement_switched: Vec::with_capacity(self.initial.len()),
+            switched: vec![false; self.initial.len()],
+            movement_changed_wires: Vec::with_capacity(self.watched_wires.len()),
+            changed_wires: vec![false; self.initial.len()],
+            command_blocks: self.command_blocks.clone(),
+            command_output_state: self.command_output_state.clone(),
+            command_emissions: Vec::new(),
+            notes: Vec::with_capacity(self.initial.iter().filter(|block| matches!(block, Block::NoteBlock { .. })).count()),
+            note_queued: vec![false; self.initial.len()],
+            dirty_cells: (0..cell_count).collect(),
+            dirty: vec![true; cell_count],
+            needs_full_publication: false,
+            accepted_piston_actions: 0,
+            token_movements: 0,
+            motion_completions: 0,
             operations: 0,
             deliveries: 0,
             scheduled_repeater_ticks: 0,

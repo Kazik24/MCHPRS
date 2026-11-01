@@ -11,6 +11,59 @@ fn wire(power: u8) -> Block {
 }
 
 #[test]
+fn wire_strength_cache_tracks_competing_fixed_contributions() {
+    let mut program = Program::new(
+        (0..3).map(|x| BlockPos::new(x, 10, 10)).collect(),
+        vec![wire(10), wire(8), wire(0)],
+        vec![],
+        vec![[vec![Operation::Contribution(0)], vec![Operation::Contribution(0)]],
+             [vec![Operation::Contribution(1)], vec![Operation::Contribution(1)]],
+             [vec![], vec![]]],
+        vec![ElectricalLink { source: 0, target: 2, attenuation: 2 }, ElectricalLink { source: 1, target: 2, attenuation: 0 }],
+        vec![], vec![],
+    ).unwrap();
+    program.compile_movement_flips().unwrap();
+    let mut runtime = program.start();
+    assert_eq!(runtime.wire_input_strength(2), 8);
+    assert_eq!(runtime.wire_input_strength(2), 8);
+    runtime.blocks[0] = wire(8);
+    runtime.execute_output_program(0, true);
+    assert_eq!(runtime.wire_input_cache[2], u8::MAX);
+    assert_eq!(runtime.wire_input_strength(2), 8);
+    runtime.blocks[1] = wire(0);
+    runtime.execute_output_program(1, false);
+    assert_eq!(runtime.wire_input_strength(2), 6);
+    runtime.blocks[0] = wire(0);
+    runtime.execute_output_program(0, false);
+    assert_eq!(runtime.wire_input_strength(2), 0);
+}
+
+#[test]
+fn wire_strength_cache_tracks_arrangement_changes() {
+    use super::compiler::PistonToken;
+    use super::program::{ArrangementSource, InputArrangement};
+
+    let cell = BlockPos::new(10, 11, 10);
+    let mut program = Program::new(
+        vec![BlockPos::new(10, 10, 10), BlockPos::new(11, 10, 10)],
+        vec![Block::RedstoneBlock, wire(0)], vec![], vec![[vec![], vec![]]; 2], vec![], vec![], vec![],
+    ).unwrap();
+    program.tokens.push(PistonToken { block: Block::Stone {}, position: None, cells: vec![cell] });
+    program.input_arrangements.push(InputArrangement {
+        target: 1, side: false, silent: false, tokens: vec![0],
+        conditional_sources: vec![ArrangementSource::Component(0)],
+        inputs: vec![vec![], vec![(ArrangementSource::Component(0), 0)]],
+    });
+    program.compile_movement_flips().unwrap();
+    let mut runtime = program.start();
+    assert_eq!(runtime.wire_input_strength(1), 0);
+    runtime.set_token_pos(0, Some(cell));
+    assert_eq!(runtime.wire_input_strength(1), 15);
+    runtime.set_token_pos(0, None);
+    assert_eq!(runtime.wire_input_strength(1), 0);
+}
+
+#[test]
 fn equal_strength_rear_sources_survive_revalidation_and_independent_removal() {
     use super::program::ComparatorRecord;
 

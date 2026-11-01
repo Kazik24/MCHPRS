@@ -66,18 +66,43 @@ pub(super) struct ScheduledComponentTick {
 }
 
 pub(crate) struct Runtime {
-    /// mutable command-block entities keyed by world position.
-    pub(super) command_blocks: std::collections::HashMap<mchprs_blocks::BlockPos, Box<mchprs_blocks::block_entities::CommandBlockEntity>>,
-    /// mutable world-level command output state.
-    pub(super) command_output_state: Option<crate::world::CommandBlockOutputState>,
-    /// command outputs generated during execution and awaiting publication.
-    pub(super) command_emissions: Vec<crate::world::CommandBlockEmission>,
-    /// component-indexed current comparator output levels, in 0–15.
-    pub(super) comparator_outputs: Vec<u8>,
-    /// reactive-wire-indexed current wire strengths, in 0–15.
-    pub(super) reactive_wire_strengths: Vec<u8>,
+    // Compiled program and current blocks
     /// immutable compiled topology and instruction data shared with runtime readers.
     pub(super) program: std::sync::Arc<Program>,
+    /// component-indexed current block states, parallel to `Program::positions`.
+    pub(super) blocks: Vec<Block>,
+
+    // Electrical inputs and wire state
+    /// ordinary electrical-link-indexed current source contribution strengths.
+    pub(super) contributions: Vec<u8>,
+    /// arrangement-link-indexed current contribution level, in 0–15.
+    pub(super) arrangement_contributions: Vec<u8>,
+    /// per-component input aggregates for primary and side input channels.
+    pub(super) input_levels: Vec<[super::input::InputState; 2]>,
+    /// analog strength histograms referenced by `InputState::analog` slots.
+    pub(super) input_histograms: Vec<super::input::Histogram>,
+    /// component-indexed current comparator output levels, in 0–15.
+    pub(super) comparator_outputs: Vec<u8>,
+    /// Cached wire input strengths, or 255 when a contribution changed.
+    pub(super) wire_input_cache: Vec<u8>,
+    /// reactive-wire-indexed current wire strengths, in 0–15.
+    pub(super) reactive_wire_strengths: Vec<u8>,
+    /// watched-wire-indexed last published strength, in 0–15.
+    pub(super) watched_strengths: Vec<u8>,
+
+    // Scheduled ticks and update phases
+    /// pending component ticks arranged by native delay and priority.
+    pub(super) pending: super::scheduler::Scheduler,
+    /// component-indexed number of outstanding scheduled ticks.
+    pub(super) pending_counts: Vec<usize>,
+    /// positions with scheduled passive work that is not tied to a component index.
+    pub(super) pending_passive_positions: Vec<mchprs_blocks::BlockPos>,
+    /// monotonically increasing execution phase ID used to suppress duplicate updates.
+    pub(super) phase: u64,
+    /// component-indexed last update phase; zero means not updated in this phase.
+    pub(super) updated_in_phase: Vec<u64>,
+
+    // Pistons, tokens, and arrangements
     /// native piston event/motion state captured at compilation and advanced at runtime.
     pub(super) piston_state: mchprs_world::PistonState,
     /// piston-indexed current extended state.
@@ -92,12 +117,12 @@ pub(crate) struct Runtime {
     pub(super) token_positions: Vec<Option<mchprs_blocks::BlockPos>>,
     /// arrangement-group-indexed encoded active token-position state.
     pub(super) group_arrangements: Vec<usize>,
-    /// arrangement-link-indexed current contribution level, in 0–15.
-    pub(super) arrangement_contributions: Vec<u8>,
     /// pending piston index/event pairs in processing order.
     pub(super) piston_events: std::collections::VecDeque<(usize, PistonEvent)>,
     /// piston-indexed bitsets of event kinds already queued for that piston.
     pub(super) queued_piston_events: Vec<u8>,
+
+    // Motion storage and clock
     /// allocated motion records, including records currently active or reusable.
     pub(super) motions: Vec<Motion>,
     /// active indices into `motions` in landing/processing order.
@@ -108,56 +133,50 @@ pub(crate) struct Runtime {
     pub(super) piston_motion: Vec<Option<NonZeroUsize>>,
     /// projection-cell-indexed active motion index plus one occupying each cell.
     pub(super) cell_motion: Vec<Option<NonZeroUsize>>,
-    /// projection-cell indices changed since the last publication.
-    pub(super) dirty_cells: Vec<usize>,
-    /// projection-cell-indexed flags marking cells that need publication.
-    pub(super) dirty: Vec<bool>,
-    /// forcing publication to rebuild the complete projected world.
-    pub(super) needs_full_publication: bool,
-    /// component indices whose movement-dependent inputs switched this phase.
-    pub(super) movement_switched: Vec<usize>,
-    /// watched-wire indices whose raw strength changed this phase.
-    pub(super) movement_changed_wires: Vec<usize>,
-    /// component-indexed deduplication flags for `movement_switched`.
-    pub(super) switched: Vec<bool>,
-    /// watched-wire-indexed deduplication flags for `movement_changed_wires`.
-    pub(super) changed_wires: Vec<bool>,
     /// elapsed piston-motion clock in ticks.
     pub(super) motion_time: u64,
     /// current half-tick phase for motion progression.
     pub(super) motion_phase: bool,
     /// cursor into active motion ordering for landing processing.
     pub(super) landing_cursor: Option<usize>,
+
+    // Movement working buffers
+    /// component indices whose movement-dependent inputs switched this phase.
+    pub(super) movement_switched: Vec<usize>,
+    /// component-indexed deduplication flags for `movement_switched`.
+    pub(super) switched: Vec<bool>,
+    /// watched-wire indices whose raw strength changed this phase.
+    pub(super) movement_changed_wires: Vec<usize>,
+    /// watched-wire-indexed deduplication flags for `movement_changed_wires`.
+    pub(super) changed_wires: Vec<bool>,
+
+    // Commands and notes
+    /// mutable command-block entities keyed by world position.
+    pub(super) command_blocks: std::collections::HashMap<mchprs_blocks::BlockPos, Box<mchprs_blocks::block_entities::CommandBlockEntity>>,
+    /// mutable world-level command output state.
+    pub(super) command_output_state: Option<crate::world::CommandBlockOutputState>,
+    /// command outputs generated during execution and awaiting publication.
+    pub(super) command_emissions: Vec<crate::world::CommandBlockEmission>,
+    /// queued notes as component, position, instrument, and sound data.
+    pub(crate) notes: Vec<(usize, mchprs_blocks::BlockPos, mchprs_blocks::blocks::Instrument, u32)>,
+    /// component-indexed flags preventing duplicate note queue entries.
+    pub(crate) note_queued: Vec<bool>,
+
+    // Publication
+    /// projection-cell indices changed since the last publication.
+    pub(super) dirty_cells: Vec<usize>,
+    /// projection-cell-indexed flags marking cells that need publication.
+    pub(super) dirty: Vec<bool>,
+    /// forcing publication to rebuild the complete projected world.
+    pub(super) needs_full_publication: bool,
+
+    // Accounting and failure
     /// count of accepted piston actions in the current execution window.
     pub(super) accepted_piston_actions: usize,
     /// count of token movement events processed.
     pub(super) token_movements: usize,
     /// count of completed motions.
     pub(super) motion_completions: usize,
-    /// component-indexed current block states, parallel to `Program::positions`.
-    pub(super) blocks: Vec<Block>,
-    /// pending component ticks arranged by native delay and priority.
-    pub(super) pending: super::scheduler::Scheduler,
-    /// component-indexed number of outstanding scheduled ticks.
-    pub(super) pending_counts: Vec<usize>,
-    /// positions with scheduled passive work that is not tied to a component index.
-    pub(super) pending_passive_positions: Vec<mchprs_blocks::BlockPos>,
-    /// ordinary electrical-link-indexed current source contribution strengths.
-    pub(super) contributions: Vec<u8>,
-    /// per-component input aggregates for primary and side input channels.
-    pub(super) input_levels: Vec<[super::input::InputState; 2]>,
-    /// analog strength histograms referenced by `InputState::analog` slots.
-    pub(super) input_histograms: Vec<super::input::Histogram>,
-    /// queued notes as component, position, instrument, and sound data.
-    pub(crate) notes: Vec<(usize, mchprs_blocks::BlockPos, mchprs_blocks::blocks::Instrument, u32)>,
-    /// component-indexed flags preventing duplicate note queue entries.
-    pub(crate) note_queued: Vec<bool>,
-    /// watched-wire-indexed last published strength, in 0–15.
-    pub(super) watched_strengths: Vec<u8>,
-    /// monotonically increasing execution phase ID used to suppress duplicate updates.
-    pub(super) phase: u64,
-    /// component-indexed last update phase; zero means not updated in this phase.
-    pub(super) updated_in_phase: Vec<u64>,
     /// count of executed compiled operations in the current accounting interval.
     pub(super) operations: usize,
     /// count of delivered neighbor/update callbacks in the current accounting interval.
@@ -733,6 +752,18 @@ impl Runtime {
         fixed.chain(arranged).max().unwrap_or(0)
     }
 
+    pub(super) fn wire_input_strength(&mut self, target: usize) -> u8 {
+        debug_assert!(matches!(self.blocks[target], Block::RedstoneWire { .. }));
+        let cached = self.wire_input_cache[target];
+        if cached != u8::MAX {
+            debug_assert_eq!(cached, self.input_strength(target));
+            return cached;
+        }
+        let strength = self.input_strength(target);
+        self.wire_input_cache[target] = strength;
+        strength
+    }
+
     pub(super) fn has_input(&self, target: usize) -> bool {
         self.input_levels[target][0].active != 0
     }
@@ -741,13 +772,20 @@ impl Runtime {
         let old = self.contributions[index];
         self.contributions[index] = value;
         if self.program.effective_links[index] {
-            self.input_levels[self.program.links[index].target][0].change(old, value, &mut self.input_histograms);
+            let target = self.program.links[index].target;
+            if old != value {
+                self.wire_input_cache[target] = u8::MAX;
+            }
+            self.input_levels[target][0].change(old, value, &mut self.input_histograms);
         }
     }
 
     fn set_arrangement_contribution(&mut self, index: usize, target: usize, side: bool, value: u8) {
         let old = self.arrangement_contributions[index];
         self.arrangement_contributions[index] = value;
+        if !side && old != value {
+            self.wire_input_cache[target] = u8::MAX;
+        }
         self.input_levels[target][usize::from(side)].change(old, value, &mut self.input_histograms);
     }
 
@@ -876,7 +914,7 @@ impl Runtime {
         // Movement callbacks read the new wire level even when that wire is not a piston watcher.
         for &node in switched.iter() {
             if matches!(self.blocks[node], Block::RedstoneWire { .. }) {
-                let strength = self.input_strength(node);
+                let strength = self.wire_input_strength(node);
                 self.refresh_wire_power(node, strength);
             }
         }
@@ -919,7 +957,7 @@ impl Runtime {
                     changed_wires.push(node);
                 }
             } else if matches!(self.blocks[node], Block::RedstoneWire { .. }) {
-                let strength = self.input_strength(node);
+                let strength = self.wire_input_strength(node);
                 self.refresh_wire_power(node, strength);
             } else {
                 self.update_once(node);
@@ -942,7 +980,7 @@ impl Runtime {
         let Some(index) = self.program.watched_by_component[wire].map(|index| index.get() - 1) else {
             return false;
         };
-        let strength = self.input_strength(wire);
+        let strength = self.wire_input_strength(wire);
         self.refresh_wire_power(wire, strength);
         if strength == self.watched_strengths[index] {
             return false;
@@ -956,11 +994,11 @@ impl Runtime {
             unreachable!()
         };
         let previous = state.power;
-        state.power = strength;
-        self.set_component(wire, Block::RedstoneWire { wire: state });
         if previous == strength {
             return;
         }
+        state.power = strength;
+        self.set_component(wire, Block::RedstoneWire { wire: state });
         for offset in 0..self.program.outgoing[wire].len() {
             let index = self.program.outgoing[wire][offset];
             let link = self.program.links[index];
@@ -1239,7 +1277,7 @@ impl Runtime {
 
     pub(super) fn check_watched_wire(&mut self, record_index: usize) {
         let wire = self.program.watched_wires[record_index].wire;
-        let new_strength = self.input_strength(wire);
+        let new_strength = self.wire_input_strength(wire);
         if new_strength == self.watched_strengths[record_index] {
             return;
         }
@@ -1354,7 +1392,7 @@ impl Runtime {
                     }
                 }
                 Operation::RefreshWire(slot) => {
-                    let strength = self.input_strength(slot);
+                    let strength = self.wire_input_strength(slot);
                     self.refresh_wire_power(slot, strength);
                 }
                 Operation::CheckWatchedWire(record) => self.check_watched_wire(record),
