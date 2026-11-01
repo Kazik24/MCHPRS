@@ -221,14 +221,14 @@ fn comparator_keeps_its_native_fifo_position() {
 }
 
 #[test]
-#[ignore = "known context-dependent comparator ordering mismatch; see seed 410 MAIR crosscheck"]
+#[ignore = "known context-dependent comparator ordering mismatch; seed 410 reproduces"]
 fn comparator_order_with_other_active_analog_sources() {
     compare(410).unwrap();
 }
 
 #[test]
-#[ignore = "exports the saved Chungus fixture for external MAIR replay"]
-fn export_chungus_mair_case() {
+#[ignore = "exports the saved Chungus fixture for replay"]
+fn export_chungus_case() {
     #[path = "../../test_support/chungus.rs"]
     mod chungus;
     use serde_json::json;
@@ -274,7 +274,8 @@ fn export_chungus_mair_case() {
             .collect();
         frames.push(json!({"step":0,"tick":tick,"states":states,"outputs":[null,null,null,null]}));
     }
-    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/mair-crosscheck/classic-9999.json");
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/redpiler-reference-cases/classic-9999.json");
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     std::fs::write(
         path,
         serde_json::to_vec(
@@ -286,8 +287,8 @@ fn export_chungus_mair_case() {
 }
 
 #[test]
-#[ignore = "exports native fixtures for external MAIR replay"]
-fn export_classic_mair_cases() {
+#[ignore = "exports native fixtures for replay"]
+fn export_classic_cases() {
     use serde_json::json;
     let state = |block: Block| {
         let properties: std::collections::BTreeMap<_, _> = block.properties().into_iter().collect();
@@ -353,7 +354,8 @@ fn export_classic_mair_cases() {
             }
         }
         let positions: Vec<_> = blocks.iter().map(|(pos, _)| [pos.x, pos.y, pos.z]).collect();
-        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(format!("../../target/mair-crosscheck/classic-{seed}.json"));
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(format!("../../target/redpiler-reference-cases/classic-{seed}.json"));
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         std::fs::write(path, serde_json::to_vec(&json!({"seed":seed,"blocks":snapshot,"comparators":comparators,"pending":pending,"positions":positions,"actions":actions,"frames":frames})).unwrap()).unwrap();
     }
 }

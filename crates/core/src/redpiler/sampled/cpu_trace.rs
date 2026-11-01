@@ -490,7 +490,8 @@ fn cpu_outputs_match_native(cpu_index: usize, publish_every_tick: bool) {
         assert!(quiet_native(&native) && quiet_compiled(&compiler));
     }
     let suffix = if publish_every_tick { "-full-publication" } else { "" };
-    let artifact = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(format!("../../target/mair-crosscheck/{}-output-acceptance{suffix}.json", cpu.name));
+    let artifact = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(format!("../../target/redpiler-reference-cases/{}-output-acceptance{suffix}.json", cpu.name));
+    std::fs::create_dir_all(artifact.parent().unwrap()).unwrap();
     std::fs::write(
         &artifact,
         serde_json::to_vec_pretty(&json!({

@@ -1,4 +1,4 @@
-//! Manifest acceptance against MAIR and the Java-verified native component model.
+//! Manifest acceptance against frozen reference traces and the Java-verified native component model.
 
 use super::*;
 use crate::plot::worldedit::{load_schematic, paste_clipboard};
@@ -807,7 +807,7 @@ fn focused_test_samples_match_supported_oracles() {
                 continue;
             }
         };
-        // MAIR treats bulbs as inert solids; their complete circuits use the Java-verified native oracle.
+        // Frozen bulb traces treat bulbs as inert solids; complete circuits use the Java-verified native oracle.
         let native_oracle = program.initial.iter().any(|block| block.is_copper_bulb());
         for (scenario, record) in sample["scenarios"].as_object().unwrap() {
             let mut runtime = program.start();
@@ -853,7 +853,7 @@ fn focused_test_samples_match_supported_oracles() {
                             let saved = world.get_block(pos);
                             assert!(
                                 saved.properties().iter().all(|(key, value)| expected.contains(&format!("{key}={value}"))),
-                                "the frozen MAIR bulb trace changed; recheck its supported component model"
+                                "the frozen bulb trace changed; recheck its supported component model"
                             );
                             changed_bulb_observations += usize::from(expected_native != saved);
                         }
@@ -900,7 +900,7 @@ fn focused_test_samples_match_supported_oracles() {
     for error in errors.iter().take(16) {
         eprintln!("{error}");
     }
-    assert!(reference_observations > 0, "MAIR-supported fixtures must be replayed");
+    assert!(reference_observations > 0, "reference-supported fixtures must be replayed");
     assert!(
         native_observations > 0 && changed_bulb_observations > 0,
         "native bulb scenarios must execute changing outputs"

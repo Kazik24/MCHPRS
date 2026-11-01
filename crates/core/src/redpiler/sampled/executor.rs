@@ -408,14 +408,14 @@ impl Runtime {
         let powered = self.has_input(component);
         #[cfg(any(test, feature = "redpiler-trace"))]
         if runtime_trace_enabled!(self) {
-            let fixed: Vec<_> = self.program.incoming[component]
+            let _fixed: Vec<_> = self.program.incoming[component]
                 .iter()
                 .map(|&link| (self.program.positions[self.program.links[link].source], self.contributions[link]))
                 .collect();
-            let token_inputs = self.token_dependency_signature(usize::MAX, component, None);
+            let _token_inputs = self.token_dependency_signature(usize::MAX, component, None);
             runtime_trace!(
                 self,
-                "piston sample {:?} powered={powered} extended={} fixed={fixed:?} token_inputs={token_inputs:?}",
+                "piston sample {:?} powered={powered} extended={} fixed={_fixed:?} token_inputs={_token_inputs:?}",
                 self.program.pistons[index].base,
                 self.piston_extended[index]
             );
@@ -1148,7 +1148,7 @@ impl Runtime {
             .unwrap_or(Block::Air);
         let instrument = mchprs_blocks::blocks::Instrument::from_block_below(below);
         let pos = self.program.positions[component];
-        // Coalesce like MAIR; capture native playback eligibility and instrument at the rising edge.
+        // Capture native playback eligibility and instrument at the rising edge.
         if powered_now && !self.note_queued[component] && self.project(pos.offset(mchprs_blocks::BlockFace::Top)) == Some(Block::Air) {
             self.note_queued[component] = true;
             self.notes.push((component, pos, instrument, note));

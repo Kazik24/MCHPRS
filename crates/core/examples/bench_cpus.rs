@@ -167,7 +167,7 @@ fn main() {
     assert!(ticks > 0 && runs > 0);
     let continue_on_divergence = std::env::var_os("MCHPRS_BENCH_ALLOW_DIVERGENCE").is_some();
     let provenance = provenance();
-    let destination = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/mair-six-build-bench");
+    let destination = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/redpiler-bench-results");
     std::fs::create_dir_all(&destination).unwrap();
     let mut results = Vec::new();
     for sample in 1..=runs {

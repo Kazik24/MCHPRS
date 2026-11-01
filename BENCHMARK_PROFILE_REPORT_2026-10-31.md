@@ -12,7 +12,7 @@ I captured Redpiler compile-phase timings for FPU with randomized inputs, ZCore1
 
 FPU input masks were `0x2dcf00637`, `0x28c788bfb`, `0x28c65e42c`, and `0x21549a4e4`. These are raw switch states; the operand bit order and numerical interpretation are not certified. The native output varied, but there is no arithmetic oracle for this fixture.
 
-Profile logs and machine-readable reports are in `target/mair-six-build-bench/`:
+Profile logs and machine-readable reports remain under `target/` in the original benchmark output folder:
 
 - `profiles/fpu-compile-profile.log` and `fpu.json`
 - `profiles/zcore-compile-profile.log` and `zcore-production.json`
@@ -50,7 +50,7 @@ TPS is headless simulation throughput without clients or network traffic. COUNTE
 
 - Source state: the first runs started with HEAD `c7eefc55608dbc9c72f0640c114284da29ca46e3` and a dirty worktree; those changes were committed as `e6f4eac24c0bdf861cbedb786a0b1133fb32b9ea` during the session. The later profile runs used that committed source. Five newer uncommitted Redpiler edits (last modified after 21:32) were not included.
 - Host: AMD Ryzen 9 5950X (16 cores / 32 logical processors), Windows 11 Home, `x86_64-pc-windows-msvc`, Rust 1.98.1 / LLVM 22.1.8.
-- Optimized runs used Cargo's `bench` profile. The native and Redpiler harnesses used frozen schematic hashes; raw JSON outputs remain under `target/mair-six-build-bench/`.
+- Optimized runs used Cargo's `bench` profile. The native and Redpiler harnesses used frozen schematic hashes; raw JSON outputs remain under `target/`.
 - `MCHPRS_REDPILER_PHASE_TIMINGS=1` enables the compile-phase profile. `MCHPRS_BENCH_ALLOW_DIVERGENCE=1` was used only to let diagnostic runs finish and collect repeated samples; without it, the existing fail-fast assertions remain active.
 
 The FPU runner now resets the fixture's saved trigger/opcode state and generates seeded random inputs. The arithmetic and CPU example runners can continue diagnostic sampling after a divergence when the environment flag is set. These changes do not repair the observed compiler mismatches.

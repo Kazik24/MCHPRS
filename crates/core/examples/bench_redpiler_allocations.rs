@@ -189,7 +189,7 @@ fn main() {
         "features":{"redpiler_full_publication":cfg!(feature = "redpiler-full-publication"),"redpiler_trace":cfg!(feature = "redpiler-trace")},
         "source_provenance":"external build manifest required: record git HEAD, SHA-256 of the dirty patch including untracked source files, rustc -Vv, and the exact cargo build command"
     });
-    let destination = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/mair-six-build-bench");
+    let destination = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/redpiler-bench-results");
     std::fs::create_dir_all(&destination).unwrap();
     std::fs::write(destination.join("bubblesort-allocations.json"), serde_json::to_vec_pretty(&artifact).unwrap()).unwrap();
     eprintln!("BubbleSort {TICKS} ticks: kernel={kernel_time:?}, publication={publication_time:?}, full reset={reset_publication_time:?}");

@@ -130,7 +130,7 @@ fn main() {
             }));
         }
     }
-    let output = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/mair-six-build-bench/anpu.json");
+    let output = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/redpiler-bench-results/anpu.json");
     std::fs::create_dir_all(output.parent().unwrap()).unwrap();
     std::fs::write(&output, serde_json::to_vec_pretty(&serde_json::json!({"schema":1,"cpu":cpu.name,"fixture_sha256":cpu.sha256,"ticks_per_run":game_ticks,"runs":reports})).unwrap()).unwrap();
     println!("wrote {}", output.display());
