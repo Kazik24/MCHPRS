@@ -1,5 +1,5 @@
 #[path = "../../../test_support/cpus.rs"]
-mod cpus;
+pub(super) mod cpus;
 
 use super::{
     ScratchEntry, compiler,
@@ -28,6 +28,70 @@ fn canonical(block: Block) -> String {
             .collect::<Vec<_>>()
             .join(",")
     )
+}
+
+#[test]
+#[ignore = "ANPU interpreter oracle check against frozen checkpoints and screen transitions"]
+fn anpu_interpreter_prefix_matches_frozen_reference() {
+    let cpu = cpus::CPUS[1];
+    let expected = cpus::reference(cpu);
+    let mut world = cpus::load_cpu(cpu);
+    let mut screens = Vec::new();
+    let mut chat = Vec::new();
+    cpus::collect_screen(&world, cpu, 0, &mut screens);
+    assert_eq!(cpus::checkpoint(&world, 0, &chat), expected.checkpoints[0]);
+    cpus::click_cpu(&mut world, cpu, cpu.start);
+    for tick in 1..=4096 {
+        world.tick_interpreted();
+        cpus::collect_chat(&world, tick, &mut chat);
+        cpus::collect_screen(&world, cpu, tick, &mut screens);
+        if let Some(index) = cpus::CHECKPOINTS.iter().position(|&checkpoint| checkpoint == tick) {
+            assert_eq!(cpus::checkpoint(&world, tick, &chat), expected.checkpoints[index]);
+        }
+    }
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../test_data/cpu-references/anpu_screen.json");
+    let frozen: Vec<cpus::ScreenFrame> = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+    assert_eq!(screens, frozen.into_iter().take_while(|frame| frame.tick <= 4096).collect::<Vec<_>>());
+    eprintln!("ANPU interpreter matches frozen checkpoints and {} screen frames through tick 4096", screens.len());
+}
+
+#[test]
+#[ignore = "ANPU interpreter/sampled first-divergence diagnostic"]
+fn anpu_first_native_compiled_divergence() {
+    let cpu=cpus::CPUS[1];
+    let mut native=cpus::load_cpu(cpu);
+    let (_,mut compiler,_)=cpus::compile_cpu(cpus::load_cpu(cpu),cpu);
+    cpus::click_cpu(&mut native,cpu,cpu.start);
+    compiler.try_on_use_block(cpu.origin+cpu.start).unwrap();
+    let ticks=std::env::var("MCHPRS_ANPU_VERIFY_TICKS").ok().map_or(512,|s|s.parse().unwrap());
+    for tick in 0..=ticks {
+        let runtime=compiler.runtime.as_ref().unwrap();
+        let differences:Vec<_>=runtime.program.positions.iter().enumerate().filter_map(|(node,&pos)| {
+            let observed=native.get_block(pos);
+            let predicted=runtime.project(pos);
+            if let (Block::RedstoneWire { wire:a },Some(Block::RedstoneWire { wire:b }))=(observed,predicted) {
+                if a.power==b.power { return None; }
+            }
+            if predicted.is_none() && matches!(observed,Block::MovingPiston { .. }) { return None; }
+            if predicted==Some(observed) { return None; }
+            Some((node,pos,observed,predicted))
+        }).take(32).collect();
+        if !differences.is_empty() {
+            let roots=differences.iter().map(|&(node,_,_,_)|node).collect::<Vec<_>>();
+            let nodes=cone(&runtime.program,&roots);
+            let positions=nodes.iter().map(|&node|runtime.program.positions[node]).collect::<Vec<_>>();
+            let wire_positions=differences.iter().filter_map(|&(_,pos,block,_)|matches!(block,Block::RedstoneWire { .. }).then_some(pos)).collect::<Vec<_>>();
+            let discovered=crate::redpiler::scratch::discover_wire_sources(&native,&wire_positions).unwrap();
+            let sources=discovered.iter().map(|s|json!({"target":s.wire,"source":s.source,"attenuation":s.attenuation,
+                "interpreter":canonical(native.get_block(s.source)),"sampled":runtime.project(s.source).map(canonical)})).collect::<Vec<_>>();
+            let report=json!({"tick":tick,"sources":sources,"differences":differences.iter().map(|(node,pos,actual,predicted)|json!({"node":node,"pos":pos,"interpreter":format!("{actual:?}"),"sampled":format!("{predicted:?}")})).collect::<Vec<_>>(),
+                "sampled":runtime_state(runtime,&nodes),"interpreter":native_state(&native,&positions)});
+            let path=std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/anpu-first-divergence.json");
+            std::fs::write(&path,serde_json::to_vec_pretty(&report).unwrap()).unwrap();
+            panic!("ANPU first block divergence at tick {tick}: {:?}; {}",differences[0],path.display());
+        }
+        native.tick_interpreted(); compiler.tick().unwrap();
+    }
 }
 
 fn scheduled(entries: impl IntoIterator<Item = mchprs_world::TickEntry>, world: &impl World) -> Vec<Value> {
@@ -107,6 +171,7 @@ fn runtime_state(runtime: &super::Runtime, nodes: &BTreeSet<usize>) -> Value {
         .iter()
         .map(|&index| {
             json!({
+                "node": index,
                 "pos": program.positions[index],
                 "block": canonical(runtime.blocks[index]),
                 "rear_power": runtime.input_strength(index),
@@ -133,12 +198,12 @@ fn runtime_state(runtime: &super::Runtime, nodes: &BTreeSet<usize>) -> Value {
                 "input_arrangements": program.input_arrangements.iter().filter(|group| group.target == index).map(|group| {
                     let mut state = 0;
                     let mut stride = 1;
-                    for &token in &group.tokens {
+                    for (axis, &token) in group.tokens.iter().enumerate() {
                         let digit = runtime.token_positions[token]
                             .and_then(|position| program.tokens[token].cells.iter().position(|&cell| cell == position))
                             .map_or(0, |cell| cell + 1);
-                        state += digit * stride;
-                        stride *= program.tokens[token].cells.len() + 1;
+                        state += group.digit(axis, digit) * stride;
+                        stride *= group.radix(axis, program.tokens[token].cells.len() + 1);
                     }
                     json!({
                         "side": group.side,
@@ -157,12 +222,12 @@ fn runtime_state(runtime: &super::Runtime, nodes: &BTreeSet<usize>) -> Value {
             .map(|group| {
                 let mut state = 0;
                 let mut stride = 1;
-                for &token in &group.tokens {
+                for (axis, &token) in group.tokens.iter().enumerate() {
                     let digit = runtime.token_positions[token]
                         .and_then(|position| program.tokens[token].cells.iter().position(|&cell| cell == position))
                         .map_or(0, |cell| cell + 1);
-                    state += digit * stride;
-                    stride *= program.tokens[token].cells.len() + 1;
+                    state += group.digit(axis, digit) * stride;
+                    stride *= group.radix(axis, program.tokens[token].cells.len() + 1);
                 }
                 json!({ "target": program.positions[group.target], "state": state })
             }).collect::<Vec<_>>(),
@@ -256,6 +321,7 @@ fn moving_redstone_block_refreshes_wire_contribution_before_repeater_callback() 
         side: false,
         silent: false,
         tokens: vec![0],
+        token_states: vec![],
         conditional_sources: vec![ArrangementSource::Token(0)],
         inputs: vec![vec![], vec![(ArrangementSource::Token(0), 0)]],
     });

@@ -114,6 +114,8 @@ struct ProbeMetrics {
     member_reads: usize,
     /// number of affected arrangement members visited.
     affected_members: usize,
+    #[cfg(test)]
+    sample_times: [std::time::Duration; 4],
 }
 
 impl ProbeMetrics {
@@ -309,7 +311,11 @@ fn sample(
             reason: "compilation cancelled",
         });
     }
+    #[cfg(test)]
+    let started = std::time::Instant::now();
     scratch.revert();
+    #[cfg(test)]
+    let placed = { metrics.sample_times[0] += started.elapsed(); std::time::Instant::now() };
     for &(token, digit) in placements {
         let record = &program.tokens[token];
         let next = digit.checked_sub(1).map(|cell| record.cells[cell]);
@@ -322,6 +328,8 @@ fn sample(
             scratch.world_mut().set_block(next, record.block);
         }
     }
+    #[cfg(test)]
+    let queried = { metrics.sample_times[1] += placed.elapsed(); std::time::Instant::now() };
     let mut result = Vec::with_capacity(members.len());
     metrics.samples += 1;
     metrics.member_reads += members.len();
@@ -334,16 +342,41 @@ fn sample(
         }
         result.push(inputs_of(scratch.world(), program, member, monitor, indexes)?);
     }
+    #[cfg(test)]
+    let checked = { metrics.sample_times[2] += queried.elapsed(); std::time::Instant::now() };
     scratch.finish_probe()?;
+    #[cfg(test)]
+    { metrics.sample_times[3] += checked.elapsed(); }
     Ok(result)
 }
 
-fn count(program: &Program, tokens: &[usize], pos: BlockPos) -> Result<usize, ScratchError> {
+fn electrical_states(program: &Program, indexes: &ProbeIndexes<'_>, tokens: &[usize], target: usize) -> Vec<Vec<usize>> {
+    tokens.iter().map(|&token| {
+        let record = &program.tokens[token];
+        let fold = matches!(record.block, Block::Concrete { .. });
+        let mut next = 0;
+        std::iter::once(0).chain(record.cells.iter().map(|&cell| {
+            // Other readers also query local conductors, including piston quasi-power.
+            let outside_reader = matches!(program.initial[target], Block::RedstoneWire { .. }) || !near(cell, program.positions[target], 2);
+            if fold && outside_reader && !BlockFace::values().iter().any(|&face| indexes.wire_at.contains_key(&cell.offset(face))) {
+                0
+            } else {
+                next += 1;
+                next
+            }
+        })).collect()
+    }).collect()
+}
+
+fn count(program: &Program, tokens: &[usize], axes: &[Vec<usize>], pos: BlockPos) -> Result<usize, ScratchError> {
     let n = tokens
         .iter()
-        .try_fold(1usize, |n, &t| n.checked_mul(program.tokens[t].cells.len() + 1))
+        .zip(axes).try_fold(1usize, |n, (_, states)| n.checked_mul(states.iter().copied().max().unwrap_or(0) + 1))
         .unwrap_or(usize::MAX);
-    if n > 4096 {
+    if n > super::program::MAX_ARRANGEMENT_STATES {
+        if std::env::var_os("MCHPRS_REDPILER_BOUNDARY_TRACE").is_some() {
+            eprintln!("Arrangement limit at {pos:?}: states={n}, tokens={:?}", tokens.iter().map(|&token| (token, &program.tokens[token])).collect::<Vec<_>>());
+        }
         Err(ScratchError {
             position: Some(pos),
             reason: "too many piston states near dependency",
@@ -353,14 +386,14 @@ fn count(program: &Program, tokens: &[usize], pos: BlockPos) -> Result<usize, Sc
     }
 }
 
-fn placements(program: &Program, tokens: &[usize], mut arrangement: usize) -> Vec<(usize, usize)> {
+fn placements(tokens: &[usize], axes: &[Vec<usize>], mut arrangement: usize) -> Vec<(usize, usize)> {
     tokens
         .iter()
-        .map(|&token| {
-            let radix = program.tokens[token].cells.len() + 1;
+        .zip(axes).map(|(&token, states)| {
+            let radix = states.iter().copied().max().unwrap_or(0) + 1;
             let digit = arrangement % radix;
             arrangement /= radix;
-            (token, digit)
+            (token, states.iter().position(|&state| state == digit).unwrap())
         })
         .collect()
 }
@@ -453,14 +486,14 @@ pub(super) fn run(
     let joint_started = std::time::Instant::now();
     let mut first = true;
     loop {
-        let mut grouped: BTreeMap<Vec<usize>, Vec<Dependency>> = BTreeMap::new();
+        let mut grouped: BTreeMap<(Vec<usize>, usize), Vec<Dependency>> = BTreeMap::new();
         for (&dep, tokens) in &depends {
-            grouped.entry(tokens.iter().copied().collect()).or_default().push(dep);
+            grouped.entry((tokens.iter().copied().collect(), dep.0)).or_default().push(dep);
         }
         let grouped: Vec<_> = grouped.into_iter().collect();
-        let batches = scratch.probe_jobs(&grouped, monitor, |scratch, (tokens, deps)| {
+        let batches = scratch.probe_jobs(&grouped, monitor, |scratch, ((tokens, target), deps)| {
             let mut metrics = ProbeMetrics::default();
-            let mut discovered = Vec::new();
+            let mut discovered = BTreeSet::new();
             if monitor.is_some_and(TaskMonitor::cancelled) {
                 return Err(ScratchError {
                     position: None,
@@ -487,7 +520,8 @@ pub(super) fn run(
             if candidates.is_empty() {
                 return Ok((discovered, metrics));
             }
-            let size = count(program, &tokens, program.positions[members[0]])?;
+            let axes = electrical_states(program, indexes, tokens, *target);
+            let size = count(program, tokens, &axes, program.positions[*target])?;
             let initial: Vec<_> = tokens
                 .iter()
                 .map(|&token| {
@@ -504,7 +538,7 @@ pub(super) fn run(
                         reason: "compilation cancelled",
                     });
                 }
-                let base = placements(program, &tokens, state);
+                let base = placements(tokens, &axes, state);
                 if base.iter().map(|pair| pair.1).eq(initial.iter().copied()) {
                     continue;
                 }
@@ -520,19 +554,22 @@ pub(super) fn run(
                         .position
                         .and_then(|p| program.tokens[candidate].cells.iter().position(|&c| c == p))
                         .map_or(0, |i| i + 1);
-                    for digit in 0..=program.tokens[candidate].cells.len() {
+                    let candidate_axes = electrical_states(program, indexes, &[candidate], *target);
+                    for (digit, &electrical) in candidate_axes[0].iter().enumerate() {
                         if monitor.is_some_and(TaskMonitor::cancelled) {
                             return Err(ScratchError {
                                 position: None,
                                 reason: "compilation cancelled",
                             });
                         }
-                        if digit == initial_candidate {
+                        if electrical == candidate_axes[0][initial_candidate]
+                            || candidate_axes[0][..digit].contains(&electrical) {
                             continue;
                         }
                         let mut joint = base.clone();
                         joint.push((candidate, digit));
                         let changed = sample(scratch, program, &joint, &members, monitor, indexes, &mut metrics)?;
+                        let mut new_links = Vec::new();
                         for (i, &member) in members.iter().enumerate() {
                             if !affects[candidate].contains(&member) {
                                 continue;
@@ -540,7 +577,31 @@ pub(super) fn run(
                             for (source, side) in find_changed_links(&baseline[i], &changed[i]) {
                                 let dep = (member, source, side);
                                 if deps.contains(&dep) {
-                                    discovered.push((dep, candidate));
+                                    discovered.insert((dep, candidate));
+                                } else {
+                                    // A jointly opened path can expose a source absent from every single-token probe.
+                                    discovered.insert((dep, candidate));
+                                    if tokens.iter().any(|&token| !depends.get(&dep).is_some_and(|known| known.contains(&token))
+                                        && !discovered.contains(&(dep, token))) {
+                                        new_links.push((i, dep));
+                                    }
+                                }
+                            }
+                        }
+                        if !new_links.is_empty() {
+                            for (own, &initial_digit) in initial.iter().enumerate() {
+                                if joint[own].1 == initial_digit { continue; }
+                                if new_links.iter().all(|&(_, dep)| depends.get(&dep).is_some_and(|known| known.contains(&tokens[own]))
+                                    || discovered.contains(&(dep, tokens[own]))) { continue; }
+                                let mut restored = joint.clone();
+                                restored[own].1 = initial_digit;
+                                let without = sample(scratch, program, &restored, &members, monitor, indexes, &mut metrics)?;
+                                for &(i, dep) in &new_links {
+                                    if !depends.get(&dep).is_some_and(|known| known.contains(&tokens[own]))
+                                        && !discovered.contains(&(dep, tokens[own]))
+                                        && without[i].get(&(dep.1, dep.2)) != changed[i].get(&(dep.1, dep.2)) {
+                                        discovered.insert((dep, tokens[own]));
+                                    }
                                 }
                             }
                         }
@@ -577,13 +638,14 @@ pub(super) fn run(
                 reason: "compilation cancelled",
             });
         }
-        let size = count(program, &tokens, program.positions[target])?;
+        let axes = electrical_states(program, indexes, tokens, target);
+        let size = count(program, tokens, &axes, program.positions[target])?;
         let mut inputs = Vec::with_capacity(size);
         for state in 0..size {
             let map = sample(
                 scratch,
                 program,
-                &placements(program, &tokens, state),
+                &placements(tokens, &axes, state),
                 &[target],
                 monitor,
                 indexes,
@@ -603,6 +665,7 @@ pub(super) fn run(
                 side,
                 silent: matches!(program.initial[target], Block::Piston { .. }),
                 tokens: tokens.clone(),
+                token_states: axes,
                 conditional_sources: sources.clone(),
                 inputs,
             },
@@ -631,6 +694,88 @@ pub(super) fn run(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    #[ignore = "isolated ANPU geometry sampling; measures one target, not a full compile"]
+    fn isolated_anpu_joint_probe_cost() {
+        use super::super::cpu_trace::cpus;
+        let cpu = cpus::CPUS[1];
+        let world = cpus::load_cpu(cpu);
+        let clip = crate::plot::worldedit::load_schematic(std::fs::File::open(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../test_data").join(cpu.schematic)).unwrap()).unwrap();
+        let bounds = (cpu.origin, cpu.origin + BlockPos::new(clip.size_x as i32 - 1, clip.size_y as i32 - 1, clip.size_z as i32 - 1));
+        let mut positions = Vec::new();
+        crate::world::for_each_block_optimized(&world, bounds.0, bounds.1, |pos| {
+            let block = world.get_block(pos);
+            if reader_kind(block).is_some() || block.pressure_plate_powered().is_some()
+                || matches!(block, Block::RedstoneBlock | Block::Lever { .. } | Block::StoneButton { .. } | Block::Observer { .. }) {
+                positions.push(pos);
+            }
+        });
+        let components: HashMap<_, _> = positions.iter().enumerate().map(|(node, &pos)| (pos, node)).collect();
+        let target = components[&BlockPos::new(84, 37, 72)];
+        let initial: Vec<_> = positions.iter().map(|&pos| world.get_block(pos)).collect();
+        let repeaters = initial.iter().enumerate().filter_map(|(component, block)| matches!(block, Block::RedstoneRepeater { .. })
+            .then_some(super::super::program::RepeaterRecord { component, output_is_diode: false, side_sources: None })).collect();
+        let mut program = Program::new(positions, initial, vec![], vec![[vec![], vec![]]; components.len()], vec![], vec![], repeaters).unwrap();
+        for z in (61..=75).step_by(2) {
+            for x in [84, 86] {
+                let lower = BlockPos::new(x, 38, z);
+                let block = world.get_block(lower);
+                assert!(matches!(block, Block::Concrete { .. }));
+                program.tokens.push(super::super::compiler::PistonToken {
+                    block, position: Some(lower), cells: vec![BlockPos::new(x, 39, z), lower],
+                });
+            }
+        }
+        let indexes = ProbeIndexes::new(&components, &program.positions, &program.initial, &program.tokens, None).unwrap();
+        let entry = ScratchEntry { scheduled: vec![], piston: world.piston_state().clone() };
+        let mut scratch = ScratchWorld::from_world_monitored(&world, bounds, entry, None).unwrap();
+        let max_axes = std::env::var("MCHPRS_PROBE_AXES").ok().map_or(10, |s| s.parse::<usize>().unwrap());
+        assert!((2..=14).contains(&max_axes));
+        let mut rows = Vec::new();
+        for axes_count in (2..=max_axes).step_by(2) {
+            let tokens: Vec<_> = (0..axes_count).collect();
+            let axes = electrical_states(&program, &indexes, &tokens, target);
+            let states = count(&program, &tokens, &axes, program.positions[target]).unwrap();
+            let mut metrics = ProbeMetrics::default();
+            let mut changed = 0;
+            let started = std::time::Instant::now();
+            for state in 0..states {
+                let mut base = placements(&tokens, &axes, state);
+                let before = sample(&mut scratch, &program, &base, &[target], None, &indexes, &mut metrics).unwrap();
+                base.push((14, 0));
+                let after = sample(&mut scratch, &program, &base, &[target], None, &indexes, &mut metrics).unwrap();
+                changed += usize::from(before != after);
+            }
+            assert_eq!(metrics.samples, states * 2);
+            let row = serde_json::json!({"axes":axes_count,"states":states,"baseline_samples":states,"candidate_samples":states,
+                "restoration_samples":0,"changed_inputs":changed,"wall_ms":started.elapsed().as_secs_f64()*1000.0,
+                "revert_ms":metrics.sample_times[0].as_secs_f64()*1000.0,"placement_ms":metrics.sample_times[1].as_secs_f64()*1000.0,
+                "input_discovery_ms":metrics.sample_times[2].as_secs_f64()*1000.0,"boundary_check_ms":metrics.sample_times[3].as_secs_f64()*1000.0});
+            eprintln!("isolated ANPU sweep: {row}");
+            rows.push(row);
+        }
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/anpu-isolated-probe-cost.json");
+        std::fs::write(path, serde_json::to_vec_pretty(&rows).unwrap()).unwrap();
+    }
+
+    #[test]
+    fn concrete_wire_axes_fold_only_cells_without_wire_contacts() {
+        let wire = BlockPos::new(10, 10, 10);
+        let lamp = BlockPos::new(10, 13, 10);
+        let mut program = Program::new(vec![wire, lamp], vec![Block::from_name("redstone_wire").unwrap(), Block::RedstoneLamp { lit: false }],
+            vec![], vec![[vec![], vec![]]; 2], vec![], vec![], vec![]).unwrap();
+        for block in [Block::from_name("black_concrete").unwrap(), Block::RedstoneBlock] {
+            program.tokens.push(super::super::compiler::PistonToken {
+                block, position: Some(BlockPos::new(10, 12, 10)), cells: vec![BlockPos::new(10, 12, 10), BlockPos::new(10, 11, 10)],
+            });
+        }
+        let components = program.positions.iter().enumerate().map(|(node, &pos)| (pos, node)).collect();
+        let indexes = ProbeIndexes::new(&components, &program.positions, &program.initial, &program.tokens, None).unwrap();
+        assert_eq!(electrical_states(&program, &indexes, &[0, 1], 0), vec![vec![0, 0, 1], vec![0, 1, 2]]);
+        assert_eq!(electrical_states(&program, &indexes, &[0], 1), vec![vec![0, 1, 2]]);
+    }
 
     #[test]
     fn indexed_affected_regions_match_full_scan() {

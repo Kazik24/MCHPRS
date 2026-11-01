@@ -11,6 +11,8 @@ pub enum PublicationMode {
 pub struct CompilerOptions {
     /// Only flush visible outputs and controls, including lamps and copper bulbs.
     pub io_only: bool,
+    /// Request the experimental LLVM native backend.
+    pub llvm: bool,
     /// Override the build's default publication scope.
     pub publication: Option<PublicationMode>,
     /// Update all blocks in the input region after reset.
@@ -21,6 +23,7 @@ impl Default for CompilerOptions {
     fn default() -> Self {
         Self {
             io_only: false,
+            llvm: false,
             publication: None,
             update: false,
         }
@@ -34,6 +37,7 @@ impl CompilerOptions {
             if option.starts_with("--") {
                 match option {
                     "--io-only" => options.io_only = true,
+                    "--llvm" => options.llvm = true,
                     "--publish-all" | "--publish-redstone" => {
                         let mode = if option == "--publish-all" { PublicationMode::All } else { PublicationMode::Redstone };
                         if options.publication.is_some_and(|previous| previous != mode) {

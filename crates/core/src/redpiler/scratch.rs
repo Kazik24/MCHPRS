@@ -59,6 +59,52 @@ pub(crate) struct WireSource {
     pub(crate) attenuation: u8,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct WirePorts {
+    pub(crate) wires: Vec<BlockPos>,
+    pub(crate) sources: Vec<BlockPos>,
+}
+
+/// One dust vertex, without flattening paths through other dust vertices.
+pub(crate) fn discover_wire_ports(world: &impl World, pos: BlockPos) -> Result<WirePorts, ScratchError> {
+    let mut ports = WirePorts { wires: Vec::new(), sources: Vec::new() };
+    for face in BlockFace::values() {
+        let at = pos.offset(face);
+        let block = world.get_block(at);
+        if matches!(block, Block::RedstoneWire { .. }) {
+            if !matches!(face, BlockFace::Top | BlockFace::Bottom) { ports.wires.push(at); }
+        } else if is_supported_dynamic_source(block) || block == Block::RedstoneBlock {
+            if source_emits_to(block, world, at, face) { ports.sources.push(at); }
+        } else if block.is_solid() {
+            for side in BlockFace::values() {
+                let source = at.offset(side);
+                let state = world.get_block(source);
+                if !crate::redstone::power::emits_strong_power(state, world, source, side, false) { continue; }
+                if is_supported_dynamic_source(state) || state == Block::RedstoneBlock {
+                    ports.sources.push(source);
+                } else if !matches!(state, Block::RedstoneWire { .. }) {
+                    return Err(ScratchError { position: Some(source), reason: "unsupported watched-wire source dependency" });
+                }
+            }
+        } else if source_emits_to(block, world, at, face) {
+            return Err(ScratchError { position: Some(at), reason: "unsupported watched-wire source dependency" });
+        }
+    }
+    let above_solid = world.get_block(pos.offset(BlockFace::Top)).is_solid();
+    for face in [BlockFace::North, BlockFace::South, BlockFace::East, BlockFace::West] {
+        let adjacent = pos.offset(face);
+        let block = world.get_block(adjacent);
+        let diagonal = if !block.is_solid() { Some(adjacent.offset(BlockFace::Bottom)) }
+            else if !above_solid && !block.is_transparent() { Some(adjacent.offset(BlockFace::Top)) } else { None };
+        if let Some(at) = diagonal && matches!(world.get_block(at), Block::RedstoneWire { .. }) { ports.wires.push(at); }
+    }
+    ports.wires.sort_unstable_by_key(|p| (p.x, p.y, p.z));
+    ports.wires.dedup();
+    ports.sources.sort_unstable_by_key(|p| (p.x, p.y, p.z));
+    ports.sources.dedup();
+    Ok(ports)
+}
+
 #[derive(Debug, PartialEq, Eq)]
 #[cfg(test)]
 pub(crate) struct WireDiscovery {

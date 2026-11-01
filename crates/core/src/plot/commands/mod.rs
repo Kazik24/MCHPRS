@@ -1255,6 +1255,7 @@ mod security_tests {
         }
         let options = CompilerOptions::parse("--io-only -u").unwrap();
         assert!(options.io_only && options.update);
+        assert!(CompilerOptions::parse("--llvm").unwrap().llvm);
         assert_eq!(CompilerOptions::parse("--publish-all").unwrap().publication, Some(crate::redpiler::PublicationMode::All));
         assert_eq!(CompilerOptions::parse("--publish-redstone").unwrap().publication, Some(crate::redpiler::PublicationMode::Redstone));
         assert!(CompilerOptions::parse("--publish-all --io-only").is_err());
@@ -1264,8 +1265,8 @@ mod security_tests {
     #[test]
     fn redpiler_completion_offers_only_supported_compile_flags() {
         for (text, expected) in [
-            ("/rp compile --", vec!["--publish-all", "--publish-redstone", "--io-only", "--update"]),
-            ("/redpiler c -", vec!["--publish-all", "--publish-redstone", "--io-only", "--update", "-i", "-u"]),
+            ("/rp compile --", vec!["--publish-all", "--publish-redstone", "--io-only", "--update", "--llvm"]),
+            ("/redpiler c -", vec!["--publish-all", "--publish-redstone", "--io-only", "--update", "--llvm", "-i", "-u"]),
             ("/rp compile --graph", vec![]),
         ] {
             let response = complete_redpiler(42, text).unwrap();

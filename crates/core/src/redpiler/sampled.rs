@@ -14,6 +14,9 @@ mod group_probe;
 #[cfg(test)]
 mod incremental_input_tests;
 mod input;
+mod routing;
+mod native;
+pub(in crate::redpiler) use native::NativeRuntime;
 mod program;
 #[cfg(test)]
 #[path = "sampled/reviewed_fixes_tests.rs"]
@@ -108,6 +111,17 @@ impl Runtime {
             ($($field:ident),+ $(,)?) => { $(rows(stringify!($field), &self.program.$field);)+ };
         }
         eprintln!("Redpiler memory: selected retained vector capacities; excludes maps, allocator overhead and unlisted deep payloads");
+        match native::NativeProgram::encode(&self.program) {
+            Ok(native) => eprintln!(
+                "Redpiler native ABI: version={} components={} operations={} links={} logical_blob_bytes={}",
+                native.descriptor.abi_version,
+                native.descriptor.component_count,
+                native.descriptor.operation_count,
+                native.descriptor.link_count,
+                native.blob.len()
+            ),
+            Err(error) => eprintln!("Redpiler native ABI: export rejected: {}", error.reason),
+        }
         vectors!(
             self.program,
             "program",

@@ -37,14 +37,15 @@ fn outputs(world: &PlotWorld, cpu: cpus::Cpu) -> Value {
     json!(words.pop().unwrap().1)
 }
 
-fn run_sample(cpu: cpus::Cpu, ticks: u32, sample: usize, kernel_only: bool) -> Value {
+fn run_sample(cpu: cpus::Cpu, ticks: u32, sample: usize, kernel_only: bool, llvm: bool) -> Value {
+    let full_publication = cfg!(feature = "redpiler-full-publication") || std::env::var_os("MCHPRS_BENCH_PUBLISH_ALL").is_some();
     let wait_for_trace = std::env::var_os("MCHPRS_BENCH_WAIT_FOR_TRACE").is_some();
     let diagnostic = wait_for_trace || std::env::var_os("MCHPRS_BENCH_ALLOW_DIVERGENCE").is_some();
     let import = Instant::now();
     let mut native = cpus::load_cpu(cpu);
     let native_import = import.elapsed();
     let native_preparation = prepare_native(&mut native, cpu);
-    let run = if cpu.screen.is_some() { BlockPos::new(207, 10, 154) } else { cpu.start };
+    let run = if cpu.name == "zcore12b_sierpinski" { BlockPos::new(207, 10, 154) } else { cpu.start };
     let mut expected = vec![outputs(&native, cpu)];
     let mut native_ticks = Duration::ZERO;
     cpus::click_cpu(&mut native, cpu, run);
@@ -60,7 +61,8 @@ fn run_sample(cpu: cpus::Cpu, ticks: u32, sample: usize, kernel_only: bool) -> V
     let initial = cpus::load_cpu(cpu);
     let compiled_import = import.elapsed();
     let compilation = Instant::now();
-    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| cpus::compile_cpu(initial, cpu)));
+    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| cpus::compile_cpu_with_options(initial, cpu,
+        mchprs_core::redpiler::CompilerOptions { llvm, publication:full_publication.then_some(mchprs_core::redpiler::PublicationMode::All), ..Default::default() })));
     let (mut world, mut compiler, admission_wall) = match outcome {
         Ok(value) => value,
         Err(error) => {
@@ -75,7 +77,7 @@ fn run_sample(cpu: cpus::Cpu, ticks: u32, sample: usize, kernel_only: bool) -> V
         }
     };
     let compile = compiler.stats().unwrap().duration;
-    if cpu.screen.is_some() {
+    if cpu.name == "zcore12b_sierpinski" {
         compiler.try_on_use_block(cpu.origin + cpu.start).unwrap();
         for _ in 0..native_preparation {
             compiler.tick().unwrap();
@@ -84,7 +86,7 @@ fn run_sample(cpu: cpus::Cpu, ticks: u32, sample: usize, kernel_only: bool) -> V
     }
     let mut first_difference = None;
     let initial = outputs(&world, cpu);
-    if cfg!(feature = "redpiler-full-publication") && initial != expected[0] {
+    if full_publication && initial != expected[0] {
         first_difference = Some(json!({"tick":0,"native":expected[0],"compiled":initial}));
     }
     if wait_for_trace {
@@ -116,14 +118,14 @@ fn run_sample(cpu: cpus::Cpu, ticks: u32, sample: usize, kernel_only: bool) -> V
             compiler.try_flush(&mut world).unwrap();
             publication += begin.elapsed();
             let observed = outputs(&world, cpu);
-            if cfg!(feature = "redpiler-full-publication") && observed != expected[tick as usize] && first_difference.is_none() {
+            if full_publication && observed != expected[tick as usize] && first_difference.is_none() {
                 first_difference = Some(json!({"tick":tick,"native":expected[tick as usize],"compiled":observed}));
             }
             actual.push(observed);
         }
     }
     assert!(compiler.is_active(), "compiled run must not fall back to native");
-    let (reset_publication_ms, final_reset_difference) = if cfg!(feature = "redpiler-full-publication") && !kernel_only {
+    let (reset_publication_ms, final_reset_difference) = if full_publication && !kernel_only {
         (Value::Null, None)
     } else {
         // Reset projects the complete state after runs without full per-tick publication.
@@ -150,7 +152,7 @@ fn run_sample(cpu: cpus::Cpu, ticks: u32, sample: usize, kernel_only: bool) -> V
         "diagnostic_only"
     } else if first_difference.is_some() || final_reset_difference.is_some() {
         "output_divergence"
-    } else if cfg!(feature = "redpiler-full-publication") && !kernel_only {
+    } else if full_publication && !kernel_only {
         "passed"
     } else {
         "final_reset_match"
@@ -164,8 +166,8 @@ fn run_sample(cpu: cpus::Cpu, ticks: u32, sample: usize, kernel_only: bool) -> V
         "publication_ms":if kernel_only { Value::Null } else { json!(publication.as_secs_f64()*1000.0) },
         "native_tps":ticks as f64/native_ticks.as_secs_f64(),"compiled_tick_tps":ticks as f64/compiled_ticks.as_secs_f64(),
         "execution_mode":if kernel_only { "kernel-only" } else { "tick-and-publication" },
-        "publication_visibility":if kernel_only { "final-reset-only" } else if cfg!(feature = "redpiler-full-publication") { "complete" } else { "redstone-only" },
-        "output_validation":if cfg!(feature = "redpiler-full-publication") && !kernel_only { "per-tick-published" } else { "final-reset-only" },
+        "publication_visibility":if kernel_only { "final-reset-only" } else if full_publication { "complete" } else { "redstone-only" },
+        "output_validation":if full_publication && !kernel_only { "per-tick-published" } else { "final-reset-only" },
         "published_output_ticks":if kernel_only { json!([0,ticks]) } else { json!((0..=ticks).collect::<Vec<_>>()) },
         "reset_publication_ms":reset_publication_ms,"final_reset_difference":final_reset_difference,
         "compiled_publication_tps":if kernel_only { Value::Null } else { json!(ticks as f64/compiled_total.as_secs_f64()) },
@@ -188,15 +190,18 @@ fn main() {
     let index = match name {
         "bubblesort" => 2,
         "zcore" => 3,
-        _ => panic!("expected bubblesort or zcore"),
+        "anpu" => 1,
+        _ => panic!("expected bubblesort, zcore or anpu"),
     };
     let ticks: u32 = args.get(2).map(|v| v.parse().unwrap()).unwrap_or(512);
     let runs: usize = args.get(3).map(|v| v.parse().unwrap()).unwrap_or(3);
     let kernel_only = match args.get(4).map(String::as_str) {
         None => false,
         Some("kernel") => true,
+        Some("integrated") => false,
         _ => panic!("expected optional mode: kernel"),
     };
+    let llvm = args.iter().any(|arg| arg == "--llvm");
     assert!(ticks > 0 && runs > 0);
     let continue_on_divergence = std::env::var_os("MCHPRS_BENCH_ALLOW_DIVERGENCE").is_some();
     let provenance = provenance();
@@ -204,7 +209,8 @@ fn main() {
     std::fs::create_dir_all(&destination).unwrap();
     let mut results = Vec::new();
     for sample in 1..=runs {
-        let mut result = run_sample(cpus::CPUS[index], ticks, sample, kernel_only);
+        let mut result = run_sample(cpus::CPUS[index], ticks, sample, kernel_only, llvm);
+        result.as_object_mut().unwrap().insert("backend".into(), json!(if llvm { "llvm" } else { "rust" }));
         eprintln!(
             "{name} sample {sample}: status={} native TPS={} kernel TPS={} compiled {} publication TPS={} compile ms={}",
             result["status"],
@@ -218,7 +224,7 @@ fn main() {
         result.as_object_mut().unwrap().insert("provenance".into(), provenance.clone());
         results.push(result);
         std::fs::write(
-            destination.join(format!("{name}-{}.json", if kernel_only { "kernel" } else { "production" })),
+            destination.join(format!("{name}-{}{}.json", if kernel_only { "kernel" } else { "production" }, if llvm { "-llvm" } else { "" })),
             serde_json::to_vec_pretty(&results).unwrap(),
         )
         .unwrap();

@@ -15,7 +15,7 @@ use crate::redstone;
 use crate::world::{World, for_each_block_mut_optimized};
 use mchprs_blocks::{BlockPos, block_entities::BlockEntity, blocks::Block};
 use mchprs_world::{AdvancePhase, PistonMotion, TickEntry};
-use sampled::{ExportKey, MovingPart, Runtime, ScratchEntry, ScratchError};
+use sampled::{ExportKey, MovingPart, NativeRuntime, Runtime, ScratchEntry, ScratchError};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -75,7 +75,10 @@ pub struct CompileStatistics {
 
 impl CompileStatistics {
     pub fn chat_summary_lines(&self) -> Vec<String> {
-        vec![format!("Sampled compiled {} components in {:?}", self.components, self.duration)]
+        vec![format!(
+            "Redpiler compiled {} components; {} pending ticks; {:?}",
+            self.components, self.pending_ticks, self.duration
+        )]
     }
 }
 
@@ -88,8 +91,10 @@ struct ExportedMotion {
 
 #[derive(Default)]
 pub struct Compiler {
-    /// active compiled runtime, absent when the compiler is reset.
+    /// Rust executor, or a read-only publication projection of the native executor.
     runtime: Option<Runtime>,
+    /// active experimental native executor; ticks use it when present.
+    native_runtime: Option<NativeRuntime>,
     /// publication/reset options used by the current compilation.
     options: CompilerOptions,
     /// most recent successful compile statistics.
@@ -114,11 +119,11 @@ impl Compiler {
     }
 
     pub fn is_active(&self) -> bool {
-        self.runtime.is_some()
+        self.runtime.is_some() || self.native_runtime.is_some()
     }
 
     pub fn current_flags(&self) -> Option<&CompilerOptions> {
-        self.runtime.as_ref().map(|_| &self.options)
+        self.is_active().then_some(&self.options)
     }
 
     pub fn compile<W: World>(
@@ -152,6 +157,22 @@ impl Compiler {
         }
         let components = program.component_count();
         let pending_ticks = ticks.len();
+        let native = if options.llvm {
+            let piston = world.piston_state();
+            if !piston.events.is_empty()
+                || !piston.motions.is_empty()
+                || !piston.movement_work.is_empty()
+                || piston.movement_cursor != 0
+                || piston.scheduled_advanced
+                || piston.phase != AdvancePhase::BetweenTicks
+            {
+                return Err(CompileError::Unsupported(ScratchError {
+                    position: None,
+                    reason: "LLVM does not yet import piston handoff state",
+                }));
+            }
+            Some(NativeRuntime::new(program.clone(), &ticks).map_err(CompileError::Unsupported)?)
+        } else { None };
         let runtime = sampled::start_runtime(program, ticks, world.piston_state().clone()).map_err(CompileError::Unsupported)?;
         let capacity = runtime.motion_part_capacity();
         self.publication_parts.clear();
@@ -165,6 +186,7 @@ impl Compiler {
         self.exported_motions.clear();
         self.exported_motions.reserve(capacity);
         self.runtime = Some(runtime);
+        self.native_runtime = native;
         self.statistics = Some(CompileStatistics {
             components,
             pending_ticks,
@@ -189,6 +211,7 @@ impl Compiler {
             let runtime = self.runtime.as_ref().unwrap();
             let pending = runtime.pending_entries();
             self.runtime = None;
+            self.native_runtime = None;
             for entry in pending {
                 world.restore_scheduled_tick(entry);
             }
@@ -206,6 +229,9 @@ impl Compiler {
     }
 
     pub fn tick(&mut self) -> Result<(), ExecutionError> {
+        if let Some(runtime) = self.native_runtime.as_mut() {
+            return runtime.tick().map_err(ExecutionError);
+        }
         self.runtime.as_mut().expect("compiler inactive").tick().map_err(ExecutionError)
     }
 
@@ -220,11 +246,15 @@ impl Compiler {
     }
 
     pub fn try_on_use_block(&mut self, pos: BlockPos) -> Result<(), ExecutionError> {
+        if let Some(runtime) = self.native_runtime.as_mut() {
+            return runtime.use_control(pos).map_err(ExecutionError);
+        }
         self.runtime.as_mut().expect("compiler inactive").use_control(pos).map_err(ExecutionError)
     }
 
     pub(crate) fn accepts_control(&self, pos: BlockPos) -> bool {
         self.runtime.as_ref().is_some_and(|runtime| runtime.accepts_control(pos))
+            || self.native_runtime.as_ref().is_some_and(|runtime| runtime.accepts_control(pos))
     }
 
     pub fn flush<W: World>(&mut self, world: &mut W) {
@@ -243,6 +273,9 @@ impl Compiler {
     }
 
     pub(crate) fn flush_effects<W: World>(&mut self, world: &mut W) {
+        if self.native_runtime.is_some() {
+            return;
+        }
         let runtime = self.runtime.as_mut().expect("compiler inactive");
         runtime.publish_commands(world, true);
         for (component, pos, instrument, note) in runtime.notes.drain(..) {
@@ -256,6 +289,9 @@ impl Compiler {
     }
 
     fn publish<W: World>(&mut self, world: &mut W, io_only: bool, full: bool) -> Result<(), ExecutionError> {
+        if let Some(native) = self.native_runtime.as_ref() {
+            native.sync_projection(self.runtime.as_mut().expect("native publication projection missing")).map_err(ExecutionError)?;
+        }
         self.runtime
             .as_mut()
             .expect("compiler inactive")

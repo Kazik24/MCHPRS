@@ -171,13 +171,13 @@ fn adder1bit_reference_manifest_arithmetic() {
             {
                 let mut index = 0;
                 let mut stride = 1;
-                for &id in &group.tokens {
+                for (axis, &id) in group.tokens.iter().enumerate() {
                     let pos = if id == token { at } else { program.tokens[id].position };
                     let digit = pos
                         .and_then(|pos| program.tokens[id].cells.iter().position(|&cell| cell == pos))
                         .map_or(0, |cell| cell + 1);
-                    index += digit * stride;
-                    stride *= program.tokens[id].cells.len() + 1;
+                    index += group.digit(axis, digit) * stride;
+                    stride *= group.radix(axis, program.tokens[id].cells.len() + 1);
                 }
                 let observed = group.inputs[index]
                     .iter()
@@ -353,7 +353,7 @@ fn adder1bit_reference_manifest_arithmetic() {
                         for source_state in 0..=source_cells.len() {
                             let mut index = 0;
                             let mut stride = 1;
-                            for &token in &group.tokens {
+                            for (axis, &token) in group.tokens.iter().enumerate() {
                                 let at = if token == source_id {
                                     source_state.checked_sub(1).map(|cell| source_cells[cell])
                                 } else if token == other_id {
@@ -364,8 +364,8 @@ fn adder1bit_reference_manifest_arithmetic() {
                                 let digit = at
                                     .and_then(|at| program.tokens[token].cells.iter().position(|&cell| cell == at))
                                     .map_or(0, |cell| cell + 1);
-                                index += digit * stride;
-                                stride *= program.tokens[token].cells.len() + 1;
+                                index += group.digit(axis, digit) * stride;
+                                stride *= group.radix(axis, program.tokens[token].cells.len() + 1);
                             }
                             let observed = group.inputs[index].iter().find_map(|&(source, attenuation)| {
                                 (source == super::program::ArrangementSource::Token(source_id)).then_some(attenuation)

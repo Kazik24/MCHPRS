@@ -130,6 +130,7 @@ fn conditional_source_shadows_its_fixed_link_when_token_enters_and_leaves() {
         side: false,
         silent: false,
         tokens: vec![0],
+        token_states: vec![],
         conditional_sources: vec![ArrangementSource::Component(0)],
         inputs: vec![vec![], vec![(ArrangementSource::Component(0), 0)]],
     });

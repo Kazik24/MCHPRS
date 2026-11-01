@@ -1,4 +1,4 @@
-use super::program::RepeaterRecord;
+use super::program::{ArrangementSource, RepeaterRecord};
 use super::*;
 use crate::plot::{PLOT_WIDTH, PlotWorld};
 use crate::redpiler::scratch::discover_lamp_sources;
@@ -59,7 +59,7 @@ fn test_program(
     }
     Program::new(positions, initial, sources, output_programs, links, watched_wires, vec![])
 }
-fn repeater_program(delay: u8, powered: bool, locked: bool, output_is_diode: bool) -> Program {
+pub(super) fn repeater_program(delay: u8, powered: bool, locked: bool, output_is_diode: bool) -> Program {
     let positions = (0..3).map(|x| BlockPos::new(x, 15, 15)).collect();
     let initial = vec![
         Block::Lever {
@@ -110,7 +110,7 @@ fn repeater_program(delay: u8, powered: bool, locked: bool, output_is_diode: boo
     )
     .unwrap()
 }
-fn host() -> PlotWorld {
+pub(super) fn host() -> PlotWorld {
     PlotWorld::from_chunks(
         0,
         0,
@@ -456,6 +456,7 @@ fn movement_flips_preserve_discovery_order_for_remaining_recipients() {
             side: false,
             silent: false,
             tokens: vec![0],
+            token_states: vec![],
             conditional_sources: vec![ArrangementSource::Token(0)],
             inputs: vec![vec![], vec![(ArrangementSource::Token(0), 0)]],
         });
@@ -500,6 +501,7 @@ fn conditional_source_changes_wait_for_their_ordered_link_instruction() {
         side: false,
         silent: false,
         tokens: vec![0],
+        token_states: vec![],
         conditional_sources: vec![ArrangementSource::Component(0)],
         inputs: vec![vec![], vec![(ArrangementSource::Component(0), 1)]],
     });
@@ -554,6 +556,7 @@ fn separate_arrangement_groups_mask_each_of_their_fixed_sources() {
             side: false,
             silent: false,
             tokens: vec![0],
+            token_states: vec![],
             conditional_sources: vec![ArrangementSource::Component(source)],
             inputs: vec![vec![], vec![(ArrangementSource::Component(source), 0)]],
         });
@@ -767,6 +770,7 @@ fn conditional_side_input_locks_repeater_without_powering_its_rear() {
         side: true,
         silent: false,
         tokens: vec![0],
+        token_states: vec![],
         conditional_sources: vec![ArrangementSource::Component(1)],
         inputs: vec![vec![], vec![(ArrangementSource::Component(1), 0)]],
     });
@@ -2729,6 +2733,113 @@ fn world_compiler_drives_empty_piston() {
     runtime.tick().unwrap();
     assert_eq!(runtime.accepted_piston_actions, 1);
     assert!(runtime.piston_head_present[0]);
+}
+
+#[test]
+fn empty_piston_head_notifies_adjacent_quasi_powered_piston_immediately() {
+    let mut world=host();
+    let driver=BlockPos::new(10,10,10); let bud=BlockPos::new(9,10,9); let lever=BlockPos::new(10,10,11);
+    world.set_block(lever,Block::Lever { lever:Lever::new(LeverFace::Floor,BlockDirection::North,false) });
+    world.set_block(lever.offset(BlockFace::Bottom),Block::Stone {});
+    for (pos,facing) in [(driver,BlockFacing::North),(bud,BlockFacing::Down)] {
+        world.set_block(pos,Block::Piston { piston:RedstonePiston { facing,sticky:true,extended:false } });
+    }
+    world.set_block(bud+BlockPos::new(0,2,0),Block::RedstoneBlock);
+    let program=compile(&world,(BlockPos::new(5,5,5),BlockPos::new(15,15,15)),entry(&world)).unwrap();
+    let mut runtime=program.start();
+    assert!(crate::redstone::piston::should_piston_extend(&world,BlockFacing::Down,bud));
+    crate::interaction::use_redstone(world.get_block(lever),&mut world,lever,None);
+    runtime.use_control(lever).unwrap();
+    world.tick_interpreted(); runtime.tick().unwrap();
+    assert!(matches!(world.get_block(bud),Block::Piston { piston } if piston.extended));
+    assert_eq!(runtime.project(bud),Some(world.get_block(bud)),"head notifications must run before motion landing");
+    for _ in 0..2 { world.tick_interpreted(); runtime.tick().unwrap(); }
+    world.set_block(bud+BlockPos::new(0,2,0),Block::Air);
+    let node=runtime.program.component_indices[&bud];
+    // Withdraw quasi power without delivering the BUD's neighbor callback.
+    runtime.input_levels[node][0].active=0;
+    crate::interaction::use_redstone(world.get_block(lever),&mut world,lever,None);
+    runtime.use_control(lever).unwrap();
+    world.tick_interpreted(); runtime.tick().unwrap();
+    assert!(matches!(world.get_block(bud),Block::MovingPiston { .. }));
+    assert!(runtime.piston_base_moving[runtime.program.piston_by_component[node].unwrap().get()-1],"head removal must notify the adjacent BUD immediately");
+}
+
+#[test]
+fn joint_movement_discovers_sources_hidden_behind_two_tokens() {
+    check_joint_movement_sources(true);
+}
+
+#[test]
+#[ignore = "known compiler discovery defect: two blockers without an intermediate seed"]
+fn joint_movement_discovers_sources_without_a_single_token_seed() {
+    check_joint_movement_sources(false);
+}
+
+fn check_joint_movement_sources(intermediate_source: bool) {
+    let mut world = host();
+    let mut positions = Vec::new();
+    for x in 8..=16 {
+        let pos = BlockPos::new(x, 10 + x % 2, 10);
+        world.set_block(pos.offset(BlockFace::Bottom), Block::Stone {});
+        world.set_block(pos, Block::RedstoneWire { wire: RedstoneWire::default() });
+        positions.push(pos);
+    }
+    for x in if intermediate_source { vec![12, 16] } else { vec![16] } {
+        let pos = BlockPos::new(x, 10, 11);
+        world.set_block(pos, Block::RedstoneBlock);
+        positions.push(pos);
+    }
+    let gates = [BlockPos::new(10, 11, 10), BlockPos::new(14, 11, 10)];
+    for pos in gates { world.set_block(pos, Block::Stone {}); }
+    let initial = positions.iter().map(|&pos| world.get_block(pos)).collect();
+    let mut program = test_program(positions, initial, vec![], vec![], vec![], vec![]).unwrap();
+    for pos in gates {
+        program.tokens.push(compiler::PistonToken { block: Block::Stone {}, position: Some(pos), cells: vec![pos] });
+    }
+    let components = program.positions.iter().enumerate().map(|(node, &pos)| (pos, node)).collect();
+    let indexes = group_probe::ProbeIndexes::new(&components, &program.positions, &program.initial, &program.tokens, None).unwrap();
+    let groups = group_probe::run(&world, (BlockPos::new(5, 5, 5), BlockPos::new(20, 15, 15)), &entry(&world), &program, &indexes, None).unwrap();
+    let source = ArrangementSource::Component(program.positions.iter().position(|&pos| pos == BlockPos::new(16, 10, 11)).unwrap());
+    for pos in gates { world.set_block(pos, Block::Air); }
+    let actual = crate::redpiler::scratch::discover_wire_sources(&world, &[program.positions[0]]).unwrap();
+    assert!(actual.iter().any(|input| input.source == BlockPos::new(16, 10, 11) && input.attenuation == 8));
+    let group = groups.iter().find(|group| group.target == 0 && group.conditional_sources.contains(&source))
+        .expect("jointly opened dust path must retain its newly discovered far source");
+    assert_eq!(group.tokens, vec![0, 1]);
+    assert!(group.inputs[0].iter().any(|&(input, attenuation)| input == source && attenuation == 8));
+    assert!(group.inputs[1..].iter().all(|inputs| !inputs.iter().any(|&(input, _)| input == source)));
+}
+
+#[test]
+fn compressed_electrical_axes_preserve_physical_token_positions() {
+    let wire = BlockPos::new(10, 10, 10);
+    let upper = BlockPos::new(10, 12, 10);
+    let lower = BlockPos::new(10, 11, 10);
+    let concrete = Block::from_name("black_concrete").unwrap();
+    let mut program = test_program(vec![wire, BlockPos::new(11, 10, 10)],
+        vec![Block::RedstoneWire { wire: RedstoneWire::default() }, Block::RedstoneBlock], vec![], vec![], vec![], vec![]).unwrap();
+    program.tokens.push(compiler::PistonToken { block: concrete, position: Some(upper), cells: vec![upper, lower] });
+    program.input_arrangements.push(super::program::InputArrangement {
+        target: 0, side: false, silent: false, tokens: vec![0], token_states: vec![vec![0, 0, 1]],
+        conditional_sources: vec![ArrangementSource::Component(1)], inputs: vec![vec![], vec![(ArrangementSource::Component(1), 0)]],
+    });
+    for invalid in [vec![0, 2, 2], vec![0, usize::MAX, 1], vec![1, 1, 1], vec![0, 1]] {
+        let mut malformed = program.clone();
+        malformed.input_arrangements[0].token_states[0] = invalid;
+        assert!(malformed.compile_movement_flips().is_err());
+    }
+    program.compile_movement_flips().unwrap();
+    let mut runtime = program.start();
+    assert_eq!(runtime.project(upper), Some(concrete));
+    assert_eq!(runtime.group_arrangements, vec![0]);
+    for (position, state, strength) in [(None, 0, 0), (Some(lower), 1, 15), (None, 0, 0), (Some(upper), 0, 0)] {
+        runtime.set_token_pos(0, position);
+        assert_eq!(runtime.token_positions[0], position);
+        assert_eq!(runtime.group_arrangements, vec![state]);
+        assert!(matches!(runtime.project(wire), Some(Block::RedstoneWire { wire }) if wire.power == strength));
+        if let Some(pos) = position { assert_eq!(runtime.project(pos), Some(concrete)); }
+    }
 }
 
 #[test]

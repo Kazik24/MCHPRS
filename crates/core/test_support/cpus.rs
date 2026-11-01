@@ -377,6 +377,10 @@ pub fn reference(cpu: Cpu) -> Reference {
 
 #[allow(dead_code)]
 pub fn compile_cpu(world: PlotWorld, cpu: Cpu) -> (PlotWorld, Compiler, Duration) {
+    compile_cpu_with_options(world, cpu, CompilerOptions::default())
+}
+
+pub fn compile_cpu_with_options(world: PlotWorld, cpu: Cpu, options: CompilerOptions) -> (PlotWorld, Compiler, Duration) {
     let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../test_data").join(cpu.schematic);
     let clip = load_schematic(File::open(path).unwrap()).unwrap();
     let bounds = (
@@ -396,7 +400,7 @@ pub fn compile_cpu(world: PlotWorld, cpu: Cpu) -> (PlotWorld, Compiler, Duration
     let (world, compiler, result, timed_out) = std::thread::scope(|scope| {
         let worker = scope.spawn(move || {
             let mut compiler = Compiler::default();
-            let result = compiler.compile(&world, bounds, CompilerOptions::default(), ticks, worker_monitor);
+            let result = compiler.compile(&world, bounds, options, ticks, worker_monitor);
             (world, compiler, result)
         });
         let mut timed_out = false;

@@ -4,6 +4,8 @@ use smallvec::SmallVec;
 use std::collections::HashMap;
 use std::num::NonZeroUsize;
 
+pub(super) const MAX_ARRANGEMENT_STATES: usize = 65_536;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum Operation {
     Contribution(usize),
@@ -90,10 +92,27 @@ pub(super) struct InputArrangement {
     pub(super) silent: bool,
     /// token indices into `Program::tokens` whose positions distinguish arrangement states.
     pub(super) tokens: Vec<usize>,
+    /// Physical token digits mapped to equivalent electrical states; empty means identity.
+    pub(super) token_states: Vec<Vec<usize>>,
     /// conditional sources gating the arrangement's input.
     pub(super) conditional_sources: Vec<ArrangementSource>,
     /// per-arrangement source/attenuation lists; outer slots follow the encoded token-position combinations.
     pub(super) inputs: Vec<Vec<(ArrangementSource, u8)>>,
+}
+
+impl InputArrangement {
+    pub(super) fn digit(&self, axis: usize, physical: usize) -> usize {
+        self.token_states.get(axis).map_or(physical, |states| states[physical])
+    }
+
+    pub(super) fn radix(&self, axis: usize, physical: usize) -> usize {
+        self.token_states.get(axis).map_or(physical, |states| states.iter().copied().max().unwrap_or(0) + 1)
+    }
+}
+
+fn valid_states(states: &[usize], physical: usize) -> bool {
+    states.len() == physical && states.first() == Some(&0)
+        && states.iter().copied().max().is_some_and(|max| max < physical && (0..=max).all(|digit| states.contains(&digit)))
 }
 
 #[derive(Clone, Copy)]
@@ -136,6 +155,7 @@ pub(super) struct MovementAxis {
     pub(super) token: usize,
     /// mixed-radix stride used to extract this token's state from a group arrangement index.
     pub(super) stride: usize,
+    pub(super) states: Vec<usize>,
     /// per-token-cell slices into the group's departure-step storage.
     pub(super) depart: Vec<std::ops::Range<usize>>,
     /// per-token-cell slices into the group's arrival-step storage.
@@ -438,11 +458,15 @@ impl Program {
             if group.tokens.iter().any(|&token| !seen.insert(token)) {
                 return Err(invalid("duplicate token in movement group"));
             }
+            if !group.token_states.is_empty() && (group.token_states.len() != group.tokens.len()
+                || group.token_states.iter().zip(&group.tokens).any(|(states, &token)| !valid_states(states, self.tokens[token].cells.len() + 1))) {
+                return Err(invalid("invalid electrical token states"));
+            }
             let count = group
                 .tokens
-                .iter()
-                .try_fold(1usize, |count, &token| count.checked_mul(self.tokens[token].cells.len() + 1));
-            if count != Some(group.inputs.len()) || group.inputs.len() > 4096 {
+                .iter().enumerate()
+                .try_fold(1usize, |count, (axis, &token)| count.checked_mul(group.radix(axis, self.tokens[token].cells.len() + 1)));
+            if count != Some(group.inputs.len()) || group.inputs.len() > MAX_ARRANGEMENT_STATES {
                 return Err(invalid("invalid movement group dimensions"));
             }
             for &(source, attenuation) in group.inputs.iter().flatten() {
@@ -503,24 +527,26 @@ impl Program {
         let mut groups = Vec::new();
         let mut flips = Vec::new();
         let mut links = Vec::new();
-        let mut grouped: Vec<(Vec<usize>, Vec<Vec<(usize, ArrangementSource, u8, bool, bool)>>)> = Vec::new();
+        let mut grouped: Vec<(Vec<usize>, Vec<Vec<usize>>, Vec<Vec<(usize, ArrangementSource, u8, bool, bool)>>)> = Vec::new();
         for input in &self.input_arrangements {
-            let index = if let Some(index) = grouped.iter().position(|(tokens, _)| *tokens == input.tokens) {
+            let states: Vec<_> = input.tokens.iter().enumerate().map(|(axis, &token)|
+                (0..=self.tokens[token].cells.len()).map(|digit| input.digit(axis, digit)).collect::<Vec<_>>()).collect();
+            let index = if let Some(index) = grouped.iter().position(|(tokens, mapping, _)| *tokens == input.tokens && *mapping == states) {
                 index
             } else {
-                grouped.push((input.tokens.clone(), vec![Vec::new(); input.inputs.len()]));
+                grouped.push((input.tokens.clone(), states, vec![Vec::new(); input.inputs.len()]));
                 grouped.len() - 1
             };
             for (state, entries) in input.inputs.iter().enumerate() {
-                grouped[index].1[state].extend(
+                grouped[index].2[state].extend(
                     entries
                         .iter()
                         .map(|&(source, attenuation)| (input.target, source, attenuation, input.side, input.silent)),
                 );
             }
         }
-        for (tokens, maps) in grouped {
-            let (group, entries) = self.movement_group(&tokens, &maps, groups.len(), links.len(), &mut flips);
+        for (tokens, states, maps) in grouped {
+            let (group, entries) = self.movement_group(&tokens, &states, &maps, groups.len(), links.len(), &mut flips);
             groups.push(group);
             links.extend(entries);
         }
@@ -539,7 +565,8 @@ impl Program {
                     })
                     .collect()
             }));
-            let (group, entries) = self.movement_group(&[token], &maps, groups.len(), links.len(), &mut flips);
+            let states = vec![(0..=cells.len()).collect()];
+            let (group, entries) = self.movement_group(&[token], &states, &maps, groups.len(), links.len(), &mut flips);
             groups.push(group);
             links.extend(entries);
         }
@@ -588,7 +615,7 @@ impl Program {
                 let start = self.movement_transitions.len();
                 for &(group, axis) in associations {
                     let axis_record = &self.movement_groups[group].axes[axis];
-                    let delta = (cell + 1).checked_mul(axis_record.stride).ok_or(ScratchError {
+                    let delta = axis_record.states[cell + 1].checked_mul(axis_record.stride).ok_or(ScratchError {
                         position: self.tokens[token].position,
                         reason: "movement transition capacity overflow",
                     })?;
@@ -819,6 +846,7 @@ impl Program {
     fn movement_group(
         &self,
         tokens: &[usize],
+        states: &[Vec<usize>],
         maps: &[Vec<(usize, ArrangementSource, u8, bool, bool)>],
         group: usize,
         link_start: usize,
@@ -833,8 +861,8 @@ impl Program {
         let mut stride = 1;
         let axes = tokens
             .iter()
-            .map(|&token| {
-                let radix = self.tokens[token].cells.len() + 1;
+            .enumerate().map(|(index, &token)| {
+                let radix = states[index].iter().copied().max().unwrap_or(0) + 1;
                 let mut depart = vec![0..0; maps.len()];
                 let mut arrive = vec![0..0; maps.len()];
                 for state in 0..maps.len() {
@@ -872,6 +900,7 @@ impl Program {
                 let axis = MovementAxis {
                     token,
                     stride,
+                    states: states[index].clone(),
                     depart,
                     arrive,
                 };
@@ -1175,14 +1204,14 @@ impl Program {
         for (group, record) in self.movement_groups.iter().enumerate() {
             let mut states = 1usize;
             for axis in &record.axes {
-                if axis.token >= self.tokens.len() || axis.stride != states {
+                if axis.token >= self.tokens.len() || axis.stride != states || !valid_states(&axis.states, self.tokens[axis.token].cells.len() + 1) {
                     return Err(invalid("invalid movement axis reference"));
                 }
                 states = states
-                    .checked_mul(self.tokens[axis.token].cells.len() + 1)
+                    .checked_mul(axis.states.iter().copied().max().unwrap_or(0) + 1)
                     .ok_or_else(|| invalid("movement group capacity overflow"))?;
             }
-            if states > 4096 || record.axes.iter().any(|axis| axis.depart.len() != states || axis.arrive.len() != states) {
+            if states > MAX_ARRANGEMENT_STATES || record.axes.iter().any(|axis| axis.depart.len() != states || axis.arrive.len() != states) {
                 return Err(invalid("invalid sealed movement group dimensions"));
             }
             for axis in &record.axes {
@@ -1226,7 +1255,7 @@ impl Program {
                     let axis = self.movement_groups.get(group).and_then(|g| g.axes.get(axis)).ok_or_else(|| invalid("invalid movement plan axis"))?;
                     let depart = record.depart.checked_add(record.states).and_then(|end| self.movement_ranges.get(record.depart..end));
                     let arrive = record.arrive.checked_add(record.states).and_then(|end| self.movement_ranges.get(record.arrive..end));
-                    if axis.token != token || record.group != group || (cell + 1).checked_mul(axis.stride) != Some(record.delta)
+                    if axis.token != token || record.group != group || axis.states[cell + 1].checked_mul(axis.stride) != Some(record.delta)
                         || depart != Some(axis.depart.as_slice()) || arrive != Some(axis.arrive.as_slice()) {
                         return Err(invalid("invalid movement plan transition"));
                     }
@@ -1478,7 +1507,7 @@ impl Program {
                             self.tokens[axis.token]
                                 .position
                                 .and_then(|pos| self.tokens[axis.token].cells.iter().position(|&cell| cell == pos))
-                                .map_or(0, |cell| cell + 1)
+                                .map_or(0, |cell| axis.states[cell + 1])
                                 * axis.stride
                         })
                         .sum()

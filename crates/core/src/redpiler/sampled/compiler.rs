@@ -121,7 +121,7 @@ pub(super) struct PistonToken {
     pub(super) cells: Vec<BlockPos>,
 }
 
-fn is_passive_geometry(block: Block) -> bool {
+pub(super) fn is_passive_geometry(block: Block) -> bool {
     let plate_power = block.pressure_plate_powered();
     !crate::redstone::has_neighbor_update(block)
         && !matches!(block, Block::Composter { .. } | Block::Lever { .. })

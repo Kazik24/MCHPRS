@@ -1,6 +1,112 @@
 # Sampled Redpiler → LLVM DLL experiment
 
+## Current measured checkpoint — ZCore runs in C
+
+The Windows x64 C executor now admits ZCore12B_FIX and executes its scheduler, wires, torch/observer/repeater callbacks, conditional arrangements, token movement, piston events and motion completion inside the DLL. The host uses `tick` and `read` operations; Rust retains the sampled Program and a publication adapter but never calls its tick runner while LLVM is selected. Full snapshots are currently read at publication boundaries, which adds publication overhead. The implementation is still opt-in with `/rp compile --llvm`.
+
+Correctness: the complete ZCore state was compared with the current sampled Rust runner after 4,509 ticks (413 loading ticks plus 4,096 active ticks). Comparisons include component and projected blocks, contribution slots, arrangement contributions/state, watched-wire strengths, primary/side active input counts, token positions, piston flags, ordered events, scheduled entries/type bindings and active motions/order/deadlines. The run passed. A separate interpreter run matched the final screen after 4,096 active ticks, with 195 screen changes. Small motion tests cover early/normal retraction, redstone-block transport, observer callbacks, publication and reset continuation. The latest loaded-DLL suite has ten passing tests; the large ZCore comparison is explicitly run with `--ignored`.
+
+Test correction: older DLL-dependent tests used a relative DLL path, causing them to skip under Cargo's crate working directory. The loader and tests now resolve the repository DLL path consistently, and the comparisons above were rerun against the actual DLL. Earlier statements that those skipped tests established parity should not be used as evidence.
+
+Performance: seven alternating 10,000-tick pairs used the same fixture, 413 loading ticks, controls, optimized executable and serial semantics. Median Rust kernel throughput was **2,927 TPS** (range 2,362–3,134), versus **5,174 TPS** for C/LLVM (4,969–5,335). The median paired ratio was **1.796×**. Every run produced final-screen SHA-256 `da3eb0df74dc81983b03f811b2bfc64a4e71bc9ed415bf04ab67fd4993746793`. Native runs executed 89,608,494 operation/callback work units including preparation. This measures kernel throughput; per-tick publication and host integration are separate costs.
+
+Setup: the shared C engine built with Clang 23.1.4 `-O3` and lld-link in **408.4 ms**, producing a 27,136-byte DLL from 53,277 bytes of shared C source. ZCore's binary payload was 27,808,808 bytes, with zero generated per-plot C bytes. One admission run took 13.96 s; the interpreter-checked run took 12.92 s. In the longer paired process, median setup was 17.28 s native and 17.85 s Rust; setup ranged upward as repeated fresh graph compilations ran. These are graph/frontend conversion costs plus DLL load/state initialization, separate from C compilation. No graph-specific code expansion or relaxed parallel execution was added.
+
+Reproduction:
+
+```powershell
+./scripts/build-llvm-native.ps1
+$env:MCHPRS_LLVM_DLL=(Resolve-Path target/native_engine.dll).Path
+cargo test -p mchprs_core --lib llvm_ -- --nocapture
+cargo test -p mchprs_core --lib llvm_zcore_matches_rust_state_and_motion_each_tick -- --ignored --nocapture
+cargo run --profile bench -p mchprs_core --example bench_cpus -- zcore 4096 1 kernel --llvm
+cargo run --profile bench -p mchprs_core --example bench_llvm_zcore -- 10000 7
+```
+
+The build script records source/tool/DLL SHA-256, exact commands, sizes and elapsed compiler/link time in `target/native-engine-build.json`. Paired results are in `target/redpiler-bench-results/zcore-llvm-paired.json`; state comparison and interpreter benchmark logs were saved under `target/llvm-zcore-shadow.log` and `target/llvm-zcore-first-kernel.log`. ANPU, Chungus and FPU coverage checks and Unix/container deployment are the next requested acceptance work; these figures do not establish their correctness or production portability.
+
+### Broader checks and ANPU baseline investigation
+
+The 512-tick complete-publication ZCore benchmark passed per-tick screen comparison with the interpreter for both backends. With a full state read and publication on every tick, the native candidate measured 103 integrated TPS versus 611 for Rust; this exposes the current full-snapshot publication cost and is not a production performance acceptance. The kernel-only results above exclude that cost. Production reads need to retain dirty-state publication behavior, while verification keeps full snapshots.
+
+Native admission was attempted on all requested builds. ANPU contains comparators, hoppers, note blocks and pressure plates in addition to ZCore's component families; Chungus contains comparators, hoppers and pressure plates. FPU includes comparators and three unknown/command-style components. These were explicitly rejected by the current C admission check. Chungus native admission took 112.99 s, FPU 9.89 s; the active FPU interpreter reference measured 169 TPS over its 10,000-tick input window. No LLVM TPS is assigned to rejected Programs.
+
+The Rust sampled ANPU baseline also diverged from the interpreter: its final screen differed at 4,096 ticks, and its 512-tick run produced no screen changes while the interpreter matched the frozen reference. A first-divergence diagnostic traced the first electrical difference to tick 70: an empty extending piston head failed to notify an adjacent quasi-powered piston until motion completion. A small regression reproduced both extension and tick-74 head-removal/retraction failures before their fixes; immediate head-neighbor callbacks now pass that regression. The same small circuit failed against the old loaded DLL at its first tick, so these notifications were also added to C. The native semantic version is now 8, rejecting stale modules. Clang/link time was 440.7 ms and DLL size 28,160 bytes (`target/native-engine-build.json`). The earlier ZCore throughput figures predate these semantic fixes and require rechecking.
+
+The next electrical difference was tick 278: wire `(99,49,109)` should receive power 5 from the lit torch `(98,48,118)` at attenuation 10 through several opened concrete gates. Interpreter source discovery includes that source; the compiled arrangement only contained nearby sources. `group_probe.rs` discarded source links discovered during joint probes unless the dependency already existed in that probe group. The new regression `joint_movement_discovers_sources_hidden_behind_two_tokens` fails before retaining those links and passes afterward. New dependencies are attributed by restoring individual tokens rather than attributing every probe token indiscriminately. After these changes, `cargo test -p mchprs_core --lib redpiler::sampled::tests:: -- --nocapture` passed 62 tests (one large test ignored), and the actual loaded-DLL `llvm_` suite passed 11 tests (one large test ignored). The full ZCore Rust/native snapshot comparison was then run explicitly and passed all 4,509 ticks in 87.11 s. This rechecks Rust/C parity, not interpreter parity or current TPS.
+
+This correction currently makes ANPU reject explicitly during compilation instead of admitting incomplete tables. It exposes dependencies with eight ternary token axes (6,561 states) at `(84,36,62)` and ten axes (59,049 states) at `(84,37,64)`, exceeding the unchanged 4,096-state limit. Merely raising that limit would multiply compile work and movement tables. ANPU is **not yet supported**, and no current LLVM ANPU TPS is claimed. A MAIR parser/runtime cross-check is in progress to establish whether its representation handles these paths differently and whether its executor agrees with the interpreter.
+
+Current reproduction commands:
+
+```powershell
+cargo test -p mchprs_core --lib empty_piston_head_notifies_adjacent_quasi_powered_piston_immediately -- --nocapture
+cargo test -p mchprs_core --lib joint_movement_discovers_sources_hidden_behind_two_tokens -- --nocapture
+$env:MCHPRS_REDPILER_BOUNDARY_TRACE='1'
+$env:MCHPRS_ANPU_VERIFY_TICKS='4096'
+cargo test -p mchprs_core --lib anpu_first_native_compiled_divergence -- --ignored --nocapture
+./scripts/build-llvm-native.ps1
+cargo test -p mchprs_core --lib llvm_ -- --nocapture
+```
+
+Diagnostics are in `target/anpu-first-divergence.json`, `target/anpu-arrangement-limit.log`, `target/anpu-joint-regression.log` (before), `target/anpu-joint-regression-fixed.log` (after), and `target/llvm-piston-before.log`. Baseline correctness and a bounded representation for the newly discovered paths take priority over widening C admission.
+
+The current MCHPRS interpreter was checked independently with `cargo test -p mchprs_core --lib anpu_interpreter_prefix_matches_frozen_reference -- --ignored --nocapture`. All saved checkpoints within the prefix and all 14 frozen screen frames through tick 4,096 matched (10.92 s test wall time). This checks the interpreter without compiling a sampled Program; log: `target/anpu-interpreter-oracle.log`.
+
+### MAIR cross-check: parses and compiles ANPU, but does not execute it correctly
+
+The isolated .NET wrapper in `target/anpu-mair-check/Program.cs` used the unmodified MAIR decompiler rebuild at `target/mair-crosscheck/bin/MAIR.Core.dll`; the original shipped binary is unavailable. DLL SHA-256: `1510a2596486a0df240750bc96c7b0f446697fdf9fe6f3039f9b73787c99d5ac`; wrapper SHA-256: `91655e8d8e16cbef8179093a19caca4c38494a513714a2df236e178c4504d5bb`. All 521 schematic palette states round-tripped exactly after canonical property ordering, with zero skipped states. The loader placed 116,374 non-air blocks at the same `(8,8,8)` offset, restored 539 container signals and 815 comparator entities, and used start control `(130,76,64)`. Schematic SHA-256 matches the frozen ANPU reference (`f4068257797399531ce31d56c972af32d0f73f7d8d496ce1b7b8cd1c178decec`). Compilation succeeded in 4,292.6 ms: 26,621 nodes, 34,626 links and 34,781 wires. This is compilation success, not execution correctness.
+
+The unmodified MAIR compiled replay first differs from the frozen MCHPRS screen at tick 544 and produces four screen frames through tick 4,096 instead of 14. Its own interpreter removes dust over hoppers at tick 58: the support block `(60,35,15)` is correctly parsed as a hopper, but MAIR's `BlockInfo.SturdyTop` does not classify it as supporting dust, and `MAIR.Core.Redstone/Wire.cs::NeighborChanged` removes the wire. Current MCHPRS wire callbacks retain it. Consequently, this unmodified MAIR interpreter is not an interchangeable oracle for the current MCHPRS semantics.
+
+A separate, explicitly modified diagnostic changes only MAIR's in-memory hopper `SturdyTop` flags (ten states), without editing the reference source or DLL. It then reproduces the same **tick-278** first MAIR interpreter/compiled state mismatch at `(99,49,109)`: interpreter power 5, compiled power 0. The mismatch persists through ticks 279–280. Its compiled screen still diverges at tick 544. The modified MAIR interpreter itself differs from the frozen MCHPRS screen at tick 810, so this override is a focused reproduction, not a new correctness baseline.
+
+Cross-reference against `E:/codex-builds/RedGear-reference-decompiled`: `MAIR.Core.Rsc.Compilation/Compiler.cs::ProbeAllArrangements` (line 1277) passes `probe.Links.Contains` into `Probe`; `FindChangedLinks` (1159–1164) discards new dependencies through that predicate. `BuildWires` (580) retains only discovered sources, and `MAIR.Core.Rsc.Engine/Engine.cs::GetWirePower` (1731) reads those precomputed lists, with no dynamic source discovery. The saved MAIR table for the failing wire has one three-state group, four nearby sources, and no distant torch `(98,48,118)` in any state (`target/anpu-mair-check/wire-table.json`). This corroborates the sampled compiler's joint-source omission rather than an LLVM execution error.
+
+Reproduction with the retained wrapper and local .NET SDK:
+
+```powershell
+dotnet run --project target/anpu-mair-check/Check.csproj --configuration Release -- F:/rustrepos/MCHPRS 4096
+dotnet run --project target/anpu-mair-check/Check.csproj --configuration Release -- F:/rustrepos/MCHPRS 4096 hopper-support
+```
+
+Evidence: `target/anpu-mair-check/run.log`, `result.json` (unmodified), `palette.json` (empty mismatch list), `probe-280.log`, `hopper-support.log`, and `result-4096-hopper-support.json`. Next decision: represent jointly opened dust paths without enumerating the full Cartesian product of all token positions; retaining the incomplete MAIR tables or simply increasing the existing state cap does not establish correct ANPU support.
+
+Deployment requirements now include Unix shared libraries and a dedicated Docker work volume containing the compiler cache. LLVM is to be installed in the image at build time. MROWW must own artifact cleanup and reset its managed cache on process startup, with a process lock and ownership marker preventing deletion of unrelated or active work. This deployment work remains pending while the baseline correctness issue is resolved.
+
 ## Goal
+
+### ANPU compiler repair: isolated correctness and setup-cost failures
+
+The repair is not yet an ANPU acceptance. The sampled suite passed 63 tests, and the focused compressed-axis tests (including a real DLL concrete-piston comparison) pass. Electrical digit maps retain physical token cells, motion callbacks and publication; concrete positions without any face-adjacent wire may share the absent electrical digit. Non-wire readers additionally preserve all positions within Chebyshev distance two. Group keys include both token IDs and digit maps; startup, transition deltas, validators, diagnostic readers and native table 27 use mapped digits. Invalid maps are rejected. The per-group limit was experimentally increased from 4,096 to 65,536 to measure whether dense tables remained viable; this is **not a production acceptance or an aggregate memory bound**.
+
+Full-circuit trials did not establish a solution: one attempt rejected an uncompressed non-wire group after 151.47 s; another hit the 300-second compile timeout. Later diagnostics were interrupted while still in joint discovery. The last log is `target/anpu-bounded-shadow4.log`; it contains no completed ANPU compilation or execution result. Candidate electrical aliases and job-local dependency proofs were deduplicated, but the remaining exhaustive state/candidate sweeps still dominate setup. No new TPS is claimed.
+
+After reviewing this with two Terra 6.1 research agents, implementation changes were frozen to isolate the defects:
+
+1. `joint_movement_discovers_sources_without_a_single_token_seed` removes the intermediate source from the existing two-blocker fixture. With both blockers absent, shared interpreter dependency extraction finds the far redstone block at attenuation eight. The compiled group omits it. This ignored diagnostic fails in **0.03 s**, while the original seeded fixture passes in **0.03 s**. Joint jobs are created only from single-token changes, so a completely hidden path has no discovery seed. Merely retaining new links in existing jobs does not fix that case. The fixed five-block candidate-nearness filter is another completeness assumption that must not be treated as a proof of all relevant dependencies.
+2. `isolated_anpu_joint_probe_cost` loads ANPU but does not compile it. It queries one real wire target `(84,37,72)` with a controlled prefix of the concrete gates in columns `x=84/86`, plus one fixed candidate gate. It runs one serial baseline/candidate sweep and measures scratch reversion, placement, input extraction and boundary checks separately. It performs no restoration probes, fixed-point rounds or final table construction, so these numbers must not be reported as full compilation time.
+
+| Binary axes | States | Baseline + candidate probes | Sweep wall time |
+|---:|---:|---:|---:|
+| 2 | 4 | 8 | 0.32 ms |
+| 6 | 64 | 128 | 4.0 ms |
+| 10 | 1,024 | 2,048 | 83.0 ms |
+| 12 | 4,096 | 8,192 | 360.3 ms |
+| 14 | 16,384 | 32,768 | 1,538.1 ms |
+
+At fourteen axes, input discovery used 1,330.9 ms (86.5%), reversion 99.3 ms, placement 60.8 ms and boundary checks 34.8 ms. The rest is harness/loop overhead. The existing joint algorithm multiplies the state sweep by the number of distinct candidate states, repeats it across targets and growing dependency groups, and may add own-token restoration probes. Raising the cap or optimizing DLL compilation cannot remove this Cartesian product.
+
+```powershell
+cargo test -p mchprs_core --lib joint_movement_discovers_sources_hidden_behind_two_tokens -- --nocapture
+cargo test -p mchprs_core --lib joint_movement_discovers_sources_without_a_single_token_seed -- --ignored --nocapture
+$env:MCHPRS_PROBE_AXES='14'
+cargo test -p mchprs_core --lib isolated_anpu_joint_probe_cost -- --ignored --nocapture
+```
+
+Logs/results: `target/anpu-seeded-repro.log`, `target/anpu-no-seed-repro.log`, `target/anpu-isolated-probe-14.log`, `target/anpu-isolated-probe-cost.json`. The no-seed diagnostic intentionally remains failing until discovery is corrected. These focused measurements identify the algorithmic issue without repeatedly compiling all of ANPU.
+
+Next decision: use a conservative local connectivity representation (or an equivalently sparse decision representation) that can discover a path without a single-token seed and avoids a dense global token-state product. Query-guided probing alone can fix seeding but still has an exponential worst case and does not remove the current dense runtime tables. Before changing runtime representation, require tiny exhaustive comparisons against the shared interpreter extractor, including no-seed paths, alternate routes/attenuation and intermediate departures. Callback ordering, source updates and the loaded C executor must be included in the eventual implementation; a Rust-only routing shortcut is not LLVM ANPU support.
 
 Reproduce the previous native engine's performance improvement using the current sampled backend: compile its validated representation into a circuit-specific DLL and execute the circuit inside that module. Target approximately 1.5× kernel throughput as the experimental ambition, with measured correctness and setup costs. This is an opt-in experiment, not a proposed default switch.
 
@@ -257,3 +363,96 @@ For amortization, compute `extra cold setup / measured per-tick time saving`; re
 ## Decision
 
 Proceed as an experiment to reproduce the demonstrated old native-engine gain on the sampled IR. The new representation offers a credible reduction in generated-code volume, especially for piston CPUs, and exposes a narrower hot path for specialization. Binary table separation and code budgets make compile size controlled by design. Whether native specialization reaches the desired gain, and whether cold setup is economical, remain measurements to obtain.
+
+## Implementation log
+
+### 2026-11-01 — ABI spike and `--llvm` opt-in
+
+Changes in this worktree:
+
+- Added `crates/core/src/redpiler/sampled/native.rs` with ABI version 1 descriptors and a checked little-endian binary payload for the operation and ordinary-link tables. Operations are fixed 8-byte records; electrical links are fixed 12-byte records. Checked conversions reject offsets/counts/operands that do not fit `u32`. Validation checks the magic/version/header, exact table ranges, operation tags and operand domains, link component IDs, and reserved bytes. The payload contains logical rows only and does not serialize Rust structs or allocation capacity.
+- Added `native_abi.h` with matching C records and compile-time size/offset assertions: 16-byte API descriptor and 52-byte Program descriptor. The Rust test checks alignment/field offsets and rejects a corrupted table offset.
+- Added `/rp compile --llvm` parsing and completion. The command rejects it before resetting the current compiler; `Compiler::compile` also rejects direct API calls before compilation/activation because no native executor is wired yet. Default sampled compilation is unchanged. There is no `--parallel` flag in this command path to combine with it.
+
+Commands and results:
+
+```powershell
+cargo test -p mchprs_core --lib redpiler::sampled::native::tests::descriptor_layout_and_bounds_are_stable
+```
+
+Passed: focused descriptor layout/bounds test, direct API rejection/no-activation test, and command completion/parser test. The operation/link serializer is exercised by the census diagnostic after normal Program compilation; it is not used for execution, so this is not Rust/native state or execution parity.
+
+Toolchain discovery with `Get-Command clang,clang-cl,lld-link,clang++,gcc,cl` found only `lld-link.exe` from `C:\ST\STM32CubeCLT_1.20.0\st-arm-clang\bin`; no matching x86-64 Clang was resolved, so no DLL was emitted or loaded. The historical recovered implementation was inspected at `576ae313` (`native_engine.rs`, `emit.rs`, `native_engine.h`, `native_engine.c`, and `LLVM_NATIVE_INFERENCE_DEMO.md`); its table-plus-engine split is the model, but its graph ABI is not reused.
+
+
+### Fresh sampled census, current worktree
+
+The reusable runner is `crates/core/examples/census_sampled.rs`; it loads ZCore through the existing CPU fixture helper, FPU from `FPU_27.schem`, and Chungus through its existing saved-plot helper. It calls the normal sampled compile path with `MCHPRS_REDPILER_PHASE_TIMINGS=1`. Exact command:
+
+```powershell
+$env:MCHPRS_REDPILER_PHASE_TIMINGS='1'
+cargo run -p mchprs_core --example census_sampled *> target/native-backend-census-20261101.log
+```
+
+All three current compiles completed. The sampled compiler's phase logger recorded 19.697 s for ZCore12B_FIX, 16.898 s for FPU_27, and 137.980 s for Chungus; Chungus spent 122.285 s in source transition sampling. Cargo's separate incremental build took 1m39s. These are census/setup compile times, not native compilation or inference benchmarks. Fresh counts and lower-bound logical binary sizes for the currently encoded operation/link subset:
+
+| Fixture | Components | Operations | Links | ABI blob bytes (header + 8-byte operations + 12-byte links) |
+| --- | ---: | ---: | ---: | ---: |
+| ZCore12B_FIX | 87,786 | 35,578 | 79,569 | 1,239,468 |
+| FPU_27 | 46,702 | 41,839 | 46,620 | 894,168 |
+| Chungus | 246,601 | 1,269,014 | 466,517 | 15,750,332 |
+
+These are current logical counts; the binary-size column is **not** a complete native Program size. The emitted subset omits component/state descriptors, scheduler state, arrangements, watched/reactive wires and all piston movement tables. For scale, current retained buffers reported by the existing logger include ZCore: operations 1,048,576 bytes, links 3,145,728, movement steps 8,388,608, movement transitions 2,621,440, movement ranges 4,194,304 and movement cells 872,208; FPU: 1,048,576, 1,572,864, 4,194,304, 1,310,720, 2,097,152 and 431,792 bytes respectively. Chungus retained 33,554,432 bytes for operations and 12,582,912 for links, with no movement rows. The logged sum of selected flat and row buffers was 68,925,497 / 36,394,228 / 167,932,705 bytes for ZCore/FPU/Chungus; it excludes unlisted nested payloads and HashMap/allocator overhead, so it must not be compared as a full Program total with the historical census table.
+
+No C was generated (0 source bytes), and no blob was written to disk; the in-memory logical subset sizes are in the table. No DLL was emitted (0 DLL bytes), and native cold compile time is unavailable because there is no matching compiler.
+
+The runtime reader audit used direct `Runtime` references in `executor.rs`, `input.rs`, `scheduler.rs`, and `commands.rs`. Runtime execution reads component positions/IDs, output programs and operations, electrical and arrangement links, incoming/outgoing indexes, source and watcher maps, reactive tables, flattened movement plans, piston/token/projection bindings, cell geometry/occupancy indexes, and repeater/comparator records. The `component_indices` and `geometry_indices` maps are also runtime-reachable; command handling reads the former, while geometry queries read the latter. Candidate compiler-only data after flattening includes the captured `geometry` list, `movement_groups`, `token_movement_groups`, `token_updates`, `token_watchers`, and `token_sources`; these can be dropped only after checking construction, validation, reset, and host-export paths. The new descriptor is only the operations plus ordinary links slice.
+
+The Chungus sampled compile took 137.980 s and peaked at roughly 4.75 GB working set during compile-time source sampling. This is sampled compiler setup cost, not native cold compile time. The complete row histograms and deep retained-byte breakdown have not yet been refreshed for the current worktree; the selected logger fields above are not a substitute. Generic native scheduling/execution, movement, reset continuation, DLL load, and paired Rust/native performance remain unimplemented and unmeasured. No executor or performance gain is claimed at this checkpoint.
+
+### 2026-11-01 — generic DLL wired into Compiler; active small-circuit comparison
+
+- `Compiler` now owns either the existing sampled Rust runtime or an exclusive native DLL runtime. `--llvm` compiles the same sampled `Program`, encodes its operation/link/component/source rows, dynamically loads `target/native_engine.dll` (override with `MCHPRS_LLVM_DLL`), and routes controls, ticks, publication, and reset through the DLL. The DLL receives tables as a compact binary blob; Clang compiles the shared C executor, not per-plot C source. The fixture's binary Program blob is 112 bytes and generated per-plot C source is 0 bytes.
+- The supported subset is checked before activation. It permits static lever/button/redstone-block sources feeding lamps, and only `Contribution`/`UpdateLamp` operations. Pre-existing scheduled ticks, command effects, arrangements/watched wires, and piston state/movement are explicitly rejected. Publication exports component states to the world; reset exports ordered pending events as relative `TickEntry`s so the Rust scheduler can continue. A parity test runs a button/lamp pulse, publishes each tick, resets with the button release pending, and compares the scheduler and 15 interpreted continuation ticks.
+- Toolchain: `clang version 23.1.4` targeting `x86_64-pc-windows-msvc`, with `lld-link 23.1.4`; no system x64 Clang was available. `target/llvm-23.1.4` is a local ignored toolchain install. Rebuild the shared DLL from the repository root with PowerShell:
+
+```powershell
+target/llvm-23.1.4/bin/clang.exe --target=x86_64-pc-windows-msvc -std=c11 -O3 -ffreestanding -fno-builtin -Werror -I crates/core/src/redpiler/sampled -c crates/core/src/redpiler/sampled/native_engine.c -o target/native_engine.obj
+target/llvm-23.1.4/bin/lld-link.exe /dll /noentry /nodefaultlib /machine:x64 /out:target/native_engine.dll target/native_engine.obj
+```
+
+- Measured C build at this benchmark checkpoint: cold Clang+link 142.4 ms; warm 130.6 ms. Shared engine source was 15,858 bytes, object 5,033 bytes, DLL 5,120 bytes. These wall times are local process measurements and exclude downloading/extracting LLVM. The ABI-v1 API descriptor is 16 bytes, Program descriptor 52 bytes, component record 32 bytes, and pending-tick record 12 bytes.
+- Active kernel benchmark command: `cargo run --profile bench -p mchprs_core --example bench_llvm_small -- 100000`. It alternates seven Rust/native pairs. Each measured tick toggles a lever into a lamp and advances the engine; correctness is checked separately by the reset-continuation parity test. The 100,000-iteration native runs each reported 225,575 executed operation/callback work units (including 256 warmup iterations), confirming active scheduled work. No publication is timed.
+- Raw Rust TPS by pair: 20.242, 18.569, 20.226, 19.869, 18.471, 20.544, 20.027 million. Raw LLVM TPS: 12.654, 12.323, 13.483, 12.836, 12.842, 12.970, 12.772 million. Median Rust: 20.027 million TPS; median LLVM: 12.836 million TPS, or 64.1% of Rust throughput (35.9% slower). The median paired LLVM/Rust ratio is 0.646. This is a small active control/scheduling kernel, not a CPU schematic result and not an integrated publication benchmark.
+- Runtime setup includes sampled Program compilation, DLL load, binary encoding, and native state creation. In the same seven pairs, Rust setup was 75.9, 69.5, 65.2, 61.4, 78.6, 65.5, 63.4 ms; native setup was 71.6, 76.8, 65.4, 62.8, 75.0, 65.0, 64.3 ms. Medians were 65.5 ms Rust and 65.4 ms native. An optimized Cargo example rebuild took 45.35 s during this run; this is Rust build time, distinct from plot setup and the 153 ms shared C DLL build.
+- Validation command: `cargo test -p mchprs_core --lib redpiler::tests::llvm_dll_executes_button_lamp_and_hands_off_reset_tick -- --nocapture`. This exercises actual DLL control/tick/publication, pending-event export, reset, and interpreted continuation. The test uses the locally built target DLL and skips when no DLL is present. Work counter is diagnostic only and can be printed with `MCHPRS_LLVM_DIAGNOSTICS=1`.
+- Actual target-plot admission command: `cargo run --profile bench -p mchprs_core --example check_llvm_zcore`. ZCore sampled compilation took 12,615.6 ms in that optimized run, then failed admission with `LLVM currently supports only static lever/button-to-lamp circuits`; `Compiler::is_active()` was false. The earlier Rust kernel result for the same ZCore fixture was 3,242.3 TPS (4,096 ticks, one final-reset-match run); it is not a paired trial with LLVM because ZCore cannot execute in this backend.
+- Decision: the generic executor is correct for this narrow circuit but is slower than sampled Rust even before publication. Do not enable it for the named benchmark plots or infer a gain. The next stage remains the plan's census-guided movement implementation: widen explicit support only after adding piston-state/scheduler parity and movement/handoff validation, then profile and specialize bounded hot paths. ZCore/FPU/Chungus TPS with LLVM remains unavailable because each is rejected before native activation.
+
+### ZCore admission work remaining
+
+The recorded ZCore census contains 16,834 piston actors, 13,169 movable tokens, 75,448 conditional arrangement links, 43,454 wire components, 966 repeaters, and 17,657 watched-wire strength slots. The present DLL has no representation for these records. Its tick also lacks the sampled runner's piston-event FIFO and motion phases. Admitting this Program based only on its operation/link tables would omit movement and produce incorrect results.
+
+The next implementation must serialize the piston bindings, token cells, arrangement links and flattened movement transitions/ranges, plus watched-wire and repeater records, using bounded binary tables. The native state then needs typed scheduled entries, piston-event ordering, motions and occupancy, arrangement contributions and input aggregates. Port `run_piston_events`, `set_token_pos`/`run_move_steps`, and `tick_motions` in the sampled runner's phase order, with publication and reset exporting live motion and pending work. Keep ZCore rejected until those paths are exercised against the Rust runner at intermediate ticks and across reset; the existing small-circuit TPS does not establish ZCore performance.
+
+The native tick no longer clears the operation counter before scheduled work: control operations since the previous tick now count toward the same limit, matching the sampled runner's accounting boundary. The DLL was rebuilt with Clang, and `cargo test -p mchprs_core --lib llvm_ -- --nocapture` passed the button/reset comparison and a test that exhausts the budget with controls before a scheduled callback. This fixes one invariant in the existing subset; it does not add support for ZCore or the remaining Program tables.
+
+### Pending tick import and read API
+
+The DLL interface now names its snapshot operations `ne_read_state` and `ne_read_pending`; `ne_tick` advances the engine. Rust reads state only for publication or reset and applies it to the host world. The ABI descriptor remains version 1 and the semantic version is now 3; the loader rejects older DLLs. `ne_import_tick` imports up to 64 initial typed button/lamp ticks, including duplicates and their priority/order. Delays must fit the sampled scheduler's 32 slots, zero-delay entries must use normal priority, and passive, untyped, stale, or unsupported component ticks are rejected before activation. Other component types and piston handoff remain unsupported.
+
+`cargo test -p mchprs_core --lib llvm_ -- --nocapture` passed four tests, including a powered button with a pre-existing release, per-tick comparison with interpreted execution, reset continuation, priority/FIFO duplicates, and rejection of an untyped entry. Rebuilding with the Clang/linker commands above took 160.7 ms on this run; the shared C source was 16,449 bytes, the object 5,305 bytes and the DLL 5,632 bytes. This build time excludes toolchain acquisition. The earlier TPS figures were obtained with the preceding DLL version and are not measurements of this version. No ZCore native throughput or movement parity is claimed.
+
+### C scheduler port
+
+The native scheduler now follows the sampled Rust scheduler's 32 delay buckets and four FIFO priorities. A free list reuses event slots, and per-component pending counters replace membership scans. Enqueue and pending checks take constant work; draining a callback checks at most four priorities, independent of circuit component count. `ne_read_pending` walks the queues in deadline/priority/FIFO order in O(128 + pending entries) work instead of repeatedly scanning the entire allocation. Event slots shrink from 32 to 8 bytes, with an additional four-byte pending counter per component and 1,024 bytes of queue heads/tails. The DLL semantic version is now 4, and `tick`/`read` remain the host boundary.
+
+The DLL rebuilt successfully with Clang `-O3 -Werror`, and the four existing LLVM tests passed with the new queue implementation. Added a 257-tick repeated button/lamp comparison to exercise ring wraparound and free-slot reuse, followed by pending-state comparison and 32 interpreted continuation ticks. This scheduler port is groundwork for large graphs; piston, arrangement, wire and repeater execution remain unported, and ZCore remains rejected.
+
+### Repeater callbacks in C
+
+Ported static repeater updates and scheduled callbacks directly from the sampled runner: all four delays, fixed locking, diode-output priority, rear-input transitions, and the rescheduled falling edge of short pulses. Repeaters can feed other repeaters or lamps through ordinary links. Side-lock inputs, movement and watched-wire dependencies remain rejected. Component record kind 4 carries repeater powered state plus delay/fixed-lock/diode flags in the two formerly reserved bytes; the descriptor layout stays unchanged and the DLL semantic version is 5. Native redstone publication now includes repeaters when IO-only publication is disabled.
+
+Corrected an existing exporter bug: Rust stores output ranges in falling/rising order, while the C record stores rising/falling order. The encoder now writes the correct order. The repeater comparison also exercises intentionally asymmetric output ranges so identical edge bodies cannot hide a reversal.
+
+`cargo test -p mchprs_core --lib llvm_ -- --nocapture` passed six tests. The focused repeater test subsequently passed all 32 combinations of delay, fixed locking, diode priority and symmetric/asymmetric output programs, comparing component states and typed pending scheduler entries after each of 96 ticks. The Clang/link build took 213.7 ms; C source 17,761 bytes, object 6,733 bytes, DLL 7,168 bytes. These are shared-executor build figures, not ZCore compilation or throughput. ZCore still requires native wire, arrangement and piston paths; it remains rejected before activation. No new TPS result is claimed.

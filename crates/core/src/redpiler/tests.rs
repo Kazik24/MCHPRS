@@ -78,6 +78,157 @@ fn compiled_button_matches_native_pulse_repeat_and_rearm() {
 }
 
 #[test]
+fn llvm_dll_executes_button_lamp_and_hands_off_reset_tick() {
+    if std::env::var_os("MCHPRS_LLVM_DLL").is_none() && !std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/native_engine.dll").exists() {
+        return;
+    }
+    let (mut reference, button, lamp, bounds) = button_world(ButtonFace::Floor, BlockDirection::North);
+    let (mut candidate, _, _, _) = button_world(ButtonFace::Floor, BlockDirection::North);
+    let mut compiler = Compiler::default();
+    compiler
+        .compile(
+            &candidate,
+            bounds,
+            CompilerOptions {
+                llvm: true,
+                ..Default::default()
+            },
+            Vec::new(),
+            Arc::new(TaskMonitor::default()),
+        )
+        .unwrap();
+    assert!(compiler.is_active());
+    crate::interaction::use_redstone(reference.get_block(button), &mut reference, button, None);
+    compiler.try_on_use_block(button).unwrap();
+    for tick in 1..=7 {
+        reference.tick_interpreted();
+        compiler.tick().unwrap();
+        compiler.try_flush(&mut candidate).unwrap();
+        assert_eq!(reference.get_block(button), candidate.get_block(button), "button tick {tick}");
+        assert_eq!(reference.get_block(lamp), candidate.get_block(lamp), "lamp tick {tick}");
+    }
+    compiler.try_reset(&mut candidate, bounds).unwrap();
+    assert_eq!(
+        reference.scheduler().iter_entries().collect::<Vec<_>>(),
+        candidate.scheduler().iter_entries().collect::<Vec<_>>()
+    );
+    for tick in 8..=22 {
+        reference.tick_interpreted();
+        candidate.tick_interpreted();
+        assert_eq!(reference.get_block(button), candidate.get_block(button), "reset button tick {tick}");
+        assert_eq!(reference.get_block(lamp), candidate.get_block(lamp), "reset lamp tick {tick}");
+    }
+}
+
+#[test]
+fn llvm_imports_pending_button_release_and_hands_it_back() {
+    if std::env::var_os("MCHPRS_LLVM_DLL").is_none() && !std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/native_engine.dll").exists() {
+        return;
+    }
+    let (mut reference, button, lamp, bounds) = button_world(ButtonFace::Floor, BlockDirection::North);
+    let (mut candidate, _, _, _) = button_world(ButtonFace::Floor, BlockDirection::North);
+    crate::interaction::use_redstone(reference.get_block(button), &mut reference, button, None);
+    crate::interaction::use_redstone(candidate.get_block(button), &mut candidate, button, None);
+    let pending = candidate.scheduler().iter_entries().collect();
+    let mut compiler = Compiler::default();
+    compiler.compile(&candidate, bounds, CompilerOptions { llvm: true, ..Default::default() }, pending, Arc::new(TaskMonitor::default())).unwrap();
+    candidate.clear_scheduled_ticks();
+    for tick in 1..=7 {
+        reference.tick_interpreted();
+        compiler.tick().unwrap();
+        compiler.try_flush(&mut candidate).unwrap();
+        assert_eq!(reference.get_block(button), candidate.get_block(button), "button tick {tick}");
+        assert_eq!(reference.get_block(lamp), candidate.get_block(lamp), "lamp tick {tick}");
+    }
+    compiler.try_reset(&mut candidate, bounds).unwrap();
+    assert_eq!(reference.scheduler().iter_entries().collect::<Vec<_>>(), candidate.scheduler().iter_entries().collect::<Vec<_>>());
+    for tick in 8..=22 {
+        reference.tick_interpreted();
+        candidate.tick_interpreted();
+        assert_eq!(reference.get_block(button), candidate.get_block(button), "button tick {tick}");
+        assert_eq!(reference.get_block(lamp), candidate.get_block(lamp), "lamp tick {tick}");
+    }
+}
+
+#[test]
+fn llvm_imported_ticks_preserve_priority_and_duplicates() {
+    if std::env::var_os("MCHPRS_LLVM_DLL").is_none() && !std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/native_engine.dll").exists() {
+        return;
+    }
+    let (mut world, button, _, bounds) = button_world(ButtonFace::Floor, BlockDirection::North);
+    let kind = Some(world.get_block(button).registry_id());
+    for (delay, priority) in [(5, TickPriority::Normal), (3, TickPriority::High), (5, TickPriority::Highest), (5, TickPriority::Highest)] {
+        world.restore_scheduled_tick(TickEntry { ticks_left: delay, tick_priority: priority, pos: button, block_type: kind });
+    }
+    let expected: Vec<_> = world.scheduler().iter_entries().collect();
+    let mut compiler = Compiler::default();
+    compiler.compile(&world, bounds, CompilerOptions { llvm: true, ..Default::default() }, expected.clone(), Arc::new(TaskMonitor::default())).unwrap();
+    world.clear_scheduled_ticks();
+    compiler.try_reset(&mut world, bounds).unwrap();
+    assert_eq!(expected, world.scheduler().iter_entries().collect::<Vec<_>>());
+    let mut stale = expected[0].clone();
+    stale.block_type = None;
+    assert!(compiler.compile(&world, bounds, CompilerOptions { llvm: true, ..Default::default() }, vec![stale], Arc::new(TaskMonitor::default())).is_err());
+    assert!(!compiler.is_active());
+}
+
+#[test]
+fn llvm_scheduler_wraps_and_reuses_slots_without_changing_pulses() {
+    if std::env::var_os("MCHPRS_LLVM_DLL").is_none() && !std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/native_engine.dll").exists() {
+        return;
+    }
+    let (mut reference, button, lamp, bounds) = button_world(ButtonFace::Floor, BlockDirection::North);
+    let (mut candidate, _, _, _) = button_world(ButtonFace::Floor, BlockDirection::North);
+    let mut compiler = Compiler::default();
+    compiler.compile(&candidate, bounds, CompilerOptions { llvm: true, ..Default::default() }, Vec::new(), Arc::new(TaskMonitor::default())).unwrap();
+    for tick in 0..257 {
+        if tick % 25 == 0 {
+            crate::interaction::use_redstone(reference.get_block(button), &mut reference, button, None);
+            compiler.try_on_use_block(button).unwrap();
+        }
+        reference.tick_interpreted();
+        compiler.tick().unwrap();
+        compiler.try_flush(&mut candidate).unwrap();
+        assert_eq!(reference.get_block(button), candidate.get_block(button), "button tick {tick}");
+        assert_eq!(reference.get_block(lamp), candidate.get_block(lamp), "lamp tick {tick}");
+    }
+    compiler.try_reset(&mut candidate, bounds).unwrap();
+    assert_eq!(reference.scheduler().iter_entries().collect::<Vec<_>>(), candidate.scheduler().iter_entries().collect::<Vec<_>>());
+    for tick in 0..32 {
+        reference.tick_interpreted();
+        candidate.tick_interpreted();
+        assert_eq!(reference.get_block(button), candidate.get_block(button), "reset button tick {tick}");
+        assert_eq!(reference.get_block(lamp), candidate.get_block(lamp), "reset lamp tick {tick}");
+    }
+}
+
+#[test]
+fn llvm_control_work_counts_toward_the_next_scheduled_tick_limit() {
+    if std::env::var_os("MCHPRS_LLVM_DLL").is_none() && !std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/native_engine.dll").exists() {
+        return;
+    }
+    let (mut world, lever, _, bounds) = button_world(ButtonFace::Floor, BlockDirection::North);
+    world.set_block(
+        lever,
+        Block::Lever { lever: Lever::new(LeverFace::Floor, BlockDirection::North, false) },
+    );
+    let mut compiler = Compiler::default();
+    compiler
+        .compile(&world, bounds, CompilerOptions { llvm: true, ..Default::default() }, Vec::new(), Arc::new(TaskMonitor::default()))
+        .unwrap();
+    compiler.try_on_use_block(lever).unwrap();
+    compiler.tick().unwrap();
+    compiler.try_on_use_block(lever).unwrap();
+    for _ in 0..3 {
+        compiler.tick().unwrap();
+    }
+    for _ in 0..500_000 {
+        compiler.try_on_use_block(lever).unwrap();
+    }
+    assert!(compiler.tick().is_err());
+}
+
+#[test]
 fn compiled_buttons_validate_every_supported_attachment() {
     let attachments = [
         (ButtonFace::Floor, BlockDirection::North),
@@ -133,6 +284,16 @@ fn reset_preserves_button_state_and_pending_release() {
 
 #[test]
 fn headless_pistons_preserve_entry_and_match_native_motion_and_handoff() {
+    check_piston_motion_and_handoff(false);
+}
+
+#[test]
+fn llvm_pistons_preserve_entry_motion_and_reset_handoff() {
+    if std::env::var_os("MCHPRS_LLVM_DLL").is_none() && !std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/native_engine.dll").exists() { return; }
+    check_piston_motion_and_handoff(true);
+}
+
+fn check_piston_motion_and_handoff(llvm: bool) {
     for (sticky, payload) in [
         (false, Block::Air),
         (true, Block::Air),
@@ -175,7 +336,7 @@ fn headless_pistons_preserve_entry_and_match_native_motion_and_handoff() {
             let bounds = (BlockPos::new(10, 10, 10), BlockPos::new(22, 20, 20));
             let mut compiler = Compiler::default();
             compiler
-                .compile(&compiled, bounds, CompilerOptions::default(), vec![], Arc::new(TaskMonitor::default()))
+                .compile(&compiled, bounds, CompilerOptions { llvm, ..Default::default() }, vec![], Arc::new(TaskMonitor::default()))
                 .unwrap();
             compiler.try_flush_complete(&mut compiled).unwrap();
             assert_eq!(compiled.get_block(base), native.get_block(base));

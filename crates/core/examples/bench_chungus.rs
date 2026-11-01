@@ -14,7 +14,7 @@ use mchprs_core::{
 #[path = "../test_support/chungus.rs"]
 mod support;
 
-fn run_sample(ticks: u32, sample: usize) -> serde_json::Value {
+fn run_sample(ticks: u32, sample: usize, llvm: bool) -> serde_json::Value {
     let mut native = support::init_world();
     let mut compiled = support::init_world();
     let bounds = native.get_corners();
@@ -43,19 +43,20 @@ fn run_sample(ticks: u32, sample: usize) -> serde_json::Value {
     positions.sort_unstable_by_key(|pos| (pos.x, pos.y, pos.z));
     let mut compiler = Compiler::default();
     let start = Instant::now();
-    compiler
+    let result = compiler
         .compile(
             &compiled,
             bounds,
-            CompilerOptions::default(),
+            CompilerOptions { llvm, publication:Some(mchprs_core::redpiler::PublicationMode::All), ..Default::default() },
             compiled.scheduler().iter_entries().collect(),
             Arc::new(TaskMonitor::default()),
-        )
-        .expect("Chungus compile rejected");
+        );
     let compile_seconds = start.elapsed().as_secs_f64();
+    if let Err(error) = result { return serde_json::json!({"status":"compile_rejected","backend":if llvm {"llvm"} else {"rust"},"reason":error.to_string(),"compile_seconds":compile_seconds}); }
     let mut native_time = Duration::ZERO;
     let mut compiled_time = Duration::ZERO;
     let mut publication_time = Duration::ZERO;
+    let mut changed_blocks = 0usize;
     for tick in 1..=ticks {
         let start = Instant::now();
         native.tick_interpreted();
@@ -74,11 +75,11 @@ fn run_sample(ticks: u32, sample: usize) -> serde_json::Value {
                 "Chungus block trace diverged at tick {tick}, {pos:?}"
             );
         }
-        native.take_block_changes();
+        changed_blocks += native.take_block_changes().len();
         compiled.take_block_changes();
     }
     serde_json::json!({
-        "sample":sample,"status":"passed","ticks":ticks,"checked_positions":positions.len(),
+        "sample":sample,"status":"passed","backend":if llvm {"llvm"} else {"rust"},"ticks":ticks,"checked_positions":positions.len(),"changed_blocks":changed_blocks,
         "compile_seconds":compile_seconds,"native_tps":ticks as f64/native_time.as_secs_f64(),
         "compiled_tick_tps":ticks as f64/compiled_time.as_secs_f64(),
         "compiled_publication_tps":ticks as f64/(compiled_time+publication_time).as_secs_f64(),
@@ -89,15 +90,15 @@ fn run_sample(ticks: u32, sample: usize) -> serde_json::Value {
 }
 
 fn main() {
-    assert!(cfg!(feature = "redpiler-full-publication"), "enable redpiler-full-publication");
+    let llvm=std::env::args().any(|arg|arg=="--llvm");
     let ticks: u32 = std::env::args().nth(1).map_or(512, |arg| arg.parse().expect("positive tick count"));
     let runs: usize = std::env::args().nth(2).map_or(3, |arg| arg.parse().expect("positive sample count"));
     assert!(ticks > 0 && runs > 0);
-    let output = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/redpiler-bench-results/chungus.json");
+    let output = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(if llvm {"../../target/redpiler-bench-results/chungus-llvm.json"} else {"../../target/redpiler-bench-results/chungus.json"});
     std::fs::create_dir_all(output.parent().unwrap()).unwrap();
     let mut reports = Vec::new();
     for sample in 1..=runs {
-        let report = run_sample(ticks, sample);
+        let report = run_sample(ticks, sample, llvm);
         println!("Chungus sample {sample}: {report}");
         reports.push(report);
         std::fs::write(&output, serde_json::to_vec_pretty(&reports).unwrap()).unwrap();

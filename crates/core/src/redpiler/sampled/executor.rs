@@ -521,6 +521,7 @@ impl Runtime {
                 if piston.sticky {
                     if let Some(slot) = self.pushing_motion(index) {
                         self.finish_token_part(slot);
+                        self.notify_home_watchers(index, false);
                         continue;
                     }
                 }
@@ -528,6 +529,7 @@ impl Runtime {
                     self.piston_head_present[index] = false;
                     self.notify_shape(self.program.piston_bindings[index].home_cell);
                 }
+                self.notify_home_watchers(index, false);
                 continue;
             }
             if self.piston_extended[index] || self.piston_head_present[index] || self.piston_head_moving[index] {
@@ -618,6 +620,8 @@ impl Runtime {
                 );
             }
             self.notify_shape(self.program.piston_bindings[index].home_cell);
+            // Empty head movement still delivers neighbor power callbacks.
+            self.notify_home_watchers(index, false);
             if token.is_some() {
                 self.notify_shape(self.program.piston_bindings[index].far_cell);
             }
@@ -1023,13 +1027,13 @@ impl Runtime {
         for group in &arrangements {
             let mut index = 0;
             let mut stride = 1;
-            for &token in &group.tokens {
+            for (axis, &token) in group.tokens.iter().enumerate() {
                 let record = &self.program.tokens[token];
                 let digit = token_position(token)
                     .and_then(|pos| record.cells.iter().position(|&cell| cell == pos))
                     .map_or(0, |cell| cell + 1);
-                index += digit * stride;
-                stride *= record.cells.len() + 1;
+                index += group.digit(axis, digit) * stride;
+                stride *= group.radix(axis, record.cells.len() + 1);
             }
             result.extend(group.inputs[index].iter().copied());
         }

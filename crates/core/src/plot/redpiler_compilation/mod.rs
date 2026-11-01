@@ -102,6 +102,10 @@ impl Plot {
         info!(plot_x = self.world.x, plot_z = self.world.z, snapshot_ms, ?options, "Redpiler started");
         self.scoreboard.set_redpiler_state(&self.players, RedpilerState::Compiling);
         self.scoreboard.set_redpiler_options(&self.players, &options);
+        let milestone = format!("Redpiler: snapshot ready ({} ms); compiling circuit", snapshot_ms);
+        for player in &self.players {
+            player.send_raw_system_message(crate::player::diagnostic_component(&milestone).to_string());
+        }
 
         let worker = thread::Builder::new()
             .name(format!("compile-{},{}", self.world.x, self.world.z))

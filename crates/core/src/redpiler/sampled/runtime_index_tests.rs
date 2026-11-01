@@ -365,6 +365,7 @@ fn sealed_program_validation_rejects_bad_output_ranges_and_flip_links() {
             side: false,
             silent: false,
             tokens: vec![0],
+            token_states: vec![],
             conditional_sources: vec![ArrangementSource::Component(0)],
             inputs: vec![vec![], vec![(ArrangementSource::Component(0), 0)]],
         });
