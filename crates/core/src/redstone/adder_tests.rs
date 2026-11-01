@@ -49,6 +49,7 @@ fn loaded() -> (PlotWorld, Vec<BlockPos>, Vec<BlockPos>, Vec<BlockPos>, BlockPos
     paste_clipboard(&mut world, &cb, anchor, false);
     (world, bank("A"), bank("B"), bank("O"), absolute(BlockPos::new(2, 4, 45)))
 }
+
 fn read_inputs(world: &PlotWorld, bank: &[BlockPos]) -> u16 {
     bank.iter().enumerate().fold(0, |value, (i, &p)| {
         let block = world.get_block(p);
@@ -56,6 +57,7 @@ fn read_inputs(world: &PlotWorld, bank: &[BlockPos]) -> u16 {
         value | ((block != Block::RedstoneBlock {}) as u16) << i
     })
 }
+
 fn read_output(world: &PlotWorld, bank: &[BlockPos]) -> Option<u16> {
     let mut value = 0;
     for (i, &pos) in bank.iter().enumerate() {
@@ -68,10 +70,12 @@ fn read_output(world: &PlotWorld, bank: &[BlockPos]) -> Option<u16> {
     }
     Some(value)
 }
+
 fn trigger(world: &mut PlotWorld, tick: BlockPos) {
     assert_eq!(world.get_block(tick), Block::RedstoneBlock {});
     crate::interaction::destroy(world.get_block(tick), world, tick);
 }
+
 fn set_inputs(world: &mut PlotWorld, a: &[BlockPos], b: &[BlockPos], va: u16, vb: u16) {
     for (bank, value) in [(a, va), (b, vb)] {
         for (i, &pos) in bank.iter().enumerate() {
@@ -92,6 +96,7 @@ fn set_inputs(world: &mut PlotWorld, a: &[BlockPos], b: &[BlockPos], va: u16, vb
         world.tick_interpreted();
     }
 }
+
 fn compare_java_output(world: &mut PlotWorld, out: &[BlockPos], reference: &str) -> Vec<Option<u16>> {
     let reference: serde_json::Value = serde_json::from_str(reference).unwrap();
     assert_eq!(

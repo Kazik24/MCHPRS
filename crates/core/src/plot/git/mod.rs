@@ -67,6 +67,7 @@ impl Reservation {
 fn mib(value: u64) -> usize {
     value.saturating_mul(1048576).min(usize::MAX as u64) as usize
 }
+
 fn limits() -> Limits {
     Limits {
         snapshot: mib(CONFIG.git_snapshot_max_mib.min(MAX_SNAPSHOT_MIB)),
@@ -115,6 +116,7 @@ struct Job {
     reply: SyncSender<Result<Reply>>,
     span: tracing::Span,
 }
+
 fn run_worker(receiver: Arc<Mutex<Receiver<Job>>>) {
     loop {
         let job = receiver.lock().unwrap().recv();
@@ -369,6 +371,7 @@ impl Plot {
         }
         ensure!(!self.git.locked, messages::GIT_CHECKOUT_LOCKED);
         ensure!(self.git.pending.is_none(), messages::GIT_OPERATION_RUNNING);
+
         if args.first() == Some(&"diff") && args.get(1) == Some(&"inspect") {
             ensure!(args.len() == 5 || args.len() == 6, messages::USAGE_GIT_DIFF_INSPECT);
             let pos = BlockPos::new(args[2].parse()?, args[3].parse()?, args[4].parse()?);
@@ -795,6 +798,7 @@ impl Plot {
             }
         })
     }
+
     fn git_safe_position(&self, pos: PlayerPos) -> Option<PlayerPos> {
         // Above the build is always available: creative/spectator plots permit flight.
         let safe = PlayerPos::new(pos.x.floor() + 0.5, super::PLOT_BLOCK_HEIGHT as f64 + 1.0, pos.z.floor() + 0.5);
@@ -867,6 +871,7 @@ impl Plot {
             self.git.sessions.remove(&uuid);
         }
     }
+
     pub(super) fn hide_git(&mut self, player: usize, remove: bool) {
         let uuid = self.players[player].uuid;
         if let Some(session) = self.git.sessions.get_mut(&uuid) {
@@ -983,6 +988,7 @@ fn parse_log(args: &[&str]) -> Result<(bool, usize, Option<usize>)> {
     }
     Ok((all, count, page))
 }
+
 fn parse_search(args: &[&str]) -> Result<(bool, usize, String)> {
     let mut index = 0;
     let mut all = false;

@@ -22,39 +22,48 @@ impl<W: World> CommandBlockHost for W {
     fn block(&self, pos: BlockPos) -> mchprs_blocks::blocks::Block {
         self.get_block(pos)
     }
+
     fn entity(&self, pos: BlockPos) -> Option<&CommandBlockEntity> {
         match self.get_block_entity(pos) {
             Some(BlockEntity::CommandBlock(entity)) => Some(entity),
             _ => None,
         }
     }
+
     fn entity_mut(&mut self, pos: BlockPos) -> Option<&mut CommandBlockEntity> {
         match self.get_block_entity_mut(pos) {
             Some(BlockEntity::CommandBlock(entity)) => Some(entity),
             _ => None,
         }
     }
+
     fn create_entity(&mut self, pos: BlockPos) {
         self.set_block_entity(pos, BlockEntity::CommandBlock(Box::default()));
     }
+
     fn powered(&self, pos: BlockPos) -> bool {
         BlockFace::values().into_iter().any(|face| {
             let neighbor = pos.offset(face);
             super::has_redstone_power(self.get_block(neighbor), self, neighbor, face)
         })
     }
+
     fn pending(&mut self, pos: BlockPos) -> bool {
         self.pending_tick_at(pos)
     }
+
     fn schedule(&mut self, pos: BlockPos) {
         self.schedule_half_tick(pos, 1, TickPriority::Normal);
     }
+
     fn logical_tick(&self) -> u64 {
         self.piston_state().logical_tick
     }
+
     fn execute(&mut self, pos: BlockPos, command: &str, source: &str) -> Result<(), String> {
         self.execute_command_block_at(pos, command, source)
     }
+
     fn notify(&mut self, pos: BlockPos) {
         super::update_surrounding_blocks(self, pos);
         super::comparator::update_far_neighbors(self, pos);

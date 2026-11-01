@@ -435,6 +435,7 @@ impl World for PlotWorld {
     fn execute_command_block(&mut self, command: &str, source: &str) -> Result<(), String> {
         self.execute_command_block_at(BlockPos::new(0, 0, 0), command, source)
     }
+
     fn execute_command_block_at(&mut self, pos: BlockPos, command: &str, source: &str) -> Result<(), String> {
         if self.scratch.suppress_commands {
             return Err("command-block execution is suppressed in scratch worlds".into());
@@ -449,6 +450,7 @@ impl World for PlotWorld {
         self.command_messages.push(message);
         Ok(())
     }
+
     fn command_block_output_state(&self) -> Option<crate::world::CommandBlockOutputState> {
         Some(crate::world::CommandBlockOutputState {
             window: self.command_output_window,
@@ -458,6 +460,7 @@ impl World for PlotWorld {
             limited: self.command_output_limits_enabled,
         })
     }
+
     fn publish_command_block_output(
         &mut self,
         state: &crate::world::CommandBlockOutputState,
@@ -509,6 +512,7 @@ impl World for PlotWorld {
         if old.is_sign() && !new.is_sign() && matches!(self.get_block_entity(pos), Some(BlockEntity::Sign(_))) {
             self.delete_block_entity(pos);
         }
+
         let chunk = &mut self.chunks[chunk_index];
         let changed = chunk.set_block((pos.x & 0xF) as u32, pos.y as u32, (pos.z & 0xF) as u32, block);
         let local_pos = BlockPos::new(pos.x & 15, pos.y, pos.z & 15);
@@ -529,6 +533,7 @@ impl World for PlotWorld {
             // Keep an existing sign's text when only its block state changes.
             chunk.set_block_entity(local_pos, BlockEntity::Sign(Default::default()));
         }
+
         if changed || self.screen_updates.as_ref().is_some_and(|updates| updates.authoritative) {
             if let Some(previous) = previous_screen {
                 self.track_screen_change(pos, previous);
@@ -659,6 +664,7 @@ impl World for PlotWorld {
     fn piston_state(&self) -> &PistonState {
         &self.piston_state
     }
+
     fn piston_state_mut(&mut self) -> &mut PistonState {
         self.piston_index.get_mut().invalidate();
         self.instant_pistons.clear();
@@ -940,6 +946,7 @@ impl World for PlotWorld {
             self.sounds.push(sound);
         }
     }
+
     fn container_opened(&mut self, pos: BlockPos, ty: mchprs_blocks::block_entities::ContainerType) {
         if ty == mchprs_blocks::block_entities::ContainerType::Chest && self.open_chests.insert(pos) {
             crate::sound::play(self, pos, "block.chest.open", 0.5, 0.95, None);

@@ -197,6 +197,7 @@ impl Plot {
         if self.use_compass(player, player_block_placement.hand, yaw, pitch) {
             return;
         }
+
         let block_pos = BlockPos::from_packed(player_block_placement.pos);
         if !Plot::in_plot_bounds(self.world.x, self.world.z, block_pos.x, block_pos.z) {
             self.restore_neighbor_chunk(player, block_pos);
@@ -205,6 +206,7 @@ impl Plot {
             }
             return;
         }
+
         if !(0..super::PLOT_BLOCK_HEIGHT).contains(&block_pos.y)
             || !self.container_in_reach(player, block_pos)
             || !(0..=1).contains(&player_block_placement.hand)
@@ -347,6 +349,7 @@ impl Plot {
             }
             return;
         }
+
         if self.git_checkout_locked() {
             let pos = BlockPos::from_packed(player_digging.pos);
             if Plot::in_plot_bounds(self.world.x, self.world.z, pos.x, pos.z) && (0..super::PLOT_BLOCK_HEIGHT).contains(&pos.y) {

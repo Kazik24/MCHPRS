@@ -4,17 +4,21 @@ use super::*;
 fn io_pack() -> PathBuf {
     root().join("test_data/instant-pistons-io")
 }
+
 fn io_fixture(id: &str) -> Value {
     manifests_at(&io_pack()).into_iter().find(|m| m["id"] == id).unwrap()
 }
+
 fn run(id: &str, name: &str, rotation: u32, capture: bool) -> Value {
     let m = io_fixture(id);
     episode(&m, &named_case(&m, name), rotation, "game", capture)
 }
+
 fn extended(v: &Value) -> bool {
     assert!(matches!(v["name"].as_str(), Some("piston" | "sticky_piston")));
     v["properties"]["extended"] == "true"
 }
+
 fn repeater_bits(v: &Value) -> u16 {
     if let Some(bank) = v.as_array() {
         return bank.iter().enumerate().fold(0, |n, (i, b)| n | (repeater_bits(b) << i));
@@ -22,6 +26,7 @@ fn repeater_bits(v: &Value) -> u16 {
     assert_eq!(v["name"], "repeater");
     (v["properties"]["powered"] == "false") as u16
 }
+
 fn memory_bits(bank: &Value) -> Option<u16> {
     bank.as_array().unwrap().iter().enumerate().try_fold(0, |n, (i, b)| {
         if b["name"] == "moving_piston" {

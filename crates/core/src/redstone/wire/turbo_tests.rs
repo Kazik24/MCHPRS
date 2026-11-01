@@ -23,51 +23,67 @@ impl World for UntouchedWorld {
     fn get_block_raw(&self, _: BlockPos) -> u32 {
         panic!("world read")
     }
+
     fn set_block_raw(&mut self, _: BlockPos, _: u32) -> bool {
         panic!("world write")
     }
+
     fn delete_block_entity(&mut self, _: BlockPos) {
         panic!("entity deletion")
     }
+
     fn get_block_entity(&self, _: BlockPos) -> Option<&BlockEntity> {
         panic!("entity read")
     }
+
     fn get_block_entity_mut(&mut self, _: BlockPos) -> Option<&mut BlockEntity> {
         panic!("entity write")
     }
+
     fn piston_state(&self) -> &PistonState {
         panic!("piston read")
     }
+
     fn piston_state_mut(&mut self) -> &mut PistonState {
         panic!("piston write")
     }
+
     fn set_block_entity(&mut self, _: BlockPos, _: BlockEntity) {
         panic!("entity write")
     }
+
     fn get_chunk(&self, _: i32, _: i32) -> Option<&Chunk> {
         panic!("chunk read")
     }
+
     fn get_chunk_mut(&mut self, _: i32, _: i32) -> Option<&mut Chunk> {
         panic!("chunk write")
     }
+
     fn schedule_tick(&mut self, _: BlockPos, _: u32, _: TickPriority) {
         panic!("tick scheduled")
     }
+
     fn schedule_half_tick(&mut self, _: BlockPos, _: u32, _: TickPriority) {
         panic!("tick scheduled")
     }
+
     fn pending_tick_at(&mut self, _: BlockPos) -> bool {
         panic!("scheduler read")
     }
+
     fn block_action(&mut self, _: BlockPos, _: BlockAction) {
         panic!("block action")
     }
+
     fn is_cursed(&self) -> bool {
         panic!("world flag read")
     }
+
     fn execute_command_block(&mut self, _: &str, _: &str) -> Result<(), String> {
         panic!("command")
     }
+
     fn play_sound(&mut self, _: BlockPos, _: i32, _: i32, _: f32, _: f32) {
         panic!("sound")
     }

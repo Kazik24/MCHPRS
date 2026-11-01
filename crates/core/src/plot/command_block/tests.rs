@@ -40,6 +40,7 @@ fn offline_replay_retains_all_output_without_enabling_other_commands() {
     assert!(world.execute_command_block("stop", "@").is_err());
     assert!(world.execute_command_block(&"x".repeat(131_069), "@").is_err());
 }
+
 fn place(world: &mut PlotWorld, pos: BlockPos, name: &str, command: &str, auto: bool, conditional: bool) {
     let mut block = Block::from_name(name).unwrap();
     block.set_properties(std::collections::HashMap::from([
@@ -56,11 +57,13 @@ fn place(world: &mut PlotWorld, pos: BlockPos, name: &str, command: &str, auto: 
         })),
     );
 }
+
 fn advance(world: &mut PlotWorld, ticks: usize) {
     for _ in 0..ticks {
         world.tick_interpreted();
     }
 }
+
 fn success(world: &PlotWorld, pos: BlockPos) -> i32 {
     match world.get_block_entity(pos).unwrap() {
         BlockEntity::CommandBlock(entity) => entity.success_count,

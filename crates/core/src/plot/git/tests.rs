@@ -16,9 +16,11 @@ impl TempRoot {
         fs::create_dir(&root).unwrap();
         Self(root)
     }
+
     fn db(&self) -> Connection {
         Connection::open(self.0.join("p-1,2/repository.sqlite")).unwrap()
     }
+
     fn repo(&self) -> Repository {
         Repository::open(&self.0, (-1, 2), test_limits()).unwrap()
     }
@@ -29,6 +31,7 @@ impl Drop for TempRoot {
         fs::remove_dir_all(&self.0).unwrap();
     }
 }
+
 fn test_limits() -> Limits {
     Limits {
         snapshot: 16 * 1048576,
@@ -36,6 +39,7 @@ fn test_limits() -> Limits {
         total_bytes: 128 * 1048576,
     }
 }
+
 fn empty() -> Snapshot {
     Snapshot {
         version: 1,
@@ -57,9 +61,11 @@ fn empty() -> Snapshot {
         },
     }
 }
+
 fn pos(x: i32, y: i32, z: i32) -> BlockPos {
     BlockPos::new(-super::super::PLOT_WIDTH * 16 + x, y, 2 * super::super::PLOT_WIDTH * 16 + z)
 }
+
 fn set(snapshot: &mut Snapshot, x: i32, y: i32, z: i32, block: Block, entity: Option<BlockEntity>) {
     let index = (x / 16 * super::super::PLOT_WIDTH + z / 16) as usize;
     let mut chunk = Chunk::load(
@@ -73,9 +79,11 @@ fn set(snapshot: &mut Snapshot, x: i32, y: i32, z: i32, block: Block, entity: Op
     }
     snapshot.data.chunk_data[index] = chunk.save();
 }
+
 fn compare(a: Snapshot, b: Snapshot) -> Diff {
     Diff::new("a".repeat(64), "b".repeat(64), a, b, Reservation::new(0).unwrap()).unwrap()
 }
+
 fn command_entity(command: &str) -> BlockEntity {
     BlockEntity::CommandBlock(Box::new(CommandBlockEntity {
         command: command.into(),

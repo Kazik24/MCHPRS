@@ -172,6 +172,7 @@ impl PlotWorld {
             )
             .unwrap()
     }
+
     fn prepare_waveform(&self, probes: Vec<Probe>, active: Option<(u64, usize)>) -> Result<Recorder, String> {
         if active.is_some() && self.piston_state.phase != AdvancePhase::BetweenTicks {
             return Err("Finish the current tick with /adv 1, then retry.".into());
@@ -184,6 +185,7 @@ impl PlotWorld {
         }
         Ok(next)
     }
+
     pub(in crate::plot) fn reset_waveform(&mut self) {
         if self.waveform.capture.is_none() {
             return;
@@ -195,6 +197,7 @@ impl PlotWorld {
             values,
         );
     }
+
     pub(in crate::plot) fn record_waveform_change(&mut self, pos: BlockPos) {
         for watched in self.waveform.affected(pos) {
             let value = signal_value(self, watched);
@@ -298,6 +301,7 @@ impl Plot {
             "Could not save probes; try again.".into()
         })
     }
+
     fn set_waveform(&mut self, probes: Vec<Probe>, active: Option<(u64, usize)>) -> Result<(), String> {
         let next = self.world.prepare_waveform(probes, active)?;
         if next.probes != self.world.waveform.probes {
@@ -306,6 +310,7 @@ impl Plot {
         self.world.waveform = next;
         Ok(())
     }
+
     fn clear_waveform_history(&mut self) -> Result<String, String> {
         if self.world.waveform.capture.is_some() && self.world.piston_state.phase != AdvancePhase::BetweenTicks {
             return Err("Finish the current tick with /adv 1, then retry.".into());
@@ -316,6 +321,7 @@ impl Plot {
         }
         Ok("Waveform history cleared; watches and recording state kept".into())
     }
+
     fn reset_waveform_settings(&mut self, confirmed: bool) -> Result<String, String> {
         if !confirmed {
             return Ok("This removes all watches and history; use /waveform reset confirm.".into());
@@ -324,6 +330,7 @@ impl Plot {
         self.players.iter_mut().for_each(|player| player.redstone_tools.waveform = None);
         Ok("Waveform reset; watches and history removed, recording off".into())
     }
+
     pub(in crate::plot) fn handle_waveform(&mut self, player: usize, args: &[&str]) -> Result<String, String> {
         check_syntax(args)?;
         if args == ["help"] {
@@ -341,6 +348,7 @@ impl Plot {
         }
         let enabled = self.world.waveform.enabled();
         let ticks = self.world.waveform.capture.as_ref().map_or(0, |c| c.ticks);
+
         match args {
             [] | ["status"] => Ok(format!(
                 "Waveform: {}; {} probes; {} ticks; {} records; {}; {} bytes reserved; your allowance: {}",
@@ -376,6 +384,7 @@ impl Plot {
                 })
                 .collect::<Vec<_>>()
                 .join("\n")),
+
             ["web"] => {
                 let mut url = reqwest::Url::parse(&CONFIG.waveform_public_url).map_err(|_| "Viewer URL is invalid; ask staff.")?;
                 url.query_pairs_mut()
@@ -383,6 +392,7 @@ impl Plot {
                     .append_pair("y", &self.world.z.to_string());
                 Ok(url.to_string())
             }
+
             ["off"] => {
                 self.players[player].redstone_tools.waveform = None;
                 self.world.waveform.off();
@@ -390,6 +400,7 @@ impl Plot {
             }
             ["reset"] => self.reset_waveform_settings(false),
             ["reset", "confirm"] => self.reset_waveform_settings(true),
+
             ["on"] | ["on", _] => {
                 if self.redpiler.is_active() || self.compiling_redpiler() {
                     return Err("Use /rp reset before starting waveform recording.".into());
@@ -420,6 +431,7 @@ impl Plot {
                 ))
             }
             ["clear"] => self.clear_waveform_history(),
+
             ["add", name, ..] => {
                 let (signals, limit) = actor.waveform_limits()?;
                 if self.world.waveform.probes.len() >= signals {

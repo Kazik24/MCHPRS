@@ -277,6 +277,7 @@ mod tests {
     fn base() -> BlockPos {
         BlockPos::new(30, 30, 30)
     }
+
     fn routes(cell: u32) -> PowerRoutes {
         let source = WireNeighbor {
             pos: base(),
@@ -288,11 +289,13 @@ mod tests {
             strong: [source; 6],
         }; 11]
     }
+
     fn retract(cache: &mut InstantPistonCache) {
         cache.begin_retract(base(), BlockFace::East, [1, 2]);
         cache.completed(base(), BlockFace::East, 1, 2, false, true);
         cache.completed(base(), BlockFace::East, 0, 1, false, true);
     }
+
     fn proven() -> InstantPistonCache {
         let mut cache = InstantPistonCache::default();
         retract(&mut cache);

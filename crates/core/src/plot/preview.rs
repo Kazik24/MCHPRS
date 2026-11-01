@@ -91,6 +91,7 @@ pub(in crate::plot) fn reconcile_markers(
             .collect();
         viewer.send_packet(&CDestroyEntities { entity_ids }.encode());
     }
+
     for (&pos, &kind) in wanted {
         if changes >= max_changes || (changes > 0 && started.elapsed() >= Duration::from_micros(500)) {
             break;

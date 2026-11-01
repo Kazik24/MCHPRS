@@ -270,10 +270,12 @@ impl Plot {
             }
         }
     }
+
     fn tick(&mut self) -> bool {
         if self.compiling_redpiler() {
             return false;
         }
+
         self.timings.tick();
         if self.redpiler.is_active() {
             if let Err(error) = self.redpiler.tick_with_world(&mut self.world) {
@@ -290,6 +292,7 @@ impl Plot {
         } else {
             self.world.tick_interpreted();
         }
+
         true
     }
 

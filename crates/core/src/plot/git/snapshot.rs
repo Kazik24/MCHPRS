@@ -273,6 +273,7 @@ impl Write for HashWriter {
         self.0.update(bytes);
         Ok(bytes.len())
     }
+
     fn flush(&mut self) -> io::Result<()> {
         Ok(())
     }

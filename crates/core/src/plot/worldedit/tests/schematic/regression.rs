@@ -270,14 +270,17 @@ fn sponge_v2_and_v3_command_entities_keep_text_flags_and_validate_types() {
     ]);
     assert!(BlockEntity::from_nbt(&data).is_err());
 }
+
 fn load_blob(blob: &nbt::Blob) -> Result<WorldEditClipboard> {
     let mut bytes = vec![];
     blob.to_gzip_writer(&mut bytes).unwrap();
     load_schematic(Cursor::new(bytes))
 }
+
 fn base(version: i32) -> nbt::Blob {
     nbt::Blob::from_gzip_reader(&mut Cursor::new(encode(version, vec![-128, 1]))).unwrap()
 }
+
 fn root(blob: &mut nbt::Blob) -> &mut Compound {
     if blob.content.contains_key("Schematic") {
         let Value::Compound(c) = blob.content.get_mut("Schematic").unwrap() else {
@@ -288,6 +291,7 @@ fn root(blob: &mut nbt::Blob) -> &mut Compound {
         &mut blob.content
     }
 }
+
 fn blocks(blob: &mut nbt::Blob) -> &mut Compound {
     let root = root(blob);
     if matches!(root.get("Version"), Some(Value::Int(3))) {
@@ -299,6 +303,7 @@ fn blocks(blob: &mut nbt::Blob) -> &mut Compound {
         root
     }
 }
+
 fn assert_roundtrip(cb: &WorldEditClipboard) {
     let mut bytes = vec![];
     write_schematic(&mut bytes, cb).unwrap();

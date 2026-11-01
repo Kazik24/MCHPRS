@@ -6,6 +6,7 @@ fn world() -> PlotWorld {
     let chunks = (0..PLOT_WIDTH).flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x, z))).collect();
     PlotWorld::from_chunks(0, 0, chunks, Default::default())
 }
+
 fn copy_saved(world: &mut PlotWorld) -> PlotWorld {
     let data = PlotData {
         tps: Tps::Limited(20),

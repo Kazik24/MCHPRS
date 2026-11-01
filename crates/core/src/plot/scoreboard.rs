@@ -202,6 +202,7 @@ impl Scoreboard {
 
         let old_lines = std::mem::replace(&mut self.current_state, lines);
         let old_readers = std::mem::replace(&mut self.git_readers, git_readers);
+
         for player in players {
             let previous = visible_lines(&old_lines, old_readers.contains(&player.uuid));
             let current = visible_lines(&self.current_state, self.git_readers.contains(&player.uuid));
@@ -342,6 +343,7 @@ impl Scoreboard {
             messages::SCOREBOARD_OFF
         });
         self.metrics.git = git_line(status.git_head, status.git_restoring, status.git_recovery);
+
         self.set_lines(players, self.lines(), status.git_readers);
     }
 }

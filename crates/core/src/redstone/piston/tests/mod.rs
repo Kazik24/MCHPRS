@@ -389,15 +389,19 @@ fn containers_cannot_be_pushed_or_pulled_in_any_state() {
         world.set_block(ahead, Block::Air);
     }
 }
+
 fn base() -> BlockPos {
     BlockPos::new(40, 30, 40)
 }
+
 fn named(name: &str) -> Block {
     Block::from_name(name).unwrap()
 }
+
 fn piston(facing: BlockFacing, sticky: bool, extended: bool) -> RedstonePiston {
     RedstonePiston { facing, sticky, extended }
 }
+
 fn start(world: &mut PlotWorld, pos: BlockPos, facing: BlockFacing, payload: Block) {
     world.set_block(
         pos,
@@ -415,11 +419,13 @@ fn start(world: &mut PlotWorld, pos: BlockPos, facing: BlockFacing, payload: Blo
     crate::redstone::update(world.get_block(pos), world, pos, None);
     world.picotick_advance(1);
 }
+
 fn settle(world: &mut PlotWorld) {
     for _ in 0..8 {
         world.tick_interpreted();
     }
 }
+
 fn extended(world: &PlotWorld, pos: BlockPos) -> bool {
     matches!(
         world.get_block(pos),
@@ -763,6 +769,7 @@ fn dust_does_not_attach_to_moving_heads_or_payloads() {
         }
     }
 }
+
 fn world_observer() -> Block {
     Block::Observer {
         observer: RedstoneObserver {

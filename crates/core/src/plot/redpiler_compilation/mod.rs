@@ -102,6 +102,7 @@ impl Plot {
         info!(plot_x = self.world.x, plot_z = self.world.z, snapshot_ms, ?options, "Redpiler started");
         self.scoreboard.set_redpiler_state(&self.players, RedpilerState::Compiling);
         self.scoreboard.set_redpiler_options(&self.players, &options);
+
         let worker = thread::Builder::new()
             .name(format!("compile-{},{}", self.world.x, self.world.z))
             .spawn(move || {
@@ -135,6 +136,7 @@ impl Plot {
         }
         let job = self.compilation.take().unwrap();
         let completed = job.worker.join();
+
         if job.monitor.cancelled() {
             self.reset_timings();
             return;
@@ -146,6 +148,7 @@ impl Plot {
                 return;
             }
         };
+
         if let Err(error) = output.result {
             if let Some(position) = rejected_position(&error) {
                 for player in 0..self.players.len() {

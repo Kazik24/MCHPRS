@@ -357,6 +357,7 @@ impl Views {
     fn update(&mut self, now: Instant, interval: Duration, mut request: impl FnMut(Request)) -> Vec<(u128, Snapshot)> {
         self.dirty = false;
         let mut deliveries = Vec::new();
+
         self.pending.retain(|plot, pending| match pending.response.try_recv() {
             Ok(packets) => {
                 self.last_request.insert(*plot, now);
@@ -383,6 +384,7 @@ impl Views {
             Err(TryRecvError::Disconnected) => false,
             Err(TryRecvError::Empty) => now.duration_since(pending.started) < REQUEST_TIMEOUT,
         });
+
         let mut interests: BTreeMap<Coord, HashMap<Coord, Vec<(u128, u64)>>> = BTreeMap::new();
         for (&player, chunks) in &self.players {
             for (&coord, slot) in chunks {

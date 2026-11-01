@@ -91,6 +91,7 @@ pub(in crate::plot) fn ray_trace(
     let direction = [-yaw.sin() * pitch.cos(), -pitch.sin(), yaw.cos() * pitch.cos()];
     let origin = [eye.x, eye.y, eye.z];
     let mut cell = [eye.x.floor() as i32, eye.y.floor() as i32, eye.z.floor() as i32];
+
     let step = direction.map(|d| if d < 0.0 { -1 } else { 1 });
     let delta = direction.map(|d| if d.abs() < 1e-12 { f64::INFINITY } else { 1.0 / d.abs() });
     let mut next = [0.0; 3];
@@ -102,6 +103,7 @@ pub(in crate::plot) fn ray_trace(
             (f64::from(boundary) - origin[axis]) / direction[axis]
         };
     }
+
     let mut entry = 0.0;
     loop {
         let pos = BlockPos::new(cell[0], cell[1], cell[2]);

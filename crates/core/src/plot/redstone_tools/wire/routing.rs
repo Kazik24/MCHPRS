@@ -544,45 +544,59 @@ impl World for View<'_> {
     fn get_block_raw(&self, pos: BlockPos) -> u32 {
         self.edits.get(&pos).copied().unwrap_or_else(|| self.original(pos)).get_id()
     }
+
     fn set_block_raw(&mut self, _: BlockPos, _: u32) -> bool {
         unreachable!("read-only routing view")
     }
+
     fn delete_block_entity(&mut self, _: BlockPos) {
         unreachable!("read-only routing view")
     }
+
     fn get_block_entity(&self, _: BlockPos) -> Option<&BlockEntity> {
         None
     }
+
     fn get_block_entity_mut(&mut self, _: BlockPos) -> Option<&mut BlockEntity> {
         unreachable!("read-only routing view")
     }
+
     fn set_block_entity(&mut self, _: BlockPos, _: BlockEntity) {
         unreachable!("read-only routing view")
     }
+
     fn piston_state(&self) -> &PistonState {
         &self.piston_state
     }
+
     fn piston_state_mut(&mut self) -> &mut PistonState {
         unreachable!("read-only routing view")
     }
+
     fn get_chunk(&self, _: i32, _: i32) -> Option<&Chunk> {
         None
     }
+
     fn get_chunk_mut(&mut self, _: i32, _: i32) -> Option<&mut Chunk> {
         unreachable!("read-only routing view")
     }
+
     fn schedule_tick(&mut self, _: BlockPos, _: u32, _: TickPriority) {
         unreachable!("read-only routing view")
     }
+
     fn schedule_half_tick(&mut self, _: BlockPos, _: u32, _: TickPriority) {
         unreachable!("read-only routing view")
     }
+
     fn pending_tick_at(&mut self, _: BlockPos) -> bool {
         unreachable!("read-only routing view")
     }
+
     fn block_action(&mut self, _: BlockPos, _: crate::world::BlockAction) {
         unreachable!("read-only routing view")
     }
+
     fn play_sound(&mut self, _: BlockPos, _: i32, _: i32, _: f32, _: f32) {
         unreachable!("read-only routing view")
     }

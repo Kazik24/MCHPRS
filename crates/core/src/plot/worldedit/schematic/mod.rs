@@ -67,18 +67,21 @@ pub(super) fn parse_block(input: &str) -> Option<Block> {
     })?;
     Some(Block::from_id(id))
 }
+
 fn integer(root: &Compound, key: &str) -> Result<i32> {
     match root.get(key) {
         Some(nbt::Value::Int(n)) => Ok(*n),
         _ => bail!(messages::schematic_expected_integer(key)),
     }
 }
+
 fn compound<'a>(root: &'a Compound, key: &str) -> Result<&'a Compound> {
     match root.get(key) {
         Some(nbt::Value::Compound(c)) => Ok(c),
         _ => bail!(messages::schematic_expected_compound(key)),
     }
 }
+
 fn vector(root: &Compound, key: &str) -> Result<[i32; 3]> {
     match root.get(key) {
         Some(nbt::Value::IntArray(v)) if v.len() == 3 => Ok([v[0], v[1], v[2]]),
@@ -292,6 +295,7 @@ fn read_schematic(mut file: impl Read, max_cells: Option<u32>) -> Result<(WorldE
     );
     decode_schematic(&schema).with_context(|| format!("Sponge v{} DataVersion {}", schema.version, schema.data_version))
 }
+
 fn decode_schematic(schema: &Schema<'_>) -> Result<(WorldEditClipboard, SchematicImportWarnings)> {
     let [size_x, size_y, size_z] = schema.dimensions;
     let entries = size_x
@@ -440,6 +444,7 @@ pub fn save_schematic(file_name: &str, clipboard: &WorldEditClipboard) -> Result
     let file = File::create(path)?;
     write_schematic(file, clipboard)
 }
+
 fn write_schematic(mut file: impl std::io::Write, clipboard: &WorldEditClipboard) -> Result<()> {
     let size_x = clipboard.size_x;
     let size_y = clipboard.size_y;

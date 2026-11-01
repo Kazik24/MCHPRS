@@ -44,6 +44,7 @@ impl Drop for NotificationGuard {
         });
     }
 }
+
 pub(crate) fn notification_source(pos: Option<BlockPos>) -> NotificationGuard {
     NotificationGuard(RECORDER.with(|r| r.borrow_mut().as_mut().and_then(|r| std::mem::replace(&mut r.source, pos))))
 }
@@ -63,6 +64,7 @@ impl Drop for CallbackGuard {
         }
     }
 }
+
 pub(crate) fn callback(world: &impl World, block: Block, pos: BlockPos, dir: Option<BlockFace>) -> CallbackGuard {
     let (active, parents) = RECORDER.with(|r| {
         r.borrow().as_ref().map_or((false, None), |r| {
@@ -87,9 +89,11 @@ pub(crate) fn callback(world: &impl World, block: Block, pos: BlockPos, dir: Opt
     }
     CallbackGuard(active, parents.is_some())
 }
+
 pub(crate) fn record_event(world: &impl World, kind: &str, event: PistonEvent) {
     record_operation(world, kind, json!(event));
 }
+
 pub(crate) fn record_request(world: &impl World, event: PistonEvent) {
     let context = RECORDER.with(|r| r.borrow().as_ref().filter(|r| r.requests).map(|r| (r.parents.clone(), r.source)));
     if let Some((parents, source)) = context {
@@ -100,6 +104,7 @@ pub(crate) fn record_request(world: &impl World, event: PistonEvent) {
         );
     }
 }
+
 pub(crate) fn record_operation(world: &impl World, kind: &str, data: Value) {
     RECORDER.with(|r| {
         if let Some(r) = r.borrow_mut().as_mut() {
@@ -122,9 +127,11 @@ pub(crate) fn record_operation(world: &impl World, kind: &str, data: Value) {
 pub(crate) fn capture_at(positions: &[BlockPos], f: impl FnOnce()) -> Vec<Value> {
     capture_selected(Some(positions.to_vec()), f)
 }
+
 pub(crate) fn capture_all(f: impl FnOnce()) -> Vec<Value> {
     capture_selected(None, f)
 }
+
 fn capture_selected(positions: Option<Vec<BlockPos>>, f: impl FnOnce()) -> Vec<Value> {
     struct Guard;
     impl Drop for Guard {
@@ -163,6 +170,7 @@ fn piston_request_trace_is_only_enabled_for_explicit_full_capture() {
     assert_eq!(entries[0]["kind"], "event_request");
     assert_eq!(entries[0]["data"]["event"]["action"], "Retract");
 }
+
 fn context(action: usize, operation: usize) {
     RECORDER.with(|r| {
         if let Some(r) = r.borrow_mut().as_mut() {
@@ -171,27 +179,34 @@ fn context(action: usize, operation: usize) {
         }
     });
 }
+
 fn take_callbacks() -> Vec<Value> {
     RECORDER.with(|r| r.borrow_mut().as_mut().map(|r| std::mem::take(&mut r.entries)).unwrap_or_default())
 }
+
 fn root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
 }
+
 fn pack() -> PathBuf {
     root().join("test_data/instant-pistons")
 }
+
 fn read(path: &Path) -> Value {
     serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap()
 }
+
 pub(crate) fn manifests() -> Vec<Value> {
     manifests_at(&pack())
 }
+
 fn manifests_at(directory: &Path) -> Vec<Value> {
     all_manifests_at(directory)
         .into_iter()
         .filter(|manifest| !manifest["cases"].as_array().unwrap().is_empty())
         .collect()
 }
+
 fn all_manifests_at(directory: &Path) -> Vec<Value> {
     let mut paths: Vec<_> = std::fs::read_dir(directory.join("fixtures"))
         .unwrap()
@@ -200,6 +215,7 @@ fn all_manifests_at(directory: &Path) -> Vec<Value> {
     paths.sort();
     paths.iter().map(|p| read(p)).collect()
 }
+
 fn triple(v: &Value) -> BlockPos {
     BlockPos::new(
         v[0].as_i64().unwrap() as i32,
@@ -216,12 +232,15 @@ fn transform(mut p: BlockPos, dims: (u32, u32, u32), rotation: u32) -> BlockPos 
     }
     p + ORIGIN
 }
+
 fn dims(cb: &WorldEditClipboard) -> (u32, u32, u32) {
     (cb.size_x, cb.size_y, cb.size_z)
 }
+
 fn local_at(i: usize, d: (u32, u32, u32)) -> BlockPos {
     BlockPos::new(i as i32 % d.0 as i32, (i as u32 / (d.0 * d.2)) as i32, (i as u32 / d.0 % d.2) as i32)
 }
+
 fn empty() -> PlotWorld {
     PlotWorld::from_chunks(
         0,
@@ -230,6 +249,7 @@ fn empty() -> PlotWorld {
         Default::default(),
     )
 }
+
 pub(crate) fn load(m: &Value, rotation: u32) -> (PlotWorld, Vec<BlockPos>, (u32, u32, u32)) {
     let bytes = std::fs::read(root().join(m["fixture"].as_str().unwrap())).unwrap();
     assert_eq!(m["sha256"], format!("{:x}", Sha256::digest(&bytes)));
@@ -252,6 +272,7 @@ pub(crate) fn load(m: &Value, rotation: u32) -> (PlotWorld, Vec<BlockPos>, (u32,
             }
         }
     }
+
     fn ports(v: &Value, watch: &mut BTreeSet<(i32, i32, i32)>) {
         if let Some(a) = v.as_array() {
             if a.len() == 3 && a[0].is_number() {
@@ -306,14 +327,17 @@ pub(crate) fn load(m: &Value, rotation: u32) -> (PlotWorld, Vec<BlockPos>, (u32,
         d,
     )
 }
+
 pub(crate) fn quiet(w: &PlotWorld) -> bool {
     w.scheduler().iter_entries().next().is_none() && w.piston_state().events.is_empty() && w.piston_state().motions.is_empty()
 }
+
 fn cell(w: &PlotWorld, p: BlockPos) -> Value {
     let b = w.get_block(p);
     json!({"name":b.get_name(),"properties":b.properties(),"raw":b.get_id(),"entity":w.get_block_entity(p),
         "piston_power":match b {Block::Piston{piston}=>Some(super::piston::should_piston_extend(w,piston.facing,p)),_=>None}})
 }
+
 pub(crate) fn observe(w: &PlotWorld, m: &Value, d: (u32, u32, u32), r: u32) -> Value {
     fn walk(w: &PlotWorld, v: &Value, d: (u32, u32, u32), r: u32) -> Value {
         if v[0].is_number() {
@@ -331,10 +355,12 @@ pub(crate) fn observe(w: &PlotWorld, m: &Value, d: (u32, u32, u32), r: u32) -> V
             .collect(),
     )
 }
+
 pub(crate) fn physical(w: &PlotWorld, watch: &[BlockPos]) -> Value {
     // All watched physical cells and global work at completed boundaries.
     json!({"cells":watch.iter().map(|&p|cell(w,p)).collect::<Vec<_>>(),"scheduled":w.scheduler().iter_entries().collect::<Vec<_>>(),"piston_state":w.piston_state()})
 }
+
 pub(crate) fn step(w: &mut PlotWorld, mode: &str, action: usize, operation: &mut usize, mut snap: impl FnMut(&PlotWorld, usize)) {
     let target = w.piston_state().logical_tick + 1;
     for _ in 0..200_000 {
@@ -353,6 +379,7 @@ pub(crate) fn step(w: &mut PlotWorld, mode: &str, action: usize, operation: &mut
     }
     panic!("bounded stepping failed at {target} with {mode}");
 }
+
 pub(crate) fn mutate(w: &mut PlotWorld, op: &Value, d: (u32, u32, u32), r: u32) {
     if op["op"] == "construct_retracted" {
         let bases: Vec<_> = op["bases"].as_array().unwrap().iter().map(|v| transform(triple(v), d, r)).collect();
@@ -414,6 +441,7 @@ pub(crate) fn mutate(w: &mut PlotWorld, op: &Value, d: (u32, u32, u32), r: u32) 
         _ => panic!("unknown action {op}"),
     }
 }
+
 fn episode(m: &Value, c: &Value, r: u32, mode: &str, capture: bool) -> Value {
     let mut extended = m.clone();
     if let Some(observations) = c["observations"].as_object() {
@@ -540,12 +568,15 @@ pub(crate) fn balanced_nanotick_variant() -> (PlotWorld, Value, Vec<BlockPos>, (
     assert!(quiet(&world));
     (world, manifest, watch, d)
 }
+
 fn named_case(m: &Value, id: &str) -> Value {
     m["cases"].as_array().unwrap().iter().find(|c| c["id"] == id).unwrap().clone()
 }
+
 fn power(v: &Value) -> u8 {
     v["properties"]["power"].as_str().unwrap().parse().unwrap()
 }
+
 fn bit(v: &Value) -> Option<u16> {
     match v["name"].as_str().unwrap() {
         "air" => Some(1),
@@ -554,6 +585,7 @@ fn bit(v: &Value) -> Option<u16> {
         n => panic!("invalid output {n}"),
     }
 }
+
 fn applied(t: &Value) -> Vec<&Value> {
     t["samples"]
         .as_array()

@@ -127,6 +127,7 @@ impl PlotWorld {
             self.screen_updates = Some(updates);
             return;
         }
+
         let started = Instant::now();
         let mut enqueue = std::time::Duration::ZERO;
         self.update_stats.flushes += 1;
