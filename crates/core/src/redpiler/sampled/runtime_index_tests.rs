@@ -34,6 +34,17 @@ fn compact_optional_indexes_preserve_component_zero() {
 }
 
 #[test]
+fn projection_token_rows_preserve_order_when_inline_capacity_is_exceeded() {
+    let mut program = lamp_program();
+    let cell = BlockPos::new(5, 10, 10);
+    program.tokens = (0..3).map(|_| PistonToken { block: Block::Stone {}, position: None, cells: vec![cell] }).collect();
+    let runtime = program.start();
+    let row = &runtime.program.cell_tokens[runtime.program.projection_indices[&cell]];
+    assert!(row.spilled());
+    assert_eq!(row.as_slice(), &[0, 1, 2]);
+}
+
+#[test]
 fn initial_phase_does_not_suppress_the_first_update() {
     let mut runtime = lamp_program().start();
     runtime.update_once(0);
@@ -158,8 +169,8 @@ fn piston_bindings_keep_home_far_and_component_ids_attached_to_their_candidates(
     assert_eq!(compiled.piston_by_component[5], None);
     assert_eq!(compiled.piston_bindings[0].component, left_component);
     assert_eq!(compiled.piston_bindings[0].mate, Some(1));
-    assert_eq!(compiled.cell_tokens[compiled.piston_bindings[0].home_cell], [0]);
-    assert_eq!(compiled.cell_tokens[compiled.piston_bindings[0].far_cell], [1]);
+    assert_eq!(compiled.cell_tokens[compiled.piston_bindings[0].home_cell].as_slice(), &[0]);
+    assert_eq!(compiled.cell_tokens[compiled.piston_bindings[0].far_cell].as_slice(), &[1]);
     assert_eq!(compiled.piston_bindings[0].home_heads, [2]);
     assert_eq!(compiled.piston_bindings[0].far_heads, [3]);
     assert!(compiled.projection_positions.contains(&shared_far));
@@ -375,4 +386,8 @@ fn sealed_program_validation_rejects_bad_output_ranges_and_flip_links() {
     let mut bad_side = make_program();
     bad_side.movement_flips[0].side = !bad_side.movement_flips[0].side;
     assert_eq!(bad_side.validate().unwrap_err().reason, "movement flip does not match its link");
+
+    let mut bad_plan = make_program();
+    bad_plan.movement_transitions[0].delta += 1;
+    assert_eq!(bad_plan.validate().unwrap_err().reason, "invalid movement plan transition");
 }

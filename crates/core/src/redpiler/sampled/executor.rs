@@ -234,7 +234,7 @@ impl Runtime {
     }
 
     fn notify_home_watchers(&mut self, piston: usize, shape_only: bool) {
-        let count = self.program.home_watchers.get(piston).map_or(0, Vec::len);
+        let count = self.program.home_watchers.get(piston).map_or(0, |watchers| watchers.len());
         for index in 0..count {
             let watcher = self.program.home_watchers[piston][index];
             if !self.consume_operation(self.program.positions[watcher]) {
@@ -823,20 +823,19 @@ impl Runtime {
         for &component in &self.program.token_piston_components[token] {
             self.updated_in_phase[component] = 0;
         }
-        let count = self.program.token_movement_groups.get(token).map_or(0, Vec::len);
-        for index in 0..count {
-            let (group, axis) = self.program.token_movement_groups[token][index];
-            let record = &self.program.movement_groups[group].axes[axis];
-            let before = self.group_arrangements[group];
-            let delta = (cell + 1) * record.stride;
-            let after = if arriving { before + delta } else { before - delta };
-            self.group_arrangements[group] = after;
-            let state = if arriving { after } else { before };
-            let flips = if arriving {
-                record.arrive[state].clone()
-            } else {
-                record.depart[state].clone()
+        let transitions = self.program.movement_cells.get(token).and_then(|cells| cells.get(cell)).cloned().unwrap_or(0..0);
+        for index in transitions {
+            let record = &self.program.movement_transitions[index];
+            let before = self.group_arrangements[record.group];
+            let after = if arriving { before.checked_add(record.delta) } else { before.checked_sub(record.delta) };
+            let Some(after) = after.filter(|&state| before < record.states && state < record.states) else {
+                self.failure = Some(ScratchError { position: self.program.tokens[token].position, reason: "invalid movement transition" });
+                return;
             };
+            let state = if arriving { after } else { before };
+            let base = if arriving { record.arrive } else { record.depart };
+            let flips = self.program.movement_ranges[base + state].clone();
+            self.group_arrangements[record.group] = after;
             for index in flips {
                 let flip = self.program.movement_flips[index];
                 if !self.consume_operation(self.program.positions[flip.target]) {

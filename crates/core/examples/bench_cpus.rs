@@ -37,7 +37,7 @@ fn outputs(world: &PlotWorld, cpu: cpus::Cpu) -> Value {
     json!(words.pop().unwrap().1)
 }
 
-fn run_sample(cpu: cpus::Cpu, ticks: u32, sample: usize) -> Value {
+fn run_sample(cpu: cpus::Cpu, ticks: u32, sample: usize, kernel_only: bool) -> Value {
     let wait_for_trace = std::env::var_os("MCHPRS_BENCH_WAIT_FOR_TRACE").is_some();
     let diagnostic = wait_for_trace || std::env::var_os("MCHPRS_BENCH_ALLOW_DIVERGENCE").is_some();
     let import = Instant::now();
@@ -96,51 +96,79 @@ fn run_sample(cpu: cpus::Cpu, ticks: u32, sample: usize) -> Value {
     let mut compiled_ticks = Duration::ZERO;
     let mut publication = Duration::ZERO;
     let mut actual = vec![initial];
-    for tick in 1..=ticks {
+    if kernel_only {
         let begin = Instant::now();
-        compiler.tick().unwrap();
-        compiled_ticks += begin.elapsed();
-        let begin = Instant::now();
-        compiler.try_flush(&mut world).unwrap();
-        publication += begin.elapsed();
-        let observed = outputs(&world, cpu);
-        if cfg!(feature = "redpiler-full-publication") && observed != expected[tick as usize] && first_difference.is_none() {
-            first_difference = Some(json!({"tick":tick,"native":expected[tick as usize],"compiled":observed}));
+        for _ in 0..ticks {
+            compiler.tick().unwrap();
         }
-        actual.push(observed);
+        compiled_ticks = begin.elapsed();
+        if wait_for_trace {
+            eprintln!("trace-complete pid={}", std::process::id());
+            let mut line = String::new();
+            std::io::stdin().read_line(&mut line).unwrap();
+        }
+    } else {
+        for tick in 1..=ticks {
+            let begin = Instant::now();
+            compiler.tick().unwrap();
+            compiled_ticks += begin.elapsed();
+            let begin = Instant::now();
+            compiler.try_flush(&mut world).unwrap();
+            publication += begin.elapsed();
+            let observed = outputs(&world, cpu);
+            if cfg!(feature = "redpiler-full-publication") && observed != expected[tick as usize] && first_difference.is_none() {
+                first_difference = Some(json!({"tick":tick,"native":expected[tick as usize],"compiled":observed}));
+            }
+            actual.push(observed);
+        }
     }
     assert!(compiler.is_active(), "compiled run must not fall back to native");
-    let (reset_publication_ms, final_reset_difference) = if cfg!(feature = "redpiler-full-publication") {
+    let (reset_publication_ms, final_reset_difference) = if cfg!(feature = "redpiler-full-publication") && !kernel_only {
         (Value::Null, None)
     } else {
-        // Redstone-only publication omits RAM piston state; reset forces a complete projection.
+        // Reset projects the complete state after runs without full per-tick publication.
         let begin = Instant::now();
-        assert!(!compiler.current_flags().unwrap().update, "reset requires the full fixture bounds when updates are enabled");
+        assert!(
+            !compiler.current_flags().unwrap().update,
+            "reset requires the full fixture bounds when updates are enabled"
+        );
         compiler.try_reset(&mut world, (cpu.origin, cpu.origin)).unwrap();
         let duration = begin.elapsed().as_secs_f64() * 1000.0;
         let final_output = outputs(&world, cpu);
-        let difference = (final_output != *expected.last().unwrap()).then(|| json!({
-            "tick":ticks,"native":expected.last().unwrap(),"compiled_after_full_reset":final_output
-        }));
+        if kernel_only {
+            actual.push(final_output.clone());
+        }
+        let difference = (final_output != *expected.last().unwrap()).then(|| {
+            json!({
+                "tick":ticks,"native":expected.last().unwrap(),"compiled_after_full_reset":final_output
+            })
+        });
         (json!(duration), difference)
     };
     let compiled_total = compiled_ticks + publication;
-    let status = if diagnostic { "diagnostic_only" }
-        else if cfg!(feature = "redpiler-full-publication") {
-            if first_difference.is_some() { "output_divergence" } else { "passed" }
-        } else if final_reset_difference.is_some() { "output_divergence" } else { "final_reset_match" };
+    let status = if diagnostic {
+        "diagnostic_only"
+    } else if first_difference.is_some() || final_reset_difference.is_some() {
+        "output_divergence"
+    } else if cfg!(feature = "redpiler-full-publication") && !kernel_only {
+        "passed"
+    } else {
+        "final_reset_match"
+    };
     json!({"status":status,"diagnostic_only":diagnostic,"sample":sample,
         "fixture":cpu.schematic,"sha256":cpu.sha256,"ticks":ticks,"native_output_changes":native_changes,
         "native_preparation_ticks":native_preparation,"native_import_ms":native_import.as_secs_f64()*1000.0,
         "compiled_import_ms":compiled_import.as_secs_f64()*1000.0,"compile_ms":compile.as_secs_f64()*1000.0,
         "admission_wall_ms":admission_wall.as_secs_f64()*1000.0,
         "native_ms":native_ticks.as_secs_f64()*1000.0,"compiled_tick_ms":compiled_ticks.as_secs_f64()*1000.0,
-        "publication_ms":publication.as_secs_f64()*1000.0,
+        "publication_ms":if kernel_only { Value::Null } else { json!(publication.as_secs_f64()*1000.0) },
         "native_tps":ticks as f64/native_ticks.as_secs_f64(),"compiled_tick_tps":ticks as f64/compiled_ticks.as_secs_f64(),
-        "publication_visibility":if cfg!(feature = "redpiler-full-publication") { "complete" } else { "redstone-only" },
-        "output_validation":if cfg!(feature = "redpiler-full-publication") { "per-tick-published" } else { "final-reset-only" },
+        "execution_mode":if kernel_only { "kernel-only" } else { "tick-and-publication" },
+        "publication_visibility":if kernel_only { "final-reset-only" } else if cfg!(feature = "redpiler-full-publication") { "complete" } else { "redstone-only" },
+        "output_validation":if cfg!(feature = "redpiler-full-publication") && !kernel_only { "per-tick-published" } else { "final-reset-only" },
+        "published_output_ticks":if kernel_only { json!([0,ticks]) } else { json!((0..=ticks).collect::<Vec<_>>()) },
         "reset_publication_ms":reset_publication_ms,"final_reset_difference":final_reset_difference,
-        "compiled_publication_tps":ticks as f64/compiled_total.as_secs_f64(),
+        "compiled_publication_tps":if kernel_only { Value::Null } else { json!(ticks as f64/compiled_total.as_secs_f64()) },
         "first_difference":first_difference,"native_outputs":expected,"published_outputs":actual})
 }
 
@@ -164,6 +192,11 @@ fn main() {
     };
     let ticks: u32 = args.get(2).map(|v| v.parse().unwrap()).unwrap_or(512);
     let runs: usize = args.get(3).map(|v| v.parse().unwrap()).unwrap_or(3);
+    let kernel_only = match args.get(4).map(String::as_str) {
+        None => false,
+        Some("kernel") => true,
+        _ => panic!("expected optional mode: kernel"),
+    };
     assert!(ticks > 0 && runs > 0);
     let continue_on_divergence = std::env::var_os("MCHPRS_BENCH_ALLOW_DIVERGENCE").is_some();
     let provenance = provenance();
@@ -171,16 +204,21 @@ fn main() {
     std::fs::create_dir_all(&destination).unwrap();
     let mut results = Vec::new();
     for sample in 1..=runs {
-        let mut result = run_sample(cpus::CPUS[index], ticks, sample);
+        let mut result = run_sample(cpus::CPUS[index], ticks, sample, kernel_only);
         eprintln!(
-            "{name} sample {sample}: status={} native TPS={} compiled {} publication TPS={} compile ms={}",
-            result["status"], result["native_tps"], result["publication_visibility"], result["compiled_publication_tps"], result["compile_ms"]
+            "{name} sample {sample}: status={} native TPS={} kernel TPS={} compiled {} publication TPS={} compile ms={}",
+            result["status"],
+            result["native_tps"],
+            result["compiled_tick_tps"],
+            result["publication_visibility"],
+            result["compiled_publication_tps"],
+            result["compile_ms"]
         );
         let passed = result["status"] == "passed" || result["status"] == "final_reset_match";
         result.as_object_mut().unwrap().insert("provenance".into(), provenance.clone());
         results.push(result);
         std::fs::write(
-            destination.join(format!("{name}-production.json")),
+            destination.join(format!("{name}-{}.json", if kernel_only { "kernel" } else { "production" })),
             serde_json::to_vec_pretty(&results).unwrap(),
         )
         .unwrap();

@@ -141,7 +141,7 @@ pub(in super::super) fn run(
                 }
             }
         }
-        program.home_watchers.push(watchers);
+        program.home_watchers.push(watchers.into_iter().collect());
     }
 
     let mut watched_by_node = vec![None; program.positions.len()];

@@ -94,6 +94,13 @@ impl Runtime {
                 values.len()
             );
         }
+        fn small_rows(name: &str, values: &Vec<smallvec::SmallVec<[usize; 2]>>) {
+            let entries: usize = values.iter().map(|row| row.len()).sum();
+            let spilled = values.iter().filter(|row| row.spilled());
+            let payload_capacity: usize = spilled.map(|row| row.capacity()).sum();
+            let bytes = values.capacity() * std::mem::size_of::<smallvec::SmallVec<[usize; 2]>>() + payload_capacity * std::mem::size_of::<usize>();
+            eprintln!("Redpiler memory: program.{name} rows={} entries={entries} spilled_payload_capacity={payload_capacity} buffer_bytes={bytes}", values.len());
+        }
         macro_rules! vectors {
             ($owner:expr, $scope:literal, $($field:ident),+ $(,)?) => { $(vector($scope, stringify!($field), &($owner).$field);)+ };
         }
@@ -120,6 +127,8 @@ impl Runtime {
             side_links,
             movement_steps,
             movement_wires,
+            movement_transitions,
+            movement_ranges,
             effective_links
         );
         rows!(
@@ -132,13 +141,14 @@ impl Runtime {
             reactive_by_source,
             reactive_neighbours,
             source_watchers,
-            home_watchers,
             token_cells,
-            cell_tokens,
-            cell_pistons,
-            cell_observers,
-            token_piston_components
+            token_piston_components,
+            movement_cells
         );
+        small_rows("home_watchers", &self.program.home_watchers);
+        small_rows("cell_tokens", &self.program.cell_tokens);
+        small_rows("cell_pistons", &self.program.cell_pistons);
+        small_rows("cell_observers", &self.program.cell_observers);
         vectors!(
             self,
             "runtime",

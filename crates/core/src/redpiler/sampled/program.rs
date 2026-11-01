@@ -1,5 +1,6 @@
 use super::{Runtime, ScratchError};
 use mchprs_blocks::{BlockPos, blocks::Block};
+use smallvec::SmallVec;
 use std::collections::HashMap;
 use std::num::NonZeroUsize;
 
@@ -142,6 +143,15 @@ pub(super) struct MovementAxis {
 }
 
 #[derive(Clone)]
+pub(super) struct MovementTransition {
+    pub(super) group: usize,
+    pub(super) delta: usize,
+    pub(super) depart: usize,
+    pub(super) arrive: usize,
+    pub(super) states: usize,
+}
+
+#[derive(Clone)]
 pub(super) struct MovementGroup {
     /// token axes and their movement-step ranges for one joint arrangement group.
     pub(super) axes: Vec<MovementAxis>,
@@ -255,11 +265,11 @@ pub(crate) struct Program {
     /// per projection cell, token indices occupying that cell in any legal position.
     pub(super) token_cells: Vec<Vec<usize>>,
     /// per token, projection-cell indices it can occupy.
-    pub(super) cell_tokens: Vec<Vec<usize>>,
+    pub(super) cell_tokens: Vec<SmallVec<[usize; 2]>>,
     /// per projection cell, piston indices whose base or home occupies that cell.
-    pub(super) cell_pistons: Vec<Vec<usize>>,
+    pub(super) cell_pistons: Vec<SmallVec<[usize; 2]>>,
     /// per projection cell, observer component indices watching that cell.
-    pub(super) cell_observers: Vec<Vec<usize>>,
+    pub(super) cell_observers: Vec<SmallVec<[usize; 2]>>,
     /// projection-cell-indexed scenery blocks, with air for cells without static geometry.
     pub(super) cell_geometry: Vec<Block>,
     /// per token, piston component indices whose motion can move that token.
@@ -284,12 +294,15 @@ pub(crate) struct Program {
     pub(super) movement_flips: Vec<ArrangementFlip>,
     /// per token, mapping movement-group indices to that token's group-axis index.
     pub(super) token_movement_groups: Vec<Vec<(usize, usize)>>,
+    pub(super) movement_cells: Vec<Vec<std::ops::Range<usize>>>,
+    pub(super) movement_transitions: Vec<MovementTransition>,
+    pub(super) movement_ranges: Vec<std::ops::Range<usize>>,
     /// token-dependent electrical links and their active arrangement states.
     pub(super) arrangement_links: Vec<ArrangementLink>,
     /// per source component, listing components notified by source changes.
     pub(super) source_watchers: Vec<Vec<usize>>,
     /// per piston component, listing components notified by changes around its home cell.
-    pub(super) home_watchers: Vec<Vec<usize>>,
+    pub(super) home_watchers: Vec<SmallVec<[usize; 2]>>,
     /// component-indexed world positions; index is the canonical component ID throughout the program.
     pub(super) positions: Vec<BlockPos>,
     /// initial component blocks, parallel to `positions` by component index.
@@ -539,6 +552,38 @@ impl Program {
                 }
             }
         }
+        self.movement_ranges.clear();
+        let mut tables = Vec::with_capacity(self.movement_groups.len());
+        for group in &self.movement_groups {
+            let mut axes = Vec::with_capacity(group.axes.len());
+            for axis in &group.axes {
+                let depart = self.movement_ranges.len();
+                self.movement_ranges.extend(axis.depart.iter().cloned());
+                let arrive = self.movement_ranges.len();
+                self.movement_ranges.extend(axis.arrive.iter().cloned());
+                axes.push((depart, arrive));
+            }
+            tables.push(axes);
+        }
+        self.movement_transitions.clear();
+        self.movement_cells.clear();
+        for (token, associations) in self.token_movement_groups.iter().enumerate() {
+            let mut cells = Vec::with_capacity(self.tokens[token].cells.len());
+            for cell in 0..self.tokens[token].cells.len() {
+                let start = self.movement_transitions.len();
+                for &(group, axis) in associations {
+                    let axis_record = &self.movement_groups[group].axes[axis];
+                    let delta = (cell + 1).checked_mul(axis_record.stride).ok_or(ScratchError {
+                        position: self.tokens[token].position,
+                        reason: "movement transition capacity overflow",
+                    })?;
+                    let (depart, arrive) = tables[group][axis];
+                    self.movement_transitions.push(MovementTransition { group, delta, depart, arrive, states: axis_record.depart.len() });
+                }
+                cells.push(start..self.movement_transitions.len());
+            }
+            self.movement_cells.push(cells);
+        }
         self.validate_input_bound()
     }
 
@@ -590,19 +635,19 @@ impl Program {
             .iter()
             .map(|token| token.cells.iter().map(|pos| self.projection_indices[pos]).collect())
             .collect();
-        self.cell_tokens = vec![vec![]; cells];
+        self.cell_tokens = vec![SmallVec::new(); cells];
         for (token, cells) in self.token_cells.iter().enumerate() {
             for &cell in cells {
                 self.cell_tokens[cell].push(token);
             }
         }
-        self.cell_pistons = vec![vec![]; cells];
+        self.cell_pistons = vec![SmallVec::new(); cells];
         for (piston, record) in self.pistons.iter().enumerate() {
             for pos in [record.base, record.home] {
                 self.cell_pistons[self.projection_indices[&pos]].push(piston);
             }
         }
-        self.cell_observers = vec![vec![]; cells];
+        self.cell_observers = vec![SmallVec::new(); cells];
         for (component, block) in self.initial.iter().enumerate() {
             if let Block::Observer { observer } = block
                 && let Some(&cell) = self.projection_indices.get(&self.positions[component].offset(observer.facing.into()))
@@ -1040,6 +1085,9 @@ impl Program {
             movement_groups: Vec::new(),
             movement_flips: Vec::new(),
             token_movement_groups: Vec::new(),
+            movement_cells: Vec::new(),
+            movement_transitions: Vec::new(),
+            movement_ranges: Vec::new(),
             arrangement_links: Vec::new(),
             source_watchers: vec![vec![]; initial.len()],
             home_watchers: Vec::new(),
@@ -1146,6 +1194,30 @@ impl Program {
             }
             group_states.push(states);
         }
+        if self.movement_cells.len() != self.tokens.len() || self.token_movement_groups.len() != self.tokens.len() {
+            return Err(invalid("invalid movement plan dimensions"));
+        }
+        for (token, cells) in self.movement_cells.iter().enumerate() {
+            if cells.len() != self.tokens[token].cells.len() {
+                return Err(invalid("invalid movement plan cells"));
+            }
+            for (cell, range) in cells.iter().enumerate() {
+                let records = self.movement_transitions.get(range.clone()).ok_or_else(|| invalid("invalid movement plan range"))?;
+                let associations = &self.token_movement_groups[token];
+                if records.len() != associations.len() {
+                    return Err(invalid("invalid movement plan length"));
+                }
+                for (record, &(group, axis)) in records.iter().zip(associations) {
+                    let axis = self.movement_groups.get(group).and_then(|g| g.axes.get(axis)).ok_or_else(|| invalid("invalid movement plan axis"))?;
+                    let depart = record.depart.checked_add(record.states).and_then(|end| self.movement_ranges.get(record.depart..end));
+                    let arrive = record.arrive.checked_add(record.states).and_then(|end| self.movement_ranges.get(record.arrive..end));
+                    if axis.token != token || record.group != group || (cell + 1).checked_mul(axis.stride) != Some(record.delta)
+                        || depart != Some(axis.depart.as_slice()) || arrive != Some(axis.arrive.as_slice()) {
+                        return Err(invalid("invalid movement plan transition"));
+                    }
+                }
+            }
+        }
         for link in &self.arrangement_links {
             if link.target >= nodes || !valid_source(link.source) || link.attenuation > 15 || link.group >= self.movement_groups.len() {
                 return Err(invalid("invalid sealed arrangement link"));
@@ -1201,7 +1273,7 @@ impl Program {
                 }
             }
         }
-        for list in self.source_watchers.iter().chain(&self.home_watchers).chain(&self.reactive_neighbours) {
+        for list in self.source_watchers.iter().map(Vec::as_slice).chain(self.home_watchers.iter().map(SmallVec::as_slice)).chain(self.reactive_neighbours.iter().map(Vec::as_slice)) {
             if list.iter().any(|&node| node >= nodes) {
                 return Err(invalid("invalid notification reference"));
             }
