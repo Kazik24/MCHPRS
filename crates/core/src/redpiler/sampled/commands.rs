@@ -78,7 +78,7 @@ impl CommandBlockHost for Runtime {
                 Block::Observer { observer } if observer.facing != dir.into() => {}
                 Block::RedstoneWire { .. } => {
                     self.refresh_wire_power(component, self.input_strength(component));
-                    if let Some(watch) = self.program.watched_by_component[component] {
+                    if let Some(watch) = self.program.watched_by_component[component].map(|index| index.get() - 1) {
                         self.check_watched_wire(watch);
                     }
                 }

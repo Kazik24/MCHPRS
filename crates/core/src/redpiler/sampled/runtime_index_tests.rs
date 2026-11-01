@@ -1,8 +1,8 @@
+use super::{Operation, program::ElectricalLink};
 use super::{
     Program,
     compiler::{PistonActor, PistonToken},
 };
-use super::{Operation, program::ElectricalLink};
 use crate::plot::{PLOT_WIDTH, PlotWorld};
 use crate::redpiler::{Compiler, CompilerOptions, TaskMonitor};
 use crate::world::{World, storage::Chunk};
@@ -20,34 +20,57 @@ fn lamp_program() -> Program {
 }
 
 #[test]
+fn compact_optional_indexes_preserve_component_zero() {
+    let runtime = lamp_program().start();
+    let cell = runtime.program.component_cells[0];
+    assert_eq!(runtime.program.cell_components[cell].unwrap().get(), 1);
+    assert_eq!(runtime.program.cell_components[cell].map(|index| index.get() - 1), Some(0));
+    assert!(runtime.program.repeater_by_component.iter().all(Option::is_none));
+    assert_eq!(
+        std::mem::size_of_val(&runtime.program.cell_components[cell]),
+        std::mem::size_of::<usize>()
+    );
+    assert_eq!(std::mem::size_of_val(&runtime.updated_in_phase[0]), std::mem::size_of::<u64>());
+}
+
+#[test]
+fn initial_phase_does_not_suppress_the_first_update() {
+    let mut runtime = lamp_program().start();
+    runtime.update_once(0);
+    runtime.update_once(0);
+    assert_eq!(runtime.deliveries, 1);
+    assert_ne!(runtime.updated_in_phase[0], 0);
+}
+
+#[test]
 fn phase_stamps_suppress_only_the_same_component_in_the_same_phase() {
     let mut runtime = lamp_program().start();
     runtime.phase = 41;
 
     runtime.update_once(2);
     runtime.update_once(2);
-    assert_eq!(runtime.updated_in_phase, [None, None, Some(41)]);
+    assert_eq!(runtime.updated_in_phase, [0, 0, 41]);
     assert_eq!(runtime.deliveries, 1);
 
     runtime.begin_phase();
     runtime.update_once(2);
     assert_eq!(runtime.phase, 42);
-    assert_eq!(runtime.updated_in_phase, [None, None, Some(42)]);
+    assert_eq!(runtime.updated_in_phase, [0, 0, 42]);
     assert_eq!(runtime.deliveries, 2);
 }
 
 #[test]
-fn phase_stamp_wrap_clears_stale_marks_before_phase_zero() {
+fn phase_stamp_wrap_clears_stale_marks_and_restarts_at_one() {
     let mut runtime = lamp_program().start();
     runtime.phase = u64::MAX;
-    runtime.updated_in_phase = [Some(u64::MAX), Some(7), None].into();
+    runtime.updated_in_phase = [u64::MAX, 7, 0].into();
 
     runtime.begin_phase();
 
-    assert_eq!(runtime.phase, 0);
-    assert_eq!(runtime.updated_in_phase, [None, None, None]);
+    assert_eq!(runtime.phase, 1);
+    assert_eq!(runtime.updated_in_phase, [0, 0, 0]);
     runtime.update_once(2);
-    assert_eq!(runtime.updated_in_phase, [None, None, Some(0)]);
+    assert_eq!(runtime.updated_in_phase, [0, 0, 1]);
     assert_eq!(runtime.deliveries, 1);
 }
 
@@ -130,7 +153,7 @@ fn piston_bindings_keep_home_far_and_component_ids_attached_to_their_candidates(
     let runtime = program.start();
     let compiled = &runtime.program;
     let left_component = positions.iter().position(|&pos| pos == left_base).unwrap();
-    assert_eq!(compiled.piston_by_component[left_component], Some(0));
+    assert_eq!(compiled.piston_by_component[left_component], std::num::NonZeroUsize::new(1));
     assert_eq!(compiled.piston_by_component[0], None);
     assert_eq!(compiled.piston_by_component[5], None);
     assert_eq!(compiled.piston_bindings[0].component, left_component);
@@ -312,7 +335,11 @@ fn sealed_program_validation_rejects_bad_output_ranges_and_flip_links() {
             vec![Block::RedstoneBlock, Block::RedstoneLamp { lit: false }],
             vec![],
             vec![[vec![], vec![]]; 2],
-            vec![ElectricalLink { source: 0, target: 1, attenuation: 0 }],
+            vec![ElectricalLink {
+                source: 0,
+                target: 1,
+                attenuation: 0,
+            }],
             vec![],
             vec![],
         )

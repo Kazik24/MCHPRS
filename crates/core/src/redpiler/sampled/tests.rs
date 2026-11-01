@@ -227,7 +227,7 @@ fn token_move_notifies_wire_watchers_only_when_strength_changes() {
         let mut runtime = program.start();
         runtime.set_token_pos(0, None);
         assert_eq!(runtime.watched_strengths[0], if masked { 15 } else { 0 });
-        assert_eq!(runtime.updated_in_phase[2].is_some(), !masked);
+        assert_eq!((runtime.updated_in_phase[2] != 0), !masked);
     }
 }
 
@@ -282,14 +282,14 @@ fn moving_token_invalidates_every_bound_piston_update_mark() {
         cells: vec![homes[0], homes[1], far],
     });
     let mut runtime = program.start();
-    runtime.updated_in_phase.fill(Some(runtime.phase));
+    runtime.updated_in_phase.fill(runtime.phase);
 
     runtime.set_token_pos(0, None);
 
     assert!(
         bases
             .iter()
-            .all(|base| runtime.updated_in_phase[program.positions.iter().position(|pos| pos == base).unwrap()].is_none())
+            .all(|base| runtime.updated_in_phase[program.positions.iter().position(|pos| pos == base).unwrap()] == 0)
     );
 }
 
@@ -336,11 +336,11 @@ fn finishing_piston_motion_invalidates_its_update_mark() {
         piston_done: false,
         token_done: true,
     });
-    runtime.updated_in_phase[0] = Some(runtime.phase);
+    runtime.updated_in_phase[0] = runtime.phase;
 
     runtime.finish_piston_part(0, false);
 
-    assert_eq!(runtime.updated_in_phase[0], None);
+    assert_eq!(runtime.updated_in_phase[0], 0);
 }
 
 #[test]
@@ -1965,10 +1965,10 @@ fn watched_wire_level_changes_invalidate_even_when_masked() {
     )
     .unwrap();
     let mut runtime = program.start();
-    runtime.updated_in_phase[2] = Some(runtime.phase);
+    runtime.updated_in_phase[2] = runtime.phase;
     runtime.blocks[0] = wire(6);
     runtime.execute_output_program(0, false);
-    assert_eq!(runtime.updated_in_phase[2], None);
+    assert_eq!(runtime.updated_in_phase[2], 0);
     assert_eq!(runtime.input_strength(2), 10);
     runtime.blocks[1] = wire(0);
     runtime.execute_output_program(1, false);

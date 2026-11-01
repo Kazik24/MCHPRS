@@ -2,6 +2,7 @@ use super::program::{ArrangementSource, ComparatorInput};
 use super::{Operation, Program, ScratchError};
 use mchprs_blocks::blocks::Block;
 use mchprs_world::TickPriority;
+use std::num::NonZeroUsize;
 
 #[cfg(any(test, feature = "redpiler-trace"))]
 macro_rules! runtime_trace {
@@ -103,10 +104,10 @@ pub(crate) struct Runtime {
     pub(super) active_motions: std::collections::VecDeque<usize>,
     /// reusable indices into `motions`.
     pub(super) free_motion_slots: Vec<usize>,
-    /// piston-indexed active motion index for each piston.
-    pub(super) piston_motion: Vec<Option<usize>>,
-    /// projection-cell-indexed active motion index occupying each cell.
-    pub(super) cell_motion: Vec<Option<usize>>,
+    /// piston-indexed active motion index plus one for each piston.
+    pub(super) piston_motion: Vec<Option<NonZeroUsize>>,
+    /// projection-cell-indexed active motion index plus one occupying each cell.
+    pub(super) cell_motion: Vec<Option<NonZeroUsize>>,
     /// projection-cell indices changed since the last publication.
     pub(super) dirty_cells: Vec<usize>,
     /// projection-cell-indexed flags marking cells that need publication.
@@ -155,8 +156,8 @@ pub(crate) struct Runtime {
     pub(super) watched_strengths: Vec<u8>,
     /// monotonically increasing execution phase ID used to suppress duplicate updates.
     pub(super) phase: u64,
-    /// component-indexed last phase in which each component was updated.
-    pub(super) updated_in_phase: Vec<Option<u64>>,
+    /// component-indexed last update phase; zero means not updated in this phase.
+    pub(super) updated_in_phase: Vec<u64>,
     /// count of executed compiled operations in the current accounting interval.
     pub(super) operations: usize,
     /// count of delivered neighbor/update callbacks in the current accounting interval.
@@ -291,7 +292,11 @@ impl Runtime {
         if tokens.iter().any(|&index| self.program.tokens[index].position == Some(position)) {
             return Some(Block::Air);
         }
-        Some(self.program.cell_components[cell].map_or(self.program.cell_geometry[cell], |component| self.blocks[component]))
+        Some(
+            self.program.cell_components[cell]
+                .map(|index| index.get() - 1)
+                .map_or(self.program.cell_geometry[cell], |component| self.blocks[component]),
+        )
     }
     fn notify_shape(&mut self, cell: usize) {
         let position = self.program.projection_positions[cell];
@@ -327,7 +332,7 @@ impl Runtime {
     }
 
     fn pushing_motion(&self, piston: usize) -> Option<usize> {
-        let slot = self.cell_motion[self.program.piston_bindings[piston].far_cell]?;
+        let slot = self.cell_motion[self.program.piston_bindings[piston].far_cell]?.get() - 1;
         let motion = self.motions[slot];
         (motion.extending && self.program.pistons[motion.piston].facing == self.program.pistons[piston].facing).then_some(slot)
     }
@@ -379,11 +384,11 @@ impl Runtime {
         };
         if !motion.piston_done {
             self.mark_piston_dirty(motion.piston);
-            self.piston_motion[motion.piston] = Some(slot);
+            self.piston_motion[motion.piston] = NonZeroUsize::new(slot + 1);
         }
         if motion.token.is_some() && !motion.token_done {
             debug_assert!(self.cell_motion[motion.destination].is_none());
-            self.cell_motion[motion.destination] = Some(slot);
+            self.cell_motion[motion.destination] = NonZeroUsize::new(slot + 1);
             self.mark_dirty(motion.destination);
         }
         self.active_motions.push_back(slot);
@@ -399,7 +404,7 @@ impl Runtime {
     }
 
     pub(super) fn update_piston(&mut self, component: usize) {
-        let Some(index) = self.program.piston_by_component[component] else {
+        let Some(index) = self.program.piston_by_component[component].map(|index| index.get() - 1) else {
             return;
         };
         if self.piston_base_moving[index] {
@@ -451,7 +456,7 @@ impl Runtime {
             }
             self.queued_piston_events[index] &= !event.bit();
             let component = self.program.piston_bindings[index].component;
-            self.updated_in_phase[component] = None;
+            self.updated_in_phase[component] = 0;
             if self.piston_base_moving[index] || (self.has_input(component)) != extending {
                 #[cfg(any(test, feature = "redpiler-trace"))]
                 if runtime_trace_enabled!(self) {
@@ -467,7 +472,7 @@ impl Runtime {
                 let early = event == PistonEvent::EarlyRetract;
                 if self.piston_head_moving[index] {
                     if let Some(slot) = self.piston_motion[index] {
-                        self.finish_piston_part(slot, true);
+                        self.finish_piston_part(slot.get() - 1, true);
                     }
                 }
                 self.piston_base_moving[index] = true;
@@ -621,12 +626,12 @@ impl Runtime {
         }
         self.motions[slot].piston_done = true;
         self.mark_piston_dirty(motion.piston);
-        if self.piston_motion[motion.piston] == Some(slot) {
+        if self.piston_motion[motion.piston] == NonZeroUsize::new(slot + 1) {
             self.piston_motion[motion.piston] = None;
         }
         let component = self.program.piston_bindings[motion.piston].component;
         let home = self.program.piston_bindings[motion.piston].home_cell;
-        self.updated_in_phase[component] = None;
+        self.updated_in_phase[component] = 0;
         if motion.extending {
             self.piston_head_moving[motion.piston] = false;
             self.piston_head_present[motion.piston] = !interrupted;
@@ -816,7 +821,7 @@ impl Runtime {
 
     fn run_move_steps(&mut self, token: usize, cell: usize, arriving: bool, switched: &mut Vec<usize>, changed_wires: &mut Vec<usize>) {
         for &component in &self.program.token_piston_components[token] {
-            self.updated_in_phase[component] = None;
+            self.updated_in_phase[component] = 0;
         }
         let count = self.program.token_movement_groups.get(token).map_or(0, Vec::len);
         for index in 0..count {
@@ -845,7 +850,7 @@ impl Runtime {
                     if flip.entering { strength.saturating_sub(flip.attenuation) } else { 0 },
                 );
                 if strength > flip.attenuation {
-                    self.updated_in_phase[flip.target] = None;
+                    self.updated_in_phase[flip.target] = 0;
                 }
                 // WithMoveStep reserves -2 for pistons: flips do not deliver them.
                 if !matches!(self.blocks[flip.target], Block::Piston { .. }) && !self.switched[flip.target] {
@@ -914,7 +919,7 @@ impl Runtime {
             }
         }
         for &wire in changed_wires.iter() {
-            if let Some(index) = self.program.watched_by_component[wire] {
+            if let Some(index) = self.program.watched_by_component[wire].map(|index| index.get() - 1) {
                 for offset in 0..self.program.watched_wires[index].watchers.len() {
                     let watcher = self.program.watched_wires[index].watchers[offset];
                     if !self.consume_operation(self.program.positions[watcher]) {
@@ -927,7 +932,7 @@ impl Runtime {
     }
 
     fn mark_changed_wire(&mut self, wire: usize) -> bool {
-        let Some(index) = self.program.watched_by_component[wire] else {
+        let Some(index) = self.program.watched_by_component[wire].map(|index| index.get() - 1) else {
             return false;
         };
         let strength = self.input_strength(wire);
@@ -960,7 +965,7 @@ impl Runtime {
                     && (matches!(self.blocks[link.target], Block::RedstoneComparator { .. })
                         || self.program.watched_by_component[link.target].is_some()))
             {
-                self.updated_in_phase[link.target] = None;
+                self.updated_in_phase[link.target] = 0;
             }
             #[cfg(any(test, feature = "redpiler-trace"))]
             if runtime_trace_enabled!(self) && old != contribution {
@@ -981,7 +986,7 @@ impl Runtime {
                 || (old != contribution
                     && (matches!(self.blocks[target], Block::RedstoneComparator { .. }) || self.program.watched_by_component[target].is_some()))
             {
-                self.updated_in_phase[target] = None;
+                self.updated_in_phase[target] = 0;
             }
         }
     }
@@ -1086,7 +1091,8 @@ impl Runtime {
     pub(super) fn begin_phase(&mut self) {
         self.phase = self.phase.wrapping_add(1);
         if self.phase == 0 {
-            self.updated_in_phase.fill(None);
+            self.updated_in_phase.fill(0);
+            self.phase = 1;
         }
     }
 
@@ -1184,14 +1190,14 @@ impl Runtime {
     }
 
     pub(super) fn update_once(&mut self, receiver: usize) {
-        if self.updated_in_phase[receiver] == Some(self.phase) {
+        if self.updated_in_phase[receiver] == self.phase {
             #[cfg(any(test, feature = "redpiler-trace"))]
             if runtime_trace_enabled!(self) {
                 runtime_trace!(self, "watcher suppressed {:?}", self.program.positions[receiver]);
             }
             return;
         }
-        self.updated_in_phase[receiver] = Some(self.phase);
+        self.updated_in_phase[receiver] = self.phase;
         #[cfg(any(test, feature = "redpiler-trace"))]
         if runtime_trace_enabled!(self) {
             runtime_trace!(self, "callback {:?}", self.program.positions[receiver]);
@@ -1262,7 +1268,7 @@ impl Runtime {
                         let link = self.program.links[index];
                         let value = self.output(link.source).saturating_sub(link.attenuation);
                         if self.contributions[index] != value {
-                            self.updated_in_phase[link.target] = None;
+                            self.updated_in_phase[link.target] = 0;
                         }
                         self.set_contribution(index, value);
                         self.operations += 1;
@@ -1273,7 +1279,7 @@ impl Runtime {
                         }
                         let (target, side, value) = self.arrangement_contribution(index);
                         if self.arrangement_contributions[index] != value {
-                            self.updated_in_phase[target] = None;
+                            self.updated_in_phase[target] = 0;
                         }
                         self.set_arrangement_contribution(index, target, side, value);
                         self.operations += 1;
@@ -1314,7 +1320,7 @@ impl Runtime {
                             && (matches!(self.blocks[target], Block::RedstoneComparator { .. })
                                 || self.program.watched_by_component[target].is_some()))
                     {
-                        self.updated_in_phase[target] = None;
+                        self.updated_in_phase[target] = 0;
                     }
                     self.set_arrangement_contribution(index, target, side, contribution);
                 }
@@ -1337,7 +1343,7 @@ impl Runtime {
                             && (matches!(self.blocks[link.target], Block::RedstoneComparator { .. })
                                 || self.program.watched_by_component[link.target].is_some()))
                     {
-                        self.updated_in_phase[link.target] = None;
+                        self.updated_in_phase[link.target] = 0;
                     }
                 }
                 Operation::RefreshWire(slot) => {
@@ -1371,7 +1377,7 @@ impl Runtime {
         let Block::RedstoneComparator { comparator } = self.blocks[component] else {
             unreachable!()
         };
-        let record = &self.program.comparators[self.program.comparator_by_component[component].unwrap()];
+        let record = &self.program.comparators[self.program.comparator_by_component[component].map(|index| index.get() - 1).unwrap()];
         let override_level = |input: ComparatorInput| match input {
             ComparatorInput::Static(level) => level,
             ComparatorInput::CommandBlock(source) => self
@@ -1410,7 +1416,8 @@ impl Runtime {
             block_type: Some(self.blocks[component].registry_id()),
         };
         if !self.has_pending(tick) {
-            let diode = self.program.comparators[self.program.comparator_by_component[component].unwrap()].output_is_diode;
+            let diode =
+                self.program.comparators[self.program.comparator_by_component[component].map(|index| index.get() - 1).unwrap()].output_is_diode;
             self.schedule_tick(tick, 1, if diode { TickPriority::High } else { TickPriority::Normal });
         }
     }
@@ -1517,7 +1524,10 @@ impl Runtime {
         let Block::RedstoneRepeater { mut repeater } = self.blocks[component] else {
             unreachable!()
         };
-        if self.program.repeater_by_component[component].is_some_and(|index| self.program.repeaters[index].side_sources.is_some()) {
+        if self.program.repeater_by_component[component]
+            .map(|index| index.get() - 1)
+            .is_some_and(|index| self.program.repeaters[index].side_sources.is_some())
+        {
             let locked = self.input_levels[component][1].active != 0;
             if repeater.locked != locked {
                 repeater.locked = locked;
@@ -1569,7 +1579,9 @@ impl Runtime {
         if self.has_pending(tick) {
             return;
         }
-        let output_is_diode = self.program.repeater_by_component[component].is_some_and(|index| self.program.repeaters[index].output_is_diode);
+        let output_is_diode = self.program.repeater_by_component[component]
+            .map(|index| index.get() - 1)
+            .is_some_and(|index| self.program.repeaters[index].output_is_diode);
         let priority = if output_is_diode {
             TickPriority::Highest
         } else if !rear_powered {

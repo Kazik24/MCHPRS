@@ -1,6 +1,7 @@
 use super::{Runtime, ScratchError};
 use mchprs_blocks::{BlockPos, blocks::Block};
 use std::collections::HashMap;
+use std::num::NonZeroUsize;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum Operation {
@@ -203,16 +204,16 @@ pub(crate) struct Program {
     pub(super) command_blocks: HashMap<BlockPos, Box<mchprs_blocks::block_entities::CommandBlockEntity>>,
     /// world-level command output state needed to restore interpreter behavior.
     pub(super) command_output_state: Option<crate::world::CommandBlockOutputState>,
-    /// reverse map from component index to `piston_bindings` index.
-    pub(super) piston_by_component: Vec<Option<usize>>,
+    /// reverse map from component index to `piston_bindings` index plus one.
+    pub(super) piston_by_component: Vec<Option<NonZeroUsize>>,
     /// piston projection bindings and their home/far cell state.
     pub(super) piston_bindings: Vec<PistonBinding>,
-    /// reverse map from component index to `repeaters` record index.
-    pub(super) repeater_by_component: Vec<Option<usize>>,
-    /// reverse map from component index to `comparators` record index.
-    pub(super) comparator_by_component: Vec<Option<usize>>,
-    /// reverse map from component index to `watched_wires` record index.
-    pub(super) watched_by_component: Vec<Option<usize>>,
+    /// reverse map from component index to `repeaters` record index plus one.
+    pub(super) repeater_by_component: Vec<Option<NonZeroUsize>>,
+    /// reverse map from component index to `comparators` record index plus one.
+    pub(super) comparator_by_component: Vec<Option<NonZeroUsize>>,
+    /// reverse map from component index to `watched_wires` record index plus one.
+    pub(super) watched_by_component: Vec<Option<NonZeroUsize>>,
     /// component-indexed flags for nodes that can source movable-token inputs.
     pub(super) movable_sources: Vec<bool>,
     /// cached summary indicating at least one component has reactive behavior.
@@ -249,8 +250,8 @@ pub(crate) struct Program {
     pub(super) projection_indices: HashMap<BlockPos, usize>,
     /// component-indexed projection-cell IDs, parallel to `positions`.
     pub(super) component_cells: Vec<usize>,
-    /// projection-cell-indexed reverse mapping to a component index.
-    pub(super) cell_components: Vec<Option<usize>>,
+    /// projection-cell-indexed reverse mapping to a component index plus one.
+    pub(super) cell_components: Vec<Option<NonZeroUsize>>,
     /// per projection cell, token indices occupying that cell in any legal position.
     pub(super) token_cells: Vec<Vec<usize>>,
     /// per token, projection-cell indices it can occupy.
@@ -577,7 +578,7 @@ impl Program {
         self.component_cells = self.positions.iter().map(|pos| self.projection_indices[pos]).collect();
         self.cell_components = vec![None; cells];
         for (component, &cell) in self.component_cells.iter().enumerate() {
-            self.cell_components[cell] = Some(component);
+            self.cell_components[cell] = NonZeroUsize::new(component + 1);
         }
         self.cell_geometry = self
             .projection_positions
@@ -616,7 +617,7 @@ impl Program {
             .enumerate()
             .map(|(index, piston)| {
                 let component = self.component_indices[&piston.base];
-                self.piston_by_component[component] = Some(index);
+                self.piston_by_component[component] = NonZeroUsize::new(index + 1);
                 let home_cell = self.projection_indices[&piston.home];
                 let far_cell = self.projection_indices[&piston.far];
                 let heads = |cell: usize| {
@@ -661,12 +662,12 @@ impl Program {
             .collect();
         self.repeater_by_component = vec![None; self.initial.len()];
         for (index, record) in self.repeaters.iter().enumerate() {
-            self.repeater_by_component[record.component] = Some(index);
+            self.repeater_by_component[record.component] = NonZeroUsize::new(index + 1);
         }
         self.comparator_by_component = vec![None; self.initial.len()];
         self.comparators_by_override = vec![vec![]; self.initial.len()];
         for (index, record) in self.comparators.iter().enumerate() {
-            self.comparator_by_component[record.component] = Some(index);
+            self.comparator_by_component[record.component] = NonZeroUsize::new(index + 1);
             for source in [record.rear_override, record.far_override]
                 .into_iter()
                 .flatten()
@@ -682,7 +683,7 @@ impl Program {
         }
         self.watched_by_component = vec![None; self.initial.len()];
         for (index, record) in self.watched_wires.iter().enumerate() {
-            self.watched_by_component[record.wire].get_or_insert(index);
+            self.watched_by_component[record.wire].get_or_insert(NonZeroUsize::new(index + 1).unwrap());
         }
         self.movable_sources = vec![false; self.initial.len()];
         for token in &self.tokens {
@@ -1419,8 +1420,8 @@ impl Program {
                     _ => unreachable!(),
                 })
                 .collect(),
-            phase: 0,
-            updated_in_phase: vec![None; self.initial.len()],
+            phase: 1,
+            updated_in_phase: vec![0; self.initial.len()],
             operations: 0,
             deliveries: 0,
             scheduled_repeater_ticks: 0,

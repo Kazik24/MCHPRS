@@ -75,6 +75,117 @@ pub(super) fn start_runtime(
 }
 
 impl Runtime {
+    pub(super) fn log_memory_layout(&self) {
+        fn vector<T>(scope: &str, name: &str, values: &Vec<T>) {
+            eprintln!(
+                "Redpiler memory: {scope}.{name} len={} capacity={} element_bytes={} buffer_bytes={}",
+                values.len(),
+                values.capacity(),
+                std::mem::size_of::<T>(),
+                values.capacity() * std::mem::size_of::<T>()
+            );
+        }
+        fn rows<T>(name: &str, values: &Vec<Vec<T>>) {
+            let entries: usize = values.iter().map(Vec::len).sum();
+            let payload_capacity: usize = values.iter().map(Vec::capacity).sum();
+            let bytes = values.capacity() * std::mem::size_of::<Vec<T>>() + payload_capacity * std::mem::size_of::<T>();
+            eprintln!(
+                "Redpiler memory: program.{name} rows={} entries={entries} payload_capacity={payload_capacity} buffer_bytes={bytes}",
+                values.len()
+            );
+        }
+        macro_rules! vectors {
+            ($owner:expr, $scope:literal, $($field:ident),+ $(,)?) => { $(vector($scope, stringify!($field), &($owner).$field);)+ };
+        }
+        macro_rules! rows {
+            ($($field:ident),+ $(,)?) => { $(rows(stringify!($field), &self.program.$field);)+ };
+        }
+        eprintln!("Redpiler memory: selected retained vector capacities; excludes maps, allocator overhead and unlisted deep payloads");
+        vectors!(
+            self.program,
+            "program",
+            piston_by_component,
+            repeater_by_component,
+            comparator_by_component,
+            watched_by_component,
+            cell_components,
+            component_cells,
+            positions,
+            initial,
+            projection_positions,
+            cell_geometry,
+            output_programs,
+            operations,
+            links,
+            side_links,
+            movement_steps,
+            movement_wires,
+            effective_links
+        );
+        rows!(
+            incoming,
+            outgoing,
+            outgoing_arrangements,
+            input_groups_by_target,
+            side_outputs,
+            comparators_by_override,
+            reactive_by_source,
+            reactive_neighbours,
+            source_watchers,
+            home_watchers,
+            token_cells,
+            cell_tokens,
+            cell_pistons,
+            cell_observers,
+            token_piston_components
+        );
+        vectors!(
+            self,
+            "runtime",
+            piston_motion,
+            cell_motion,
+            updated_in_phase,
+            comparator_outputs,
+            input_levels,
+            input_histograms,
+            blocks,
+            contributions,
+            dirty,
+            dirty_cells,
+            group_arrangements,
+            arrangement_contributions,
+            pending_counts,
+            movement_switched,
+            movement_changed_wires,
+            changed_wires,
+            switched,
+            note_queued,
+            watched_strengths,
+            reactive_wire_strengths,
+            token_positions,
+            piston_extended,
+            piston_head_present,
+            piston_head_moving,
+            piston_base_moving,
+            motions,
+            free_motion_slots
+        );
+        let index_slots = self.program.piston_by_component.capacity()
+            + self.program.repeater_by_component.capacity()
+            + self.program.comparator_by_component.capacity()
+            + self.program.watched_by_component.capacity()
+            + self.program.cell_components.capacity()
+            + self.piston_motion.capacity()
+            + self.cell_motion.capacity();
+        let stamp_slots = self.updated_in_phase.capacity();
+        let compact_bytes = index_slots * std::mem::size_of::<Option<std::num::NonZeroUsize>>() + stamp_slots * std::mem::size_of::<u64>();
+        let wide_equivalent_bytes = index_slots * std::mem::size_of::<Option<usize>>() + stamp_slots * std::mem::size_of::<Option<u64>>();
+        eprintln!(
+            "Redpiler memory: compact_index_stamp_buffers={compact_bytes} wide_equivalent_buffers={wide_equivalent_bytes} saved_bytes={}",
+            wide_equivalent_bytes - compact_bytes
+        );
+    }
+
     pub(super) fn set_pending(&mut self, ticks: Vec<mchprs_world::TickEntry>) -> Result<(), ScratchError> {
         // Pending work has a fixed admission limit; exhaustion is an execution error.
         let limit = self
@@ -150,13 +261,14 @@ impl Runtime {
             let block = if full {
                 self.project_cell(cell)?
             } else {
-                let component = self.program.cell_components[cell]?;
+                let component = self.program.cell_components[cell].map(|index| index.get() - 1)?;
                 if self.program.piston_by_component[component].is_some() {
                     return None;
                 }
                 self.blocks[component]
             };
             let comparator = self.program.cell_components[cell]
+                .map(|index| index.get() - 1)
                 .filter(|&component| self.program.comparator_by_component[component].is_some())
                 .map(|component| self.comparator_outputs[component]);
             Some((pos, block, comparator))

@@ -1,8 +1,8 @@
 //! Sampled compiled redstone execution.
 
-mod options;
 #[cfg(test)]
 mod classic_fuzz_tests;
+mod options;
 #[cfg(test)]
 mod publication_tests;
 mod sampled;
@@ -171,6 +171,9 @@ impl Compiler {
             duration: start.elapsed(),
         });
         self.options = options;
+        if std::env::var_os("MCHPRS_REDPILER_PHASE_TIMINGS").is_some() {
+            self.runtime.as_ref().unwrap().log_memory_layout();
+        }
         Ok(())
     }
 
