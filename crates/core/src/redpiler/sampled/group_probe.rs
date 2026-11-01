@@ -46,6 +46,11 @@ pub(super) struct ProbeIndexes<'a> {
 }
 
 impl<'a> ProbeIndexes<'a> {
+    pub(super) fn source_at(&self, pos: BlockPos) -> Result<ArrangementSource, ScratchError> {
+        if let Some(&token) = self.redstone_tokens.get(&pos) { Ok(ArrangementSource::Token(token)) }
+        else if let Some(&node) = self.components.get(&pos) { Ok(ArrangementSource::Component(node)) }
+        else { Err(ScratchError { position: Some(pos), reason: "unrepresented arrangement source" }) }
+    }
     pub(super) fn new(
         components: &'a HashMap<BlockPos, usize>,
         positions: &[BlockPos],
@@ -189,7 +194,11 @@ fn wire_sources(
     world: &impl World,
     wires: &[BlockPos],
     monitor: Option<&TaskMonitor>,
+    expand: bool,
 ) -> Result<Vec<super::super::scratch::WireSource>, ScratchError> {
+    if !expand {
+        return Ok(wires.iter().map(|&pos| super::super::scratch::WireSource { wire: pos, source: pos, attenuation: 0 }).collect());
+    }
     if let Some(monitor) = monitor {
         crate::redpiler::scratch::discover_wire_sources_monitored(world, wires, monitor)
     } else {
@@ -208,18 +217,29 @@ pub(super) fn inputs_of(
     monitor: Option<&TaskMonitor>,
     indexes: &ProbeIndexes<'_>,
 ) -> Result<Inputs, ScratchError> {
+    discover_inputs(world, program, member, monitor, indexes, true)
+}
+
+pub(super) fn ports_of(world: &impl World, program: &Program, member: usize, monitor: Option<&TaskMonitor>, indexes: &ProbeIndexes<'_>) -> Result<Inputs, ScratchError> {
+    discover_inputs(world, program, member, monitor, indexes, false)
+}
+
+fn discover_inputs(world: &impl World, program: &Program, member: usize, monitor: Option<&TaskMonitor>, indexes: &ProbeIndexes<'_>, expand: bool) -> Result<Inputs, ScratchError> {
     let pos = program.positions[member];
     let block = program.initial[member];
     let mut found = Vec::new();
     let mut side = Vec::new();
     match reader_kind(block) {
-        Some(ReaderKind::Wire) => found = wire_sources(world, &[pos], monitor)?,
+        Some(ReaderKind::Wire) => found = wire_sources(world, &[pos], monitor, expand)?,
         Some(ReaderKind::Piston) => {
             let Block::Piston { piston } = block else { unreachable!() };
-            found = crate::redpiler::scratch::discover_piston_sources(world, pos, piston.facing)?;
+            found = if expand { crate::redpiler::scratch::discover_piston_sources(world, pos, piston.facing)? }
+                else { crate::redpiler::scratch::discover_piston_ports(world, pos, piston.facing)? };
         }
-        Some(ReaderKind::Lamp) => found = crate::redpiler::scratch::discover_lamp_sources(world, pos)?,
-        Some(ReaderKind::Torch) => found = crate::redpiler::scratch::discover_torch_sources(world, pos, block)?,
+        Some(ReaderKind::Lamp) => found = if expand { crate::redpiler::scratch::discover_lamp_sources(world, pos)? }
+            else { crate::redpiler::scratch::discover_lamp_ports(world, pos)? },
+        Some(ReaderKind::Torch) => found = if expand { crate::redpiler::scratch::discover_torch_sources(world, pos, block)? }
+            else { crate::redpiler::scratch::discover_torch_ports(world, pos, block)? },
         Some(ReaderKind::Diode) => {
             let (facing, comparator) = match block {
                 Block::RedstoneRepeater { repeater } => (repeater.facing, false),
@@ -230,13 +250,13 @@ pub(super) fn inputs_of(
             let rear = pos.offset(face);
             let block = world.get_block(rear);
             if matches!(block, Block::RedstoneWire { .. }) {
-                found = wire_sources(world, &[rear], monitor)?;
+                found = wire_sources(world, &[rear], monitor, expand)?;
             } else if block.is_solid() {
                 for direction in BlockFace::values() {
                     let at = rear.offset(direction);
                     if crate::redstone::power::emits_strong_power(world.get_block(at), world, at, direction, true) {
                         if matches!(world.get_block(at), Block::RedstoneWire { .. }) {
-                            found.extend(wire_sources(world, &[at], monitor)?);
+                            found.extend(wire_sources(world, &[at], monitor, expand)?);
                         } else {
                             found.push(crate::redpiler::scratch::WireSource {
                                 wire: pos,
@@ -258,7 +278,7 @@ pub(super) fn inputs_of(
                 let at = pos.offset(face);
                 let block = world.get_block(at);
                 if comparator && matches!(block, Block::RedstoneWire { .. }) {
-                    side.extend(wire_sources(world, &[at], monitor)?);
+                    side.extend(wire_sources(world, &[at], monitor, expand)?);
                 } else if (comparator && matches!(block, Block::RedstoneBlock))
                     || ((comparator || crate::redstone::is_diode(block)) && crate::redstone::power::emits_strong_power(block, world, at, face, false))
                 {
@@ -274,16 +294,7 @@ pub(super) fn inputs_of(
     }
     let mut result = Inputs::new();
     for (is_side, source) in found.into_iter().map(|s| (false, s)).chain(side.into_iter().map(|s| (true, s))) {
-        let identity = if let Some(&index) = indexes.redstone_tokens.get(&source.source) {
-            ArrangementSource::Token(index)
-        } else if let Some(&index) = indexes.components.get(&source.source) {
-            ArrangementSource::Component(index)
-        } else {
-            return Err(ScratchError {
-                position: Some(source.source),
-                reason: "unrepresented arrangement source",
-            });
-        };
+        let identity = indexes.source_at(source.source)?;
         let silent = matches!(block, Block::Piston { .. });
         result
             .entry((identity, is_side))

@@ -251,91 +251,16 @@ fn discover_wire_sources_inner(
             if trace {
                 eprintln!("wire traversal target={wire:?} current={current:?} distance={distance}");
             }
-            for face in BlockFace::values() {
-                let neighbor = current.offset(face);
-                if trace {
-                    eprintln!("  neighbor={neighbor:?} face={face:?} block={:?}", world.get_block(neighbor));
-                }
-                match world.get_block(neighbor) {
-                    Block::RedstoneWire { .. } => {
-                        if distance >= 14 || matches!(face, BlockFace::Top | BlockFace::Bottom) {
-                            continue;
-                        }
-                        let next = distance + 1;
-                        if distances.get(&neighbor).is_none_or(|old| next < *old) {
-                            distances.insert(neighbor, next);
-                            queue.push_back(neighbor);
-                        }
-                    }
-                    block if is_supported_dynamic_source(block) || block == Block::RedstoneBlock => {
-                        if source_emits_to(block, world, neighbor, face) {
-                            let attenuation = distance;
-                            sources
-                                .entry((wire, neighbor))
-                                .and_modify(|old: &mut u8| *old = (*old).min(attenuation))
-                                .or_insert(attenuation);
-                        }
-                    }
-                    block if block.is_solid() => {
-                        for source_face in BlockFace::values() {
-                            let source_pos = neighbor.offset(source_face);
-                            let source_block = world.get_block(source_pos);
-                            if trace {
-                                eprintln!(
-                                    "    conductor source={source_pos:?} face={source_face:?} block={source_block:?} strong={}",
-                                    crate::redstone::power::emits_strong_power(source_block, world, source_pos, source_face, false)
-                                );
-                            }
-                            if (is_supported_dynamic_source(source_block) || source_block == Block::RedstoneBlock)
-                                && crate::redstone::power::emits_strong_power(source_block, world, source_pos, source_face, false)
-                            {
-                                let attenuation = distance;
-                                sources
-                                    .entry((wire, source_pos))
-                                    .and_modify(|old: &mut u8| *old = (*old).min(attenuation))
-                                    .or_insert(attenuation);
-                            } else if !matches!(source_block, Block::RedstoneWire { .. })
-                                && crate::redstone::power::emits_strong_power(source_block, world, source_pos, source_face, false)
-                            {
-                                return Err(ScratchError {
-                                    position: Some(source_pos),
-                                    reason: "unsupported watched-wire source dependency",
-                                });
-                            }
-                        }
-                    }
-                    block if source_emits_to(block, world, neighbor, face) => {
-                        return Err(ScratchError {
-                            position: Some(neighbor),
-                            reason: "unsupported watched-wire source dependency",
-                        });
-                    }
-                    _ => {}
-                }
+            let ports = discover_wire_ports(world, current)?;
+            for source in ports.sources {
+                sources.entry((wire, source)).and_modify(|old: &mut u8| *old = (*old).min(distance)).or_insert(distance);
             }
             if distance < 14 {
-                let above_solid = world.get_block(current.offset(BlockFace::Top)).is_solid();
-                for face in [BlockFace::North, BlockFace::South, BlockFace::East, BlockFace::West] {
-                    let adjacent = current.offset(face);
-                    let block = world.get_block(adjacent);
-                    let diagonal = if !block.is_solid() {
-                        Some(adjacent.offset(BlockFace::Bottom))
-                    } else if !above_solid && !block.is_transparent() {
-                        Some(adjacent.offset(BlockFace::Top))
-                    } else {
-                        None
-                    };
-                    if let Some(neighbor) = diagonal
-                        && matches!(world.get_block(neighbor), Block::RedstoneWire { .. })
-                    {
-                        let next = distance + 1;
-                        if distances.get(&neighbor).is_none_or(|old| next < *old) {
-                            distances.insert(neighbor, next);
-                            queue.push_back(neighbor);
-                        }
-                    }
-                    if trace {
-                        eprintln!("  diagonal from={current:?} via={adjacent:?} block={block:?} above_solid={above_solid} candidate={diagonal:?}");
+                for neighbor in ports.wires {
+                    let next = distance + 1;
+                    if distances.get(&neighbor).is_none_or(|old| next < *old) {
+                        distances.insert(neighbor, next);
+                        queue.push_back(neighbor);
                     }
                 }
             }
@@ -361,10 +286,22 @@ fn discover_wire_sources_inner(
 /// Collect a lamp's weak and one-hop conducted inputs, expanding each dust
 /// contact through the shared wire graph.
 pub(crate) fn discover_lamp_sources(world: &impl World, lamp: BlockPos) -> Result<Vec<WireSource>, ScratchError> {
-    discover_signal_contacts(world, lamp, BlockFace::values())
+    discover_signal_contacts(world, lamp, BlockFace::values(), true)
+}
+
+pub(crate) fn discover_lamp_ports(world: &impl World, lamp: BlockPos) -> Result<Vec<WireSource>, ScratchError> {
+    discover_signal_contacts(world, lamp, BlockFace::values(), false)
 }
 
 pub(crate) fn discover_torch_sources(world: &impl World, pos: BlockPos, block: Block) -> Result<Vec<WireSource>, ScratchError> {
+    discover_torch_contacts(world, pos, block, true)
+}
+
+pub(crate) fn discover_torch_ports(world: &impl World, pos: BlockPos, block: Block) -> Result<Vec<WireSource>, ScratchError> {
+    discover_torch_contacts(world, pos, block, false)
+}
+
+fn discover_torch_contacts(world: &impl World, pos: BlockPos, block: Block, expand: bool) -> Result<Vec<WireSource>, ScratchError> {
     let face = match block {
         Block::RedstoneTorch { .. } => BlockFace::Bottom,
         Block::RedstoneWallTorch { facing, .. } => facing.opposite().block_face(),
@@ -375,10 +312,15 @@ pub(crate) fn discover_torch_sources(world: &impl World, pos: BlockPos, block: B
             });
         }
     };
-    discover_signal_contacts(world, pos, [face])
+    discover_signal_contacts(world, pos, [face], expand)
 }
 
-fn discover_signal_contacts(world: &impl World, lamp: BlockPos, faces: impl IntoIterator<Item = BlockFace>) -> Result<Vec<WireSource>, ScratchError> {
+fn wire_contact(world: &impl World, pos: BlockPos, expand: bool) -> Result<Vec<WireSource>, ScratchError> {
+    if expand { discover_wire_sources(world, &[pos]) }
+    else { Ok(vec![WireSource { wire: pos, source: pos, attenuation: 0 }]) }
+}
+
+fn discover_signal_contacts(world: &impl World, lamp: BlockPos, faces: impl IntoIterator<Item = BlockFace>, expand: bool) -> Result<Vec<WireSource>, ScratchError> {
     let mut sources = HashMap::new();
     let mut add = |source: BlockPos, attenuation: u8| {
         sources
@@ -393,7 +335,7 @@ fn discover_signal_contacts(world: &impl World, lamp: BlockPos, faces: impl Into
         let block = world.get_block(neighbor);
         if matches!(block, Block::RedstoneWire { .. }) {
             if crate::redstone::power::emits_weak_power(block, world, neighbor, face, true) {
-                for source in discover_wire_sources(world, &[neighbor])? {
+                for source in wire_contact(world, neighbor, expand)? {
                     add(source.source, source.attenuation);
                 }
             }
@@ -405,7 +347,7 @@ fn discover_signal_contacts(world: &impl World, lamp: BlockPos, faces: impl Into
                     continue;
                 }
                 if matches!(source_block, Block::RedstoneWire { .. }) {
-                    for source in discover_wire_sources(world, &[source_pos])? {
+                    for source in wire_contact(world, source_pos, expand)? {
                         add(source.source, source.attenuation);
                     }
                 } else if supported_source(source_block) {
@@ -446,6 +388,14 @@ pub(crate) fn discover_piston_sources(
     pos: BlockPos,
     facing: mchprs_blocks::BlockFacing,
 ) -> Result<Vec<WireSource>, ScratchError> {
+    discover_piston_contacts(world, pos, facing, true)
+}
+
+pub(crate) fn discover_piston_ports(world: &impl World, pos: BlockPos, facing: mchprs_blocks::BlockFacing) -> Result<Vec<WireSource>, ScratchError> {
+    discover_piston_contacts(world, pos, facing, false)
+}
+
+fn discover_piston_contacts(world: &impl World, pos: BlockPos, facing: mchprs_blocks::BlockFacing, expand: bool) -> Result<Vec<WireSource>, ScratchError> {
     let mut contacts: Vec<_> = BlockFace::values()
         .into_iter()
         .filter(|&face| face != facing.into())
@@ -465,7 +415,7 @@ pub(crate) fn discover_piston_sources(
         };
         if matches!(block, Block::RedstoneWire { .. }) {
             if crate::redstone::power::emits_weak_power(block, world, at, face, true) {
-                for source in discover_wire_sources(world, &[at])? {
+                for source in wire_contact(world, at, expand)? {
                     add(source.source, source.attenuation);
                 }
             }
@@ -475,7 +425,7 @@ pub(crate) fn discover_piston_sources(
                 let source = world.get_block(source_pos);
                 if crate::redstone::power::emits_strong_power(source, world, source_pos, side, true) {
                     if matches!(source, Block::RedstoneWire { .. }) {
-                        for source in discover_wire_sources(world, &[source_pos])? {
+                        for source in wire_contact(world, source_pos, expand)? {
                             add(source.source, source.attenuation);
                         }
                     } else if is_supported_dynamic_source(source) || source == Block::RedstoneBlock {
