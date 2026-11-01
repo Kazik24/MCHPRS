@@ -75,7 +75,7 @@ const OUTPUTS: [BlockPos; 16] = [
     BlockPos::new(170, 5, 92),
 ];
 const TRIGGER: BlockPos = BlockPos::new(6, 36, 76);
-const WINDOW_TICKS: u32 = 512;
+const WINDOW_TICKS: u32 = 10_000;
 const INPUT_REPETITIONS: u32 = 128;
 const RANDOM_INPUT_SEED: u64 = 0x4d43_4850_5253;
 
@@ -171,7 +171,7 @@ fn run_native(world: &mut PlotWorld, masks: &[u64; 4]) -> (f64, Vec<u16>, usize)
     let mut control_changes = 0;
     let started = Instant::now();
     for tick in 0..WINDOW_TICKS {
-        let next = masks[(tick / INPUT_REPETITIONS) as usize];
+        let next = masks[(tick / INPUT_REPETITIONS) as usize % masks.len()];
         control_changes += native_mask(world, previous, next);
         previous = next;
         world.tick_interpreted();
@@ -188,7 +188,7 @@ fn run_compiled(compiler: &mut Compiler, world: &mut PlotWorld, masks: &[u64; 4]
     let mut publication_seconds = 0.0;
     let started = Instant::now();
     for tick in 0..WINDOW_TICKS {
-        let next = masks[(tick / INPUT_REPETITIONS) as usize];
+        let next = masks[(tick / INPUT_REPETITIONS) as usize % masks.len()];
         for (index, pos) in controls().into_iter().enumerate() {
             if (previous ^ next) & control_bit(index) != 0 {
                 compiler.try_on_use_block(ORIGIN + pos).map_err(|error| error.to_string())?;
@@ -278,7 +278,7 @@ fn compile(
 fn main() {
     let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../test_data/piston-research/FPU_27.schem");
     let mut reports = Vec::new();
-    for sample in 1..=3 {
+    for sample in 1..=1 {
         let native_import_started = Instant::now();
         let (mut native, bounds) = load(&path);
         let native_import_seconds = native_import_started.elapsed().as_secs_f64();

@@ -16,7 +16,7 @@ pub(in crate::plot) fn complete_redpiler(id: i32, text: &str) -> Option<CTabComp
         _ => return None,
     }
     let prefix = &text[start..];
-    let matches = ["--io-only", "--update", "-i", "-u"]
+    let matches = ["--publish-all", "--publish-redstone", "--io-only", "--update", "-i", "-u"]
         .into_iter()
         .filter(|flag| flag.starts_with(prefix) && !words[2..].contains(flag))
         .map(|flag| CTabCompleteMatch {

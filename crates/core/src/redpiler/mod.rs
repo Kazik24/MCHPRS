@@ -21,7 +21,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 pub use crate::world::scheduler::{Queues, ScheduledBlockTick, TickScheduler};
-pub use options::CompilerOptions;
+pub use options::{CompilerOptions, PublicationMode};
 pub use task_monitor::TaskMonitor;
 
 #[derive(Debug)]
@@ -234,7 +234,21 @@ impl Compiler {
     }
 
     pub fn try_flush<W: World>(&mut self, world: &mut W) -> Result<(), ExecutionError> {
-        self.publish(world, self.options.io_only, cfg!(feature = "redpiler-full-publication"))
+        let full = match self.options.publication {
+            Some(PublicationMode::All) => true,
+            Some(PublicationMode::Redstone) => false,
+            None => cfg!(feature = "redpiler-full-publication"),
+        };
+        self.publish(world, self.options.io_only, full)
+    }
+
+    pub(crate) fn flush_effects<W: World>(&mut self, world: &mut W) {
+        let runtime = self.runtime.as_mut().expect("compiler inactive");
+        runtime.publish_commands(world, true);
+        for (component, pos, instrument, note) in runtime.notes.drain(..) {
+            redstone::noteblock::play_note(world, pos, instrument, note);
+            runtime.note_queued[component] = false;
+        }
     }
 
     pub(crate) fn try_flush_complete<W: World>(&mut self, world: &mut W) -> Result<(), ExecutionError> {
@@ -375,5 +389,7 @@ impl Compiler {
 }
 
 fn is_output(block: Block) -> bool {
-    matches!(block, Block::Lever { .. } | Block::RedstoneLamp { .. })
+    matches!(block, Block::Lever { .. } | Block::StoneButton { .. } | Block::RedstoneLamp { .. })
+        || block.is_copper_bulb()
+        || block.pressure_plate_powered().is_some()
 }

@@ -30,6 +30,34 @@ pub(super) fn fixture(compressed: bool) -> (Plot, TcpStream) {
 }
 
 #[test]
+fn compiled_projection_waits_for_visual_deadline() {
+    let (mut plot, _peer) = fixture(false);
+    let connection = connection(false).unwrap();
+    let _incoming = connection.incoming;
+    let _live_peer = connection.peer;
+    plot.players[0].client = connection.player;
+    plot.world.packet_senders.clear();
+    plot.world.packet_senders.push(PlayerPacketSender::new(&plot.players[0].client));
+    let lever = BlockPos::new(34, 21, 32);
+    plot.world.set_block(lever.offset(BlockFace::Bottom), Block::Stone {});
+    plot.world.set_block(lever, Block::Lever { lever: mchprs_blocks::blocks::Lever::new(mchprs_blocks::blocks::LeverFace::Floor, mchprs_blocks::BlockDirection::North, false) });
+    plot.redpiler.compile(&plot.world, (BlockPos::new(32, 19, 30), BlockPos::new(36, 23, 34)), CompilerOptions::default(), Vec::new(), Default::default()).unwrap();
+    plot.world_send_rate = WorldSendRate(10);
+    plot.redpiler.try_on_use_block(lever).unwrap();
+    plot.last_world_send_time = Instant::now();
+    plot.update();
+    assert!(matches!(plot.world.get_block(lever), Block::Lever { lever } if !lever.powered));
+    plot.last_world_send_time = Instant::now() - Duration::from_millis(101);
+    plot.update();
+    assert!(matches!(plot.world.get_block(lever), Block::Lever { lever } if lever.powered));
+    plot.redpiler.try_on_use_block(lever).unwrap();
+    plot.world_send_rate = WorldSendRate(0);
+    plot.last_world_send_time = Instant::now() - Duration::from_secs(1);
+    plot.update();
+    assert!(matches!(plot.world.get_block(lever), Block::Lever { lever } if lever.powered));
+}
+
+#[test]
 fn idle_interpreter_skips_empty_batches_and_resumes_scheduled_work() {
     for tps in [Tps::Unlimited, Tps::Limited(1_000_000), Tps::Limited(20)] {
         let (mut plot, _peer) = fixture(false);
@@ -495,8 +523,8 @@ fn redpiler_flag_suggestions_reach_the_chat_client() {
         assert_eq!(frame.read_varint().unwrap(), 42);
         assert_eq!(frame.read_varint().unwrap(), text.rfind(' ').unwrap() as i32 + 1);
         assert_eq!(frame.read_varint().unwrap(), 2);
-        assert_eq!(frame.read_varint().unwrap(), 2);
-        for expected in ["--io-only", "--update"] {
+        assert_eq!(frame.read_varint().unwrap(), 4);
+        for expected in ["--publish-all", "--publish-redstone", "--io-only", "--update"] {
             assert_eq!(frame.read_string().unwrap(), expected);
             assert!(!frame.read_bool().unwrap());
         }

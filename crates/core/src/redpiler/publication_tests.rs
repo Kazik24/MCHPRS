@@ -53,6 +53,42 @@ fn piston_world() -> (
     (world, lever, base, home, far, comparator, lamp, bounds)
 }
 
+#[test]
+fn explicit_publication_modes_select_piston_projection() {
+    for (options, full) in [
+        (CompilerOptions { publication: Some(PublicationMode::All), ..Default::default() }, true),
+        (CompilerOptions { publication: Some(PublicationMode::Redstone), ..Default::default() }, false),
+        (CompilerOptions { io_only: true, ..Default::default() }, false),
+    ] {
+        let (mut world, lever, base, home, far, _, _, bounds) = piston_world();
+        let original = [base, home, far].map(|pos| world.get_block(pos));
+        let mut compiler = Compiler::default();
+        compiler.compile(&world, bounds, options, Vec::new(), Arc::new(TaskMonitor::default())).unwrap();
+        compiler.try_on_use_block(lever).unwrap();
+        for _ in 0..4 { compiler.tick().unwrap(); }
+        compiler.try_flush(&mut world).unwrap();
+        assert!(matches!(world.get_block(lever), Block::Lever { lever } if lever.powered));
+        assert_eq!([base, home, far].map(|pos| world.get_block(pos)) != original, full);
+        compiler.try_reset(&mut world, bounds).unwrap();
+    }
+}
+
+#[test]
+fn effects_can_be_drained_without_publishing_blocks() {
+    let (mut world, lever, _, _, _, _, _, bounds) = piston_world();
+    let note = lever.offset(BlockFace::North);
+    world.set_block(note, Block::NoteBlock { instrument: mchprs_blocks::blocks::Instrument::Harp, note: 1, powered: false });
+    let mut compiler = Compiler::default();
+    compiler.compile(&world, bounds, CompilerOptions::default(), Vec::new(), Arc::new(TaskMonitor::default())).unwrap();
+    compiler.try_on_use_block(lever).unwrap();
+    assert_eq!(compiler.runtime.as_ref().unwrap().notes.len(), 1);
+    compiler.flush_effects(&mut world);
+    assert!(compiler.runtime.as_ref().unwrap().notes.is_empty());
+    assert!(matches!(world.get_block(lever), Block::Lever { lever } if !lever.powered));
+    compiler.try_flush(&mut world).unwrap();
+    assert!(matches!(world.get_block(lever), Block::Lever { lever } if lever.powered));
+}
+
 #[cfg(feature = "redpiler-full-publication")]
 fn assert_publication_matches_runtime(compiler: &Compiler, world: &PlotWorld, moving_cells: &[BlockPos], comparator: BlockPos) {
     let runtime = compiler.runtime.as_ref().expect("compiled runtime active");
@@ -262,7 +298,7 @@ fn io_only_flush_then_reset_restores_full_extension_and_retraction_projection() 
                 bounds,
                 CompilerOptions {
                     io_only: true,
-                    update: false,
+                    ..Default::default()
                 },
                 Vec::new(),
                 Arc::new(TaskMonitor::default()),

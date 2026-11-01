@@ -291,6 +291,12 @@ impl Scoreboard {
         if options.io_only {
             self.compiler_flags.push("io-only".to_owned());
         }
+        if let Some(mode) = options.publication {
+            self.compiler_flags.push(match mode {
+                crate::redpiler::PublicationMode::All => "publish-all",
+                crate::redpiler::PublicationMode::Redstone => "publish-redstone",
+            }.to_owned());
+        }
         if options.update {
             self.compiler_flags.push("update".to_owned());
         }

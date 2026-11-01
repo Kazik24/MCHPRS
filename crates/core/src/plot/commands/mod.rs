@@ -423,6 +423,10 @@ impl Plot {
                     return false;
                 };
 
+                if tps == Tps::Limited(0) && self.redpiler.is_active() {
+                    self.redpiler.flush(&mut self.world);
+                    self.world.flush_block_changes();
+                }
                 self.sleep_time = sleep_time_for_tps(tps);
                 self.timings.set_tps(tps);
                 self.tps = tps;
@@ -1251,13 +1255,17 @@ mod security_tests {
         }
         let options = CompilerOptions::parse("--io-only -u").unwrap();
         assert!(options.io_only && options.update);
+        assert_eq!(CompilerOptions::parse("--publish-all").unwrap().publication, Some(crate::redpiler::PublicationMode::All));
+        assert_eq!(CompilerOptions::parse("--publish-redstone").unwrap().publication, Some(crate::redpiler::PublicationMode::Redstone));
+        assert!(CompilerOptions::parse("--publish-all --io-only").is_err());
+        assert!(CompilerOptions::parse("--publish-all --publish-redstone").is_err());
     }
 
     #[test]
     fn redpiler_completion_offers_only_supported_compile_flags() {
         for (text, expected) in [
-            ("/rp compile --", vec!["--io-only", "--update"]),
-            ("/redpiler c -", vec!["--io-only", "--update", "-i", "-u"]),
+            ("/rp compile --", vec!["--publish-all", "--publish-redstone", "--io-only", "--update"]),
+            ("/redpiler c -", vec!["--publish-all", "--publish-redstone", "--io-only", "--update", "-i", "-u"]),
             ("/rp compile --graph", vec![]),
         ] {
             let response = complete_redpiler(42, text).unwrap();

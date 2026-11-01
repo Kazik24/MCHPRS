@@ -1005,9 +1005,7 @@ impl Plot {
                     }
                 }
                 if self.redpiler.is_active() {
-                    let projection_started = Instant::now();
-                    self.redpiler.flush(&mut self.world);
-                    self.world.update_stats.projection += projection_started.elapsed();
+                    self.redpiler.flush_effects(&mut self.world);
                 }
                 if let Some(duration) = tick_duration {
                     self.lag_time = self.lag_time.saturating_sub(duration * ticks_completed);
@@ -1035,6 +1033,11 @@ impl Plot {
             let time_since_last_world_send = now - self.last_world_send_time;
             if self.world_send_rate.0 != 0 && time_since_last_world_send > world_send_rate {
                 self.last_world_send_time = now;
+                if self.redpiler.is_active() {
+                    let projection_started = Instant::now();
+                    self.redpiler.flush(&mut self.world);
+                    self.world.update_stats.projection += projection_started.elapsed();
+                }
                 self.world.flush_block_changes();
             }
         } else {
