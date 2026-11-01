@@ -137,10 +137,6 @@ fn compare(seed: u64) -> Result<(), String> {
             compiler.on_use_block(input);
         }
         for tick in 0..=wait {
-            if seed == 410 && step >= 35 {
-                let pos = BASE + BlockPos::new(1, 0, 5);
-                eprintln!("BEFORE step={step} tick={tick} native {:?} pending {:?}; compiled {:?} {}", native.get_block(pos), native.scheduler().iter_entries().collect::<Vec<_>>(), compiled.get_block(pos), compiler.runtime.as_ref().unwrap().describe_inputs(pos));
-            }
             if tick > 0 {
                 native.tick_interpreted();
                 compiler.tick().unwrap();
@@ -152,13 +148,6 @@ fn compare(seed: u64) -> Result<(), String> {
                     let actual = compiled.get_block(pos);
                     let expected = native.get_block(pos);
                     if actual != expected {
-                        eprintln!("{}", compiler.runtime.as_ref().unwrap().describe_inputs(pos));
-                        for dz in -1..=0 {
-                            for dx in -1..=1 {
-                                let at = pos + BlockPos::new(dx, 0, dz);
-                                eprintln!("neighbor {at:?} native {:?} compiled {:?}", native.get_block(at), compiled.get_block(at));
-                            }
-                        }
                         return Err(format!(
                             "seed={seed} warmup={warmup} step={step} tick={tick} input=({z},{powered}) pos={pos:?} actual={actual:?} expected={expected:?}; circuit={blocks:?}; actions={:?}",
                             &actions[..=step],
@@ -229,6 +218,144 @@ fn normal_redstone_matches_interpreter() {
 #[test]
 fn comparator_keeps_its_native_fifo_position() {
     compare(10).unwrap();
+}
+
+#[test]
+#[ignore = "known context-dependent comparator ordering mismatch; see seed 410 MAIR crosscheck"]
+fn comparator_order_with_other_active_analog_sources() {
+    compare(410).unwrap();
+}
+
+#[test]
+#[ignore = "exports the saved Chungus fixture for external MAIR replay"]
+fn export_chungus_mair_case() {
+    #[path = "../../test_support/chungus.rs"]
+    mod chungus;
+    use serde_json::json;
+    let state = |block: Block| {
+        let properties: std::collections::BTreeMap<_, _> = block.properties().into_iter().collect();
+        format!(
+            "{}[{}]",
+            block.get_name(),
+            properties
+                .iter()
+                .map(|(key, value)| format!("{key}={value}"))
+                .collect::<Vec<_>>()
+                .join(",")
+        )
+    };
+    let mut world = chungus::init_world();
+    let bounds = world.get_corners();
+    let mut snapshot = Vec::new();
+    let mut comparators = Vec::new();
+    crate::world::for_each_block_optimized(&world, bounds.0, bounds.1, |pos| {
+        let block = world.get_block(pos);
+        if block != Block::Air {
+            snapshot.push(json!({"pos":[pos.x,pos.y,pos.z],"state":state(block)}));
+        }
+        if matches!(block, Block::RedstoneComparator { .. }) {
+            comparators.push(json!({"pos":[pos.x,pos.y,pos.z],"output":comparator_output(&world,pos)}));
+        }
+    });
+    let pending: Vec<_> = world
+        .scheduler()
+        .iter_entries()
+        .map(|entry| json!({"pos":[entry.pos.x,entry.pos.y,entry.pos.z],"delay":entry.ticks_left,"priority":entry.tick_priority as u8}))
+        .collect();
+    let positions = [[160, 78, 121], [168, 78, 121], [172, 78, 121], [173, 79, 121]];
+    let mut frames = Vec::new();
+    for tick in 0..=512 {
+        if tick > 0 {
+            world.tick_interpreted();
+        }
+        let states: Vec<_> = positions
+            .iter()
+            .map(|p| state(world.get_block(BlockPos::new(p[0], p[1], p[2]))))
+            .collect();
+        frames.push(json!({"step":0,"tick":tick,"states":states,"outputs":[null,null,null,null]}));
+    }
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/mair-crosscheck/classic-9999.json");
+    std::fs::write(
+        path,
+        serde_json::to_vec(
+            &json!({"blocks":snapshot,"comparators":comparators,"pending":pending,"positions":positions,"actions":[[-1,false,512]],"frames":frames}),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+}
+
+#[test]
+#[ignore = "exports native fixtures for external MAIR replay"]
+fn export_classic_mair_cases() {
+    use serde_json::json;
+    let state = |block: Block| {
+        let properties: std::collections::BTreeMap<_, _> = block.properties().into_iter().collect();
+        format!(
+            "{}[{}]",
+            block.get_name(),
+            properties
+                .iter()
+                .map(|(key, value)| format!("{key}={value}"))
+                .collect::<Vec<_>>()
+                .join(",")
+        )
+    };
+    for seed in [10, 410] {
+        let mut rng = StdRng::seed_from_u64(seed);
+        let blocks = circuit(&mut rng);
+        let warmup = rng.random_range(0..=16);
+        let actions: Vec<_> = (0..64)
+            .map(|_| (rng.random_range(0..DEPTH), rng.random::<bool>(), rng.random_range(0..=8)))
+            .collect();
+        let mut world = load(&blocks, warmup);
+        let mut snapshot = Vec::new();
+        crate::world::for_each_block_optimized(
+            &world,
+            BASE + BlockPos::new(-2, -2, -2),
+            BASE + BlockPos::new(WIDTH + 2, 2, DEPTH + 2),
+            |pos| {
+                let block = world.get_block(pos);
+                if block != Block::Air {
+                    snapshot.push(json!({"pos":[pos.x,pos.y,pos.z], "state":state(block)}));
+                }
+            },
+        );
+        let comparators: Vec<_> = blocks
+            .iter()
+            .filter(|(_, block)| matches!(block, Block::RedstoneComparator { .. }))
+            .map(|&(pos, _)| json!({"pos":[pos.x,pos.y,pos.z], "output":comparator_output(&world,pos)}))
+            .collect();
+        let pending: Vec<_> = world
+            .scheduler()
+            .iter_entries()
+            .map(|entry| json!({"pos":[entry.pos.x,entry.pos.y,entry.pos.z], "delay":entry.ticks_left, "priority":entry.tick_priority as u8}))
+            .collect();
+        let mut frames = Vec::new();
+        for (step, &(z, powered, wait)) in actions.iter().enumerate() {
+            lever_action(&mut world, BASE + BlockPos::new(0, 0, z), powered);
+            for tick in 0..=wait {
+                if tick > 0 {
+                    world.tick_interpreted();
+                }
+                let states: Vec<_> = blocks.iter().map(|&(pos, _)| state(world.get_block(pos))).collect();
+                let outputs: Vec<_> = blocks
+                    .iter()
+                    .map(|&(pos, block)| {
+                        if matches!(block, Block::RedstoneComparator { .. }) {
+                            Some(comparator_output(&world, pos))
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
+                frames.push(json!({"step":step,"tick":tick,"states":states,"outputs":outputs}));
+            }
+        }
+        let positions: Vec<_> = blocks.iter().map(|(pos, _)| [pos.x, pos.y, pos.z]).collect();
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(format!("../../target/mair-crosscheck/classic-{seed}.json"));
+        std::fs::write(path, serde_json::to_vec(&json!({"seed":seed,"blocks":snapshot,"comparators":comparators,"pending":pending,"positions":positions,"actions":actions,"frames":frames})).unwrap()).unwrap();
+    }
 }
 
 #[test]

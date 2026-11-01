@@ -20,6 +20,7 @@ pub(in super::super) fn run(
             })
             .collect::<Vec<_>>()
     };
+
     for (node, &block) in program.initial.iter().enumerate() {
         check_cancelled(monitor)?;
         let pos = program.positions[node];
@@ -73,6 +74,7 @@ pub(in super::super) fn run(
             _ => false,
         };
     }
+
     for node in 0..program.initial.len() {
         check_cancelled(monitor)?;
         if !program.reactive[node] {
@@ -106,6 +108,7 @@ pub(in super::super) fn run(
             }
         }
     }
+
     for (wire, record) in program.reactive_wires.iter().enumerate() {
         for &(source, _) in &record.sources {
             if !program.reactive_by_source[source].contains(&wire) {
@@ -113,6 +116,7 @@ pub(in super::super) fn run(
             }
         }
     }
+
     for node in 0..program.initial.len() {
         let pos = program.positions[node];
         let adjacent = |p: BlockPos| update_order().map(|face| p.offset(face));
@@ -137,16 +141,19 @@ pub(in super::super) fn run(
             }
         }
     }
+
     Ok(())
 }
 
 fn within_two(pos: BlockPos) -> Vec<BlockPos> {
     let adjacent = |p: BlockPos| update_order().map(|face| p.offset(face));
     let mut cells = Vec::new();
+
     for cell in adjacent(pos).into_iter().flat_map(adjacent).chain(adjacent(pos)) {
         if !cells.contains(&cell) {
             cells.push(cell);
         }
     }
+
     cells
 }

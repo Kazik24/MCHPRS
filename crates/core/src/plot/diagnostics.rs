@@ -108,6 +108,7 @@ impl Plot {
             text.push('\n');
             text.push_str(&stats.chat_summary_lines().join("\n"));
         }
+
         text
     }
 }

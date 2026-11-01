@@ -6,6 +6,7 @@ pub(in super::super) fn run(program: &mut Program, monitor: Option<&TaskMonitor>
     phases.next("share output programs");
     let original_operations = program.operations.len();
     program.compact_output_programs(true);
+
     if phases.enabled {
         eprintln!(
             "Redpiler output storage: before={} after={} capacity={} bytes_per_operation={}",
@@ -15,6 +16,7 @@ pub(in super::super) fn run(program: &mut Program, monitor: Option<&TaskMonitor>
             std::mem::size_of::<Operation>()
         );
     }
+
     program.validate()?;
     check_cancelled(monitor)
 }

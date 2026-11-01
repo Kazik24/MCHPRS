@@ -11,12 +11,15 @@ pub(in super::super) fn run(
     let bounds = context.bounds;
     let entry = context.entry;
     let monitor = context.monitor;
+
     phases.next("piston arrangement discovery");
     check_cancelled(monitor)?;
     program.input_arrangements = crate::redpiler::sampled::group_probe::run(world, bounds, &entry, &program, &probe_indexes, monitor)?;
+
     if phases.enabled {
         eprintln!("Redpiler inventory: piston_arrangement_groups={}", program.input_arrangements.len());
     }
+
     phases.next("movement program validation");
     check_cancelled(monitor)?;
     program.compile_movement_flips()?;

@@ -11,6 +11,7 @@ pub(in super::super) fn run(
     let bounds = context.bounds;
     let entry = context.entry;
     let monitor = context.monitor;
+
     phases.next("movement transition sampling");
     check_cancelled(monitor)?;
     let mut movement_probe = ScratchWorld::from_world_monitored(world, bounds, entry.clone(), monitor)?;
@@ -57,10 +58,12 @@ pub(in super::super) fn run(
         }
         Ok((arrangements, updates))
     })?;
+
     for (sources, updates) in movement {
         program.token_sources.push(sources);
         program.token_updates.push(updates);
     }
+
     for token in &program.tokens {
         let mut cells = Vec::new();
         for &cell in &token.cells {
@@ -89,6 +92,7 @@ pub(in super::super) fn run(
         }
         program.token_watchers.push(cells);
     }
+
     let mut observers_by_target: std::collections::HashMap<BlockPos, Vec<usize>> = std::collections::HashMap::new();
     for (node, block) in program.initial.iter().enumerate() {
         if let Block::Observer { observer } = block {
@@ -98,6 +102,7 @@ pub(in super::super) fn run(
                 .push(node);
         }
     }
+
     for (source, &pos) in program.positions.iter().enumerate() {
         let footprint = update_footprint(pos, program.initial[source]);
         let mut watchers = Vec::new();
@@ -123,6 +128,7 @@ pub(in super::super) fn run(
         watchers.sort_by_key(|&(order, _)| order);
         program.source_watchers[source] = watchers.into_iter().map(|(_, node)| node).collect();
     }
+
     for piston in &program.pistons {
         let mut watchers = Vec::new();
         for face in update_order() {
@@ -137,10 +143,12 @@ pub(in super::super) fn run(
         }
         program.home_watchers.push(watchers);
     }
+
     let mut watched_by_node = vec![None; program.positions.len()];
     for (index, wire) in program.watched_wires.iter().enumerate() {
         watched_by_node[wire.wire].get_or_insert(index);
     }
+
     let mut move_steps = Vec::new();
     for (token, cells) in program.token_updates.iter().enumerate() {
         let mut programs = Vec::new();

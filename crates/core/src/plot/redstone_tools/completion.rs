@@ -16,6 +16,7 @@ impl Plot {
         let start = text.rfind(' ')? + 1;
         let prefix = &text[start..];
         let args: Vec<_> = tail.split_whitespace().collect();
+
         let mut choices: Vec<String> = match tool {
             ToolCommand::Wire if !tail.trim_start().contains(char::is_whitespace) => ["free", "plane", "off"].map(str::to_owned).to_vec(),
             ToolCommand::Container if args.len() < 2 && !tail.contains(' ') => ["chest", "barrel", "hopper", "furnace"].map(str::to_owned).to_vec(),
@@ -55,6 +56,7 @@ impl Plot {
         choices.sort();
         choices.dedup();
         choices.truncate(100);
+
         Some(CTabComplete {
             id: transaction,
             start: text[..start].encode_utf16().count() as i32,

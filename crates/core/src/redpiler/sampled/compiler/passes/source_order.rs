@@ -78,6 +78,7 @@ struct Frame {
     pending: Vec<mchprs_world::TickEntry>,
     deliveries: Vec<crate::world::RedstoneUpdateObservation>,
 }
+
 pub(in super::super) fn run(
     context: &Context<'_, impl World>,
     program: &mut Program,
@@ -89,6 +90,7 @@ pub(in super::super) fn run(
     let entry = context.entry;
     let monitor = context.monitor;
     let source_count = program.sources.len();
+
     phases.next("source transition sampling");
     check_cancelled(monitor)?;
     let mut ordering_probe = ScratchWorld::from_world_monitored(world, bounds, entry.clone(), monitor)?;
@@ -123,6 +125,7 @@ pub(in super::super) fn run(
     sampling.candidate_sources = output_sources.len();
     sampling.racing_sources = racing_sources.len();
     let mut comparisons = Vec::new();
+
     if !racing_sources.is_empty() {
         let source = 0;
         let mut groups_by_target = vec![Vec::new(); program.positions.len()];

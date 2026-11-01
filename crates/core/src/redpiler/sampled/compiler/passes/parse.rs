@@ -7,10 +7,13 @@ pub(in super::super) fn run(context: &Context<'_, impl World>, phases: &mut Comp
     let entry = context.entry;
     let monitor = context.monitor;
     check_cancelled(monitor)?;
+
     let scratch = ScratchWorld::from_world_monitored(world, bounds, entry.clone(), monitor)?;
+
     phases.next("piston actor and token discovery");
     let pistons = discover_piston_actors_monitored(world, bounds, entry.clone(), monitor)?;
     let tokens = discover_piston_tokens(scratch.world(), &pistons)?;
+
     if phases.enabled {
         let piston_groups = pistons.iter().map(|piston| piston.group).max().map_or(0, |group| group + 1);
         let token_cells: usize = tokens.iter().map(|token| token.cells.len()).sum();
@@ -21,11 +24,13 @@ pub(in super::super) fn run(context: &Context<'_, impl World>, phases: &mut Comp
             tokens.len()
         );
     }
+
     phases.next("component scan");
     let mut positions = vec![];
     let mut sources = Vec::new();
     let mut repeaters = Vec::new();
     let mut copper_bulbs = Vec::new();
+
     let error = |pos, reason| ScratchError { position: Some(pos), reason };
     for y in bounds.0.y..=bounds.1.y {
         if monitor.is_some_and(TaskMonitor::cancelled) {
@@ -81,6 +86,7 @@ pub(in super::super) fn run(context: &Context<'_, impl World>, phases: &mut Comp
                     block if !crate::redstone::has_neighbor_update(block) => {}
                     _ => return Err(error(pos, "unsupported component")),
                 }
+
                 if let Some(entity) = world.get_block_entity(pos) {
                     let block = world.get_block(pos);
                     let supported = match (block, entity) {
@@ -100,6 +106,7 @@ pub(in super::super) fn run(context: &Context<'_, impl World>, phases: &mut Comp
             }
         }
     }
+
     // Existing saves need not satisfy placement rules; native redstone callbacks retain them too.
     let wire_positions: Vec<_> = positions
         .iter()

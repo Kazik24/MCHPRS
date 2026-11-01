@@ -6,6 +6,7 @@ pub(in super::super) fn run(program: &mut Program, monitor: Option<&TaskMonitor>
     check_cancelled(monitor)?;
     program.validate()?;
     program.prepare_projection();
+
     if phases.enabled {
         let analog = program
             .initial

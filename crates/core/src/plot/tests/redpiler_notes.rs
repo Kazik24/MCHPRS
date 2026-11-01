@@ -18,12 +18,15 @@ fn compiled_notes_play_once_per_flush_and_respect_blocked_top() {
         world.set_block(lever.offset(BlockFace::Bottom), Block::Stone {});
         world.set_block(lever, Block::Lever { lever: Lever::new(LeverFace::Floor, BlockDirection::North, false) });
         world.set_block(note, Block::NoteBlock { instrument: Instrument::Harp, note: 1, powered: false });
+
         if blocked { world.set_block(note.offset(BlockFace::Top), Block::Stone {}); }
         let mut compiler = Compiler::default();
         compiler.compile(&world, (BlockPos::new(10, 10, 10), BlockPos::new(20, 20, 20)), CompilerOptions::default(), vec![], Arc::new(TaskMonitor::default())).unwrap();
+
         for _ in 0..3 { compiler.try_on_use_block(lever).unwrap(); }
         assert!(world.sounds.is_empty());
         compiler.try_flush(&mut world).unwrap();
+
         assert_eq!(world.sounds.len(), usize::from(!blocked));
         if !blocked { assert_eq!(world.sounds[0].pos, note); }
         compiler.try_flush(&mut world).unwrap();

@@ -3,6 +3,7 @@ use crate::messages;
 use crate::player::PacketSender;
 use crate::redpiler::CompilerOptions;
 use mchprs_network::packets::clientbound::{CTabComplete, CTabCompleteMatch};
+
 pub(in crate::plot) fn complete_redpiler(id: i32, text: &str) -> Option<CTabComplete> {
     let boundary = text.rfind(char::is_whitespace)?;
     let start = boundary + text[boundary..].chars().next()?.len_utf8();
