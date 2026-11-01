@@ -1549,6 +1549,7 @@ fn runtime_stops_at_semantic_operation_limit() {
     let error = runtime.set_input(0, true).unwrap_err();
     assert_eq!(error.position, Some(program.positions[0]));
     assert_eq!(error.reason, "runtime semantic operation limit exceeded");
+    assert_eq!(runtime.tick_operations, 1_000_000);
     assert_eq!(runtime.tick().unwrap_err(), error);
 }
 #[test]

@@ -219,3 +219,11 @@ The user elected to retain the layout experimentally. Compare complete intermedi
 ## Experiment record: inline small projection rows (2026-11-01)
 
 Converted `cell_tokens`, `cell_pistons`, `cell_observers`, and `home_watchers` to `SmallVec<[usize; 2]>`, preserving insertion order and heap spill for larger rows. Existing memory diagnostics now count only spilled payloads. On ZCore the four families used 11,304,384 bytes of retained vector buffers before and 8,368,032 bytes after, saving 2,936,352 bytes; there were no spilled rows in this fixture. These figures exclude allocator overhead. The benchmark's final reset matched native; with each publication feature setting, 93 sampled-runtime tests passed and six were ignored. An added test verifies order after a row spills. Throughput impact of the SmallVec change has not been measured in paired trials.
+
+## Experiment record: deferred diagnostic-position load (2026-11-01)
+
+Retained at the user's request. Component-indexed operation-budget callers now defer loading the block position until the guard constructs an operation-limit error. Position-taking callers retain their existing interface; both use the same guard and operation limit. The focused limit-boundary test passed, including the operation count and reported position.
+
+Four of seven planned alternating pairs completed before the user stopped the trials. ZCore baseline TPS: 2465.7, 2650.2, 2900.4, 2805.7; candidate: 2876.4, 3174.4, 3045.8, 2817.9. Median per-pair change: +10.8% (range +0.4% to +19.8%). FPU baseline tick-only TPS: 3492.6, 3003.8, 3453.1, 3571.8; candidate: 3077.1, 3321.9, 3047.4, 3656.5. Median per-pair change: -4.7% (range -11.9% to +10.6%). FPU measured 10,000 ticks with publication and sampling between ticks; ZCore measured 4,096 continuous kernel ticks. Every completed ZCore run matched native at final reset, and all FPU output observations matched native. These incomplete, variable measurements do not establish a reliable overall gain; complete intermediate runtime state was not compared.
+
+Both builds used the retained movement and SmallVec changes and the same profiling settings; the source patches, executable hashes, compiler version, and raw paired results are in `target/diagnostic-load-trials/` (ignored build output). Direct occupancy was not attempted.

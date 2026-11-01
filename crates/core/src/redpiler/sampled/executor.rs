@@ -210,7 +210,7 @@ impl Runtime {
     pub(super) fn notify_source_watchers(&mut self, source: usize, shape: bool, update: bool) {
         for index in 0..self.program.source_watchers[source].len() {
             let watcher = self.program.source_watchers[source][index];
-            if !self.consume_operation(self.program.positions[watcher]) {
+            if !self.consume_component_operation(watcher) {
                 return;
             }
             let delivered = if matches!(self.blocks[watcher], Block::Observer { .. }) {
@@ -237,7 +237,7 @@ impl Runtime {
         let count = self.program.home_watchers.get(piston).map_or(0, |watchers| watchers.len());
         for index in 0..count {
             let watcher = self.program.home_watchers[piston][index];
-            if !self.consume_operation(self.program.positions[watcher]) {
+            if !self.consume_component_operation(watcher) {
                 return;
             }
             if !shape_only || matches!(self.blocks[watcher], Block::Observer { .. }) {
@@ -307,7 +307,7 @@ impl Runtime {
                 && self.program.positions[index].offset(observer.facing.into()) == position
                 && !observer.powered
             {
-                if !self.consume_operation(self.program.positions[index]) {
+                if !self.consume_component_operation(index) {
                     return;
                 }
                 let tick = ScheduledComponentTick {
@@ -691,12 +691,20 @@ impl Runtime {
         self.motion_phase = false;
     }
     fn consume_operation(&mut self, position: mchprs_blocks::BlockPos) -> bool {
+        self.consume_operation_with(|_| position)
+    }
+
+    fn consume_component_operation(&mut self, component: usize) -> bool {
+        self.consume_operation_with(|program| program.positions[component])
+    }
+
+    fn consume_operation_with(&mut self, position: impl FnOnce(&super::program::Program) -> mchprs_blocks::BlockPos) -> bool {
         if self.failure.is_some() {
             return false;
         }
         if self.tick_operations >= 1_000_000 {
             self.failure = Some(ScratchError {
-                position: Some(position),
+                position: Some(position(&self.program)),
                 reason: "runtime semantic operation limit exceeded",
             });
             return false;
@@ -838,7 +846,7 @@ impl Runtime {
             self.group_arrangements[record.group] = after;
             for index in flips {
                 let flip = self.program.movement_flips[index];
-                if !self.consume_operation(self.program.positions[flip.target]) {
+                if !self.consume_component_operation(flip.target) {
                     return;
                 }
                 let strength = self.arrangement_output(flip.source);
@@ -881,7 +889,7 @@ impl Runtime {
                 || self.program.movement_wires[step.wires.clone()]
                     .iter()
                     .any(|&wire| self.changed_wires[wire]);
-            if !self.consume_operation(self.program.positions[node]) {
+            if !self.consume_component_operation(node) {
                 return;
             }
             if wire {
@@ -902,7 +910,7 @@ impl Runtime {
             if !self.switched[node] {
                 continue;
             }
-            if !self.consume_operation(self.program.positions[node]) {
+            if !self.consume_component_operation(node) {
                 return;
             }
             if self.program.watched_by_component[node].is_some() {
@@ -921,7 +929,7 @@ impl Runtime {
             if let Some(index) = self.program.watched_by_component[wire].map(|index| index.get() - 1) {
                 for offset in 0..self.program.watched_wires[index].watchers.len() {
                     let watcher = self.program.watched_wires[index].watchers[offset];
-                    if !self.consume_operation(self.program.positions[watcher]) {
+                    if !self.consume_component_operation(watcher) {
                         return;
                     }
                     self.update_once(watcher);
@@ -1261,7 +1269,7 @@ impl Runtime {
                 let operation = self.program.operations[index];
                 match operation {
                     Operation::Contribution(index) => {
-                        if !self.consume_operation(self.program.positions[component]) {
+                        if !self.consume_component_operation(component) {
                             return;
                         }
                         let link = self.program.links[index];
@@ -1273,7 +1281,7 @@ impl Runtime {
                         self.operations += 1;
                     }
                     Operation::ArrangementContribution(index) => {
-                        if !self.consume_operation(self.program.positions[component]) {
+                        if !self.consume_component_operation(component) {
                             return;
                         }
                         let (target, side, value) = self.arrangement_contribution(index);
@@ -1308,7 +1316,7 @@ impl Runtime {
                     _ => {}
                 }
             }
-            if !self.consume_operation(self.program.positions[component]) {
+            if !self.consume_component_operation(component) {
                 return;
             }
             match operation {
@@ -1453,7 +1461,7 @@ impl Runtime {
             let mut strength = 0;
             for offset in 0..self.program.reactive_wires[index].sources.len() {
                 let (node, attenuation) = self.program.reactive_wires[index].sources[offset];
-                if !self.consume_operation(self.program.positions[node]) {
+                if !self.consume_component_operation(node) {
                     return;
                 }
                 let level = if matches!(self.blocks[node], Block::RedstoneBlock) {
@@ -1470,7 +1478,7 @@ impl Runtime {
             self.reactive_wire_strengths[index] = strength;
             for offset in 0..self.program.reactive_wires[index].recipients.len() {
                 let target = self.program.reactive_wires[index].recipients[offset];
-                if !self.consume_operation(self.program.positions[target]) {
+                if !self.consume_component_operation(target) {
                     return;
                 }
                 self.update(target);
@@ -1478,7 +1486,7 @@ impl Runtime {
         }
         for offset in 0..self.program.reactive_neighbours[source].len() {
             let target = self.program.reactive_neighbours[source][offset];
-            if !self.consume_operation(self.program.positions[target]) {
+            if !self.consume_component_operation(target) {
                 return;
             }
             self.update(target);
