@@ -22,37 +22,53 @@ pub(super) enum Operation {
 
 #[derive(Clone, Copy)]
 pub(super) struct ElectricalLink {
+    /// component index whose redstone output feeds `target`.
     pub(super) source: usize,
+    /// component index receiving the attenuated signal.
     pub(super) target: usize,
+    /// signal strength subtracted along this connection, in levels 0–15.
     pub(super) attenuation: u8,
 }
 
 #[derive(Clone)]
 pub(super) struct WatchedWire {
+    /// index into `Program::positions` for the wire being monitored.
     pub(super) wire: usize,
+    /// component indices in `Program::positions` notified when this wire changes.
     pub(super) watchers: Vec<usize>,
 }
 
 #[derive(Clone)]
 pub(super) struct MoveStepSpec {
+    /// component index into `Program::positions` for this movement callback.
     pub(super) node: usize,
+    /// indicating this step was selected because the component watches a moved cell.
     pub(super) watcher: bool,
+    /// indicating this step evaluates a watched wire.
     pub(super) wire: bool,
+    /// watched-wire indices consulted by this step.
     pub(super) wires: Vec<usize>,
 }
 
 #[derive(Clone)]
 pub(super) struct MoveStep {
+    /// component index into `Program::positions` for this movement callback.
     pub(super) node: usize,
+    /// indicating this step was selected because the component watches a moved cell.
     pub(super) watcher: bool,
+    /// indicating this step evaluates a watched wire.
     pub(super) wire: bool,
+    /// slice into `Program::movement_wires` listing wires consulted by this step.
     pub(super) wires: std::ops::Range<usize>,
 }
 
 #[derive(Clone)]
 pub(super) struct RepeaterRecord {
+    /// component index into `Program::positions` for this repeater.
     pub(super) component: usize,
+    /// indicating whether the repeater output is connected to a diode.
     pub(super) output_is_diode: bool,
+    /// component indices supplying repeater side-lock power; `None` means not populated.
     pub(super) side_sources: Option<Vec<usize>>,
 }
 
@@ -64,54 +80,83 @@ pub(super) enum ArrangementSource {
 
 #[derive(Clone)]
 pub(super) struct InputArrangement {
+    /// component index into `Program::positions` whose input is described.
     pub(super) target: usize,
+    /// indicating this arrangement describes a comparator side input rather than rear input.
     pub(super) side: bool,
+    /// indicating the input change is silent and should not trigger an ordinary notification.
     pub(super) silent: bool,
+    /// token indices into `Program::tokens` whose positions distinguish arrangement states.
     pub(super) tokens: Vec<usize>,
+    /// conditional sources gating the arrangement's input.
     pub(super) conditional_sources: Vec<ArrangementSource>,
+    /// per-arrangement source/attenuation lists; outer slots follow the encoded token-position combinations.
     pub(super) inputs: Vec<Vec<(ArrangementSource, u8)>>,
 }
 
 #[derive(Clone, Copy)]
 pub(super) struct ArrangementFlip {
+    /// component index into `Program::positions` whose input changes.
     pub(super) target: usize,
+    /// component or token whose movement changes the input.
     pub(super) source: ArrangementSource,
+    /// signal attenuation for this source-to-target connection.
     pub(super) attenuation: u8,
+    /// index into `Program::arrangement_links` for the connection being changed.
     pub(super) link: usize,
+    /// indicating the source is entering the target's input footprint (`false` means leaving).
     pub(super) entering: bool,
+    /// indicating this is a side input rather than the primary input.
     pub(super) side: bool,
 }
 
 #[derive(Clone)]
 pub(super) struct ArrangementLink {
+    /// component index into `Program::positions` receiving this conditional signal.
     pub(super) target: usize,
+    /// indicating this is a side input rather than the primary input.
     pub(super) side: bool,
+    /// indicating changes to this link do not independently notify the target.
     pub(super) silent: bool,
+    /// component or movable token supplying the signal.
     pub(super) source: ArrangementSource,
+    /// signal attenuation for this source-to-target connection.
     pub(super) attenuation: u8,
+    /// index into `Program::input_arrangements` selecting this link's arrangement group.
     pub(super) group: usize,
+    /// active-state lookup indexed by the group's encoded arrangement state.
     pub(super) active: Vec<bool>,
 }
 
 #[derive(Clone)]
 pub(super) struct MovementAxis {
+    /// token index into `Program::tokens` moving along this axis.
     pub(super) token: usize,
+    /// mixed-radix stride used to extract this token's state from a group arrangement index.
     pub(super) stride: usize,
+    /// per-token-cell slices into the group's departure-step storage.
     pub(super) depart: Vec<std::ops::Range<usize>>,
+    /// per-token-cell slices into the group's arrival-step storage.
     pub(super) arrive: Vec<std::ops::Range<usize>>,
 }
 
 #[derive(Clone)]
 pub(super) struct MovementGroup {
+    /// token axes and their movement-step ranges for one joint arrangement group.
     pub(super) axes: Vec<MovementAxis>,
 }
 
 #[derive(Clone)]
 pub(super) struct ComparatorRecord {
+    /// component index into `Program::positions` for this comparator.
     pub(super) component: usize,
+    /// comparator output strength captured from its block entity, in levels 0–15.
     pub(super) stored: u8,
+    /// static or dynamic rear override, when present.
     pub(super) rear_override: Option<ComparatorInput>,
+    /// far-side override through a solid rear block, when present.
     pub(super) far_override: Option<ComparatorInput>,
+    /// indicating the output faces a diode in a direction that changes output behavior.
     pub(super) output_is_diode: bool,
 }
 
@@ -124,83 +169,153 @@ pub(super) enum ComparatorInput {
 
 #[derive(Clone)]
 pub(super) struct ReactiveWire {
+    /// watched-wire index into `Program::watched_wires`.
     pub(super) wire: usize,
+    /// source component indices and attenuation levels contributing to this wire.
     pub(super) sources: Vec<(usize, u8)>,
+    /// reactive component indices in `Program::positions` whose behavior depends on this wire.
     pub(super) recipients: Vec<usize>,
 }
 
 #[derive(Clone)]
 pub(super) struct PistonBinding {
+    /// piston component index into `Program::positions`.
     pub(super) component: usize,
+    /// projection-cell index for the piston base/home position.
     pub(super) home_cell: usize,
+    /// projection-cell index for the piston head/far position.
     pub(super) far_cell: usize,
+    /// index into the related piston binding, when paired with another piston.
     pub(super) mate: Option<usize>,
+    /// projection-cell indices containing heads at the home position.
     pub(super) home_heads: Vec<usize>,
+    /// projection-cell indices containing heads at the far position.
     pub(super) far_heads: Vec<usize>,
+    /// indicating the home side cannot accept a piston head.
     pub(super) home_blocked: bool,
+    /// indicating the far side cannot accept a piston head.
     pub(super) far_blocked: bool,
 }
 
 #[derive(Clone)]
 pub(crate) struct Program {
+    /// captured command-block state keyed by world position.
     pub(super) command_blocks: HashMap<BlockPos, Box<mchprs_blocks::block_entities::CommandBlockEntity>>,
+    /// world-level command output state needed to restore interpreter behavior.
     pub(super) command_output_state: Option<crate::world::CommandBlockOutputState>,
+    /// reverse map from component index to `piston_bindings` index.
     pub(super) piston_by_component: Vec<Option<usize>>,
+    /// piston projection bindings and their home/far cell state.
     pub(super) piston_bindings: Vec<PistonBinding>,
+    /// reverse map from component index to `repeaters` record index.
     pub(super) repeater_by_component: Vec<Option<usize>>,
+    /// reverse map from component index to `comparators` record index.
     pub(super) comparator_by_component: Vec<Option<usize>>,
+    /// reverse map from component index to `watched_wires` record index.
     pub(super) watched_by_component: Vec<Option<usize>>,
+    /// component-indexed flags for nodes that can source movable-token inputs.
     pub(super) movable_sources: Vec<bool>,
+    /// cached summary indicating at least one component has reactive behavior.
     pub(super) has_reactive: bool,
+    /// per-comparator captured output and override metadata.
     pub(super) comparators: Vec<ComparatorRecord>,
+    /// per-component lists of comparator indices depending on that component's override value.
     pub(super) comparators_by_override: Vec<Vec<usize>>,
+    /// comparator/repeater side-input connections, separate from ordinary incoming links.
     pub(super) side_links: Vec<ElectricalLink>,
+    /// component-indexed flags identifying nodes that require reactive reevaluation.
     pub(super) reactive: Vec<bool>,
+    /// watched wires and their sources/recipient components.
     pub(super) reactive_wires: Vec<ReactiveWire>,
+    /// per-source component lists of reactive-wire indices to refresh when that source changes.
     pub(super) reactive_by_source: Vec<Vec<usize>>,
+    /// per-component lists of neighboring reactive component indices.
     pub(super) reactive_neighbours: Vec<Vec<usize>>,
+    /// discovered piston bases, orientations, and group identities.
     pub(super) pistons: Vec<super::compiler::PistonActor>,
+    /// movable blocks and their legal positions/cells.
     pub(super) tokens: Vec<super::compiler::PistonToken>,
+    /// non-component scenery positions reserved for piston projection.
     pub(super) piston_scenery: Vec<BlockPos>,
+    /// captured non-air blocks outside the component list.
     pub(super) geometry: Vec<(BlockPos, Block)>,
+    /// world-position to component index lookup matching `positions`.
     pub(super) component_indices: HashMap<BlockPos, usize>,
+    /// world-position to captured scenery block lookup matching `geometry`.
     pub(super) geometry_indices: HashMap<BlockPos, Block>,
+    /// world positions represented by projection-cell indices.
     pub(super) projection_positions: Vec<BlockPos>,
+    /// world-position to projection-cell index lookup.
     pub(super) projection_indices: HashMap<BlockPos, usize>,
+    /// component-indexed projection-cell IDs, parallel to `positions`.
     pub(super) component_cells: Vec<usize>,
+    /// projection-cell-indexed reverse mapping to a component index.
     pub(super) cell_components: Vec<Option<usize>>,
+    /// per projection cell, token indices occupying that cell in any legal position.
     pub(super) token_cells: Vec<Vec<usize>>,
+    /// per token, projection-cell indices it can occupy.
     pub(super) cell_tokens: Vec<Vec<usize>>,
+    /// per projection cell, piston indices whose base or home occupies that cell.
     pub(super) cell_pistons: Vec<Vec<usize>>,
+    /// per projection cell, observer component indices watching that cell.
     pub(super) cell_observers: Vec<Vec<usize>>,
+    /// projection-cell-indexed scenery blocks, with air for cells without static geometry.
     pub(super) cell_geometry: Vec<Block>,
+    /// per token, piston component indices whose motion can move that token.
     pub(super) token_piston_components: Vec<Vec<usize>>,
+    /// indexed token, token cell, then source component/attenuation dependencies.
     pub(super) token_sources: Vec<Vec<Vec<(usize, u8)>>>,
+    /// indexed token and cell, with separate ordered component updates for departure and arrival.
     pub(super) token_updates: Vec<Vec<[Vec<usize>; 2]>>,
+    /// indexed token and cell, listing component indices watching movement at that cell.
     pub(super) token_watchers: Vec<Vec<Vec<usize>>>,
+    /// indexed token and cell, slicing `movement_steps` for departure and arrival.
     pub(super) move_steps: Vec<Vec<[std::ops::Range<usize>; 2]>>,
+    /// flattened ordered movement callbacks referenced by `move_steps` ranges.
     pub(super) movement_steps: Vec<MoveStep>,
+    /// flattened watched-wire indices referenced by `MoveStep::wires` ranges.
     pub(super) movement_wires: Vec<usize>,
+    /// joint token-position states that change component input connectivity.
     pub(super) input_arrangements: Vec<InputArrangement>,
+    /// grouped token movement axes and their callback ranges.
     pub(super) movement_groups: Vec<MovementGroup>,
+    /// ordered conditional-link enter/leave events for token movement.
     pub(super) movement_flips: Vec<ArrangementFlip>,
+    /// per token, mapping movement-group indices to that token's group-axis index.
     pub(super) token_movement_groups: Vec<Vec<(usize, usize)>>,
+    /// token-dependent electrical links and their active arrangement states.
     pub(super) arrangement_links: Vec<ArrangementLink>,
+    /// per source component, listing components notified by source changes.
     pub(super) source_watchers: Vec<Vec<usize>>,
+    /// per piston component, listing components notified by changes around its home cell.
     pub(super) home_watchers: Vec<Vec<usize>>,
+    /// component-indexed world positions; index is the canonical component ID throughout the program.
     pub(super) positions: Vec<BlockPos>,
+    /// initial component blocks, parallel to `positions` by component index.
     pub(super) initial: Vec<Block>,
+    /// component indices of external input sources such as levers and buttons.
     pub(super) sources: Vec<usize>,
+    /// per component, slicing `operations` for its two output transitions.
     pub(super) output_programs: Vec<[std::ops::Range<usize>; 2]>,
+    /// flattened compiled output operations referenced by `output_programs` ranges.
     pub(super) operations: Vec<Operation>,
+    /// ordinary source-to-target input links; IDs index this vector.
     pub(super) links: Vec<ElectricalLink>,
+    /// per target component, listing incoming indices into `links`.
     pub(super) incoming: Vec<Vec<usize>>,
+    /// per source component, listing outgoing indices into `links`.
     pub(super) outgoing: Vec<Vec<usize>>,
+    /// per source component, listing outgoing indices into `arrangement_links`.
     pub(super) outgoing_arrangements: Vec<Vec<usize>>,
+    /// per target component, listing its token-dependent input-arrangement indices.
     pub(super) input_groups_by_target: Vec<Vec<usize>>,
+    /// indexed by ordinary link ID, indicating whether that link contributes to its target.
     pub(super) effective_links: Vec<bool>,
+    /// per source component, with target component and attenuation for side outputs.
     pub(super) side_outputs: Vec<Vec<(usize, u8)>>,
+    /// records mapping monitored wire components to their watcher components.
     pub(super) watched_wires: Vec<WatchedWire>,
+    /// per-repeater output and side-lock metadata.
     pub(super) repeaters: Vec<RepeaterRecord>,
 }
 

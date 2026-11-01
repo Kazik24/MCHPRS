@@ -1,23 +1,33 @@
 use super::executor::ScheduledComponentTick;
 use crate::world::scheduler::NUM_QUEUES;
 use mchprs_world::TickPriority;
+use std::num::NonZeroUsize;
 
 #[derive(Clone, Copy, Default)]
 struct Queue {
-    first: Option<usize>,
-    last: Option<usize>,
+    /// first slot in this FIFO chain, encoded as its index plus one.
+    first: Option<NonZeroUsize>,
+    /// last slot in this FIFO chain, encoded as its index plus one.
+    last: Option<NonZeroUsize>,
 }
 
 struct Slot {
+    /// component tick stored in this slot.
     tick: ScheduledComponentTick,
-    next: Option<usize>,
+    /// next FIFO slot or next free-list slot, encoded as its index plus one.
+    next: Option<NonZeroUsize>,
 }
 
 pub(super) struct Scheduler {
+    /// fixed-capacity tick slots, reused through the free list.
     slots: Vec<Slot>,
-    free: Option<usize>,
+    /// head of the free-slot chain, encoded as its index plus one.
+    free: Option<NonZeroUsize>,
+    /// ring buckets by delay and native tick priority.
     queues: [[Queue; TickPriority::COUNT]; NUM_QUEUES],
+    /// current ring position representing this tick's delay-zero queue.
     pos: usize,
+    /// maximum number of allocated slot records accepted by this scheduler.
     limit: usize,
 }
 
@@ -46,19 +56,19 @@ impl Scheduler {
             return Err("invalid runtime scheduled delay or priority");
         }
         let slot = if let Some(slot) = self.free {
-            self.free = self.slots[slot].next;
-            self.slots[slot] = Slot { tick, next: None };
+            self.free = self.slots[slot.get() - 1].next;
+            self.slots[slot.get() - 1] = Slot { tick, next: None };
             slot
         } else {
             if self.slots.len() == self.limit {
                 return Err("runtime scheduled tick capacity exceeded");
             }
             self.slots.push(Slot { tick, next: None });
-            self.slots.len() - 1
+            NonZeroUsize::new(self.slots.len()).unwrap()
         };
         let queue = &mut self.queues[(self.pos + delay) % NUM_QUEUES][priority as usize];
         if let Some(last) = queue.last {
-            self.slots[last].next = Some(slot);
+            self.slots[last.get() - 1].next = Some(slot);
         } else {
             queue.first = Some(slot);
         }
@@ -69,12 +79,12 @@ impl Scheduler {
     pub(super) fn pop_first(&mut self) -> Option<ScheduledComponentTick> {
         for queue in &mut self.queues[self.pos] {
             if let Some(slot) = queue.first {
-                queue.first = self.slots[slot].next;
+                queue.first = self.slots[slot.get() - 1].next;
                 if queue.first.is_none() {
                     queue.last = None;
                 }
-                let tick = self.slots[slot].tick;
-                self.slots[slot].next = self.free;
+                let tick = self.slots[slot.get() - 1].tick;
+                self.slots[slot.get() - 1].next = self.free;
                 self.free = Some(slot);
                 return Some(tick);
             }
@@ -93,8 +103,8 @@ impl Scheduler {
                 let mut slot = self.queues[(self.pos + delay) % NUM_QUEUES][priority as usize].first;
                 std::iter::from_fn(move || {
                     let current = slot?;
-                    slot = self.slots[current].next;
-                    Some((&self.slots[current].tick, delay, priority))
+                    slot = self.slots[current.get() - 1].next;
+                    Some((&self.slots[current.get() - 1].tick, delay, priority))
                 })
             })
         })
@@ -105,6 +115,15 @@ impl Scheduler {
 mod tests {
     use super::*;
     use crate::world::scheduler::TickScheduler;
+
+    #[test]
+    fn slot_links_use_one_word() {
+        use std::mem::size_of;
+        assert_eq!(size_of::<Option<NonZeroUsize>>(), size_of::<usize>());
+        assert_eq!(size_of::<Queue>(), 2 * size_of::<usize>());
+        assert_eq!(size_of::<Slot>(), size_of::<ScheduledComponentTick>() + size_of::<usize>());
+        assert!(size_of::<Slot>() < size_of::<(ScheduledComponentTick, Option<usize>)>());
+    }
 
     #[test]
     fn component_queues_match_native_priorities_fifo_and_ring_rotations() {
@@ -163,5 +182,12 @@ mod tests {
         assert_eq!(scheduler.pop_first(), None);
         assert_eq!(scheduler.slots.len(), 2);
         assert!(scheduler.schedule_half_tick(entry, NUM_QUEUES, TickPriority::Normal).is_err());
+        scheduler.schedule_half_tick(entry, 1, TickPriority::Normal).unwrap();
+        scheduler.reset(1);
+        assert_eq!(scheduler.pop_first(), None);
+        assert_eq!(scheduler.iter().count(), 0);
+        scheduler.schedule_half_tick(entry, 0, TickPriority::NanoTick).unwrap();
+        assert_eq!(scheduler.pop_first(), Some(entry));
+        assert_eq!(scheduler.pop_first(), None);
     }
 }

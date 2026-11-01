@@ -50,7 +50,10 @@ impl std::fmt::Display for CompileError {
 impl std::error::Error for CompileError {}
 
 #[derive(Debug, Clone)]
-pub struct ExecutionError(ScratchError);
+pub struct ExecutionError(
+    /// underlying runtime failure, including its optional world position and reason.
+    ScratchError,
+);
 
 impl std::fmt::Display for ExecutionError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -62,8 +65,11 @@ impl std::error::Error for ExecutionError {}
 
 #[derive(Debug, Clone)]
 pub struct CompileStatistics {
+    /// number of compiled redstone components.
     pub components: usize,
+    /// number of native scheduled ticks copied into the compiled runtime.
     pub pending_ticks: usize,
+    /// elapsed compile time.
     pub duration: Duration,
 }
 
@@ -74,20 +80,31 @@ impl CompileStatistics {
 }
 
 struct ExportedMotion {
+    /// host motion identity used to correlate updates across publications.
     identity: u64,
+    /// whether this host motion was observed in the current publication pass.
     seen: bool,
 }
 
 #[derive(Default)]
 pub struct Compiler {
+    /// active compiled runtime, absent when the compiler is reset.
     runtime: Option<Runtime>,
+    /// publication/reset options used by the current compilation.
     options: CompilerOptions,
+    /// most recent successful compile statistics.
     statistics: Option<CompileStatistics>,
+    /// host moving-piston identities tracked between publications.
     exported_motions: HashMap<ExportKey, ExportedMotion>,
+    /// moving piston block parts queued for host-world publication.
     publication_parts: Vec<MovingPart>,
+    /// positions already included in the current publication.
     publication_positions: HashSet<BlockPos>,
+    /// host motion identities retired during reconciliation.
     retired_motions: HashSet<u64>,
+    /// moving-piston positions mapped to host motion indices.
     host_motion_indices: HashMap<BlockPos, usize>,
+    /// indicates a publication reconciliation pass is in progress.
     publication_phase: bool,
 }
 

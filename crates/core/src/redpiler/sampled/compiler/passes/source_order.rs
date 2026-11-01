@@ -4,25 +4,45 @@ use std::time::{Duration, Instant};
 
 #[derive(Default)]
 struct SourceSamplingMetrics {
+    /// whether timing and counter diagnostics should be emitted on drop.
     enabled: bool,
+    /// spent selecting candidate sources.
     source_selection: Duration,
+    /// spent loading the active token arrangement.
     loaded_arrangement: Duration,
+    /// spent preparing the quiet baseline state.
     quiet_basis: Duration,
+    /// spent restoring and setting up scratch probes.
     scratch_setup: Duration,
+    /// spent applying source transitions and native callbacks.
     source_flips: Duration,
+    /// spent capturing and comparing scratch frames.
     frame_capture_comparison: Duration,
+    /// spent lowering ordered callbacks into operation programs.
     ordered_lowering: Duration,
+    /// total candidate source components considered.
     candidate_sources: usize,
+    /// candidate sources with racing outputs requiring ordered sampling.
     racing_sources: usize,
+    /// sources fully sampled before completion or cancellation.
     completed_sources: usize,
+    /// ordinary electrical links counted for diagnostics.
     static_links: usize,
+    /// token-dependent links counted for diagnostics.
     conditional_links: usize,
+    /// number of runtime program starts during sampling.
     program_starts: usize,
+    /// full component walks used to construct quiet baselines.
     quiet_component_walks: usize,
+    /// full component walks used to set up probes.
     setup_component_walks: usize,
+    /// component checks used to capture entry states.
     entry_state_walks: usize,
+    /// scratch frames captured for comparison.
     captured_frames: usize,
+    /// component visits used while comparing captured frames.
     frame_comparison_walks: usize,
+    /// native callbacks observed during probes.
     observed_callbacks: usize,
 }
 
@@ -74,8 +94,11 @@ impl Drop for SourceSamplingMetrics {
 
 #[derive(Clone, PartialEq, Eq)]
 struct Frame {
+    /// component-indexed block states for one captured scratch frame.
     blocks: Vec<Block>,
+    /// pending native ticks captured with the frame.
     pending: Vec<mchprs_world::TickEntry>,
+    /// ordered neighbor/update callbacks captured with the frame.
     deliveries: Vec<crate::world::RedstoneUpdateObservation>,
 }
 
@@ -477,12 +500,16 @@ pub(in super::super) fn run(
 }
 
 struct SourceTarget {
+    /// target component index into `Program::positions`.
     target: usize,
+    /// whether the source supplies the target's rear/primary input rather than only a side input.
     rear: bool,
+    /// ordered runtime operations triggered when this source changes this target.
     operations: Vec<Operation>,
 }
 
 struct SourceIndex {
+    /// per source component, the target components and operations reached by that source.
     targets: Vec<Vec<SourceTarget>>,
 }
 

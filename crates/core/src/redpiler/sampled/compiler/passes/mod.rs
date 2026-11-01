@@ -22,22 +22,36 @@ pub(super) mod share_output_programs;
 pub(super) mod source_order;
 
 pub(super) struct Context<'a, W: World> {
+    /// immutable source world being compiled.
     pub(super) world: &'a W,
+    /// inclusive minimum and maximum bounds of the captured compilation region.
     pub(super) bounds: (BlockPos, BlockPos),
+    /// scheduled ticks and piston state captured at the compile boundary.
     pub(super) entry: &'a ScratchEntry,
+    /// cancellation handle for long-running compilation work.
     pub(super) monitor: Option<&'a TaskMonitor>,
 }
 
 pub(super) struct Inventory {
+    /// scanned component world positions; each position's vector index is its component ID.
     pub(super) positions: Vec<BlockPos>,
+    /// component IDs of external lever/button input sources.
     sources: Vec<usize>,
+    /// discovered repeater metadata keyed by each record's component ID.
     repeaters: Vec<RepeaterRecord>,
+    /// copper-bulb positions found during the scan.
     copper_bulbs: Vec<BlockPos>,
+    /// redstone-wire positions found during the scan.
     wire_positions: Vec<BlockPos>,
+    /// redstone-lamp positions found during the scan.
     lamp_positions: Vec<BlockPos>,
+    /// hopper and iron-trapdoor positions needing lamp-like input discovery.
     hopper_positions: Vec<BlockPos>,
+    /// note-block positions needing input and notification discovery.
     note_positions: Vec<BlockPos>,
+    /// piston actors discovered in the captured region.
     pistons: Vec<PistonActor>,
+    /// movable blocks and legal cells discovered for piston groups.
     tokens: Vec<PistonToken>,
 }
 

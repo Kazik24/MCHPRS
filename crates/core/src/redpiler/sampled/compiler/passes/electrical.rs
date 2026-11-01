@@ -24,6 +24,7 @@ pub(in super::super) fn run<'a>(
         tokens,
     } = inventory;
     let error = |pos, reason| ScratchError { position: Some(pos), reason };
+
     phases.next("electrical dependency discovery");
     let discovery = (|| {
         let mut dependencies = if let Some(monitor) = monitor {
@@ -126,10 +127,12 @@ pub(in super::super) fn run<'a>(
         Ok::<_, ScratchError>(dependencies)
     })();
     scratch.finish_probe()?;
+
     let discovery = discovery?;
     phases.next("link and watcher construction");
     let initial: Vec<_> = positions.iter().map(|&p| world.get_block(p)).collect();
     let probe_indexes = crate::redpiler::sampled::group_probe::ProbeIndexes::new(&position_index, &positions, &initial, &tokens, monitor)?;
+
     let mut links = vec![];
     {
         for dependency in discovery {
@@ -148,6 +151,7 @@ pub(in super::super) fn run<'a>(
             });
         }
     }
+
     let mut watched_wires: Vec<WatchedWire> = Vec::new();
     let piston_positions: Vec<_> = pistons.iter().map(|piston| piston.base).collect();
     for watch in crate::redpiler::scratch::discover_wire_watchers(&wire_positions, &piston_positions) {
@@ -162,6 +166,7 @@ pub(in super::super) fn run<'a>(
             });
         }
     }
+
     for (observer, &pos) in positions.iter().enumerate() {
         if let Block::Observer { observer: state } = world.get_block(pos) {
             let at = pos.offset(state.facing.into());
@@ -181,11 +186,13 @@ pub(in super::super) fn run<'a>(
         }
     }
     scratch.finish_probe()?;
+
     let output_programs = vec![[vec![], vec![]]; positions.len()];
     let mut program = Program::new(positions, initial, sources.clone(), output_programs, links, watched_wires, repeaters)
         .map_err(|err| error(bounds.0, err.reason))?;
     program.pistons = pistons;
     program.tokens = tokens;
+
     for (&pos, block) in program.positions.iter().zip(&program.initial) {
         if block.is_command_block() {
             if let Some(BlockEntity::CommandBlock(entity)) = world.get_block_entity(pos) {
@@ -202,9 +209,11 @@ pub(in super::super) fn run<'a>(
             }
         }
     }
+
     if program.initial.iter().any(|block| block.is_command_block()) {
         program.command_output_state = world.command_block_output_state();
     }
+
     for component in 0..program.initial.len() {
         let Block::RedstoneComparator { comparator } = program.initial[component] else {
             continue;
@@ -282,6 +291,7 @@ pub(in super::super) fn run<'a>(
             }
         }
     }
+
     for piston in &program.pistons {
         for cell in [piston.home, piston.far] {
             if !matches!(world.get_block(cell), Block::Air | Block::PistonHead { .. })

@@ -33,10 +33,15 @@ fn reader_kind(block: Block) -> Option<ReaderKind> {
 }
 
 pub(super) struct ProbeIndexes<'a> {
+    /// borrowed world-position to component-index map.
     pub(super) components: &'a HashMap<BlockPos, usize>,
+    /// positions where movable redstone-block tokens may supply power, mapped to token IDs.
     redstone_tokens: HashMap<BlockPos, usize>,
+    /// wire world positions mapped to component IDs.
     wire_at: HashMap<BlockPos, usize>,
+    /// per wire component, neighboring wire component IDs.
     wire_neighbors: Vec<Vec<usize>>,
+    /// non-wire reader positions mapped to component IDs.
     readers: HashMap<BlockPos, usize>,
 }
 
@@ -103,8 +108,11 @@ impl<'a> ProbeIndexes<'a> {
 
 #[derive(Default)]
 struct ProbeMetrics {
+    /// number of arrangement samples evaluated.
     samples: usize,
+    /// number of component reads performed while sampling.
     member_reads: usize,
+    /// number of affected arrangement members visited.
     affected_members: usize,
 }
 

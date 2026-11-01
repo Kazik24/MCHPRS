@@ -8,44 +8,63 @@ use std::collections::{HashMap, HashSet, VecDeque};
 
 #[derive(Clone)]
 pub(crate) struct ScratchEntry {
+    /// native scheduled block ticks captured at the snapshot boundary.
     pub(crate) scheduled: Vec<TickEntry>,
+    /// native piston events and in-flight motions captured at the snapshot boundary.
     pub(crate) piston: PistonState,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ScratchError {
+    /// world position associated with the failure, or `None` for global failures.
     pub position: Option<BlockPos>,
+    /// stable explanation of the unsupported state or failed operation.
     pub reason: &'static str,
 }
 
 pub(crate) struct ScratchWorld {
+    /// isolated mutable interpreter world used for compile-time probes.
     world: PlotWorld,
+    /// baseline block/entity snapshot used to detect untracked probe writes.
     baseline: std::sync::Arc<HashMap<BlockPos, (u32, Option<mchprs_blocks::block_entities::BlockEntity>)>>,
+    /// scheduled native ticks currently held by the scratch world.
     scheduled: Vec<TickEntry>,
+    /// current piston state within the isolated probe world.
     piston: mchprs_world::PistonState,
+    /// inclusive component capture bounds supplied to the compiler.
     bounds: (BlockPos, BlockPos),
+    /// inclusive region whose reads are permitted during a probe.
     read_bounds: (BlockPos, BlockPos),
+    /// chunks admitted for reads by the scratch-world boundary contract.
     read_chunks: HashSet<(i32, i32)>,
+    /// positions contractually treated as air beyond loaded chunks.
     contract_air: HashSet<BlockPos>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct WireWatcher {
+    /// location of the wire being watched.
     pub(crate) wire: BlockPos,
+    /// location of the piston whose motion can affect the wire.
     pub(crate) piston: BlockPos,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct WireSource {
+    /// location of the target wire receiving this dependency.
     pub(crate) wire: BlockPos,
+    /// location of the redstone source supplying power.
     pub(crate) source: BlockPos,
+    /// signal strength reduction between source and wire, in levels 0–15.
     pub(crate) attenuation: u8,
 }
 
 #[derive(Debug, PartialEq, Eq)]
 #[cfg(test)]
 pub(crate) struct WireDiscovery {
+    /// candidate wire/piston pairs that need movement notifications.
     pub(crate) watchers: Vec<WireWatcher>,
+    /// source-to-wire electrical dependencies discovered in the region.
     pub(crate) sources: Vec<WireSource>,
 }
 #[cfg(test)]

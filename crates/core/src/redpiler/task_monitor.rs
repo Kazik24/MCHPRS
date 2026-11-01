@@ -2,6 +2,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 #[derive(Default)]
 pub struct TaskMonitor {
+    /// shared cancellation flag observed by compilation workers.
     cancelled: AtomicBool,
 }
 

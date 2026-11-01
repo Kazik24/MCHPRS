@@ -36,74 +36,136 @@ impl PistonEvent {
 
 #[derive(Clone, Copy, Debug)]
 pub(super) struct Motion {
+    /// index into `Program::pistons` for the actor performing this motion.
     pub(super) piston: usize,
+    /// index into `Program::tokens` for the carried token, or `None` for an empty piston.
     pub(super) token: Option<usize>,
+    /// projection-cell index where the token is scheduled to land.
     pub(super) destination: usize,
+    /// motion-clock tick when the animation starts.
     pub(super) start: u64,
+    /// motion-clock tick when the token lands.
     pub(super) landing: u64,
+    /// ordering key preserving native piston event ordering.
     pub(super) order: usize,
+    /// true while extending and false while retracting.
     pub(super) extending: bool,
+    /// indicating the piston base has completed its part of the motion.
     pub(super) piston_done: bool,
+    /// indicating the carried token has completed its part of the motion.
     pub(super) token_done: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) struct ScheduledComponentTick {
+    /// component index into `Program::positions` whose scheduled tick will run.
     pub(super) component: usize,
+    /// block identity used to discard stale ticks after the component changes type.
     pub(super) block_type: Option<u32>,
 }
 
 pub(crate) struct Runtime {
+    /// mutable command-block entities keyed by world position.
     pub(super) command_blocks: std::collections::HashMap<mchprs_blocks::BlockPos, Box<mchprs_blocks::block_entities::CommandBlockEntity>>,
+    /// mutable world-level command output state.
     pub(super) command_output_state: Option<crate::world::CommandBlockOutputState>,
+    /// command outputs generated during execution and awaiting publication.
     pub(super) command_emissions: Vec<crate::world::CommandBlockEmission>,
+    /// component-indexed current comparator output levels, in 0–15.
     pub(super) comparator_outputs: Vec<u8>,
+    /// reactive-wire-indexed current wire strengths, in 0–15.
     pub(super) reactive_wire_strengths: Vec<u8>,
+    /// immutable compiled topology and instruction data shared with runtime readers.
     pub(super) program: std::sync::Arc<Program>,
+    /// native piston event/motion state captured at compilation and advanced at runtime.
     pub(super) piston_state: mchprs_world::PistonState,
+    /// piston-indexed current extended state.
     pub(super) piston_extended: Vec<bool>,
+    /// piston-indexed whether a head currently occupies the projected head cell.
     pub(super) piston_head_present: Vec<bool>,
+    /// piston-indexed whether the head is participating in an active motion.
     pub(super) piston_head_moving: Vec<bool>,
+    /// piston-indexed whether the base is participating in an active motion.
     pub(super) piston_base_moving: Vec<bool>,
+    /// token-indexed current world position; `None` means currently carried/in transit.
     pub(super) token_positions: Vec<Option<mchprs_blocks::BlockPos>>,
+    /// arrangement-group-indexed encoded active token-position state.
     pub(super) group_arrangements: Vec<usize>,
+    /// arrangement-link-indexed current contribution level, in 0–15.
     pub(super) arrangement_contributions: Vec<u8>,
+    /// pending piston index/event pairs in processing order.
     pub(super) piston_events: std::collections::VecDeque<(usize, PistonEvent)>,
+    /// piston-indexed bitsets of event kinds already queued for that piston.
     pub(super) queued_piston_events: Vec<u8>,
+    /// allocated motion records, including records currently active or reusable.
     pub(super) motions: Vec<Motion>,
+    /// active indices into `motions` in landing/processing order.
     pub(super) active_motions: std::collections::VecDeque<usize>,
+    /// reusable indices into `motions`.
     pub(super) free_motion_slots: Vec<usize>,
+    /// piston-indexed active motion index for each piston.
     pub(super) piston_motion: Vec<Option<usize>>,
+    /// projection-cell-indexed active motion index occupying each cell.
     pub(super) cell_motion: Vec<Option<usize>>,
+    /// projection-cell indices changed since the last publication.
     pub(super) dirty_cells: Vec<usize>,
+    /// projection-cell-indexed flags marking cells that need publication.
     pub(super) dirty: Vec<bool>,
+    /// forcing publication to rebuild the complete projected world.
     pub(super) needs_full_publication: bool,
+    /// component indices whose movement-dependent inputs switched this phase.
     pub(super) movement_switched: Vec<usize>,
+    /// watched-wire indices whose raw strength changed this phase.
     pub(super) movement_changed_wires: Vec<usize>,
+    /// component-indexed deduplication flags for `movement_switched`.
     pub(super) switched: Vec<bool>,
+    /// watched-wire-indexed deduplication flags for `movement_changed_wires`.
     pub(super) changed_wires: Vec<bool>,
+    /// elapsed piston-motion clock in ticks.
     pub(super) motion_time: u64,
+    /// current half-tick phase for motion progression.
     pub(super) motion_phase: bool,
+    /// cursor into active motion ordering for landing processing.
     pub(super) landing_cursor: Option<usize>,
+    /// count of accepted piston actions in the current execution window.
     pub(super) accepted_piston_actions: usize,
+    /// count of token movement events processed.
     pub(super) token_movements: usize,
+    /// count of completed motions.
     pub(super) motion_completions: usize,
+    /// component-indexed current block states, parallel to `Program::positions`.
     pub(super) blocks: Vec<Block>,
+    /// pending component ticks arranged by native delay and priority.
     pub(super) pending: super::scheduler::Scheduler,
+    /// component-indexed number of outstanding scheduled ticks.
     pub(super) pending_counts: Vec<usize>,
+    /// positions with scheduled passive work that is not tied to a component index.
     pub(super) pending_passive_positions: Vec<mchprs_blocks::BlockPos>,
+    /// ordinary electrical-link-indexed current source contribution strengths.
     pub(super) contributions: Vec<u8>,
+    /// per-component input aggregates for primary and side input channels.
     pub(super) input_levels: Vec<[super::input::InputState; 2]>,
+    /// analog strength histograms referenced by `InputState::analog` slots.
     pub(super) input_histograms: Vec<super::input::Histogram>,
+    /// queued notes as component, position, instrument, and sound data.
     pub(crate) notes: Vec<(usize, mchprs_blocks::BlockPos, mchprs_blocks::blocks::Instrument, u32)>,
+    /// component-indexed flags preventing duplicate note queue entries.
     pub(crate) note_queued: Vec<bool>,
+    /// watched-wire-indexed last published strength, in 0–15.
     pub(super) watched_strengths: Vec<u8>,
+    /// monotonically increasing execution phase ID used to suppress duplicate updates.
     pub(super) phase: u64,
+    /// component-indexed last phase in which each component was updated.
     pub(super) updated_in_phase: Vec<Option<u64>>,
+    /// count of executed compiled operations in the current accounting interval.
     pub(super) operations: usize,
+    /// count of delivered neighbor/update callbacks in the current accounting interval.
     pub(super) deliveries: usize,
+    /// count of scheduled repeater ticks in the current accounting interval.
     pub(super) scheduled_repeater_ticks: usize,
+    /// count of operations performed while processing scheduled ticks.
     pub(super) tick_operations: usize,
+    /// first runtime failure, retained to stop further state changes safely.
     pub(super) failure: Option<ScratchError>,
 }
 

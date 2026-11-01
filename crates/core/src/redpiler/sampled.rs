@@ -45,10 +45,15 @@ pub(super) use compiler::compile_monitored as compile_program;
 pub(super) type ExportKey = (usize, u64, bool, mchprs_blocks::BlockPos);
 
 pub(super) struct MovingPart {
+    /// stable key identifying the piston/token part across host publications.
     pub(super) key: ExportKey,
+    /// world position where this moving part is published.
     pub(super) pos: mchprs_blocks::BlockPos,
+    /// currently rendered at the moving-part position.
     pub(super) block: mchprs_blocks::blocks::Block,
+    /// block-entity payload for the moving part.
     pub(super) entity: mchprs_blocks::block_entities::MovingPistonEntity,
+    /// normalized interpolation progress of the moving part.
     pub(super) progress: f32,
 }
 

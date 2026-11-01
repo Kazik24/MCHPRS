@@ -10,10 +10,15 @@ use std::time::Instant;
 mod passes;
 
 struct CompilePhases {
+    /// enables phase timing and progress diagnostics.
     enabled: bool,
+    /// start time for the entire compilation.
     total: Instant,
+    /// start time for the current phase.
     started: Instant,
+    /// label of the current compilation phase.
     phase: &'static str,
+    /// last detailed stage and its source/component index.
     detail: Option<(&'static str, usize)>,
 }
 
@@ -85,21 +90,33 @@ pub(super) fn find_changed_links<K: Ord + Copy, V: PartialEq>(
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) struct PistonActor {
+    /// stable actor index assigned during piston discovery.
     pub(super) id: usize,
+    /// world position of the piston base component.
     pub(super) base: BlockPos,
+    /// direction in which the piston extends.
     pub(super) facing: BlockFacing,
+    /// whether this is a sticky piston.
     pub(super) sticky: bool,
+    /// adjacent home cell immediately in front of the base.
     pub(super) home: BlockPos,
+    /// far cell at the end of the piston head's travel.
     pub(super) far: BlockPos,
+    /// captured initial extended state.
     pub(super) extended: bool,
+    /// whether a piston head is initially present.
     pub(super) head_present: bool,
+    /// connected piston-group index for overlapping motion/contact groups.
     pub(super) group: usize,
 }
 
 #[derive(Clone, Debug)]
 pub(super) struct PistonToken {
+    /// value carried by this movable token.
     pub(super) block: Block,
+    /// initial world position, or `None` for an initially empty piston token.
     pub(super) position: Option<BlockPos>,
+    /// legal cells this token may occupy as its piston group moves.
     pub(super) cells: Vec<BlockPos>,
 }
 

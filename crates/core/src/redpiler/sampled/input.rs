@@ -1,6 +1,8 @@
 #[derive(Clone, Copy)]
 pub(super) struct InputState {
+    /// count of nonzero contributions in this input channel.
     pub(super) active: u32,
+    /// histogram slot ID for analog contributions, or `u32::MAX` when no analog slot is assigned.
     pub(super) analog: u32,
 }
 
@@ -15,7 +17,9 @@ impl Default for InputState {
 
 #[derive(Clone, Copy, Default)]
 pub(super) struct Histogram {
+    /// number of current contributions at strengths 1–15; index zero remains unused.
     counts: [u32; 16],
+    /// bitset with bit `n` set when at least one contribution has strength `n`.
     levels: u16,
 }
 
