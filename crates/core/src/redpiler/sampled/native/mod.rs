@@ -10,8 +10,8 @@ use mchprs_blocks::BlockPos;
 use mchprs_blocks::blocks::Block;
 use mchprs_world::{TickEntry, TickPriority};
 use std::ffi::{c_char, c_void};
-#[path = "native_movement.rs"]
 mod movement;
+mod cache;
 use movement::encode_movement;
 
 pub(super) const ABI_VERSION: u32 = 3;

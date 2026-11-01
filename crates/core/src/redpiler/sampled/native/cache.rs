@@ -1,5 +1,5 @@
 //! Process-owned compiler artifacts. Only the marked child directory is reset at startup.
-use super::TaskMonitor;
+use crate::redpiler::TaskMonitor;
 use sha2::{Digest, Sha256};
 use std::{
     ffi::OsString,
@@ -118,9 +118,9 @@ pub(super) fn module_path(monitor: Option<&TaskMonitor>) -> Result<PathBuf, Stri
     } else { clang.with_file_name("lld-link.exe").canonicalize().map_err(|e| e.to_string())? };
     #[cfg(not(windows))] let linker = executable("ld.lld", "MCHPRS_LLVM_LINKER")?;
     let sources: [(&str, &[u8]); 3] = [
-        ("native_engine.c", include_bytes!("sampled/native_engine.c")),
-        ("native_movement.c", include_bytes!("sampled/native_movement.c")),
-        ("native_abi.h", include_bytes!("sampled/native_abi.h")),
+        ("engine.c", include_bytes!("engine.c")),
+        ("native_movement.c", include_bytes!("native_movement.c")),
+        ("abi.h", include_bytes!("abi.h")),
     ];
     let flags = ["-std=c11", "-O3", "-ffreestanding", "-fno-builtin", "-Werror"];
     let mut hash = Sha256::new();
@@ -137,7 +137,7 @@ pub(super) fn module_path(monitor: Option<&TaskMonitor>) -> Result<PathBuf, Stri
     let started = Instant::now();
     #[cfg(windows)]
     let filename = {
-        args.extend(["--target=x86_64-pc-windows-msvc", "-c", "native_engine.c", "-o", "engine.obj"].map(OsString::from));
+        args.extend(["--target=x86_64-pc-windows-msvc", "-c", "engine.c", "-o", "engine.obj"].map(OsString::from));
         run_tool(&clang, &args, &directory, "compile.log", monitor)?;
         let args = ["/dll", "/noentry", "/nodefaultlib", "/machine:x64", "/out:engine.pending.dll", "engine.obj"].map(OsString::from);
         run_tool(&linker, &args, &directory, "link.log", monitor)?;
@@ -146,7 +146,7 @@ pub(super) fn module_path(monitor: Option<&TaskMonitor>) -> Result<PathBuf, Stri
     };
     #[cfg(not(windows))]
     let filename = {
-        args.extend(["-fPIC", "-shared", "native_engine.c", "-o", "engine.pending.so"].map(OsString::from));
+        args.extend(["-fPIC", "-shared", "engine.c", "-o", "engine.pending.so"].map(OsString::from));
         args.push(OsString::from(format!("--ld-path={}", linker.display())));
         args.extend(["-Wl,-z,defs", "-Wl,-z,relro", "-Wl,-z,now"].map(OsString::from));
         run_tool(&clang, &args, &directory, "compile.log", monitor)?;

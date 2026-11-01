@@ -1,9 +1,10 @@
 //! Private sampled reference compiler and runtime.
 #![allow(dead_code)]
 #[cfg(test)]
-#[path = "sampled/adder_tests.rs"]
+#[path = "../tests/sampled/adder.rs"]
 mod adder_tests;
 #[cfg(test)]
+#[path = "../tests/sampled/admission.rs"]
 mod admission_tests;
 mod commands;
 mod compiler;
@@ -12,6 +13,7 @@ mod cpu_trace;
 mod executor;
 mod group_probe;
 #[cfg(test)]
+#[path = "../tests/sampled/incremental_input.rs"]
 mod incremental_input_tests;
 mod input;
 mod routing;
@@ -19,9 +21,10 @@ mod native;
 pub(in crate::redpiler) use native::NativeRuntime;
 mod program;
 #[cfg(test)]
-#[path = "sampled/reviewed_fixes_tests.rs"]
+#[path = "../tests/sampled/reviewed_fixes.rs"]
 mod reviewed_fixes_tests;
 #[cfg(test)]
+#[path = "../tests/sampled/runtime_index.rs"]
 mod runtime_index_tests;
 mod scheduler;
 #[cfg(test)]

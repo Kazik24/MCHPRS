@@ -79,7 +79,7 @@ Handle stopping or pausing before the next deadline: the last accumulated state 
 - `crates/core/src/plot/mod.rs`: publication deadline, packet cadence, final update on pause, and timing accounting.
 - `crates/core/src/redpiler/mod.rs`: separate visual projection from effects as needed; retain complete reset publication.
 - `crates/core/src/redpiler/sampled/commands.rs`: distinguish entity synchronization from emission delivery if required.
-- `crates/core/src/redpiler/sampled.rs` and `sampled/executor.rs`: preserve dirty state and note/event behavior between publications.
+- `crates/core/src/redpiler/sampled/mod.rs` and `sampled/executor.rs`: preserve dirty state and note/event behavior between publications.
 - `crates/core/src/plot/packet_handlers.rs` and `commands/mod.rs`: audit immediate control and manual-advance flushes.
 - Publication, client synchronization, noteblock, command-block, and piston tests; timing fixtures if the plot gains a deadline field.
 

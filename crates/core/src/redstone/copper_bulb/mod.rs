@@ -35,6 +35,7 @@ pub(crate) fn play_toggle(world: &mut impl World, pos: BlockPos, lit: bool) {
     );
 }
 
+// TODO: What this function does? Looks like it is useless for redstone-oriented backend. Task: Remove if not needed for redstone.
 pub(crate) fn item_transform(block: Block, item: &str) -> Option<(Block, Option<&'static str>, i32)> {
     block.copper_bulb_state()?;
     let name = block.get_name();

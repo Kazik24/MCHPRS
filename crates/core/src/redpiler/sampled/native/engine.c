@@ -1,4 +1,4 @@
-#include "native_abi.h"
+#include "abi.h"
 
 #define NE_OK 0u
 #define NE_INVALID 1u

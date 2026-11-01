@@ -18,13 +18,13 @@ if (-not (Test-Path -LiteralPath $Linker)) {
     throw 'The matching lld-link.exe was not found. Pass -Linker <lld-link.exe>.'
 }
 $Linker = (Resolve-Path -LiteralPath $Linker).Path
-$include = Join-Path $repo 'crates/core/src/redpiler/sampled'
+$include = Join-Path $repo 'crates/core/src/redpiler/sampled/native'
 $target = Join-Path $repo 'target'
 New-Item -ItemType Directory -Path $target -Force | Out-Null
 $object = Join-Path $target 'native_engine.obj'
 $dll = Join-Path $target 'native_engine.dll'
 $compileArgs = @('--target=x86_64-pc-windows-msvc', '-std=c11', '-O3', '-ffreestanding', '-fno-builtin', '-Werror', '-I', $include,
-    '-c', (Join-Path $include 'native_engine.c'), '-o', $object)
+    '-c', (Join-Path $include 'engine.c'), '-o', $object)
 $linkArgs = @('/dll', '/noentry', '/nodefaultlib', '/machine:x64', "/out:$dll", $object)
 $timer = [System.Diagnostics.Stopwatch]::StartNew()
 & $Clang @compileArgs
@@ -32,7 +32,7 @@ if ($LASTEXITCODE -ne 0) { throw 'Clang failed; see diagnostics above.' }
 & $Linker @linkArgs
 if ($LASTEXITCODE -ne 0) { throw 'lld-link failed; stop any process using the output DLL and check diagnostics above.' }
 $timer.Stop()
-$sourceInfo = @('native_engine.c', 'native_movement.c', 'native_abi.h') | ForEach-Object {
+$sourceInfo = @('engine.c', 'native_movement.c', 'abi.h') | ForEach-Object {
     $path = Join-Path $include $_
     [ordered]@{ name = $_; bytes = (Get-Item -LiteralPath $path).Length; sha256 = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash }
 }

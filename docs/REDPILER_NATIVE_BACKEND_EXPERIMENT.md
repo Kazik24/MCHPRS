@@ -371,7 +371,7 @@ Proceed as an experiment to reproduce the demonstrated old native-engine gain on
 Changes in this worktree:
 
 - Added `crates/core/src/redpiler/sampled/native.rs` with ABI version 1 descriptors and a checked little-endian binary payload for the operation and ordinary-link tables. Operations are fixed 8-byte records; electrical links are fixed 12-byte records. Checked conversions reject offsets/counts/operands that do not fit `u32`. Validation checks the magic/version/header, exact table ranges, operation tags and operand domains, link component IDs, and reserved bytes. The payload contains logical rows only and does not serialize Rust structs or allocation capacity.
-- Added `native_abi.h` with matching C records and compile-time size/offset assertions: 16-byte API descriptor and 52-byte Program descriptor. The Rust test checks alignment/field offsets and rejects a corrupted table offset.
+- Added `abi.h` with matching C records and compile-time size/offset assertions: 16-byte API descriptor and 52-byte Program descriptor. The Rust test checks alignment/field offsets and rejects a corrupted table offset.
 - Added `/rp compile --llvm` parsing and completion. The command rejects it before resetting the current compiler; `Compiler::compile` also rejects direct API calls before compilation/activation because no native executor is wired yet. Default sampled compilation is unchanged. There is no `--parallel` flag in this command path to combine with it.
 
 Commands and results:
@@ -417,7 +417,7 @@ The Chungus sampled compile took 137.980 s and peaked at roughly 4.75 GB working
 - Toolchain: `clang version 23.1.4` targeting `x86_64-pc-windows-msvc`, with `lld-link 23.1.4`; no system x64 Clang was available. `target/llvm-23.1.4` is a local ignored toolchain install. Rebuild the shared DLL from the repository root with PowerShell:
 
 ```powershell
-target/llvm-23.1.4/bin/clang.exe --target=x86_64-pc-windows-msvc -std=c11 -O3 -ffreestanding -fno-builtin -Werror -I crates/core/src/redpiler/sampled -c crates/core/src/redpiler/sampled/native_engine.c -o target/native_engine.obj
+target/llvm-23.1.4/bin/clang.exe --target=x86_64-pc-windows-msvc -std=c11 -O3 -ffreestanding -fno-builtin -Werror -I crates/core/src/redpiler/sampled/native -c crates/core/src/redpiler/sampled/native/engine.c -o target/native_engine.obj
 target/llvm-23.1.4/bin/lld-link.exe /dll /noentry /nodefaultlib /machine:x64 /out:target/native_engine.dll target/native_engine.obj
 ```
 

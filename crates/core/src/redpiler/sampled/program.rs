@@ -4,7 +4,7 @@ use smallvec::SmallVec;
 use std::collections::HashMap;
 use std::num::NonZeroUsize;
 
-pub(super) const MAX_ARRANGEMENT_STATES: usize = 65_536;
+pub(super) const MAX_ARRANGEMENT_STATES: usize = 4096;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum Operation {
@@ -230,6 +230,7 @@ pub(super) struct PistonBinding {
 
 #[derive(Clone)]
 pub(crate) struct Program {
+    pub(super) routing: Option<super::routing::WireGraph>,
     // Components and output instructions
     /// component-indexed world positions; index is the canonical component ID throughout the program.
     pub(super) positions: Vec<BlockPos>,
@@ -1089,6 +1090,7 @@ impl Program {
         Ok(Self {
             command_blocks: HashMap::new(),
             command_output_state: None,
+            routing: None,
             piston_by_component: Vec::new(),
             piston_bindings: Vec::new(),
             repeater_by_component: Vec::new(),

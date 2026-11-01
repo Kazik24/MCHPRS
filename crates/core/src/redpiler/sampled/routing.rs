@@ -3,7 +3,7 @@ use super::{Program, ScratchError, ScratchWorld, compiler::PistonToken, group_pr
 use crate::redpiler::{TaskMonitor, scratch::discover_wire_ports};
 use crate::world::World;
 use mchprs_blocks::{BlockPos, blocks::Block};
-use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 
 #[derive(Clone, Copy, Debug)]
 pub(super) enum Axis {
@@ -42,6 +42,7 @@ struct Reader {
     position: BlockPos,
     table: Local<ReaderPorts>,
     dependencies: Vec<usize>,
+    links: Vec<usize>,
 }
 
 impl<T> Local<T> {
@@ -98,6 +99,8 @@ pub(super) struct WireGraph {
     nodes: Vec<Node>,
     source_ids: HashMap<BlockPos, ArrangementSource>,
     readers: Vec<Reader>,
+    by_component: Vec<Option<usize>>,
+    by_token: Vec<Vec<usize>>,
 }
 
 #[derive(Default)]
@@ -115,7 +118,27 @@ impl WireGraph {
     pub(super) fn reader_count(&self) -> usize { self.readers.len() }
     pub(super) fn reader_component(&self, reader: usize) -> usize { self.readers[reader].component }
     pub(super) fn reader_dependencies(&self, reader: usize) -> &[usize] { &self.readers[reader].dependencies }
-    pub(super) fn retain_readers(&mut self, targets: &BTreeSet<usize>) { self.readers.retain(|reader| targets.contains(&reader.component)); }
+    pub(super) fn retain_readers(&mut self, targets: &BTreeSet<usize>) {
+        self.readers.retain(|reader| targets.contains(&reader.component));
+        self.reindex();
+    }
+    fn reindex(&mut self) {
+        self.by_component.fill(None);
+        for readers in &mut self.by_token { readers.clear(); }
+        for (index, reader) in self.readers.iter().enumerate() {
+            self.by_component[reader.component] = Some(index);
+            for &token in &reader.dependencies { self.by_token[token].push(index); }
+        }
+    }
+    pub(super) fn reader_for_component(&self, component: usize) -> Option<usize> { self.by_component[component] }
+    pub(super) fn readers_for_token(&self, token: usize) -> &[usize] { &self.by_token[token] }
+    pub(super) fn links(&self, reader: usize) -> &[usize] { &self.readers[reader].links }
+    pub(super) fn bind_links(&mut self, links: &[super::program::ArrangementLink]) {
+        for reader in &mut self.readers { reader.links.clear(); }
+        for (index, link) in links.iter().enumerate() {
+            if let Some(reader) = self.reader_for_component(link.target) { self.readers[reader].links.push(index); }
+        }
+    }
 
     pub(super) fn potential_sources(&self, reader: usize) -> BTreeMap<(ArrangementSource, bool), u8> {
         let mut found = BTreeMap::new();
@@ -180,7 +203,7 @@ impl WireGraph {
             nodes.push(node);
         }
         scratch.revert();
-        Ok(Self { positions, index, nodes, source_ids: HashMap::new(), readers: Vec::new() })
+        Ok(Self { positions, index, nodes, source_ids: HashMap::new(), readers: Vec::new(), by_component: Vec::new(), by_token: Vec::new() })
     }
 
     pub(super) fn compile_readers(&mut self, scratch: &mut ScratchWorld, program: &Program, targets: &[usize], indexes: &ProbeIndexes<'_>, monitor: Option<&TaskMonitor>) -> Result<(), ScratchError> {
@@ -227,8 +250,11 @@ impl WireGraph {
                     if reached.insert(next) { queue.push_back((next, distance + 1)); }
                 }
             }
-            self.readers.push(Reader { component, position, table, dependencies: dependencies.into_keys().collect() });
+            self.readers.push(Reader { component, position, table, dependencies: dependencies.into_keys().collect(), links: Vec::new() });
         }
+        self.by_component = vec![None; program.initial.len()];
+        self.by_token = vec![Vec::new(); program.tokens.len()];
+        self.reindex();
         scratch.revert();
         Ok(())
     }

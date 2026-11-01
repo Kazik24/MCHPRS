@@ -409,6 +409,11 @@ fn placements(tokens: &[usize], axes: &[Vec<usize>], mut arrangement: usize) -> 
         .collect()
 }
 
+pub(super) struct Discovery {
+    pub(super) groups: Vec<InputArrangement>,
+    pub(super) routing: Option<super::routing::WireGraph>,
+}
+
 pub(super) fn run(
     world: &impl World,
     bounds: (BlockPos, BlockPos),
@@ -416,292 +421,88 @@ pub(super) fn run(
     program: &Program,
     indexes: &ProbeIndexes<'_>,
     monitor: Option<&TaskMonitor>,
-) -> Result<Vec<InputArrangement>, ScratchError> {
+) -> Result<Discovery, ScratchError> {
+    use super::routing::{Axis, Search, WireGraph};
+    if program.tokens.is_empty() { return Ok(Discovery { groups: Vec::new(), routing: None }); }
+    let started = std::time::Instant::now();
     let mut scratch = ScratchWorld::from_world_monitored(world, bounds, entry.clone(), monitor)?;
-    let affected_started = std::time::Instant::now();
-    let mut affects = Vec::with_capacity(program.tokens.len());
-    for token in &program.tokens {
-        affects.push(affected_members(&token.cells, &program.positions, indexes, monitor)?);
-    }
-    if std::env::var_os("MCHPRS_REDPILER_PHASE_TIMINGS").is_some() {
-        eprintln!(
-            "Redpiler arrangement affected-region construction: {} ms",
-            affected_started.elapsed().as_millis()
-        );
-    }
-    let mut metrics = ProbeMetrics {
-        affected_members: affects.iter().map(BTreeSet::len).sum(),
-        ..ProbeMetrics::default()
-    };
-    let mut tokens_near = vec![Vec::new(); program.positions.len()];
-    for (token, members) in affects.iter().enumerate() {
-        for &member in members {
-            tokens_near[member].push(token);
+    let wires = program.positions.iter().zip(&program.initial).filter_map(|(&pos, block)| matches!(block, Block::RedstoneWire { .. }).then_some(pos)).collect();
+    let mut graph = WireGraph::compile(&mut scratch, wires, &program.tokens, monitor)?;
+    let targets: Vec<_> = program.initial.iter().enumerate().filter_map(|(node, &block)| reader_kind(block).is_some().then_some(node)).collect();
+    graph.compile_readers(&mut scratch, program, &targets, indexes, monitor)?;
+    let initial: Vec<_> = program.tokens.iter().map(|record| record.position.and_then(|pos| record.cells.iter().position(|&cell| cell == pos)).map_or(0, |cell| cell + 1)).collect();
+    let jobs: Vec<_> = (0..graph.reader_count()).filter(|&reader| !graph.reader_dependencies(reader).is_empty()).collect();
+    let lowered = scratch.probe_jobs(&jobs, monitor, |_, &reader| {
+        let target = graph.reader_component(reader);
+        let tokens = graph.reader_dependencies(reader);
+        let axes = electrical_states(program, indexes, tokens, target);
+        let states = axes.iter().try_fold(1usize, |count, axis| count.checked_mul(axis.iter().copied().max().unwrap_or(0) + 1));
+        let mut occupied = HashSet::new();
+        let overlaps = tokens.iter().flat_map(|&token| &program.tokens[token].cells).any(|&cell| !occupied.insert(cell));
+        let Some(states) = states.filter(|&count| count <= super::program::MAX_ARRANGEMENT_STATES && !overlaps) else {
+            return Ok((reader, None));
+        };
+        let mut axis_index = vec![usize::MAX; program.tokens.len()];
+        for (axis, &token) in tokens.iter().enumerate() { axis_index[token] = axis; }
+        let mut search = Search::default();
+        let basis = graph.reader_sources(reader, |Axis::Token(token, _)| initial[token], &mut search)?;
+        let mut maps = Vec::with_capacity(states);
+        let mut conditional = BTreeSet::new();
+        for state in 0..states {
+            if monitor.is_some_and(TaskMonitor::cancelled) { return Err(ScratchError { position: None, reason: "compilation cancelled" }); }
+            let positions = placements(tokens, &axes, state);
+            let inputs = graph.reader_sources(reader, |Axis::Token(token, _)| {
+                let axis = axis_index[token];
+                if axis == usize::MAX { initial[token] } else { positions[axis].1 }
+            }, &mut search)?;
+            conditional.extend(find_changed_links(&basis, &inputs));
+            maps.push(inputs);
         }
-    }
-    let single_started = std::time::Instant::now();
-    let mut depends: BTreeMap<Dependency, BTreeSet<usize>> = BTreeMap::new();
-    let mut grown = BTreeSet::new();
-    let tokens: Vec<_> = (0..program.tokens.len()).collect();
-    let singles = scratch.probe_jobs(&tokens, monitor, |scratch, &token| {
-        let mut metrics = ProbeMetrics::default();
-        let mut dependencies = Vec::new();
-        if monitor.is_some_and(TaskMonitor::cancelled) {
-            return Err(ScratchError {
-                position: None,
-                reason: "compilation cancelled",
-            });
+        let mut groups = Vec::new();
+        for side in [false, true] {
+            let sources: Vec<_> = conditional.iter().filter_map(|&(source, port)| (port == side).then_some(source)).collect();
+            if sources.is_empty() { continue; }
+            let inputs = maps.iter().map(|map| map.iter().filter_map(|(&(source, port), &attenuation)|
+                (port == side && conditional.contains(&(source, port))).then_some((source, attenuation))).collect()).collect();
+            groups.push(InputArrangement { target, side, silent: matches!(program.initial[target], Block::Piston { .. }),
+                tokens: tokens.to_vec(), token_states: axes.clone(), conditional_sources: sources, inputs });
         }
-        let members: Vec<_> = affects[token].iter().copied().collect();
-        if members.is_empty() {
-            return Ok((dependencies, metrics));
-        }
-        let baseline = sample(scratch, program, &[], &members, monitor, indexes, &mut metrics)?;
-        let initial = program.tokens[token]
-            .position
-            .and_then(|p| program.tokens[token].cells.iter().position(|&c| c == p))
-            .map_or(0, |i| i + 1);
-        for digit in 0..=program.tokens[token].cells.len() {
-            if monitor.is_some_and(TaskMonitor::cancelled) {
-                return Err(ScratchError {
-                    position: None,
-                    reason: "compilation cancelled",
-                });
-            }
-            if digit == initial {
+        Ok((reader, Some(groups)))
+    })?;
+    let mut groups = Vec::new();
+    let mut routed = BTreeSet::new();
+    let mut dense_bytes = 0usize;
+    for (reader, lowered) in lowered {
+        let estimate = lowered.as_ref().map(|groups| groups.iter().fold(0usize, |total, group| {
+            let conditions: HashSet<_> = group.inputs.iter().flatten().copied().collect();
+            let ranges = group.inputs.len().saturating_mul(group.tokens.len()).saturating_mul(2);
+            total.saturating_add(ranges.saturating_mul(std::mem::size_of::<std::ops::Range<usize>>()
+                + conditions.len().saturating_mul(std::mem::size_of::<super::program::ArrangementFlip>())))
+        }));
+        if let (Some(lowered), Some(estimate)) = (lowered, estimate) {
+            if dense_bytes.saturating_add(estimate) <= 64 * 1024 * 1024 {
+                dense_bytes += estimate;
+                groups.extend(lowered);
                 continue;
             }
-            let changed = sample(scratch, program, &[(token, digit)], &members, monitor, indexes, &mut metrics)?;
-            for (i, &member) in members.iter().enumerate() {
-                for (source, side) in find_changed_links(&baseline[i], &changed[i]) {
-                    dependencies.push((member, source, side));
-                }
-            }
         }
-        Ok((dependencies, metrics))
-    })?;
-    for (token, (dependencies, work)) in singles.into_iter().enumerate() {
-        metrics.add(work);
-        for dep in dependencies {
-            if depends.entry(dep).or_default().insert(token) {
-                grown.insert(dep);
-            }
+        let target = graph.reader_component(reader);
+        routed.insert(target);
+        let potential = graph.potential_sources(reader);
+        for side in [false, true] {
+            let sources: Vec<_> = potential.keys().filter_map(|&(source, port)| (port == side).then_some(source)).collect();
+            if sources.is_empty() { continue; }
+            groups.push(InputArrangement { target, side, silent: matches!(program.initial[target], Block::Piston { .. }),
+                tokens: Vec::new(), token_states: Vec::new(), conditional_sources: sources.clone(),
+                inputs: vec![sources.into_iter().map(|source| (source, 0)).collect()] });
         }
     }
+    graph.retain_readers(&routed);
     if std::env::var_os("MCHPRS_REDPILER_PHASE_TIMINGS").is_some() {
-        eprintln!(
-            "Redpiler arrangement individual-token probes: {} ms",
-            single_started.elapsed().as_millis()
-        );
+        eprintln!("Redpiler topology lowering: targets={} dense_groups={} routed_targets={} dense_table_bound_bytes={} elapsed_ms={}", targets.len(), groups.len(), routed.len(), dense_bytes, started.elapsed().as_millis());
     }
-    let joint_started = std::time::Instant::now();
-    let mut first = true;
-    loop {
-        let mut grouped: BTreeMap<(Vec<usize>, usize), Vec<Dependency>> = BTreeMap::new();
-        for (&dep, tokens) in &depends {
-            grouped.entry((tokens.iter().copied().collect(), dep.0)).or_default().push(dep);
-        }
-        let grouped: Vec<_> = grouped.into_iter().collect();
-        let batches = scratch.probe_jobs(&grouped, monitor, |scratch, ((tokens, target), deps)| {
-            let mut metrics = ProbeMetrics::default();
-            let mut discovered = BTreeSet::new();
-            if monitor.is_some_and(TaskMonitor::cancelled) {
-                return Err(ScratchError {
-                    position: None,
-                    reason: "compilation cancelled",
-                });
-            }
-            if !first && !deps.iter().any(|dep| grown.contains(dep)) {
-                return Ok((discovered, metrics));
-            }
-            let members: Vec<_> = deps.iter().map(|dep| dep.0).collect::<BTreeSet<_>>().into_iter().collect();
-            let nearby_tokens: BTreeSet<_> = members.iter().flat_map(|&member| tokens_near[member].iter().copied()).collect();
-            let candidates: Vec<_> = nearby_tokens
-                .into_iter()
-                .filter(|candidate| {
-                    !tokens.contains(candidate)
-                        && tokens.iter().any(|&own| {
-                            program.tokens[own]
-                                .cells
-                                .iter()
-                                .any(|&a| program.tokens[*candidate].cells.iter().any(|&b| near(a, b, 5)))
-                        })
-                })
-                .collect();
-            if candidates.is_empty() {
-                return Ok((discovered, metrics));
-            }
-            let axes = electrical_states(program, indexes, tokens, *target);
-            let size = count(program, tokens, &axes, program.positions[*target])?;
-            let initial: Vec<_> = tokens
-                .iter()
-                .map(|&token| {
-                    program.tokens[token]
-                        .position
-                        .and_then(|p| program.tokens[token].cells.iter().position(|&c| c == p))
-                        .map_or(0, |i| i + 1)
-                })
-                .collect();
-            for state in 0..size {
-                if monitor.is_some_and(TaskMonitor::cancelled) {
-                    return Err(ScratchError {
-                        position: None,
-                        reason: "compilation cancelled",
-                    });
-                }
-                let base = placements(tokens, &axes, state);
-                if base.iter().map(|pair| pair.1).eq(initial.iter().copied()) {
-                    continue;
-                }
-                let baseline = sample(scratch, program, &base, &members, monitor, indexes, &mut metrics)?;
-                for &candidate in &candidates {
-                    if monitor.is_some_and(TaskMonitor::cancelled) {
-                        return Err(ScratchError {
-                            position: None,
-                            reason: "compilation cancelled",
-                        });
-                    }
-                    let initial_candidate = program.tokens[candidate]
-                        .position
-                        .and_then(|p| program.tokens[candidate].cells.iter().position(|&c| c == p))
-                        .map_or(0, |i| i + 1);
-                    let candidate_axes = electrical_states(program, indexes, &[candidate], *target);
-                    for (digit, &electrical) in candidate_axes[0].iter().enumerate() {
-                        if monitor.is_some_and(TaskMonitor::cancelled) {
-                            return Err(ScratchError {
-                                position: None,
-                                reason: "compilation cancelled",
-                            });
-                        }
-                        if electrical == candidate_axes[0][initial_candidate]
-                            || candidate_axes[0][..digit].contains(&electrical) {
-                            continue;
-                        }
-                        let mut joint = base.clone();
-                        joint.push((candidate, digit));
-                        let changed = sample(scratch, program, &joint, &members, monitor, indexes, &mut metrics)?;
-                        let mut new_links = Vec::new();
-                        for (i, &member) in members.iter().enumerate() {
-                            if !affects[candidate].contains(&member) {
-                                continue;
-                            }
-                            for (source, side) in find_changed_links(&baseline[i], &changed[i]) {
-                                let dep = (member, source, side);
-                                if deps.contains(&dep) {
-                                    discovered.insert((dep, candidate));
-                                } else {
-                                    // A jointly opened path can expose a source absent from every single-token probe.
-                                    discovered.insert((dep, candidate));
-                                    if tokens.iter().any(|&token| !depends.get(&dep).is_some_and(|known| known.contains(&token))
-                                        && !discovered.contains(&(dep, token))) {
-                                        new_links.push((i, dep));
-                                    }
-                                }
-                            }
-                        }
-                        if !new_links.is_empty() {
-                            for (own, &initial_digit) in initial.iter().enumerate() {
-                                if joint[own].1 == initial_digit { continue; }
-                                if new_links.iter().all(|&(_, dep)| depends.get(&dep).is_some_and(|known| known.contains(&tokens[own]))
-                                    || discovered.contains(&(dep, tokens[own]))) { continue; }
-                                let mut restored = joint.clone();
-                                restored[own].1 = initial_digit;
-                                let without = sample(scratch, program, &restored, &members, monitor, indexes, &mut metrics)?;
-                                for &(i, dep) in &new_links {
-                                    if !depends.get(&dep).is_some_and(|known| known.contains(&tokens[own]))
-                                        && !discovered.contains(&(dep, tokens[own]))
-                                        && without[i].get(&(dep.1, dep.2)) != changed[i].get(&(dep.1, dep.2)) {
-                                        discovered.insert((dep, tokens[own]));
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            Ok((discovered, metrics))
-        })?;
-        first = false;
-        grown.clear();
-        for (discovered, work) in batches {
-            metrics.add(work);
-            for (dep, token) in discovered {
-                if depends.entry(dep).or_default().insert(token) {
-                    grown.insert(dep);
-                }
-            }
-        }
-        if grown.is_empty() {
-            break;
-        }
-    }
-    let mut grouped: BTreeMap<(Vec<usize>, usize, bool), Vec<ArrangementSource>> = BTreeMap::new();
-    for ((member, source, side), tokens) in depends {
-        grouped.entry((tokens.into_iter().collect(), member, side)).or_default().push(source);
-    }
-    let grouped: Vec<_> = grouped.into_iter().collect();
-    let batches = scratch.probe_jobs(&grouped, monitor, |scratch, ((tokens, target, side), sources)| {
-        let (target, side) = (*target, *side);
-        let mut metrics = ProbeMetrics::default();
-        if monitor.is_some_and(TaskMonitor::cancelled) {
-            return Err(ScratchError {
-                position: None,
-                reason: "compilation cancelled",
-            });
-        }
-        let axes = electrical_states(program, indexes, tokens, target);
-        let size = count(program, tokens, &axes, program.positions[target])?;
-        let mut inputs = Vec::with_capacity(size);
-        for state in 0..size {
-            let map = sample(
-                scratch,
-                program,
-                &placements(tokens, &axes, state),
-                &[target],
-                monitor,
-                indexes,
-                &mut metrics,
-            )?
-            .pop()
-            .unwrap();
-            inputs.push(
-                map.into_iter()
-                    .filter_map(|((source, port), (distance, _))| (port == side && sources.contains(&source)).then_some((source, distance)))
-                    .collect(),
-            );
-        }
-        Ok((
-            InputArrangement {
-                target,
-                side,
-                silent: matches!(program.initial[target], Block::Piston { .. }),
-                tokens: tokens.clone(),
-                token_states: axes,
-                conditional_sources: sources.clone(),
-                inputs,
-            },
-            metrics,
-        ))
-    })?;
-    let mut result = Vec::with_capacity(batches.len());
-    for (group, work) in batches {
-        metrics.add(work);
-        result.push(group);
-    }
-    if std::env::var_os("MCHPRS_REDPILER_PHASE_TIMINGS").is_some() {
-        eprintln!("Redpiler arrangement joint probes: {} ms", joint_started.elapsed().as_millis());
-        eprintln!(
-            "Redpiler arrangement work: tokens={} affected_members={} samples={} member_reads={} input_groups={}",
-            program.tokens.len(),
-            metrics.affected_members,
-            metrics.samples,
-            metrics.member_reads,
-            result.len()
-        );
-    }
-    Ok(result)
+    Ok(Discovery { groups, routing: (!routed.is_empty()).then_some(graph) })
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;

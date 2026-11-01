@@ -229,7 +229,7 @@ fn comparator_order_with_other_active_analog_sources() {
 #[test]
 #[ignore = "exports the saved Chungus fixture for replay"]
 fn export_chungus_case() {
-    #[path = "../../test_support/chungus.rs"]
+    #[path = "../../../test_support/chungus.rs"]
     mod chungus;
     use serde_json::json;
     let state = |block: Block| {
