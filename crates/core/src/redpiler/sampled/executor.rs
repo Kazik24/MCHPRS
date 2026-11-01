@@ -1616,14 +1616,14 @@ impl Runtime {
         self.schedule_tick(tick, repeater.delay as usize, priority);
         #[cfg(any(test, feature = "redpiler-trace"))]
         if runtime_trace_enabled!(self) {
-            let remaining = self
+            let _remaining = self
                 .pending_entries()
                 .into_iter()
                 .find(|entry| entry.pos == self.program.positions[component])
                 .map(|entry| entry.ticks_left);
             runtime_trace!(
                 self,
-                "schedule repeater {:?} remaining={remaining:?} priority={priority:?}",
+                "schedule repeater {:?} remaining={_remaining:?} priority={priority:?}",
                 self.program.positions[component]
             );
         }

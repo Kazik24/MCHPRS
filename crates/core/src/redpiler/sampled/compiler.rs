@@ -7,6 +7,7 @@ use mchprs_blocks::{
 };
 use std::time::Instant;
 
+#[path = "passes/mod.rs"]
 mod passes;
 
 struct CompilePhases {

@@ -25,8 +25,10 @@ pub struct Cpu {
     pub schematic: &'static str,
     pub sha256: &'static str,
     pub start: BlockPos,
+    #[allow(dead_code)]
     pub stop: Option<BlockPos>,
     pub origin: BlockPos,
+    #[allow(dead_code)]
     pub active_ticks: u32,
     pub screen: Option<Screen>,
 }
@@ -129,6 +131,7 @@ pub struct ScreenFrame {
     pub pixels: String,
 }
 
+#[allow(dead_code)]
 pub fn screen(world: &PlotWorld, cpu: Cpu) -> String {
     screen_from(cpu, |pos| Some(world.get_block(pos)))
 }
@@ -298,10 +301,12 @@ pub fn click_cpu(world: &mut PlotWorld, cpu: Cpu, local: BlockPos) {
     click(world, local + cpu.origin - BlockPos::new(8, 8, 8));
 }
 
+#[allow(dead_code)]
 pub fn collect_ram(world: &PlotWorld, cpu: Cpu, tick: u32, trace: &mut Vec<(u32, Vec<Option<u16>>)>) {
     collect_ram_from(cpu, tick, trace, |pos| Some(world.get_block(pos)));
 }
 
+#[allow(dead_code)]
 pub fn collect_ram_from(cpu: Cpu, tick: u32, trace: &mut Vec<(u32, Vec<Option<u16>>)>, mut read: impl FnMut(BlockPos) -> Option<Block>) {
     if cpu.name != "cpu_bubblesort" {
         return;
@@ -370,6 +375,7 @@ pub fn reference(cpu: Cpu) -> Reference {
     reference
 }
 
+#[allow(dead_code)]
 pub fn compile_cpu(world: PlotWorld, cpu: Cpu) -> (PlotWorld, Compiler, Duration) {
     let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../test_data").join(cpu.schematic);
     let clip = load_schematic(File::open(path).unwrap()).unwrap();
@@ -410,6 +416,7 @@ pub fn compile_cpu(world: PlotWorld, cpu: Cpu) -> (PlotWorld, Compiler, Duration
 }
 
 #[derive(Clone, Copy)]
+#[allow(dead_code)]
 pub enum ReplayStep {
     Start,
     Tick(u32),
@@ -417,6 +424,7 @@ pub enum ReplayStep {
     StopTick,
 }
 
+#[allow(dead_code)]
 pub fn replay(
     world: &mut PlotWorld,
     cpu: Cpu,
