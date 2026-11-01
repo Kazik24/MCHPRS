@@ -157,7 +157,6 @@ impl Runtime {
             updated_in_phase,
             comparator_outputs,
             input_levels,
-            wire_input_cache,
             input_histograms,
             blocks,
             contributions,

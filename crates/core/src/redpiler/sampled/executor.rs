@@ -83,8 +83,6 @@ pub(crate) struct Runtime {
     pub(super) input_histograms: Vec<super::input::Histogram>,
     /// component-indexed current comparator output levels, in 0–15.
     pub(super) comparator_outputs: Vec<u8>,
-    /// Cached wire input strengths, or 255 when a contribution changed.
-    pub(super) wire_input_cache: Vec<u8>,
     /// reactive-wire-indexed current wire strengths, in 0–15.
     pub(super) reactive_wire_strengths: Vec<u8>,
     /// watched-wire-indexed last published strength, in 0–15.
@@ -752,18 +750,6 @@ impl Runtime {
         fixed.chain(arranged).max().unwrap_or(0)
     }
 
-    pub(super) fn wire_input_strength(&mut self, target: usize) -> u8 {
-        debug_assert!(matches!(self.blocks[target], Block::RedstoneWire { .. }));
-        let cached = self.wire_input_cache[target];
-        if cached != u8::MAX {
-            debug_assert_eq!(cached, self.input_strength(target));
-            return cached;
-        }
-        let strength = self.input_strength(target);
-        self.wire_input_cache[target] = strength;
-        strength
-    }
-
     pub(super) fn has_input(&self, target: usize) -> bool {
         self.input_levels[target][0].active != 0
     }
@@ -772,20 +758,13 @@ impl Runtime {
         let old = self.contributions[index];
         self.contributions[index] = value;
         if self.program.effective_links[index] {
-            let target = self.program.links[index].target;
-            if old != value {
-                self.wire_input_cache[target] = u8::MAX;
-            }
-            self.input_levels[target][0].change(old, value, &mut self.input_histograms);
+            self.input_levels[self.program.links[index].target][0].change(old, value, &mut self.input_histograms);
         }
     }
 
     fn set_arrangement_contribution(&mut self, index: usize, target: usize, side: bool, value: u8) {
         let old = self.arrangement_contributions[index];
         self.arrangement_contributions[index] = value;
-        if !side && old != value {
-            self.wire_input_cache[target] = u8::MAX;
-        }
         self.input_levels[target][usize::from(side)].change(old, value, &mut self.input_histograms);
     }
 
@@ -914,7 +893,7 @@ impl Runtime {
         // Movement callbacks read the new wire level even when that wire is not a piston watcher.
         for &node in switched.iter() {
             if matches!(self.blocks[node], Block::RedstoneWire { .. }) {
-                let strength = self.wire_input_strength(node);
+                let strength = self.input_strength(node);
                 self.refresh_wire_power(node, strength);
             }
         }
@@ -957,7 +936,7 @@ impl Runtime {
                     changed_wires.push(node);
                 }
             } else if matches!(self.blocks[node], Block::RedstoneWire { .. }) {
-                let strength = self.wire_input_strength(node);
+                let strength = self.input_strength(node);
                 self.refresh_wire_power(node, strength);
             } else {
                 self.update_once(node);
@@ -980,7 +959,7 @@ impl Runtime {
         let Some(index) = self.program.watched_by_component[wire].map(|index| index.get() - 1) else {
             return false;
         };
-        let strength = self.wire_input_strength(wire);
+        let strength = self.input_strength(wire);
         self.refresh_wire_power(wire, strength);
         if strength == self.watched_strengths[index] {
             return false;
@@ -994,11 +973,11 @@ impl Runtime {
             unreachable!()
         };
         let previous = state.power;
+        state.power = strength;
+        self.set_component(wire, Block::RedstoneWire { wire: state });
         if previous == strength {
             return;
         }
-        state.power = strength;
-        self.set_component(wire, Block::RedstoneWire { wire: state });
         for offset in 0..self.program.outgoing[wire].len() {
             let index = self.program.outgoing[wire][offset];
             let link = self.program.links[index];
@@ -1277,7 +1256,7 @@ impl Runtime {
 
     pub(super) fn check_watched_wire(&mut self, record_index: usize) {
         let wire = self.program.watched_wires[record_index].wire;
-        let new_strength = self.wire_input_strength(wire);
+        let new_strength = self.input_strength(wire);
         if new_strength == self.watched_strengths[record_index] {
             return;
         }
@@ -1392,7 +1371,7 @@ impl Runtime {
                     }
                 }
                 Operation::RefreshWire(slot) => {
-                    let strength = self.wire_input_strength(slot);
+                    let strength = self.input_strength(slot);
                     self.refresh_wire_power(slot, strength);
                 }
                 Operation::CheckWatchedWire(record) => self.check_watched_wire(record),

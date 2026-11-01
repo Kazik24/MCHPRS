@@ -1440,7 +1440,6 @@ impl Program {
                 }
                 outputs
             },
-            wire_input_cache: vec![u8::MAX; self.initial.len()],
             reactive_wire_strengths: self
                 .reactive_wires
                 .iter()
