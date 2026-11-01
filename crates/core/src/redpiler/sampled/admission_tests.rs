@@ -241,3 +241,26 @@ fn compiled_command_output_limits_match_interpreter() {
     }
     assert_eq!(published.command_output().count(), 64);
 }
+
+#[test]
+fn command_dependencies_must_stay_inside_capture_bounds() {
+    let mut world = world();
+    let pos = BlockPos::new(40, 30, 40);
+    world.set_block(pos, Block::from_name("command_block").unwrap());
+    let next = pos.offset(BlockFace::North);
+    world.set_block(next, Block::from_name("chain_command_block").unwrap());
+    let entry = || ScratchEntry { scheduled: vec![], piston: Default::default() };
+    let error = compile(&world, (pos, pos), entry()).err().expect("chain outside selection was admitted");
+    assert_eq!(error.position, Some(next));
+    assert_eq!(error.reason, "command block chain leaves capture bounds");
+
+    world.set_block(next, Block::Air);
+    let previous = pos.offset(BlockFace::South);
+    world.set_block(previous, Block::from_name("command_block").unwrap());
+    let mut conditional = Block::from_name("command_block").unwrap();
+    conditional.set_properties(std::collections::HashMap::from([("conditional", "true")]));
+    world.set_block(pos, conditional);
+    let error = compile(&world, (pos, pos), entry()).err().expect("condition outside selection was admitted");
+    assert_eq!(error.position, Some(previous));
+    assert_eq!(error.reason, "command block condition leaves capture bounds");
+}
