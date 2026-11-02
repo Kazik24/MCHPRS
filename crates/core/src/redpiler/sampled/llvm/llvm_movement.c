@@ -816,13 +816,13 @@ static uint32_t run_piston_events(NEEngine *e) {
             return status;
         e->piston_flags[piston] |= 1u;
         set_component(e, p[0], 1u);
-        if ((status = notify(e, p[0], 1u, 1u)))
-            return status;
         e->piston_flags[piston] |= 4u;
         if ((status = add_motion(e, piston, token, p[2], 1u, 1u)) || (status = notify_shape(e, p[1])) ||
             (status = notify_home(e, piston)))
             return status;
         if (token != NONE && (status = notify_shape(e, p[2])))
+            return status;
+        if ((status = notify(e, p[0], 1u, 1u)))
             return status;
     }
     return NE_OK;
@@ -868,7 +868,7 @@ uint32_t ne_snapshot_words(const void *memory) {
     uint64_t size = 8u + (uint64_t)e->program->component_count * 4u + e->token_count + e->piston_count +
                     (uint64_t)motions * 9u + (uint64_t)e->piston_event_count * 2u + e->program->link_count +
                     e->program->arrangement_link_count + table_words(e, 27u) + e->program->watched_wire_count +
-                    table_words(e, 45u) / 5u + 1u + e->program->component_count + (uint64_t)e->note_count * 3u;
+                    table_words(e, 45u) / 5u + 1u + (uint64_t)e->program->component_count * 2u + (uint64_t)e->note_count * 3u;
     return size <= UINT32_MAX ? (uint32_t)size : 0u;
 }
 uint32_t ne_read_snapshot(const void *memory, uint32_t *out, uint32_t words) {
@@ -885,7 +885,7 @@ uint32_t ne_read_snapshot(const void *memory, uint32_t *out, uint32_t words) {
     out[4] = e->piston_event_count;
     out[5] = (uint32_t)e->tick_count;
     out[6] = (uint32_t)(e->tick_count >> 32u);
-    out[7] = 5u;
+    out[7] = 6u;
     uint32_t cursor = 8u;
     for (uint32_t i = 0; i < e->program->component_count; ++i)
         out[cursor++] = e->component_state[i];
@@ -931,6 +931,8 @@ uint32_t ne_read_snapshot(const void *memory, uint32_t *out, uint32_t words) {
         out[cursor++] = e->note_instruments[i];
     for (uint32_t i = 0; i < e->note_count * 3u; ++i)
         out[cursor++] = e->note_events[i];
+    for (uint32_t i = 0; i < e->program->component_count; ++i)
+        out[cursor++] = e->wire_sides[i];
     return cursor == words ? NE_OK : NE_INVALID;
 }
 

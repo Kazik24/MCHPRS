@@ -7,7 +7,7 @@
 #define NE_OPERATION_LIMIT 4u
 #define NE_MAX_TICK_OPERATIONS 1000000u
 #define NE_MAX_STATE_BYTES (256u * 1024u * 1024u)
-#define NE_TABLES 52u
+#define NE_TABLES 53u
 #define NONE UINT32_MAX
 
 typedef struct {
@@ -27,6 +27,7 @@ typedef struct {
     MchprsNativeProgramDescriptor program_copy;
     const uint8_t *blob;
     uint8_t *component_state;
+    uint8_t *wire_sides;
     uint8_t *contributions;
     uint32_t *input_count;
     uint32_t *pending_count;
@@ -478,6 +479,13 @@ static uint32_t valid_aux(const MchprsNativeProgramDescriptor *p, const uint8_t 
     }
     for (uint32_t i=0;i<n[50];++i) if (t[50][i]>31u) return 0u;
     for (uint32_t i=0;i<n[51];++i) if (t[51][i]>31u) return 0u;
+    if (n[52] != p->component_count) return 0u;
+    for (uint32_t i = 0; i < n[52]; ++i) {
+        uint32_t sides = t[52][i];
+        if (sides > 255u || (sides && blob[p->component_offset + (size_t)i * 32u + 12u] != 5u)) return 0u;
+        for (uint32_t side = 0; side < 4u; ++side)
+            if (((sides >> (side * 2u)) & 3u) == 3u) return 0u;
+    }
     return valid_movement(p, blob, t, n);
 }
 
@@ -541,7 +549,7 @@ static uint32_t valid_program(const MchprsNativeProgramDescriptor *program, cons
 static size_t align8(size_t value) { return (value + 7u) & ~(size_t)7u; }
 
 MchprsNativeApiDescriptor ne_api_descriptor(void) {
-    MchprsNativeApiDescriptor value = {3u, 16u, 12u};
+    MchprsNativeApiDescriptor value = {3u, 16u, 18u};
     return value;
 }
 
@@ -554,6 +562,7 @@ size_t ne_state_size(const MchprsNativeProgramDescriptor *program, const uint8_t
     NEEngine view = {0}; view.program = program; view.blob = blob;
     if (count > NE_MAX_STATE_BYTES || links_count > NE_MAX_STATE_BYTES || capacity > NE_MAX_STATE_BYTES / sizeof(NEEvent)) return 0u;
     bytes += count;
+    bytes = align8(bytes) + count;
     bytes = align8(bytes) + links_count;
     bytes = align8(bytes) + count * sizeof(uint32_t);
     bytes = align8(bytes) + count * sizeof(uint32_t);
@@ -583,6 +592,8 @@ uint32_t ne_create(const MchprsNativeProgramDescriptor *program, const uint8_t *
     engine->program = &engine->program_copy;
     engine->blob = blob;
     engine->component_state = base + offset;
+    offset = align8(offset + program->component_count);
+    engine->wire_sides = base + offset;
     offset = align8(offset + program->component_count);
     engine->contributions = base + offset;
     offset = align8(offset + program->link_count);
@@ -625,6 +636,7 @@ uint32_t ne_create(const MchprsNativeProgramDescriptor *program, const uint8_t *
     engine->note_count = 0u;
     for (uint32_t i = 0; i < program->component_count; ++i) {
         engine->component_state[i] = components(engine)[i].initial_state;
+        engine->wire_sides[i] = (uint8_t)table(engine, 52u)[i];
         engine->comparator_outputs[i] = (uint8_t)table(engine,42u)[i*4u+3u];
         engine->note_instruments[i]=(uint8_t)table(engine,49u)[i*6u+5u];
         engine->note_queued[i]=0u;

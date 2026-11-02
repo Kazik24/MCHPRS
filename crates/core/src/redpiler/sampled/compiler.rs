@@ -300,10 +300,11 @@ fn update_footprint(pos: BlockPos, block: Block) -> Vec<BlockPos> {
             neighbours(pos).into_iter().chain(neighbours(pos.offset(support))).collect()
         }
         Block::Piston { .. } => neighbours(pos).to_vec(),
-        Block::RedstoneTorch { .. } | Block::RedstoneWallTorch { .. } => neighbours(pos)
-            .into_iter()
-            .chain(update_order().into_iter().flat_map(|face| neighbours(pos.offset(face))))
-            .collect(),
+        Block::RedstoneTorch { .. } | Block::RedstoneWallTorch { .. } => {
+            let mut positions = Vec::new();
+            crate::redstone::surrounding_notifications(pos, |target, _, _| positions.push(target));
+            positions
+        }
         _ => Vec::new(),
     }
 }

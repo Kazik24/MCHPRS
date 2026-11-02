@@ -22,7 +22,7 @@ pub(in crate::redpiler) use cache::initialize as initialize_cache;
 use movement::encode_movement;
 
 pub(super) const ABI_VERSION: u32 = 3;
-const AUX_TABLES: usize = 52;
+const AUX_TABLES: usize = 53;
 const MAGIC: [u8; 4] = *b"MCHN";
 const HEADER_BYTES: usize = 16;
 const OP_BYTES: usize = 8;
@@ -152,7 +152,7 @@ impl LlvmRuntime {
         }
         let library = Library::load()?;
         let api = unsafe { (library.api_descriptor)() };
-        if api.abi_version != ABI_VERSION || api.descriptor_bytes != 16 || api.semantic_version != 12 {
+        if api.abi_version != ABI_VERSION || api.descriptor_bytes != 16 || api.semantic_version != 18 {
             return Err(ScratchError {
                 position: None,
                 reason: "LLVM DLL ABI/version mismatch",
@@ -742,6 +742,11 @@ fn encode_aux(program: &Program, blob: &mut Vec<u8>) -> Result<(), ScratchError>
     routing::encode(program, &mut tables)?;
     encode_comparators(program, &mut tables[42])?;
     effects::encode(program, &mut tables)?;
+    tables[52] = program.initial.iter().map(|block| match block {
+        Block::RedstoneWire { wire } => wire.north.get_id() | (wire.south.get_id() << 2)
+            | (wire.east.get_id() << 4) | (wire.west.get_id() << 6),
+        _ => 0,
+    }).collect();
     let directory = blob.len();
     blob.resize(directory.checked_add(AUX_TABLES * 8).ok_or_else(overflow)?, 0);
     for (index, table) in tables.iter().enumerate() {
@@ -873,8 +878,16 @@ pub(super) fn validate_blob(descriptor: &NativeProgramDescriptor, blob: &[u8]) -
         || tables[5].len() != descriptor.component_count as usize * 2
         || tables[1].len() % 2 != 0
         || tables[3].len() != descriptor.watched_wire_count as usize * 3
+        || tables[52].len() != descriptor.component_count as usize
     {
         return Err(invalid());
+    }
+    for (node, &sides) in tables[52].iter().enumerate() {
+        if sides > 255 || (0..4).any(|side| (sides >> (side * 2)) & 3 == 3)
+            || (sides != 0 && blob[descriptor.component_offset as usize + node * COMPONENT_BYTES + 12] != 5)
+        {
+            return Err(invalid());
+        }
     }
     for (rows, limit) in [(0, tables[1].len() / 2), (2, tables[4].len()), (5, tables[6].len())] {
         for row in tables[rows].chunks_exact(2) {

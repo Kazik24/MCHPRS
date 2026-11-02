@@ -609,7 +609,6 @@ impl Runtime {
                 piston.extended = true;
                 self.set_component(component, Block::Piston { piston });
             }
-            self.notify_source_watchers(component, true, true);
             self.piston_head_moving[index] = true;
             self.add_motion(index, token, self.program.piston_bindings[index].far_cell, true, true);
             #[cfg(any(test, feature = "redpiler-trace"))]
@@ -629,6 +628,7 @@ impl Runtime {
             if token.is_some() {
                 self.notify_shape(self.program.piston_bindings[index].far_cell);
             }
+            self.notify_source_watchers(component, true, true);
             self.accepted_piston_actions += 1;
         }
     }

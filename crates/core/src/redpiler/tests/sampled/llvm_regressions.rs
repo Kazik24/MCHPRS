@@ -19,7 +19,10 @@
         let sides_offset = read_u32(&invalid, directory + 52 * 8).unwrap() as usize;
         invalid[sides_offset] |= 3;
         assert!(validate_blob(&encoded.descriptor, &invalid).is_err());
-        let mut projection = program.clone().into_runtime_prepared();
+        let mut projection_program = program.clone();
+        let node = projection_program.component_indices[&pos];
+        projection_program.initial[node] = Block::RedstoneWire { wire: RedstoneWire::default() };
+        let mut projection = projection_program.into_runtime_prepared();
         let native = LlvmRuntime::new(program, &[]).unwrap();
         let aligned: Vec<u64> = invalid.chunks(8).map(|chunk| {
             let mut bytes = [0; 8];
@@ -31,8 +34,64 @@
         ) }, 0);
         native.sync_projection(&mut projection).unwrap();
         assert_eq!(projection.project(pos), Some(Block::RedstoneWire { wire }));
+        for mask in [3u32, 3 << 2, 3 << 4, 3 << 6, 1 << 8] {
+            let mut invalid = encoded.blob.clone();
+            let sides = read_u32(&invalid, sides_offset).unwrap() | mask;
+            invalid[sides_offset..sides_offset + 4].copy_from_slice(&sides.to_le_bytes());
+            assert!(validate_blob(&encoded.descriptor, &invalid).is_err());
+            let aligned: Vec<u64> = invalid.chunks(8).map(|chunk| {
+                let mut bytes = [0; 8];
+                bytes[..chunk.len()].copy_from_slice(chunk);
+                u64::from_ne_bytes(bytes)
+            }).collect();
+            assert_eq!(unsafe { (native.library.state_size)(
+                &encoded.descriptor, aligned.as_ptr().cast(), invalid.len() as u32,
+            ) }, 0);
+        }
     }
 
+
+    #[cfg(any(windows, target_os = "linux"))]
+    #[test]
+    fn llvm_empty_piston_observers_match_interpreter_fifo() {
+        use crate::world::World;
+        use mchprs_blocks::{BlockDirection, BlockFace, BlockFacing,
+            blocks::{Lever, LeverFace, RedstoneObserver, RedstonePiston}};
+        let mut world = super::super::tests::host();
+        let base = BlockPos::new(15, 15, 15);
+        let home = base.offset(BlockFace::East);
+        let lever = base.offset(BlockFace::West);
+        world.set_block(base, Block::Piston { piston: RedstonePiston {
+            facing: BlockFacing::East, sticky: true, extended: false,
+        } });
+        world.set_block(lever.offset(BlockFace::Bottom), Block::Stone {});
+        world.set_block(lever, Block::Lever { lever: Lever::new(LeverFace::Floor, BlockDirection::North, false) });
+        let observers = [base.offset(BlockFace::North), home.offset(BlockFace::North)];
+        for pos in observers {
+            world.set_block(pos, Block::Observer { observer: RedstoneObserver {
+                facing: BlockFacing::South, powered: false,
+            } });
+        }
+        let program = super::super::compile_program(&world,
+            (BlockPos::new(10, 10, 10), BlockPos::new(22, 22, 22)),
+            super::super::ScratchEntry { scheduled: vec![], piston: world.piston_state().clone() }, None).unwrap();
+        let mut projection = program.clone().into_runtime_prepared();
+        let mut native = LlvmRuntime::new(program, &[]).unwrap();
+        for phase in 0..4 {
+            crate::interaction::use_redstone(world.get_block(lever), &mut world, lever, None);
+            native.use_control(lever).unwrap();
+            for tick in 0..8 {
+                world.tick_interpreted();
+                native.tick().unwrap();
+                native.sync_projection(&mut projection).unwrap();
+                for pos in observers {
+                    assert_eq!(projection.project(pos), Some(world.get_block(pos)), "phase {phase}, tick {tick}");
+                }
+                assert_eq!(projection.pending_entries(), world.scheduler().iter_entries().collect::<Vec<_>>(),
+                    "phase {phase}, tick {tick}");
+            }
+        }
+    }
 
     #[cfg(any(windows, target_os = "linux"))]
     #[test]

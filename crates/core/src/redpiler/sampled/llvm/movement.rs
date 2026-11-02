@@ -201,7 +201,7 @@ impl super::LlvmRuntime {
             + electrical
             + p.reactive_wires.len()
             + 1
-            + p.initial.len() * 4;
+            + p.initial.len() * 5;
         if words < 8 || words > limit {
             return Err(invalid());
         }
@@ -221,8 +221,8 @@ impl super::LlvmRuntime {
             || runtime.note_queued.len() != n
             || motions > capacity
             || events > pistons * 3
-            || s[7] != 5
-            || 8 + n + tokens + pistons + motions * 9 + events * 2 + electrical + p.reactive_wires.len() + 1 + n > words
+            || s[7] != 6
+            || 8 + n + tokens + pistons + motions * 9 + events * 2 + electrical + p.reactive_wires.len() + 1 + n * 2 > words
         {
             return Err(invalid());
         }
@@ -264,21 +264,30 @@ impl super::LlvmRuntime {
                 return Err(invalid());
             }
         }
-        // Snapshot 5 appends reactive strengths, then queued note metadata.
+        // Snapshot 6 appends wire sides after the queued note metadata.
         let reactive_start = event_end + electrical;
         let note_count_offset = reactive_start + p.reactive_wires.len();
         let note_count = s[note_count_offset] as usize;
         let instruments_start = note_count_offset + 1;
         let note_events_start = instruments_start + n;
-        if note_count > n || note_events_start + note_count * 3 != words {
+        let sides_start = words - n;
+        if note_count > n || note_events_start + note_count * 3 != sides_start {
             return Err(invalid());
+        }
+        let wire_sides = &s[sides_start..];
+        for (node, &sides) in wire_sides.iter().enumerate() {
+            if sides > 255 || (0..4).any(|side| (sides >> (side * 2)) & 3 == 3)
+                || (sides != 0 && !matches!(p.initial[node], Block::RedstoneWire { .. }))
+            {
+                return Err(invalid());
+            }
         }
         let instruments = &s[instruments_start..note_events_start];
         if instruments.iter().any(|&instrument| instrument > 15) || s[reactive_start..note_count_offset].iter().any(|&strength| strength > 15) {
             return Err(invalid());
         }
         let mut seen_notes = vec![false; n];
-        for row in s[note_events_start..].chunks_exact(3) {
+        for row in s[note_events_start..sides_start].chunks_exact(3) {
             let component = row[0] as usize;
             if component >= n || !matches!(p.initial[component], Block::NoteBlock { .. }) || seen_notes[component] || row[1] > 15 || row[2] > 24 {
                 return Err(invalid());
@@ -320,6 +329,12 @@ impl super::LlvmRuntime {
                     Block::RedstoneRepeater { repeater }
                 }
                 Block::RedstoneWire { mut wire } => {
+                    use mchprs_blocks::blocks::RedstoneWireSide;
+                    let sides = wire_sides[node];
+                    wire.north = RedstoneWireSide::from_id(sides & 3);
+                    wire.south = RedstoneWireSide::from_id((sides >> 2) & 3);
+                    wire.east = RedstoneWireSide::from_id((sides >> 4) & 3);
+                    wire.west = RedstoneWireSide::from_id((sides >> 6) & 3);
                     wire.power = state as u8;
                     Block::RedstoneWire { wire }
                 }
@@ -431,7 +446,7 @@ impl super::LlvmRuntime {
         }
         runtime.notes.clear();
         runtime.note_queued.fill(false);
-        for row in s[note_events_start..].chunks_exact(3) {
+        for row in s[note_events_start..sides_start].chunks_exact(3) {
             let component = row[0] as usize;
             runtime.note_queued[component] = true;
             runtime.notes.push((
