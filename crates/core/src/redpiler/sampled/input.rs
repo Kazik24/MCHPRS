@@ -24,6 +24,7 @@ pub(super) struct Histogram {
 }
 
 impl InputState {
+    #[inline]
     pub(super) fn change(&mut self, old: u8, new: u8, histograms: &mut [Histogram]) {
         debug_assert!(old <= 15 && new <= 15);
         if old == new {

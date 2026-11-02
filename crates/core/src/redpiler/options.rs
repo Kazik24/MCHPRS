@@ -11,7 +11,7 @@ pub enum PublicationMode {
 pub struct CompilerOptions {
     /// Only flush visible outputs and controls, including lamps and copper bulbs.
     pub io_only: bool,
-    /// Request the experimental LLVM native backend.
+    /// Request the experimental LLVM backend.
     pub llvm: bool,
     /// Override the build's default publication scope.
     pub publication: Option<PublicationMode>,

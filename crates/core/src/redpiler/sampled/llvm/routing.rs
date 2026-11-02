@@ -40,7 +40,7 @@ pub(super) fn encode(program: &Program, tables: &mut [Vec<u32>; AUX_TABLES]) -> 
     Ok(())
 }
 
-#[cfg(all(test, windows))]
+#[cfg(all(test, any(windows, target_os = "linux")))]
 mod tests {
     use super::super::{ABI_VERSION, AUX_TABLES, HEADER_BYTES, Library, MAGIC, NativeProgramDescriptor};
 
@@ -65,8 +65,10 @@ mod tests {
         tables[34] = vec![0, 2];
         tables[35] = vec![0, 0, 0, 0, u32::MAX, 0, 0, 0];
         tables[40] = vec![0, 0];
+        tables[50] = vec![1];
+        tables[51] = vec![0];
 
-        let accepts = |tables: &[Vec<u32>; AUX_TABLES]| {
+        let accepts = |tables: &[Vec<u32>; AUX_TABLES], offset: usize, bad_magic: bool| {
             let mut blob = vec![0u8; HEADER_BYTES + AUX_TABLES * 8];
             blob[0..4].copy_from_slice(&MAGIC);
             blob[4..8].copy_from_slice(&ABI_VERSION.to_le_bytes());
@@ -80,6 +82,7 @@ mod tests {
             }
             let size = blob.len() as u32;
             blob[12..16].copy_from_slice(&size.to_le_bytes());
+            if bad_magic { blob[0] = 0; }
             let descriptor = NativeProgramDescriptor {
                 abi_version: ABI_VERSION,
                 header_bytes: HEADER_BYTES as u32,
@@ -95,9 +98,22 @@ mod tests {
                 arrangement_link_count: 0,
                 watched_wire_count: 0,
             };
-            unsafe { (library.state_size)(&descriptor, blob.as_ptr(), size) != 0 }
+            let mut aligned = vec![0u64; (blob.len() + offset).div_ceil(8)];
+            unsafe {
+                let data = aligned.as_mut_ptr().cast::<u8>().add(offset);
+                std::ptr::copy_nonoverlapping(blob.as_ptr(), data, blob.len());
+                let state_bytes = (library.state_size)(&descriptor, data, size);
+                if state_bytes != 0 {
+                    let mut memory = vec![0u64; (state_bytes + 8).div_ceil(8)];
+                    let unaligned = memory.as_mut_ptr().cast::<u8>().add(1);
+                    assert_ne!((library.create)(&descriptor, data, size, unaligned.cast(), state_bytes), 0);
+                }
+                state_bytes != 0
+            }
         };
-        assert!(accepts(&tables), "valid local routing table");
+        assert!(accepts(&tables, 0, false), "valid local routing table");
+        assert!(!accepts(&tables, 1, false), "unaligned Program must be rejected");
+        assert!(!accepts(&tables, 0, true), "invalid Program magic must be rejected");
         for (table, word, value) in [
             (33, 0, 2),        // Wire count exceeds local records.
             (33, 4, 3),        // State count differs from the axis product.
@@ -107,7 +123,7 @@ mod tests {
         ] {
             let mut malformed = tables.clone();
             malformed[table][word] = value;
-            assert!(!accepts(&malformed), "malformed table {table}, word {word}");
+            assert!(!accepts(&malformed, 0, false), "malformed table {table}, word {word}");
         }
     }
 }

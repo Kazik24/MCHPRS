@@ -1,6 +1,8 @@
 .idea/
 run/
 target/
+/work/
+/crates/core/work/
 test_proxy/
 generators
 Config.toml
@@ -24,3 +26,4 @@ scraps
 
 target-pass-cleanup
 target-redgear-manual
+/work/

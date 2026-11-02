@@ -18,8 +18,9 @@ mod group_probe;
 mod incremental_input_tests;
 mod input;
 mod routing;
-mod native;
-pub(in crate::redpiler) use native::NativeRuntime;
+mod llvm;
+pub(in crate::redpiler) use llvm::LlvmRuntime;
+pub(super) use llvm::initialize_cache;
 mod program;
 #[cfg(test)]
 #[path = "../tests/sampled/reviewed_fixes.rs"]
@@ -116,16 +117,16 @@ impl Runtime {
             ($($field:ident),+ $(,)?) => { $(rows(stringify!($field), &self.program.$field);)+ };
         }
         eprintln!("Redpiler memory: selected retained vector capacities; excludes maps, allocator overhead and unlisted deep payloads");
-        match native::NativeProgram::encode(&self.program) {
-            Ok(native) => eprintln!(
-                "Redpiler native ABI: version={} components={} operations={} links={} logical_blob_bytes={}",
-                native.descriptor.abi_version,
-                native.descriptor.component_count,
-                native.descriptor.operation_count,
-                native.descriptor.link_count,
-                native.blob.len()
+        match llvm::LlvmProgram::encode(&self.program) {
+            Ok(llvm) => eprintln!(
+                "Redpiler LLVM ABI: version={} components={} operations={} links={} logical_blob_bytes={}",
+                llvm.descriptor.abi_version,
+                llvm.descriptor.component_count,
+                llvm.descriptor.operation_count,
+                llvm.descriptor.link_count,
+                llvm.blob.len()
             ),
-            Err(error) => eprintln!("Redpiler native ABI: export rejected: {}", error.reason),
+            Err(error) => eprintln!("Redpiler LLVM ABI: export rejected: {}", error.reason),
         }
         vectors!(
             self.program,
@@ -144,6 +145,10 @@ impl Runtime {
             operations,
             links,
             side_links,
+            input_arrangements,
+            arrangement_links,
+            movement_groups,
+            movement_flips,
             movement_steps,
             movement_wires,
             movement_transitions,
@@ -162,8 +167,24 @@ impl Runtime {
             source_watchers,
             token_cells,
             token_piston_components,
+            token_movement_groups,
             movement_cells
         );
+        let arrangement_payload: usize = self.program.input_arrangements.iter().map(|group| {
+            group.tokens.capacity() * std::mem::size_of::<usize>()
+                + group.token_states.capacity() * std::mem::size_of::<Vec<usize>>()
+                + group.token_states.iter().map(|row| row.capacity() * std::mem::size_of::<usize>()).sum::<usize>()
+                + group.conditional_sources.capacity() * std::mem::size_of::<program::ArrangementSource>()
+                + group.inputs.capacity() * std::mem::size_of::<Vec<(program::ArrangementSource, u8)>>()
+                + group.inputs.iter().map(|row| row.capacity() * std::mem::size_of::<(program::ArrangementSource, u8)>()).sum::<usize>()
+        }).sum();
+        let link_payload: usize = self.program.arrangement_links.iter().map(|link| link.active.capacity()).sum();
+        let axis_payload: usize = self.program.movement_groups.iter().map(|group| {
+            group.axes.capacity() * std::mem::size_of::<program::MovementAxis>()
+                + group.axes.iter().map(|axis| axis.states.capacity() * std::mem::size_of::<usize>()
+                    + (axis.depart.capacity() + axis.arrive.capacity()) * std::mem::size_of::<std::ops::Range<usize>>()).sum::<usize>()
+        }).sum();
+        eprintln!("Redpiler memory: arrangement_deep_bytes={arrangement_payload} arrangement_link_deep_bytes={link_payload} movement_group_deep_bytes={axis_payload}");
         small_rows("home_watchers", &self.program.home_watchers);
         small_rows("cell_tokens", &self.program.cell_tokens);
         small_rows("cell_pistons", &self.program.cell_pistons);
@@ -279,6 +300,14 @@ impl Runtime {
 
     pub(super) fn motion_time(&self) -> u64 {
         self.motion_time
+    }
+
+    #[cfg(feature = "redpiler-trace")]
+    pub(in crate::redpiler) fn log_routing_metrics(&self) {
+        if std::env::var_os("MCHPRS_REDPILER_PHASE_TIMINGS").is_some() {
+            let [changes, readers, visits] = self.routing_metrics;
+            eprintln!("Redpiler routing runtime: token_changes={changes} readers={readers} wire_visits={visits} operations={}", self.operations);
+        }
     }
 
     pub(super) fn publication_changes(

@@ -18,7 +18,7 @@ if (-not (Test-Path -LiteralPath $Linker)) {
     throw 'The matching lld-link.exe was not found. Pass -Linker <lld-link.exe>.'
 }
 $Linker = (Resolve-Path -LiteralPath $Linker).Path
-$include = Join-Path $repo 'crates/core/src/redpiler/sampled/native'
+$include = Join-Path $repo 'crates/core/src/redpiler/sampled/llvm'
 $target = Join-Path $repo 'target'
 New-Item -ItemType Directory -Path $target -Force | Out-Null
 $object = Join-Path $target 'native_engine.obj'
@@ -32,7 +32,7 @@ if ($LASTEXITCODE -ne 0) { throw 'Clang failed; see diagnostics above.' }
 & $Linker @linkArgs
 if ($LASTEXITCODE -ne 0) { throw 'lld-link failed; stop any process using the output DLL and check diagnostics above.' }
 $timer.Stop()
-$sourceInfo = @('engine.c', 'native_movement.c', 'abi.h') | ForEach-Object {
+$sourceInfo = @('engine.c', 'llvm_movement.c', 'abi.h') | ForEach-Object {
     $path = Join-Path $include $_
     [ordered]@{ name = $_; bytes = (Get-Item -LiteralPath $path).Length; sha256 = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash }
 }

@@ -1,4 +1,4 @@
-use super::{CompilerOptions, PublicationMode, TaskMonitor, sampled::{self, ExportKey, MovingPart, NativeRuntime, Runtime, ScratchEntry, ScratchError}};
+use super::{CompilerOptions, PublicationMode, TaskMonitor, sampled::{self, ExportKey, MovingPart, LlvmRuntime, Runtime, ScratchEntry, ScratchError}};
 use crate::redstone;
 use crate::world::{World, for_each_block_mut_optimized};
 use mchprs_blocks::{BlockPos, block_entities::BlockEntity, blocks::Block};
@@ -50,7 +50,7 @@ impl std::error::Error for ExecutionError {}
 pub struct CompileStatistics {
     /// number of compiled redstone components.
     pub components: usize,
-    /// number of native scheduled ticks copied into the compiled runtime.
+    /// number of host scheduled ticks copied into the compiled runtime.
     pub pending_ticks: usize,
     /// elapsed compile time.
     pub duration: Duration,
@@ -74,10 +74,10 @@ struct ExportedMotion {
 
 #[derive(Default)]
 pub struct Compiler {
-    /// Rust executor, or a read-only publication projection of the native executor.
+    /// Rust executor, or a read-only publication projection of the LLVM executor.
     pub(super) runtime: Option<Runtime>,
-    /// active experimental native executor; ticks use it when present.
-    native_runtime: Option<NativeRuntime>,
+    /// active experimental LLVM executor; ticks use it when present.
+    pub(super) llvm_runtime: Option<LlvmRuntime>,
     /// publication/reset options used by the current compilation.
     options: CompilerOptions,
     /// most recent successful compile statistics.
@@ -102,7 +102,7 @@ impl Compiler {
     }
 
     pub fn is_active(&self) -> bool {
-        self.runtime.is_some() || self.native_runtime.is_some()
+        self.runtime.is_some() || self.llvm_runtime.is_some()
     }
 
     pub fn current_flags(&self) -> Option<&CompilerOptions> {
@@ -140,7 +140,7 @@ impl Compiler {
         }
         let components = program.component_count();
         let pending_ticks = ticks.len();
-        let native = if options.llvm {
+        let llvm = if options.llvm {
             let piston = world.piston_state();
             if !piston.events.is_empty()
                 || !piston.motions.is_empty()
@@ -154,7 +154,7 @@ impl Compiler {
                     reason: "LLVM does not yet import piston handoff state",
                 }));
             }
-            Some(NativeRuntime::new(program.clone(), &ticks).map_err(CompileError::Unsupported)?)
+            Some(LlvmRuntime::new(program.clone(), &ticks).map_err(CompileError::Unsupported)?)
         } else { None };
         let runtime = sampled::start_runtime(program, ticks, world.piston_state().clone()).map_err(CompileError::Unsupported)?;
         let capacity = runtime.motion_part_capacity();
@@ -169,7 +169,7 @@ impl Compiler {
         self.exported_motions.clear();
         self.exported_motions.reserve(capacity);
         self.runtime = Some(runtime);
-        self.native_runtime = native;
+        self.llvm_runtime = llvm;
         self.statistics = Some(CompileStatistics {
             components,
             pending_ticks,
@@ -192,9 +192,11 @@ impl Compiler {
         if self.runtime.is_some() {
             self.publish(world, false, true)?;
             let runtime = self.runtime.as_ref().unwrap();
+            #[cfg(feature = "redpiler-trace")]
+            runtime.log_routing_metrics();
             let pending = runtime.pending_entries();
             self.runtime = None;
-            self.native_runtime = None;
+            self.llvm_runtime = None;
             for entry in pending {
                 world.restore_scheduled_tick(entry);
             }
@@ -212,7 +214,7 @@ impl Compiler {
     }
 
     pub fn tick(&mut self) -> Result<(), ExecutionError> {
-        if let Some(runtime) = self.native_runtime.as_mut() {
+        if let Some(runtime) = self.llvm_runtime.as_mut() {
             return runtime.tick().map_err(ExecutionError);
         }
         self.runtime.as_mut().expect("compiler inactive").tick().map_err(ExecutionError)
@@ -229,7 +231,7 @@ impl Compiler {
     }
 
     pub fn try_on_use_block(&mut self, pos: BlockPos) -> Result<(), ExecutionError> {
-        if let Some(runtime) = self.native_runtime.as_mut() {
+        if let Some(runtime) = self.llvm_runtime.as_mut() {
             return runtime.use_control(pos).map_err(ExecutionError);
         }
         self.runtime.as_mut().expect("compiler inactive").use_control(pos).map_err(ExecutionError)
@@ -237,7 +239,7 @@ impl Compiler {
 
     pub(crate) fn accepts_control(&self, pos: BlockPos) -> bool {
         self.runtime.as_ref().is_some_and(|runtime| runtime.accepts_control(pos))
-            || self.native_runtime.as_ref().is_some_and(|runtime| runtime.accepts_control(pos))
+            || self.llvm_runtime.as_ref().is_some_and(|runtime| runtime.accepts_control(pos))
     }
 
     pub fn flush<W: World>(&mut self, world: &mut W) {
@@ -256,8 +258,11 @@ impl Compiler {
     }
 
     pub(crate) fn flush_effects<W: World>(&mut self, world: &mut W) {
-        if self.native_runtime.is_some() {
-            return;
+        if let Some(llvm) = self.llvm_runtime.as_ref() {
+            if let Err(error) = llvm.sync_publication(self.runtime.as_mut().expect("LLVM publication projection missing")) {
+                tracing::error!(?error, "LLVM effect read failed");
+                return;
+            }
         }
         let runtime = self.runtime.as_mut().expect("compiler inactive");
         runtime.publish_commands(world, true);
@@ -265,6 +270,7 @@ impl Compiler {
             redstone::noteblock::play_note(world, pos, instrument, note);
             runtime.note_queued[component] = false;
         }
+        if let Some(llvm) = self.llvm_runtime.as_mut() { llvm.acknowledge_effects(); }
     }
 
     pub(crate) fn try_flush_complete<W: World>(&mut self, world: &mut W) -> Result<(), ExecutionError> {
@@ -272,8 +278,8 @@ impl Compiler {
     }
 
     fn publish<W: World>(&mut self, world: &mut W, io_only: bool, full: bool) -> Result<(), ExecutionError> {
-        if let Some(native) = self.native_runtime.as_ref() {
-            native.sync_projection(self.runtime.as_mut().expect("native publication projection missing")).map_err(ExecutionError)?;
+        if let Some(llvm) = self.llvm_runtime.as_ref() {
+            llvm.sync_publication(self.runtime.as_mut().expect("LLVM publication projection missing")).map_err(ExecutionError)?;
         }
         self.runtime
             .as_mut()
@@ -403,6 +409,7 @@ impl Compiler {
             runtime.note_queued[component] = false;
         }
         runtime.mark_published(io_only || !full);
+        if let Some(llvm) = self.llvm_runtime.as_mut() { llvm.acknowledge_effects(); }
         Ok(())
     }
 }

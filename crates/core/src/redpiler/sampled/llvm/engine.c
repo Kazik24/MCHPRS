@@ -7,7 +7,7 @@
 #define NE_OPERATION_LIMIT 4u
 #define NE_MAX_TICK_OPERATIONS 1000000u
 #define NE_MAX_STATE_BYTES (256u * 1024u * 1024u)
-#define NE_TABLES 49u
+#define NE_TABLES 52u
 #define NONE UINT32_MAX
 
 typedef struct {
@@ -36,6 +36,8 @@ typedef struct {
     uint8_t *comparator_outputs;
     uint8_t *reactive_strengths;
     uint8_t has_reactive;
+    uint8_t *note_instruments, *note_queued;
+    uint32_t *note_events, note_count;
     uint32_t *watched_by_component;
     uint8_t *watched_strengths;
     uint64_t *updated;
@@ -94,6 +96,7 @@ static uint32_t run_piston_events(NEEngine *);
 static uint32_t tick_motions(NEEngine *);
 static uint32_t set_token_pos(NEEngine *, uint32_t, uint32_t);
 static void refresh_arranged(NEEngine *, uint32_t);
+static uint32_t update_note(NEEngine *, uint32_t);
 
 static uint32_t read_u32(const uint8_t *data) {
     return (uint32_t)data[0] | ((uint32_t)data[1] << 8) | ((uint32_t)data[2] << 16) | ((uint32_t)data[3] << 24);
@@ -251,6 +254,7 @@ static uint32_t update_component(NEEngine *e, uint32_t node) {
     if (kind == 4u) return update_repeater(e, node);
     if (kind == 9u) return update_comparator(e,node);
     if (kind == 10u) { set_component(e,node,(uint8_t)!e->input_count[node]); return NE_OK; }
+    if (kind == 12u) return update_note(e,node);
     if (kind == 6u && e->component_state[node] == (e->input_count[node] != 0u)) return schedule(e, node, 2u, 3u);
     if (kind == 7u && !e->component_state[node]) return schedule(e, node, 2u, 3u);
     return NE_OK;
@@ -291,6 +295,7 @@ static uint32_t execute_operation(NEEngine *engine, const uint8_t *operation) {
     }
     if (operation[0] == 4u) return dispatch_lamp(engine, operand);
     if (operation[0] == 5u) return update_component(engine, operand);
+    if (operation[0] == 8u) return update_note(engine,operand);
     if (operation[0] == 10u) return update_repeater(engine, operand);
     if (operation[0] == 1u) { refresh_arranged(engine, operand); return NE_OK; }
     if (operation[0] == 2u) { refresh_wire(engine, operand); return NE_OK; }
@@ -439,6 +444,7 @@ static uint32_t valid_aux(const MchprsNativeProgramDescriptor *p, const uint8_t 
         cursor += (uint64_t)n[i] * 4u;
     }
     if (cursor != p->total_bytes || (uint64_t)n[42] != (uint64_t)p->component_count*4u || (uint64_t)n[43] != (uint64_t)p->component_count*5u
+        || (uint64_t)n[49] != (uint64_t)p->component_count*6u || n[16]%7u || n[11]%3u || n[50]!=n[16]/7u || n[51]!=n[11]/3u
         || n[45]%5u || n[46]%2u || (uint64_t)n[0] != (uint64_t)p->component_count * 2u
         || n[2] != n[0] || n[5] != n[0] || n[1] % 2u || (uint64_t)n[3] != (uint64_t)p->watched_wire_count * 3u) return 0u;
     for (uint32_t node = 0; node < p->component_count; ++node) {
@@ -466,12 +472,18 @@ static uint32_t valid_aux(const MchprsNativeProgramDescriptor *p, const uint8_t 
     for (uint32_t i=0;i<n[46];i+=2u) if (t[46][i]>=p->component_count || t[46][i+1u]>15u) return 0u;
     for (uint32_t i=0;i<n[47];++i) if (t[47][i]>=p->component_count) return 0u;
     for (uint32_t i=0;i<n[48];++i) if (t[48][i]>=p->component_count) return 0u;
+    for (uint32_t i=0;i<p->component_count;++i) {
+        const uint32_t *r=t[49]+i*6u;
+        if ((r[0]!=NONE && r[0]>=n[50]) || (r[2]!=NONE && r[2]>=n[50]) || r[1]>31u || r[3]>31u || r[4]>24u || r[5]>15u) return 0u;
+    }
+    for (uint32_t i=0;i<n[50];++i) if (t[50][i]>31u) return 0u;
+    for (uint32_t i=0;i<n[51];++i) if (t[51][i]>31u) return 0u;
     return valid_movement(p, blob, t, n);
 }
 
 static uint32_t valid_program(const MchprsNativeProgramDescriptor *program, const uint8_t *blob, uint32_t blob_bytes) {
-    if (!program || !blob || blob_bytes < 16u || program->abi_version != 3u || program->header_bytes != 16u
-        || program->total_bytes != blob_bytes
+    if (!program || !blob || (uintptr_t)blob % _Alignof(uint32_t) != 0u || blob_bytes < 16u || program->abi_version != 3u || program->header_bytes != 16u
+        || program->total_bytes != blob_bytes || blob[0] != 'M' || blob[1] != 'C' || blob[2] != 'H' || blob[3] != 'N'
         || read_u32(blob + 4) != 3u || read_u32(blob + 8) != 16u || read_u32(blob + 12) != program->total_bytes) return 0u;
     if (program->operation_offset != 16u
         || (uint64_t)program->link_offset != (uint64_t)program->operation_offset + (uint64_t)program->operation_count * 8u
@@ -481,7 +493,7 @@ static uint32_t valid_program(const MchprsNativeProgramDescriptor *program, cons
     if (!valid_aux(program, blob)) return 0u;
     const MchprsNativeComponent *component = (const MchprsNativeComponent *)(blob + program->component_offset);
     for (uint32_t i = 0; i < program->component_count; ++i) {
-        if (component[i].kind > 11u || component[i].initial_state > (component[i].kind == 5u ? 15u : component[i].kind == 4u ? 3u : 1u)
+        if (component[i].kind > 12u || component[i].initial_state > (component[i].kind == 5u ? 15u : component[i].kind == 4u ? 3u : 1u)
             || (component[i].kind == 4u ? (component[i].reserved[0] < 1u || component[i].reserved[0] > 4u || component[i].reserved[1] > 6u || (component[i].reserved[1] & 1u))
                 : (component[i].reserved[0] || component[i].reserved[1]))
             || (uint64_t)component[i].on_offset + component[i].on_count > program->operation_count
@@ -508,6 +520,8 @@ static uint32_t valid_program(const MchprsNativeProgramDescriptor *program, cons
             if (operand >= program->component_count || component[operand].kind != 2u) return 0u;
         } else if (op[0] == 5u) {
             if (operand >= program->component_count || component[operand].kind != 10u) return 0u;
+        } else if (op[0] == 8u) {
+            if (operand >= program->component_count || component[operand].kind != 12u) return 0u;
         } else if (op[0] == 10u) {
             if (operand >= program->component_count || component[operand].kind != 4u) return 0u;
         } else if (op[0] == 2u || op[0] == 12u || op[0] == 11u || op[0] == 13u) {
@@ -527,7 +541,7 @@ static uint32_t valid_program(const MchprsNativeProgramDescriptor *program, cons
 static size_t align8(size_t value) { return (value + 7u) & ~(size_t)7u; }
 
 MchprsNativeApiDescriptor ne_api_descriptor(void) {
-    MchprsNativeApiDescriptor value = {3u, 16u, 11u};
+    MchprsNativeApiDescriptor value = {3u, 16u, 12u};
     return value;
 }
 
@@ -548,6 +562,9 @@ size_t ne_state_size(const MchprsNativeProgramDescriptor *program, const uint8_t
     bytes = align8(bytes) + count * 16u * sizeof(uint32_t);
     bytes = align8(bytes) + count;
     bytes = align8(bytes) + table_words(&view,45u)/5u;
+    bytes = align8(bytes) + count;
+    bytes = align8(bytes) + count;
+    bytes = align8(bytes) + count*3u*sizeof(uint32_t);
     bytes = align8(bytes) + count * sizeof(uint32_t);
     bytes = align8(bytes) + program->watched_wire_count;
     bytes = align8(bytes) + count * sizeof(uint64_t);
@@ -558,7 +575,7 @@ size_t ne_state_size(const MchprsNativeProgramDescriptor *program, const uint8_t
 
 uint32_t ne_create(const MchprsNativeProgramDescriptor *program, const uint8_t *blob, uint32_t blob_bytes, void *memory, size_t memory_bytes) {
     size_t needed = ne_state_size(program, blob, blob_bytes);
-    if (!needed || !memory || memory_bytes < needed || !valid_program(program, blob, blob_bytes)) return NE_INVALID;
+    if (!needed || !memory || (uintptr_t)memory % _Alignof(NEEngine) != 0u || memory_bytes < needed || !valid_program(program, blob, blob_bytes)) return NE_INVALID;
     uint8_t *base = (uint8_t *)memory;
     NEEngine *engine = (NEEngine *)base;
     size_t offset = align8(sizeof(NEEngine));
@@ -583,6 +600,12 @@ uint32_t ne_create(const MchprsNativeProgramDescriptor *program, const uint8_t *
     offset = align8(offset + program->component_count);
     engine->reactive_strengths = base + offset;
     offset = align8(offset + table_words(engine,45u)/5u);
+    engine->note_instruments = base + offset;
+    offset = align8(offset + program->component_count);
+    engine->note_queued = base + offset;
+    offset = align8(offset + program->component_count);
+    engine->note_events = (uint32_t *)(base + offset);
+    offset = align8(offset + (size_t)program->component_count*3u*sizeof(uint32_t));
     engine->watched_by_component = (uint32_t *)(base + offset);
     offset = align8(offset + (size_t)program->component_count * sizeof(uint32_t));
     engine->watched_strengths = base + offset;
@@ -599,9 +622,12 @@ uint32_t ne_create(const MchprsNativeProgramDescriptor *program, const uint8_t *
     engine->work_count = 0u;
     engine->error = NE_OK;
     engine->has_reactive = 0u;
+    engine->note_count = 0u;
     for (uint32_t i = 0; i < program->component_count; ++i) {
         engine->component_state[i] = components(engine)[i].initial_state;
         engine->comparator_outputs[i] = (uint8_t)table(engine,42u)[i*4u+3u];
+        engine->note_instruments[i]=(uint8_t)table(engine,49u)[i*6u+5u];
+        engine->note_queued[i]=0u;
         if (table(engine,43u)[i*5u]) engine->has_reactive=1u;
         engine->input_count[i] = 0u;
         engine->pending_count[i] = 0u;
@@ -742,4 +768,4 @@ uint64_t ne_work_count(const void *memory) {
     return engine ? engine->work_count : 0u;
 }
 
-#include "native_movement.c"
+#include "llvm_movement.c"

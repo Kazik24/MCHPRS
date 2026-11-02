@@ -67,6 +67,7 @@ MCHPRS_NATIVE_EXPORT uint64_t ne_work_count(const void *memory);
 MCHPRS_NATIVE_EXPORT uint64_t ne_tick_count(const void *memory);
 MCHPRS_NATIVE_EXPORT uint32_t ne_snapshot_words(const void *memory);
 MCHPRS_NATIVE_EXPORT uint32_t ne_read_snapshot(const void *memory, uint32_t *out, uint32_t words);
+MCHPRS_NATIVE_EXPORT void ne_ack_effects(void *memory);
 
 #if defined(__cplusplus)
 static_assert(sizeof(MchprsNativeApiDescriptor) == 16, "native API descriptor ABI drift");

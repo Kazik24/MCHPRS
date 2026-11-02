@@ -9,14 +9,20 @@ use super::{
 use mchprs_blocks::BlockPos;
 use mchprs_blocks::blocks::Block;
 use mchprs_world::{TickEntry, TickPriority};
-use std::ffi::{c_char, c_void};
+use std::ffi::c_void;
+#[cfg(windows)]
+use std::ffi::c_char;
 mod movement;
 mod routing;
+mod effects;
+#[cfg(test)]
+mod command;
 mod cache;
+pub(in crate::redpiler) use cache::initialize as initialize_cache;
 use movement::encode_movement;
 
 pub(super) const ABI_VERSION: u32 = 3;
-const AUX_TABLES: usize = 43;
+const AUX_TABLES: usize = 52;
 const MAGIC: [u8; 4] = *b"MCHN";
 const HEADER_BYTES: usize = 16;
 const OP_BYTES: usize = 8;
@@ -58,24 +64,27 @@ pub(super) struct NativeProgramDescriptor {
     pub(super) watched_wire_count: u32,
 }
 
-pub(super) struct NativeProgram {
+pub(super) struct LlvmProgram {
     pub(super) descriptor: NativeProgramDescriptor,
     pub(super) blob: Vec<u8>,
 }
 
 #[cfg(any(windows, target_os = "linux"))]
-pub(in crate::redpiler) struct NativeRuntime {
+pub(in crate::redpiler) struct LlvmRuntime {
     library: Library,
     state: Vec<u64>,
     descriptor: NativeProgramDescriptor,
-    blob: Vec<u8>,
+    blob: Vec<u64>,
     positions: Vec<BlockPos>,
     initial: Vec<Block>,
     sources: Vec<(BlockPos, u32)>,
 }
 
 #[cfg(any(windows, target_os = "linux"))]
-impl NativeRuntime {
+impl LlvmRuntime {
+    pub(in crate::redpiler) fn acknowledge_effects(&mut self) {
+        unsafe { (self.library.ack_effects)(self.state.as_mut_ptr().cast()) }
+    }
     pub(in crate::redpiler) fn new(program: Program, ticks: &[TickEntry]) -> Result<Self, ScratchError> {
         if std::env::var_os("MCHPRS_LLVM_DIAGNOSTICS").is_some() {
             let mut kinds = std::collections::BTreeMap::<String, usize>::new();
@@ -130,7 +139,7 @@ impl NativeRuntime {
                 tick.tick_priority as u8,
             ));
         }
-        let encoded = NativeProgram::encode(&program)?;
+        let encoded = LlvmProgram::encode(&program)?;
         if std::env::var_os("MCHPRS_LLVM_DIAGNOSTICS").is_some() {
             let path = std::env::var_os("MCHPRS_LLVM_DLL")
                 .map(std::path::PathBuf::from)
@@ -143,13 +152,22 @@ impl NativeRuntime {
         }
         let library = Library::load()?;
         let api = unsafe { (library.api_descriptor)() };
-        if api.abi_version != ABI_VERSION || api.descriptor_bytes != 16 || api.semantic_version != 10 {
+        if api.abi_version != ABI_VERSION || api.descriptor_bytes != 16 || api.semantic_version != 12 {
             return Err(ScratchError {
                 position: None,
                 reason: "LLVM DLL ABI/version mismatch",
             });
         }
-        let bytes = unsafe { (library.state_size)(&encoded.descriptor, encoded.blob.as_ptr(), encoded.blob.len() as u32) };
+        // The C executor reads u32 tables directly, so their backing allocation must be aligned.
+        let blob: Vec<u64> = encoded.blob.chunks(8).map(|chunk| {
+            let mut bytes = [0; 8];
+            bytes[..chunk.len()].copy_from_slice(chunk);
+            u64::from_ne_bytes(bytes)
+        }).collect();
+        let descriptor = encoded.descriptor;
+        let blob_bytes = descriptor.total_bytes;
+        drop(encoded.blob);
+        let bytes = unsafe { (library.state_size)(&descriptor, blob.as_ptr().cast(), blob_bytes) };
         if bytes == 0 || bytes > 256 * 1024 * 1024 {
             return Err(ScratchError {
                 position: None,
@@ -159,9 +177,9 @@ impl NativeRuntime {
         let mut state = vec![0u64; bytes.div_ceil(8)];
         let status = unsafe {
             (library.create)(
-                &encoded.descriptor,
-                encoded.blob.as_ptr(),
-                encoded.blob.len() as u32,
+                &descriptor,
+                blob.as_ptr().cast(),
+                blob_bytes,
                 state.as_mut_ptr().cast(),
                 state.len() * 8,
             )
@@ -192,8 +210,8 @@ impl NativeRuntime {
         Ok(Self {
             library,
             state,
-            descriptor: encoded.descriptor,
-            blob: encoded.blob,
+            descriptor,
+            blob,
             positions: program.positions,
             initial: program.initial,
             sources,
@@ -315,7 +333,7 @@ impl NativeRuntime {
 }
 
 #[cfg(any(windows, target_os = "linux"))]
-impl Drop for NativeRuntime {
+impl Drop for LlvmRuntime {
     fn drop(&mut self) {
         if std::env::var_os("MCHPRS_LLVM_DIAGNOSTICS").is_some() {
             let count = unsafe { (self.library.work_count)(self.state.as_ptr().cast()) };
@@ -328,14 +346,18 @@ impl Drop for NativeRuntime {
 }
 
 #[cfg(not(any(windows, target_os = "linux")))]
-pub(in crate::redpiler) struct NativeRuntime;
+pub(in crate::redpiler) struct LlvmRuntime;
 
 #[cfg(not(any(windows, target_os = "linux")))]
-impl NativeRuntime {
+impl LlvmRuntime {
+    pub(in crate::redpiler) fn acknowledge_effects(&mut self) { unreachable!() }
     pub(in crate::redpiler) fn new(_: Program, _: &[TickEntry]) -> Result<Self, ScratchError> {
         Library::load().map(|_| Self)
     }
     pub(in crate::redpiler) fn sync_projection(&self, _: &mut super::Runtime) -> Result<(), ScratchError> {
+        unreachable!()
+    }
+    pub(in crate::redpiler) fn sync_publication(&self, _: &mut super::Runtime) -> Result<(), ScratchError> {
         unreachable!()
     }
     pub(in crate::redpiler) fn tick(&mut self) -> Result<(), ScratchError> {
@@ -356,8 +378,7 @@ impl NativeRuntime {
 }
 
 fn supported(program: &Program) -> bool {
-    !program.has_reactive
-        && program.comparators.iter().all(|record| [record.rear_override, record.far_override].into_iter().flatten().all(|input| matches!(input, super::program::ComparatorInput::Static(_))))
+    program.comparators.iter().all(|record| [record.rear_override, record.far_override].into_iter().flatten().all(|input| matches!(input, super::program::ComparatorInput::Static(_))))
         && program.command_blocks.is_empty()
         && program.command_output_state.is_none()
         && program.initial.iter().all(|block| {
@@ -374,6 +395,7 @@ fn supported(program: &Program) -> bool {
                     | Block::RedstoneWallTorch { .. }
                     | Block::Piston { .. }
                     | Block::RedstoneComparator { .. }
+                    | Block::Hopper { .. } | Block::NoteBlock { .. } | Block::StonePressurePlate { .. }
             )
         })
         && program.links.iter().all(|link| {
@@ -389,6 +411,7 @@ fn supported(program: &Program) -> bool {
                     | Block::RedstoneWallTorch { .. }
                     | Block::Piston { .. }
                     | Block::RedstoneComparator { .. }
+                    | Block::Hopper { .. } | Block::NoteBlock { .. } | Block::StonePressurePlate { .. }
             ) && matches!(
                 program.initial[link.target],
                 Block::RedstoneLamp { .. }
@@ -399,6 +422,7 @@ fn supported(program: &Program) -> bool {
                     | Block::RedstoneWallTorch { .. }
                     | Block::Piston { .. }
                     | Block::RedstoneComparator { .. }
+                    | Block::Hopper { .. } | Block::NoteBlock { .. } | Block::StonePressurePlate { .. }
             )
         })
         && program.operations.iter().all(|op| {
@@ -413,6 +437,7 @@ fn supported(program: &Program) -> bool {
                     | Operation::ArrangementContribution(_)
                     | Operation::UpdatePiston(_)
                     | Operation::UpdateComparator(_)
+                    | Operation::UpdateHopper(_) | Operation::UpdateNoteBlock(_)
             )
         })
 }
@@ -433,18 +458,17 @@ struct Library {
     work_count: unsafe extern "C" fn(*const c_void) -> u64,
     snapshot_words: unsafe extern "C" fn(*const c_void) -> u32,
     read_snapshot: unsafe extern "C" fn(*const c_void, *mut u32, u32) -> u32,
+    ack_effects: unsafe extern "C" fn(*mut c_void),
 }
 
-// The compiler moves its exclusive native runtime between the compile and tick workers.
+// The compiler moves its exclusive LLVM runtime between the compile and tick workers.
 #[cfg(windows)]
 unsafe impl Send for Library {}
 
 #[cfg(windows)]
 impl Library {
     fn load() -> Result<Self, ScratchError> {
-        let path = std::env::var_os("MCHPRS_LLVM_DLL")
-            .map(std::path::PathBuf::from)
-            .unwrap_or_else(|| std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/native_engine.dll"));
+        let path = cache::module_path(None).map_err(|_| ScratchError { position: None, reason: "could not build LLVM module" })?;
         let wide: Vec<u16> = path.as_os_str().encode_wide().chain(Some(0)).collect();
         let handle = unsafe { LoadLibraryW(wide.as_ptr()) };
         if handle.is_null() {
@@ -479,6 +503,7 @@ impl Library {
                 work_count: symbol(handle, b"ne_work_count\0")?,
                 snapshot_words: symbol(handle, b"ne_snapshot_words\0")?,
                 read_snapshot: symbol(handle, b"ne_read_snapshot\0")?,
+                ack_effects: symbol(handle, b"ne_ack_effects\0")?,
             })
         })();
         if result.is_err() {
@@ -515,6 +540,7 @@ struct Library {
     work_count: unsafe extern "C" fn(*const c_void) -> u64,
     snapshot_words: unsafe extern "C" fn(*const c_void) -> u32,
     read_snapshot: unsafe extern "C" fn(*const c_void, *mut u32, u32) -> u32,
+    ack_effects: unsafe extern "C" fn(*mut c_void),
 }
 
 #[cfg(target_os = "linux")]
@@ -524,13 +550,13 @@ unsafe impl Send for Library {}
 impl Library {
     fn load() -> Result<Self, ScratchError> {
         use std::ffi::CString;
-        let path = cache::module_path(None).map_err(|_| ScratchError { position: None, reason: "could not build LLVM native module" })?;
+        let path = cache::module_path(None).map_err(|_| ScratchError { position: None, reason: "could not build LLVM module" })?;
         let path = CString::new(path.to_string_lossy().as_bytes()).map_err(|_| ScratchError { position: None, reason: "invalid LLVM module path" })?;
         let handle = unsafe { dlopen(path.as_ptr(), 2) };
-        if handle.is_null() { return Err(ScratchError { position: None, reason: "could not load LLVM native module" }); }
+        if handle.is_null() { return Err(ScratchError { position: None, reason: "could not load LLVM module" }); }
         unsafe fn symbol<T: Copy>(handle: *mut c_void, name: &'static [u8]) -> Result<T, ScratchError> {
             let address = unsafe { dlsym(handle, name.as_ptr().cast()) };
-            if address.is_null() { return Err(ScratchError { position: None, reason: "LLVM native module is missing a required export" }); }
+            if address.is_null() { return Err(ScratchError { position: None, reason: "LLVM module is missing a required export" }); }
             Ok(unsafe { std::mem::transmute_copy(&address) })
         }
         let result = (|| unsafe {
@@ -542,6 +568,7 @@ impl Library {
                 pending_count: symbol(handle, b"ne_pending_count\0")?, read_pending: symbol(handle, b"ne_read_pending\0")?,
                 work_count: symbol(handle, b"ne_work_count\0")?, snapshot_words: symbol(handle, b"ne_snapshot_words\0")?,
                 read_snapshot: symbol(handle, b"ne_read_snapshot\0")?,
+                ack_effects: symbol(handle, b"ne_ack_effects\0")?,
             })
         })();
         if result.is_err() { unsafe { dlclose(handle); } }
@@ -568,7 +595,7 @@ impl Library {
     fn load() -> Result<Self, ScratchError> {
         Err(ScratchError {
             position: None,
-            reason: "LLVM native runtime is supported on Windows and Linux only",
+            reason: "LLVM runtime is supported on Windows and Linux only",
         })
     }
 }
@@ -584,7 +611,7 @@ unsafe extern "system" {
     fn FreeLibrary(module: *mut c_void) -> i32;
 }
 
-impl NativeProgram {
+impl LlvmProgram {
     pub(super) fn encode(program: &Program) -> Result<Self, ScratchError> {
         let mut blob = Vec::with_capacity(
             HEADER_BYTES
@@ -714,6 +741,7 @@ fn encode_aux(program: &Program, blob: &mut Vec<u8>) -> Result<(), ScratchError>
     encode_movement(program, &mut tables)?;
     routing::encode(program, &mut tables)?;
     encode_comparators(program, &mut tables[42])?;
+    effects::encode(program, &mut tables)?;
     let directory = blob.len();
     blob.resize(directory.checked_add(AUX_TABLES * 8).ok_or_else(overflow)?, 0);
     for (index, table) in tables.iter().enumerate() {
@@ -794,7 +822,7 @@ pub(super) fn validate_blob(descriptor: &NativeProgramDescriptor, blob: &[u8]) -
         let on_count = u32::from_le_bytes(component[20..24].try_into().unwrap()) as usize;
         let off_start = u32::from_le_bytes(component[24..28].try_into().unwrap()) as usize;
         let off_count = u32::from_le_bytes(component[28..32].try_into().unwrap()) as usize;
-        if (kind > 9 && kind != u8::MAX)
+        if (kind > 12 && kind != u8::MAX)
             || component[13]
                 > (if kind == 5 {
                     15
@@ -903,6 +931,9 @@ fn component_state(block: Block) -> (u8, u8) {
         Block::Observer { observer } => (7, u8::from(observer.powered)),
         Block::Piston { piston } => (8, u8::from(piston.extended)),
         Block::RedstoneComparator { comparator } => (9, u8::from(comparator.powered)),
+        Block::Hopper { enabled, .. } => (10, u8::from(enabled)),
+        block if block.pressure_plate_powered().is_some() => (11, u8::from(block.pressure_plate_powered() == Some(true))),
+        Block::NoteBlock { powered, .. } => (12, u8::from(powered)),
         _ => (u8::MAX, 0),
     }
 }
@@ -927,7 +958,27 @@ fn overflow() -> ScratchError {
 mod tests {
     use super::*;
 
-    #[cfg(windows)]
+    #[cfg(any(windows, target_os = "linux"))]
+    #[test]
+    fn llvm_read_marks_changes_without_losing_unpublished_cells() {
+        let mut program = super::super::tests::repeater_program(1, false, false, false);
+        program.prepare_projection();
+        let control = program.positions[0];
+        let mut projection = program.clone().into_runtime_prepared();
+        let mut native = LlvmRuntime::new(program, &[]).unwrap();
+        native.sync_projection(&mut projection).unwrap();
+        projection.mark_published(false);
+        native.sync_projection(&mut projection).unwrap();
+        assert!(projection.dirty_cells.is_empty());
+        native.use_control(control).unwrap();
+        native.sync_projection(&mut projection).unwrap();
+        let dirty = projection.dirty_cells.clone();
+        assert!(!dirty.is_empty());
+        native.sync_projection(&mut projection).unwrap();
+        assert_eq!(projection.dirty_cells, dirty);
+    }
+
+    #[cfg(any(windows, target_os = "linux"))]
     fn compare_execution(mut program: Program, controls: &[(usize, usize)], ticks: usize) {
         if program.projection_positions.is_empty() || program.effective_links.len() != program.links.len() {
             program.prepare_projection();
@@ -936,7 +987,7 @@ mod tests {
         let mut projection = program.clone().into_runtime_prepared();
         let mut rust = program.clone().into_runtime_prepared();
         rust.set_pending(Vec::new()).unwrap();
-        let mut native = NativeRuntime::new(program, &[]).unwrap();
+        let mut native = LlvmRuntime::new(program, &[]).unwrap();
         for tick in 0..ticks {
             for &(_, source) in controls.iter().filter(|&&(at, _)| at == tick) {
                 rust.use_control(positions[source]).unwrap();
@@ -968,6 +1019,9 @@ mod tests {
             assert_eq!(projection.group_arrangements, rust.group_arrangements, "arrangements tick {tick}");
             assert_eq!(projection.routing_attenuations, rust.routing_attenuations, "routing tick {tick}");
             assert_eq!(projection.comparator_outputs, rust.comparator_outputs, "comparators tick {tick}");
+            assert_eq!(projection.reactive_wire_strengths, rust.reactive_wire_strengths, "reactive wires tick {tick}");
+            assert_eq!(projection.notes, rust.notes, "note effects tick {tick}");
+            assert_eq!(projection.note_queued, rust.note_queued, "queued effects tick {tick}");
             assert_eq!(projection.watched_strengths, rust.watched_strengths, "watched wires tick {tick}");
             for (node, (a, b)) in projection.input_levels.iter().zip(&rust.input_levels).enumerate() {
                 assert_eq!(
@@ -1002,7 +1056,27 @@ mod tests {
         }
     }
 
-    #[cfg(windows)]
+    #[cfg(any(windows, target_os = "linux"))]
+    #[test]
+    #[ignore = "full ANPU native/Rust comparison; requires the LLVM DLL"]
+    fn llvm_anpu_matches_rust_state_and_effects_each_tick() {
+        use super::super::cpu_trace::cpus;
+        use crate::{plot::worldedit::load_schematic, world::World};
+        let cpu = cpus::CPUS[1];
+        let world = cpus::load_cpu(cpu);
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../test_data").join(cpu.schematic);
+        let clip = load_schematic(std::fs::File::open(path).unwrap()).unwrap();
+        let bounds = (cpu.origin, cpu.origin + BlockPos::new(clip.size_x as i32 - 1, clip.size_y as i32 - 1, clip.size_z as i32 - 1));
+        let started = std::time::Instant::now();
+        let program = super::super::compile_program(&world, bounds,
+            super::super::ScratchEntry { scheduled: vec![], piston: world.piston_state().clone() }, None).unwrap();
+        eprintln!("ANPU sampled compile_ms={}", started.elapsed().as_millis());
+        let start = program.positions.iter().position(|&pos| pos == cpu.origin + cpu.start).unwrap();
+        let ticks = std::env::var("MCHPRS_LLVM_VERIFY_TICKS").ok().map_or(5000, |s| s.parse().unwrap());
+        compare_execution(program, &[(0, start)], ticks);
+    }
+
+    #[cfg(any(windows, target_os = "linux"))]
     #[test]
     #[ignore = "full ZCore native/Rust snapshot comparison; requires the LLVM DLL"]
     fn llvm_zcore_matches_rust_state_and_motion_each_tick() {
@@ -1055,7 +1129,7 @@ mod tests {
         compare_execution(program, &[(0, start), (preparation, run)], preparation + ticks);
     }
 
-    #[cfg(windows)]
+    #[cfg(any(windows, target_os = "linux"))]
     #[test]
     fn llvm_wire_strengths_torches_and_observer_notifications_match_rust() {
         if std::env::var_os("MCHPRS_LLVM_DLL").is_none()
@@ -1125,7 +1199,7 @@ mod tests {
         compare_execution(program, &[(0, 0), (4, 2), (8, 0), (12, 2), (25, 2), (26, 2), (38, 0), (39, 0)], 96);
     }
 
-    #[cfg(windows)]
+    #[cfg(any(windows, target_os = "linux"))]
     #[test]
     fn llvm_repeater_side_locks_and_lock_observers_match_rust() {
         if std::env::var_os("MCHPRS_LLVM_DLL").is_none()
@@ -1187,7 +1261,7 @@ mod tests {
         compare_execution(program, &[(0, 1), (4, 0), (8, 1), (13, 1), (17, 0), (21, 1), (32, 0), (34, 0)], 96);
     }
 
-    #[cfg(windows)]
+    #[cfg(any(windows, target_os = "linux"))]
     #[test]
     fn llvm_compressed_concrete_axes_preserve_motion_and_wire_state() {
         use crate::world::World;
@@ -1216,7 +1290,7 @@ mod tests {
         compare_execution(program, &[(0, source), (6, source), (12, source), (13, source), (20, source), (28, source)], 40);
     }
 
-    #[cfg(windows)]
+    #[cfg(any(windows, target_os = "linux"))]
     #[test]
     fn llvm_empty_head_notifies_quasi_powered_piston_immediately() {
         use crate::world::World;
@@ -1237,7 +1311,7 @@ mod tests {
         compare_execution(program, &[(0, source), (5, source), (10, source), (11, source)], 32);
     }
 
-    #[cfg(windows)]
+    #[cfg(any(windows, target_os = "linux"))]
     #[test]
     fn llvm_moving_redstone_block_and_observers_match_rust() {
         if std::env::var_os("MCHPRS_LLVM_DLL").is_none()
@@ -1296,7 +1370,7 @@ mod tests {
         }
     }
 
-    #[cfg(windows)]
+    #[cfg(any(windows, target_os = "linux"))]
     #[test]
     fn llvm_repeaters_match_rust_delays_pulses_and_pending_work() {
         if std::env::var_os("MCHPRS_LLVM_DLL").is_none()
@@ -1318,7 +1392,7 @@ mod tests {
                         let mut rust = program.clone().into_runtime_prepared();
                         rust.set_pending(Vec::new()).unwrap();
                         let control = program.positions[0];
-                        let mut native = NativeRuntime::new(program, &[]).unwrap();
+                        let mut native = LlvmRuntime::new(program, &[]).unwrap();
                         for tick in 0..96 {
                             if [0, 1, 12, 32, 35, 60].contains(&tick) {
                                 rust.use_control(control).unwrap();
@@ -1341,7 +1415,7 @@ mod tests {
         }
     }
 
-    #[cfg(windows)]
+    #[cfg(any(windows, target_os = "linux"))]
     #[test]
     fn llvm_comparator_analog_levels_and_scheduling_match_rust() {
         use super::super::program::{ComparatorRecord, ElectricalLink};
@@ -1363,7 +1437,7 @@ mod tests {
                 program.side_links.push(ElectricalLink { source: 1, target: 2, attenuation: 8 });
                 program.prepare_projection();
                 let mut rust = program.clone().into_runtime_prepared();
-                let mut native = NativeRuntime::new(program.clone(), &[]).unwrap();
+                let mut native = LlvmRuntime::new(program.clone(), &[]).unwrap();
                 let mut handoff: Option<super::super::Runtime> = None;
                 for tick in 0..32 {
                     for &(_, source) in [(0, 0), (4, 1), (8, 0), (12, 0), (16, 1), (20, 0)].iter().filter(|&&(at, _)| at == tick) {
@@ -1377,6 +1451,7 @@ mod tests {
                     if let Some(runtime) = &mut handoff { runtime.tick().unwrap(); }
                     if tick == 1 {
                         let mut runtime = program.clone().into_runtime_prepared();
+                        native.sync_publication(&mut runtime).unwrap();
                         native.sync_projection(&mut runtime).unwrap();
                         handoff = Some(runtime);
                     }

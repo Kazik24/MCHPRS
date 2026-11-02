@@ -91,16 +91,20 @@ fn run_sample(ticks: u32, sample: usize, llvm: bool) -> serde_json::Value {
 
 fn main() {
     let llvm=std::env::args().any(|arg|arg=="--llvm");
+    let paired=std::env::args().any(|arg|arg=="--paired");
     let ticks: u32 = std::env::args().nth(1).map_or(512, |arg| arg.parse().expect("positive tick count"));
     let runs: usize = std::env::args().nth(2).map_or(3, |arg| arg.parse().expect("positive sample count"));
     assert!(ticks > 0 && runs > 0);
-    let output = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(if llvm {"../../target/redpiler-bench-results/chungus-llvm.json"} else {"../../target/redpiler-bench-results/chungus.json"});
+    let output = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(if paired {"../../target/redpiler-bench-results/chungus-paired.json"} else if llvm {"../../target/redpiler-bench-results/chungus-llvm.json"} else {"../../target/redpiler-bench-results/chungus.json"});
     std::fs::create_dir_all(output.parent().unwrap()).unwrap();
     let mut reports = Vec::new();
     for sample in 1..=runs {
-        let report = run_sample(ticks, sample, llvm);
-        println!("Chungus sample {sample}: {report}");
-        reports.push(report);
-        std::fs::write(&output, serde_json::to_vec_pretty(&reports).unwrap()).unwrap();
+        let backends: &[bool] = if !paired { std::slice::from_ref(&llvm) } else if sample % 2 == 1 { &[false, true] } else { &[true, false] };
+        for &backend in backends {
+            let report = run_sample(ticks, sample, backend);
+            println!("Chungus sample {sample}: {report}");
+            reports.push(report);
+            std::fs::write(&output, serde_json::to_vec_pretty(&reports).unwrap()).unwrap();
+        }
     }
 }

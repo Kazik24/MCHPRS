@@ -79,6 +79,8 @@ pub(crate) struct Runtime {
     pub(super) arrangement_contributions: Vec<u8>,
     pub(super) routing_attenuations: Vec<Option<u8>>,
     pub(super) route_search: super::routing::Search,
+    #[cfg(feature = "redpiler-trace")]
+    pub(super) routing_metrics: [u64; 3],
     /// per-component input aggregates for primary and side input channels.
     pub(super) input_levels: Vec<[super::input::InputState; 2]>,
     /// analog strength histograms referenced by `InputState::analog` slots.
@@ -205,7 +207,7 @@ pub(super) fn compare(rear: u8, side: u8, mode: mchprs_blocks::blocks::Comparato
 }
 
 impl Runtime {
-    fn mark_dirty(&mut self, cell: usize) {
+    pub(super) fn mark_dirty(&mut self, cell: usize) {
         if !self.dirty[cell] {
             self.dirty[cell] = true;
             self.dirty_cells.push(cell);
@@ -770,6 +772,7 @@ impl Runtime {
 
     fn set_arrangement_contribution(&mut self, index: usize, target: usize, side: bool, value: u8) {
         let old = self.arrangement_contributions[index];
+        if old == value { return; }
         self.arrangement_contributions[index] = value;
         self.input_levels[target][usize::from(side)].change(old, value, &mut self.input_histograms);
     }
@@ -803,6 +806,11 @@ impl Runtime {
         let program = std::sync::Arc::clone(&self.program);
         let Some(graph) = &program.routing else { return Ok(Vec::new()); };
         let readers: Vec<_> = changed.map_or_else(|| (0..graph.reader_count()).collect(), |token| graph.readers_for_token(token).to_vec());
+        #[cfg(feature = "redpiler-trace")]
+        if changed.is_some() {
+            self.routing_metrics[0] += 1;
+            self.routing_metrics[1] += readers.len() as u64;
+        }
         self.route_search.remaining = changed.map(|_| 1_000_000usize.saturating_sub(self.tick_operations));
         self.route_search.spent = 0;
         let mut updates = Vec::new();
@@ -811,6 +819,8 @@ impl Runtime {
                 self.token_positions[token].and_then(|pos| program.tokens[token].cells.iter().position(|&cell| cell == pos)).map_or(0, |cell| cell + 1)
             }, &mut self.route_search);
             if changed.is_some() {
+                #[cfg(feature = "redpiler-trace")]
+                { self.routing_metrics[2] += self.route_search.spent as u64; }
                 self.tick_operations += self.route_search.spent;
                 self.operations += self.route_search.spent;
             }
@@ -832,6 +842,7 @@ impl Runtime {
     }
 
     fn refresh_routing(&mut self, token: usize, switched: &mut Vec<usize>) {
+        if self.program.routing.as_ref().is_none_or(|graph| graph.readers_for_token(token).is_empty()) { return; }
         let updates = match self.routed_values(Some(token)) {
             Ok(values) => values,
             Err(error) => { self.failure = Some(error); return; }

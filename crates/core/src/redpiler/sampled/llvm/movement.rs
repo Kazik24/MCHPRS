@@ -170,9 +170,17 @@ pub(super) fn encode_movement(p: &Program, t: &mut [Vec<u32>; AUX_TABLES]) -> Re
     Ok(())
 }
 
-#[cfg(windows)]
-impl super::NativeRuntime {
+#[cfg(any(windows, target_os = "linux"))]
+impl super::LlvmRuntime {
     pub(in crate::redpiler) fn sync_projection(&self, runtime: &mut crate::redpiler::sampled::Runtime) -> Result<(), ScratchError> {
+        self.sync(runtime, true)
+    }
+
+    pub(in crate::redpiler) fn sync_publication(&self, runtime: &mut crate::redpiler::sampled::Runtime) -> Result<(), ScratchError> {
+        self.sync(runtime, false)
+    }
+
+    fn sync(&self, runtime: &mut crate::redpiler::sampled::Runtime, for_execution: bool) -> Result<(), ScratchError> {
         use crate::redpiler::sampled::executor::{Motion, PistonEvent};
         use std::num::NonZeroUsize;
         let invalid = || ScratchError {
@@ -184,7 +192,16 @@ impl super::NativeRuntime {
         let p = &program;
         let capacity = p.pistons.len() * 2 + p.tokens.len();
         let electrical = p.links.len() + p.arrangement_links.len() + p.movement_groups.len() + p.watched_wires.len() + p.initial.len() * 3;
-        let limit = 8 + p.initial.len() + p.tokens.len() + p.pistons.len() + capacity * 9 + p.pistons.len() * 6 + electrical;
+        let limit = 8
+            + p.initial.len()
+            + p.tokens.len()
+            + p.pistons.len()
+            + capacity * 9
+            + p.pistons.len() * 6
+            + electrical
+            + p.reactive_wires.len()
+            + 1
+            + p.initial.len() * 4;
         if words < 8 || words > limit {
             return Err(invalid());
         }
@@ -200,10 +217,12 @@ impl super::NativeRuntime {
         if n != p.initial.len()
             || tokens != p.tokens.len()
             || pistons != p.pistons.len()
+            || runtime.reactive_wire_strengths.len() != p.reactive_wires.len()
+            || runtime.note_queued.len() != n
             || motions > capacity
             || events > pistons * 3
-            || s[7] != 3
-            || 8 + n + tokens + pistons + motions * 9 + events * 2 + electrical != words
+            || s[7] != 5
+            || 8 + n + tokens + pistons + motions * 9 + events * 2 + electrical + p.reactive_wires.len() + 1 + n > words
         {
             return Err(invalid());
         }
@@ -245,8 +264,36 @@ impl super::NativeRuntime {
                 return Err(invalid());
             }
         }
+        // Snapshot 5 appends reactive strengths, then queued note metadata.
+        let reactive_start = event_end + electrical;
+        let note_count_offset = reactive_start + p.reactive_wires.len();
+        let note_count = s[note_count_offset] as usize;
+        let instruments_start = note_count_offset + 1;
+        let note_events_start = instruments_start + n;
+        if note_count > n || note_events_start + note_count * 3 != words {
+            return Err(invalid());
+        }
+        let instruments = &s[instruments_start..note_events_start];
+        if instruments.iter().any(|&instrument| instrument > 15) || s[reactive_start..note_count_offset].iter().any(|&strength| strength > 15) {
+            return Err(invalid());
+        }
+        let mut seen_notes = vec![false; n];
+        for row in s[note_events_start..].chunks_exact(3) {
+            let component = row[0] as usize;
+            if component >= n || !matches!(p.initial[component], Block::NoteBlock { .. }) || seen_notes[component] || row[1] > 15 || row[2] > 24 {
+                return Err(invalid());
+            }
+            seen_notes[component] = true;
+        }
+        let fixed_geometry = p.tokens.is_empty() && p.pistons.is_empty();
+        let previous_cells = (!fixed_geometry).then(|| {
+            (0..p.projection_positions.len())
+                .map(|cell| runtime.project_cell(cell))
+                .collect::<Vec<_>>()
+        });
+        let previous_comparators = (!fixed_geometry).then(|| runtime.comparator_outputs.clone());
         for (node, &state) in s[8..token_start].iter().enumerate() {
-            runtime.blocks[node] = match p.initial[node] {
+            let block = match p.initial[node] {
                 Block::Lever { mut lever } => {
                     lever.powered = state != 0;
                     Block::Lever { lever }
@@ -259,6 +306,13 @@ impl super::NativeRuntime {
                 Block::RedstoneComparator { mut comparator } => {
                     comparator.powered = state != 0;
                     Block::RedstoneComparator { comparator }
+                }
+                Block::Hopper { facing, .. } => Block::Hopper { facing, enabled: state != 0 },
+                block if block.pressure_plate_powered().is_some() => block.with_pressure_plate_power(state != 0).ok_or_else(invalid)?,
+                Block::NoteBlock { note, .. } => Block::NoteBlock {
+                    instrument: mchprs_blocks::blocks::Instrument::from_id(instruments[node]),
+                    note,
+                    powered: state != 0,
                 },
                 Block::RedstoneRepeater { mut repeater } => {
                     repeater.powered = state & 1 != 0;
@@ -281,6 +335,10 @@ impl super::NativeRuntime {
                 }
                 block => block,
             };
+            if fixed_geometry && runtime.blocks[node] != block {
+                runtime.mark_dirty(p.component_cells[node]);
+            }
+            runtime.blocks[node] = block;
         }
         for (token, &cell) in s[token_start..piston_start].iter().enumerate() {
             runtime.token_positions[token] = (cell != u32::MAX).then(|| p.projection_positions[cell as usize]);
@@ -291,8 +349,12 @@ impl super::NativeRuntime {
             runtime.piston_head_moving[piston] = flags & 4 != 0;
             runtime.piston_base_moving[piston] = flags & 8 != 0;
         }
-        runtime.initialize_routing();
-        if let Some(error) = runtime.failure.clone() { return Err(error); }
+        if for_execution {
+            runtime.initialize_routing();
+            if let Some(error) = runtime.failure.clone() {
+                return Err(error);
+            }
+        }
         runtime.motion_time = clock;
         runtime.motions.clear();
         runtime.active_motions.clear();
@@ -352,30 +414,75 @@ impl super::NativeRuntime {
             levels[1].active = s[cursor + 1];
             cursor += 2;
         }
-        for value in &mut runtime.comparator_outputs {
+        for node in 0..runtime.comparator_outputs.len() {
+            let value = u8::try_from(s[cursor]).ok().filter(|&n| n <= 15).ok_or_else(invalid)?;
+            if fixed_geometry && runtime.comparator_outputs[node] != value {
+                runtime.mark_dirty(p.component_cells[node]);
+            }
+            runtime.comparator_outputs[node] = value;
+            cursor += 1;
+        }
+        for value in &mut runtime.reactive_wire_strengths {
             *value = u8::try_from(s[cursor]).ok().filter(|&n| n <= 15).ok_or_else(invalid)?;
             cursor += 1;
         }
-        let mut levels = runtime.input_levels.clone();
-        for channels in &mut levels { channels[0].active = 0; channels[1].active = 0; }
-        let mut histograms = vec![crate::redpiler::sampled::input::Histogram::default(); runtime.input_histograms.len()];
-        for (index, link) in p.links.iter().enumerate() {
-            if p.effective_links[index] { levels[link.target][0].change(0, runtime.contributions[index], &mut histograms); }
+        if cursor != note_count_offset {
+            return Err(invalid());
         }
-        for (index, link) in p.arrangement_links.iter().enumerate() {
-            levels[link.target][usize::from(link.side)].change(0, runtime.arrangement_contributions[index], &mut histograms);
+        runtime.notes.clear();
+        runtime.note_queued.fill(false);
+        for row in s[note_events_start..].chunks_exact(3) {
+            let component = row[0] as usize;
+            runtime.note_queued[component] = true;
+            runtime.notes.push((
+                component,
+                p.positions[component],
+                mchprs_blocks::blocks::Instrument::from_id(row[1]),
+                row[2],
+            ));
         }
-        for (source, links) in p.side_outputs.iter().enumerate() {
-            let strength = runtime.output(source);
-            for &(target, attenuation) in links { levels[target][1].change(0, strength.saturating_sub(attenuation), &mut histograms); }
+        if for_execution {
+            let mut levels = runtime.input_levels.clone();
+            for channels in &mut levels {
+                channels[0].active = 0;
+                channels[1].active = 0;
+            }
+            let mut histograms = vec![crate::redpiler::sampled::input::Histogram::default(); runtime.input_histograms.len()];
+            for (index, link) in p.links.iter().enumerate() {
+                if p.effective_links[index] {
+                    levels[link.target][0].change(0, runtime.contributions[index], &mut histograms);
+                }
+            }
+            for (index, link) in p.arrangement_links.iter().enumerate() {
+                levels[link.target][usize::from(link.side)].change(0, runtime.arrangement_contributions[index], &mut histograms);
+            }
+            for (source, links) in p.side_outputs.iter().enumerate() {
+                let strength = runtime.output(source);
+                for &(target, attenuation) in links {
+                    levels[target][1].change(0, strength.saturating_sub(attenuation), &mut histograms);
+                }
+            }
+            if levels
+                .iter()
+                .zip(&runtime.input_levels)
+                .any(|(actual, saved)| actual[0].active != saved[0].active || actual[1].active != saved[1].active)
+            {
+                return Err(invalid());
+            }
+            runtime.input_levels = levels;
+            runtime.input_histograms = histograms;
         }
-        if levels.iter().zip(&runtime.input_levels).any(|(actual, saved)|
-            actual[0].active != saved[0].active || actual[1].active != saved[1].active) { return Err(invalid()); }
-        runtime.input_levels = levels;
-        runtime.input_histograms = histograms;
-        runtime.dirty_cells.clear();
-        runtime.dirty_cells.extend(0..runtime.dirty.len());
-        runtime.dirty.fill(true);
+        if let (Some(previous_cells), Some(previous_comparators)) = (previous_cells, previous_comparators) {
+            for (cell, previous) in previous_cells.into_iter().enumerate() {
+                let comparator_changed = p.cell_components[cell].is_some_and(|index| {
+                    let node = index.get() - 1;
+                    previous_comparators[node] != runtime.comparator_outputs[node]
+                });
+                if previous != runtime.project_cell(cell) || comparator_changed {
+                    runtime.mark_dirty(cell);
+                }
+            }
+        }
         runtime.set_pending(self.pending_entries()?)?;
         Ok(())
     }

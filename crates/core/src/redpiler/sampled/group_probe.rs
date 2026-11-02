@@ -234,6 +234,52 @@ pub(super) struct Discovery {
     pub(super) routing: Option<super::routing::WireGraph>,
 }
 
+// Estimate retained logical payload without assuming every input flips at every transition.
+fn dense_table_bytes(group: &InputArrangement) -> usize {
+    use super::program::{ArrangementFlip, ArrangementLink, MovementAxis, MovementGroup, MovementTransition};
+    if group.token_states.len() != group.tokens.len() { return usize::MAX; }
+    let states = group.inputs.len();
+    let conditions: HashSet<_> = group.inputs.iter().flatten().copied().collect();
+    let mut flips = 0usize;
+    let mut stride = 1usize;
+    for mapping in &group.token_states {
+        let radix = mapping.iter().copied().max().unwrap_or(0) + 1;
+        for state in 0..states {
+            let digit = state / stride % radix;
+            if digit == 0 { continue; }
+            let empty = state - digit * stride;
+            let a = &group.inputs[state];
+            let b = &group.inputs[empty];
+            let changed = a.iter().filter(|entry| !b.contains(entry)).count()
+                .saturating_add(b.iter().filter(|entry| !a.contains(entry)).count());
+            // Each change has a departure and an arrival flip.
+            flips = flips.saturating_add(changed.saturating_mul(2));
+        }
+        stride = stride.saturating_mul(radix);
+    }
+    let size = std::mem::size_of::<usize>();
+    let axes = group.tokens.len();
+    // Axis ranges are retained twice; allow for spare capacity in the flattened copy.
+    let ranges = states.saturating_mul(axes).saturating_mul(6)
+        .saturating_mul(std::mem::size_of::<std::ops::Range<usize>>());
+    let transitions = group.token_states.iter().map(|map| map.len().saturating_sub(1)).fold(0usize, usize::saturating_add)
+        .saturating_mul(2 * std::mem::size_of::<MovementTransition>() + 2 * std::mem::size_of::<std::ops::Range<usize>>());
+    let rows = group.inputs.capacity().saturating_mul(std::mem::size_of::<Vec<(ArrangementSource, u8)>>())
+        .saturating_add(group.inputs.iter().map(|row| row.capacity().saturating_mul(std::mem::size_of::<(ArrangementSource, u8)>())).fold(0usize, usize::saturating_add));
+    let input_metadata = (2 * std::mem::size_of::<InputArrangement>())
+        .saturating_add(group.tokens.capacity().saturating_mul(size))
+        .saturating_add(group.token_states.capacity().saturating_mul(std::mem::size_of::<Vec<usize>>()))
+        .saturating_add(group.token_states.iter().map(|map| map.capacity().saturating_mul(size)).fold(0usize, usize::saturating_add))
+        .saturating_add(group.conditional_sources.capacity().saturating_mul(std::mem::size_of::<ArrangementSource>()));
+    let movement_metadata = (2 * std::mem::size_of::<MovementGroup>())
+        .saturating_add(axes.saturating_mul(2 * std::mem::size_of::<MovementAxis>() + 8 * size))
+        .saturating_add(group.token_states.iter().map(|map| map.len().saturating_mul(size)).fold(0usize, usize::saturating_add));
+    rows.saturating_add(input_metadata).saturating_add(movement_metadata).saturating_add(ranges)
+        // Allow spare capacity in the flattened flip vector.
+        .saturating_add(transitions).saturating_add(flips.saturating_mul(2 * std::mem::size_of::<ArrangementFlip>()))
+        .saturating_add(conditions.len().saturating_mul(states + 2 * std::mem::size_of::<ArrangementLink>()))
+}
+
 pub(super) fn run(
     world: &impl World,
     bounds: (BlockPos, BlockPos),
@@ -242,7 +288,9 @@ pub(super) fn run(
     indexes: &ProbeIndexes<'_>,
     monitor: Option<&TaskMonitor>,
 ) -> Result<Discovery, ScratchError> {
-    run_with_dense_budget(world, bounds, entry, program, indexes, monitor, 64 * 1024 * 1024)
+    // This bounds estimated retained tables, not compilation or process memory.
+    const MAX_DENSE_TABLE_BYTES: usize = 768 * 1024 * 1024;
+    run_with_dense_budget(world, bounds, entry, program, indexes, monitor, MAX_DENSE_TABLE_BYTES)
 }
 
 fn run_with_dense_budget(
@@ -266,6 +314,10 @@ fn run_with_dense_budget(
     const MAX_TEMP_SLOTS: usize = 65_536;
     let mut jobs = Vec::new();
     let mut fallback = BTreeSet::new();
+    let mut rejected_overlap = 0usize;
+    let mut rejected_states = 0usize;
+    let mut rejected_slots = 0usize;
+    let mut rejected_budget = 0usize;
     for reader in 0..graph.reader_count() {
         let tokens = graph.reader_dependencies(reader);
         if tokens.is_empty() { continue; }
@@ -278,7 +330,12 @@ fn run_with_dense_budget(
         let slots = states.map_or(usize::MAX, |states| states.saturating_mul(sources.max(1)));
         if !overlaps && states.is_some_and(|states| states <= super::program::MAX_ARRANGEMENT_STATES) && slots <= MAX_TEMP_SLOTS {
             jobs.push((reader, axes, states.unwrap(), slots));
-        } else { fallback.insert(reader); }
+        } else {
+            if overlaps { rejected_overlap += 1; }
+            else if states.is_none_or(|states| states > super::program::MAX_ARRANGEMENT_STATES) { rejected_states += 1; }
+            else { rejected_slots += 1; }
+            fallback.insert(reader);
+        }
     }
     let mut groups = Vec::new();
     let mut routed = BTreeSet::new();
@@ -316,18 +373,9 @@ fn run_with_dense_budget(
             Ok((reader, groups))
         })?;
         for (reader, lowered) in lowered {
-            let estimate = lowered.iter().fold(0usize, |total, group| {
-                let conditions: HashSet<_> = group.inputs.iter().flatten().copied().collect();
-                let ranges = group.inputs.len().saturating_mul(group.tokens.len()).saturating_mul(2);
-                let row_bytes = group.inputs.capacity().saturating_mul(std::mem::size_of::<Vec<(ArrangementSource, u8)>>());
-                let value_bytes = group.inputs.iter().map(|row| row.capacity().saturating_mul(std::mem::size_of::<(ArrangementSource, u8)>())).sum::<usize>();
-                let plan_bytes = ranges.saturating_mul(2 * std::mem::size_of::<std::ops::Range<usize>>()
-                    + 2 * conditions.len().saturating_mul(std::mem::size_of::<super::program::ArrangementFlip>()));
-                let mask_bytes = conditions.len().saturating_mul(group.inputs.len() + std::mem::size_of::<super::program::ArrangementLink>());
-                total.saturating_add(row_bytes).saturating_add(value_bytes).saturating_add(plan_bytes).saturating_add(mask_bytes)
-            });
+            let estimate = lowered.iter().fold(0usize, |total, group| total.saturating_add(dense_table_bytes(group)));
             if dense_bytes.saturating_add(estimate) <= max_dense_bytes { dense_bytes += estimate; groups.extend(lowered); }
-            else { fallback.insert(reader); }
+            else { rejected_budget += 1; fallback.insert(reader); }
         }
         start = end;
     }
@@ -347,12 +395,64 @@ fn run_with_dense_budget(
     graph.retain_readers(&routed);
     if std::env::var_os("MCHPRS_REDPILER_PHASE_TIMINGS").is_some() {
         eprintln!("Redpiler topology lowering: targets={} arrangement_groups={} routed_targets={} dense_table_estimated_bytes={} elapsed_ms={}", targets.len(), groups.len(), routed.len(), dense_bytes, started.elapsed().as_millis());
+        eprintln!("Redpiler routing fallback: overlap={rejected_overlap} states={rejected_states} slots={rejected_slots} budget={rejected_budget}");
     }
     Ok(Discovery { groups, routing: (!routed.is_empty()).then_some(graph) })
 }
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn dense_budget_counts_sparse_and_attenuation_transitions() {
+        use super::super::program::{ArrangementFlip, ArrangementLink, MovementAxis, MovementGroup, MovementTransition};
+        let source = ArrangementSource::Component(0);
+        let token = ArrangementSource::Token(0);
+        let make = |inputs| InputArrangement {
+            target: 1, side: false, silent: false, tokens: vec![0, 1],
+            token_states: vec![vec![0, 1, 1], vec![0, 1]], conditional_sources: vec![source, token], inputs,
+        };
+        let sparse = make(vec![vec![(source, 0)], vec![(source, 0)], vec![(source, 0), (token, 2)], vec![(source, 1), (token, 2)]]);
+        let unchanged = make(vec![vec![(source, 0)]; 4]);
+        assert!(dense_table_bytes(&sparse) > dense_table_bytes(&unchanged));
+
+        let mut program = Program::new(vec![BlockPos::new(0, 0, 0), BlockPos::new(1, 0, 0)],
+            vec![Block::RedstoneBlock, Block::RedstoneLamp { lit: false }], vec![], vec![[vec![], vec![]]; 2], vec![], vec![], vec![]).unwrap();
+        for x in 0..2 {
+            program.tokens.push(super::super::compiler::PistonToken {
+                block: Block::Stone {}, position: None, cells: if x == 0 { vec![BlockPos::new(x, 1, 0), BlockPos::new(x, 2, 0)] } else { vec![BlockPos::new(x, 1, 0)] },
+            });
+        }
+        let mut other_side = sparse.clone();
+        other_side.side = true;
+        let estimate = dense_table_bytes(&sparse) + dense_table_bytes(&other_side);
+        program.input_arrangements.extend([sparse, other_side]);
+        program.compile_movement_flips().unwrap();
+        assert_eq!(program.movement_groups.len(), 1, "identical axes should be merged");
+        let retained = program.input_arrangements.capacity() * std::mem::size_of::<InputArrangement>()
+            + program.input_arrangements.iter().map(|group| {
+                group.tokens.capacity() * std::mem::size_of::<usize>()
+                    + group.token_states.capacity() * std::mem::size_of::<Vec<usize>>()
+                    + group.token_states.iter().map(|row| row.capacity() * std::mem::size_of::<usize>()).sum::<usize>()
+                    + group.conditional_sources.capacity() * std::mem::size_of::<ArrangementSource>()
+                    + group.inputs.capacity() * std::mem::size_of::<Vec<(ArrangementSource, u8)>>()
+                    + group.inputs.iter().map(|row| row.capacity() * std::mem::size_of::<(ArrangementSource, u8)>()).sum::<usize>()
+            }).sum::<usize>()
+            + program.movement_groups.capacity() * std::mem::size_of::<MovementGroup>()
+            + program.movement_groups.iter().map(|group| group.axes.capacity() * std::mem::size_of::<MovementAxis>()
+                + group.axes.iter().map(|axis| axis.states.capacity() * std::mem::size_of::<usize>()
+                    + (axis.depart.capacity() + axis.arrive.capacity()) * std::mem::size_of::<std::ops::Range<usize>>()).sum::<usize>()).sum::<usize>()
+            + program.movement_flips.capacity() * std::mem::size_of::<ArrangementFlip>()
+            + program.arrangement_links.capacity() * std::mem::size_of::<ArrangementLink>()
+            + program.arrangement_links.iter().map(|link| link.active.capacity()).sum::<usize>()
+            + program.movement_ranges.capacity() * std::mem::size_of::<std::ops::Range<usize>>()
+            + program.movement_transitions.capacity() * std::mem::size_of::<MovementTransition>()
+            + program.movement_cells.capacity() * std::mem::size_of::<Vec<std::ops::Range<usize>>>()
+            + program.movement_cells.iter().map(|row| row.capacity() * std::mem::size_of::<std::ops::Range<usize>>()).sum::<usize>()
+            + program.token_movement_groups.capacity() * std::mem::size_of::<Vec<(usize, usize)>>()
+            + program.token_movement_groups.iter().map(|row| row.capacity() * std::mem::size_of::<(usize, usize)>()).sum::<usize>();
+        assert!(estimate >= retained, "estimate={estimate} retained={retained}");
+    }
 
     #[test]
     fn dense_and_routed_inputs_match_during_movement_and_source_changes() {
@@ -398,7 +498,7 @@ mod tests {
         }
     }
 
-    #[cfg(windows)]
+    #[cfg(any(windows, target_os = "linux"))]
     #[test]
     fn llvm_routed_movement_and_handoff_match_rust() {
         if std::env::var_os("MCHPRS_LLVM_DLL").is_none()
@@ -443,7 +543,7 @@ mod tests {
         let wire_id = program.positions.iter().position(|&pos| pos == wire).unwrap();
         let mut rust = program.clone().into_runtime_prepared();
         let mut projection = program.clone().into_runtime_prepared();
-        let mut native = super::super::native::NativeRuntime::new(program, &[]).unwrap();
+        let mut native = super::super::llvm::LlvmRuntime::new(program, &[]).unwrap();
         let mut handoff: Option<super::super::Runtime> = None;
         let mut moved = false;
         for tick in 0..40 {

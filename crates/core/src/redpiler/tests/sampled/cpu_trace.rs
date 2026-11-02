@@ -64,13 +64,20 @@ fn anpu_first_native_compiled_divergence() {
     cpus::click_cpu(&mut native,cpu,cpu.start);
     compiler.try_on_use_block(cpu.origin+cpu.start).unwrap();
     let ticks=std::env::var("MCHPRS_ANPU_VERIFY_TICKS").ok().map_or(512,|s|s.parse().unwrap());
+    let compare_wire_sides = std::env::var_os("MCHPRS_ANPU_VERIFY_WIRE_SIDES").is_some();
     for tick in 0..=ticks {
         let runtime=compiler.runtime.as_ref().unwrap();
+        if compare_wire_sides {
+            let pos = BlockPos::new(128, 36, 65);
+            for near in [pos, pos + BlockPos::new(0, 0, -1), pos + BlockPos::new(0, 1, -1), pos + BlockPos::new(0, 1, 0)] {
+                eprintln!("WIRE_DIAG tick={tick} pos={near:?} interpreter={:?} sampled={:?}", native.get_block(near), runtime.project(near));
+            }
+        }
         let differences:Vec<_>=runtime.program.positions.iter().enumerate().filter_map(|(node,&pos)| {
             let observed=native.get_block(pos);
             let predicted=runtime.project(pos);
             if let (Block::RedstoneWire { wire:a },Some(Block::RedstoneWire { wire:b }))=(observed,predicted) {
-                if a.power==b.power { return None; }
+                if a.power==b.power && (!compare_wire_sides || a == b) { return None; }
             }
             if predicted.is_none() && matches!(observed,Block::MovingPiston { .. }) { return None; }
             if predicted==Some(observed) { return None; }
@@ -91,6 +98,35 @@ fn anpu_first_native_compiled_divergence() {
             panic!("ANPU first block divergence at tick {tick}: {:?}; {}",differences[0],path.display());
         }
         native.tick_interpreted(); compiler.tick().unwrap();
+    }
+}
+
+#[test]
+#[ignore = "ANPU interpreter reset-continuation comparison"]
+fn anpu_rust_reset_continues_like_interpreter() {
+    let cpu = cpus::CPUS[1];
+    let mut interpreter = cpus::load_cpu(cpu);
+    let (mut restored, mut compiler, _) = cpus::compile_cpu(cpus::load_cpu(cpu), cpu);
+    let positions = compiler.runtime.as_ref().unwrap().program.positions.clone();
+    cpus::click_cpu(&mut interpreter, cpu, cpu.start);
+    compiler.try_on_use_block(cpu.origin + cpu.start).unwrap();
+    for _ in 0..2000 {
+        interpreter.tick_interpreted();
+        compiler.tick().unwrap();
+    }
+    compiler.try_reset(&mut restored, (cpu.origin, cpu.origin)).unwrap();
+    for tick in 0..=128 {
+        for &pos in &positions {
+            assert_eq!(restored.get_block(pos), interpreter.get_block(pos), "reset continuation tick {tick}, {pos:?}");
+        }
+        let expected: Vec<_> = interpreter.scheduler().iter_entries().collect();
+        let actual: Vec<_> = restored.scheduler().iter_entries().collect();
+        assert_eq!(actual, expected, "pending ticks at reset continuation tick {tick}");
+        assert_eq!(restored.command_output().collect::<Vec<_>>(), interpreter.command_output().collect::<Vec<_>>(), "command output at tick {tick}");
+        if tick < 128 {
+            interpreter.tick_interpreted();
+            restored.tick_interpreted();
+        }
     }
 }
 

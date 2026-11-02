@@ -26,8 +26,8 @@ fn prepare() -> u32 {
     panic!("ZCore loading did not settle");
 }
 
-fn run(llvm: bool, ticks: u32, preparation: u32) -> (Value, Value) {
-    let cpu = cpus::CPUS[3];
+fn run(llvm: bool, ticks: u32, preparation: u32, index: usize) -> (Value, Value) {
+    let cpu = cpus::CPUS[index];
     let world = cpus::load_cpu(cpu);
     let (mut world, mut compiler, wall) = cpus::compile_cpu_with_options(world, cpu, CompilerOptions { llvm, ..Default::default() });
     let setup = compiler.stats().unwrap().duration;
@@ -35,7 +35,7 @@ fn run(llvm: bool, ticks: u32, preparation: u32) -> (Value, Value) {
     for _ in 0..preparation {
         compiler.tick().unwrap();
     }
-    compiler.try_on_use_block(cpu.origin + BlockPos::new(207, 10, 154)).unwrap();
+    if index == 3 { compiler.try_on_use_block(cpu.origin + BlockPos::new(207, 10, 154)).unwrap(); }
     let start = Instant::now();
     for _ in 0..ticks {
         compiler.tick().unwrap();
@@ -58,23 +58,28 @@ fn main() {
     let ticks = std::env::args().nth(1).map_or(10_000, |s| s.parse::<u32>().unwrap());
     let pairs = std::env::args().nth(2).map_or(7, |s| s.parse::<usize>().unwrap());
     assert!(ticks > 0 && pairs > 0);
-    let preparation = prepare();
-    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/redpiler-bench-results/zcore-llvm-paired.json");
+    let index = if std::env::args().any(|s| s == "--anpu") { 1 } else { 3 };
+    let rust_only = std::env::args().any(|s| s == "--rust-only");
+    let preparation = if index == 3 { prepare() } else { 0 };
+    let name = if index == 3 { "zcore" } else { "anpu" };
+    let suffix = if rust_only { "rust-profile" } else { "llvm-paired" };
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(format!("../../target/redpiler-bench-results/{name}-{suffix}.json"));
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     let mut results = Vec::new();
     let mut expected = None;
     for pair in 0..pairs {
-        for llvm in if pair % 2 == 0 { [false, true] } else { [true, false] } {
-            let (mut result, output) = run(llvm, ticks, preparation);
+        let backends: &[bool] = if rust_only { &[false] } else if pair % 2 == 0 { &[false, true] } else { &[true, false] };
+        for &llvm in backends {
+            let (mut result, output) = run(llvm, ticks, preparation, index);
             if let Some(expected) = &expected {
-                assert_eq!(&output, expected, "ZCore output mismatch in pair {pair}, llvm={llvm}");
+                assert_eq!(&output, expected, "{name} output mismatch in pair {pair}, llvm={llvm}");
             } else {
                 expected = Some(output);
             }
             result["pair"] = json!(pair + 1);
             results.push(result);
-            let report = json!({"fixture":cpus::CPUS[3].schematic,"fixture_sha256":cpus::CPUS[3].sha256,"mode":"kernel-only; snapshots outside timing",
-                "ticks":ticks,"requested_pairs":pairs,"alternating_order":true,"results":results});
+            let report = json!({"fixture":cpus::CPUS[index].schematic,"fixture_sha256":cpus::CPUS[index].sha256,"mode":"kernel-only; snapshots outside timing",
+                "ticks":ticks,"requested_pairs":pairs,"alternating_order":!rust_only,"results":results});
             std::fs::write(&path, serde_json::to_vec_pretty(&report).unwrap()).unwrap();
         }
     }

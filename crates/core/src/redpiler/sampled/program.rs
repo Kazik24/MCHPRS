@@ -1464,6 +1464,8 @@ impl Program {
             arrangement_contributions: vec![0; self.arrangement_links.len()],
             routing_attenuations: if self.routing.is_some() { vec![None; self.arrangement_links.len()] } else { Vec::new() },
             route_search: super::routing::Search::default(),
+            #[cfg(feature = "redpiler-trace")]
+            routing_metrics: [0; 3],
             input_levels: vec![[super::input::InputState::default(); 2]; self.initial.len()],
             input_histograms: Vec::new(),
             comparator_outputs: {

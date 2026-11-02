@@ -5,7 +5,7 @@ use crate::world::World;
 use mchprs_blocks::{BlockPos, blocks::Block};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum Axis {
     Token(usize, usize),
 }
@@ -29,6 +29,7 @@ pub(super) struct Local<T> {
 }
 
 type Node = Local<Ports>;
+type TokenCells = HashMap<BlockPos, Vec<usize>>;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct ReaderPorts {
@@ -96,6 +97,7 @@ fn compile_local<T: PartialEq>(scratch: &mut ScratchWorld, tokens: &[PistonToken
 pub(super) struct WireGraph {
     positions: Vec<BlockPos>,
     index: HashMap<BlockPos, usize>,
+    token_cells: TokenCells,
     pub(super) nodes: Vec<Node>,
     pub(super) source_ids: HashMap<BlockPos, ArrangementSource>,
     pub(super) readers: Vec<Reader>,
@@ -112,8 +114,100 @@ pub(super) struct Search {
     pub(super) spent: usize,
 }
 
+#[cfg(test)]
 fn touches(a: BlockPos, b: BlockPos) -> bool {
     a.x.abs_diff(b.x) + a.y.abs_diff(b.y) + a.z.abs_diff(b.z) == 1
+}
+
+fn checked_offset(position: BlockPos, dx: i32, dy: i32, dz: i32) -> Option<BlockPos> {
+    Some(BlockPos::new(position.x.checked_add(dx)?, position.y.checked_add(dy)?, position.z.checked_add(dz)?))
+}
+
+fn adjacent_positions(position: BlockPos) -> impl Iterator<Item = BlockPos> {
+    [
+        checked_offset(position, 0, -1, 0), checked_offset(position, 0, 1, 0),
+        checked_offset(position, 0, 0, -1), checked_offset(position, 0, 0, 1),
+        checked_offset(position, -1, 0, 0), checked_offset(position, 1, 0, 0),
+    ].into_iter().flatten()
+}
+
+fn manhattan_positions(center: BlockPos, radius: i32) -> Vec<BlockPos> {
+    let mut positions = Vec::with_capacity(match radius { 2 => 25, 3 => 63, _ => 1 });
+    for dx in -radius..=radius {
+        for dy in -radius..=radius {
+            for dz in -radius..=radius {
+                if dx.abs() + dy.abs() + dz.abs() <= radius {
+                    if let Some(position) = checked_offset(center, dx, dy, dz) { positions.push(position); }
+                }
+            }
+        }
+    }
+    positions
+}
+
+fn index_token_cells(tokens: &[PistonToken]) -> TokenCells {
+    let mut cells: TokenCells = HashMap::new();
+    for (token, record) in tokens.iter().enumerate() {
+        for &cell in &record.cells { cells.entry(cell).or_default().push(token); }
+    }
+    cells
+}
+
+fn append_tokens_at(index: &TokenCells, position: BlockPos, into: &mut Vec<usize>) {
+    if let Some(tokens) = index.get(&position) { into.extend_from_slice(tokens); }
+}
+
+fn axes_for_tokens(tokens: &[PistonToken], mut candidates: Vec<usize>) -> Vec<Axis> {
+    candidates.sort_unstable();
+    candidates.dedup();
+    candidates.into_iter().map(|token| Axis::Token(token, tokens[token].cells.len())).collect()
+}
+
+fn wire_token_axes(position: BlockPos, tokens: &[PistonToken], token_cells: &TokenCells) -> Vec<Axis> {
+    let mut candidates = Vec::new();
+    for cell in adjacent_positions(position) { append_tokens_at(token_cells, cell, &mut candidates); }
+    axes_for_tokens(tokens, candidates)
+}
+
+fn piston_contact_cells(position: BlockPos, block: Block) -> Option<HashSet<BlockPos>> {
+    let Block::Piston { piston } = block else { return None; };
+    let mut cells: HashSet<_> = mchprs_blocks::BlockFace::values().into_iter()
+        .filter(|&face| face != piston.facing.into()).map(|face| position.offset(face)).collect();
+    let above = position.offset(mchprs_blocks::BlockFace::Top);
+    cells.extend(mchprs_blocks::BlockFace::values().into_iter().map(|face| above.offset(face)));
+    Some(cells)
+}
+
+fn reader_contact_positions(position: BlockPos, piston_cells: Option<&HashSet<BlockPos>>,
+    wire_index: &HashMap<BlockPos, usize>) -> HashSet<BlockPos> {
+    let mut contacts = HashSet::new();
+    if let Some(cells) = piston_cells {
+        for &cell in cells {
+            if wire_index.contains_key(&cell) { contacts.insert(cell); }
+            for adjacent in adjacent_positions(cell) {
+                if wire_index.contains_key(&adjacent) { contacts.insert(adjacent); }
+            }
+        }
+    } else {
+        for at in manhattan_positions(position, 2) {
+            if wire_index.contains_key(&at) { contacts.insert(at); }
+        }
+    }
+    contacts
+}
+
+fn reader_token_axes(position: BlockPos, tokens: &[PistonToken], token_cells: &TokenCells,
+    piston_cells: Option<&HashSet<BlockPos>>, contacts: &HashSet<BlockPos>) -> Vec<Axis> {
+    let mut candidates = Vec::new();
+    if let Some(cells) = piston_cells {
+        for &cell in cells { append_tokens_at(token_cells, cell, &mut candidates); }
+    } else {
+        for cell in manhattan_positions(position, 2) { append_tokens_at(token_cells, cell, &mut candidates); }
+    }
+    for &contact in contacts {
+        for cell in adjacent_positions(contact) { append_tokens_at(token_cells, cell, &mut candidates); }
+    }
+    axes_for_tokens(tokens, candidates)
 }
 
 impl WireGraph {
@@ -187,6 +281,7 @@ impl WireGraph {
         if tokens.iter().flat_map(|token| &token.cells).any(|cell| index.contains_key(cell)) {
             return Err(ScratchError { position: None, reason: "movable payload overlaps a fixed wire" });
         }
+        let token_cells = index_token_cells(tokens);
         let mut nodes = Vec::with_capacity(positions.len());
         let mut rows = 0usize;
         for &pos in &positions {
@@ -194,8 +289,7 @@ impl WireGraph {
                 return Err(ScratchError { position: None, reason: "compilation cancelled" });
             }
             // Non-wire payloads cannot alter a distance-two strong-source read.
-            let axes: Vec<_> = tokens.iter().enumerate().filter_map(|(token, record)|
-                record.cells.iter().any(|&cell| touches(pos, cell)).then_some(Axis::Token(token, record.cells.len()))).collect();
+            let axes = wire_token_axes(pos, tokens, &token_cells);
             let node = compile_local(scratch, tokens, axes, pos, monitor, |world| {
                 let found = discover_wire_ports(world, pos)?;
                 let wires = found.wires.into_iter().map(|at| index.get(&at).copied().ok_or(ScratchError {
@@ -208,10 +302,11 @@ impl WireGraph {
             nodes.push(node);
         }
         scratch.revert();
-        Ok(Self { positions, index, nodes, source_ids: HashMap::new(), readers: Vec::new(), by_component: Vec::new(), by_token: Vec::new() })
+        Ok(Self { positions, index, token_cells, nodes, source_ids: HashMap::new(), readers: Vec::new(), by_component: Vec::new(), by_token: Vec::new() })
     }
 
     pub(super) fn compile_readers(&mut self, scratch: &mut ScratchWorld, program: &Program, targets: &[usize], indexes: &ProbeIndexes<'_>, monitor: Option<&TaskMonitor>) -> Result<(), ScratchError> {
+        let token_cells = std::mem::take(&mut self.token_cells);
         let mut rows: usize = self.nodes.iter().map(|node| node.ports.len()).sum();
         for node in &self.nodes {
             for ports in node.ports.iter().flatten() {
@@ -221,23 +316,10 @@ impl WireGraph {
         for &component in targets {
             if monitor.is_some_and(TaskMonitor::cancelled) { return Err(ScratchError { position: None, reason: "compilation cancelled" }); }
             let position = program.positions[component];
-            let piston_contacts = if let Block::Piston { piston } = program.initial[component] {
-                let mut cells: HashSet<_> = mchprs_blocks::BlockFace::values().into_iter()
-                    .filter(|&face| face != piston.facing.into()).map(|face| position.offset(face)).collect();
-                let above = position.offset(mchprs_blocks::BlockFace::Top);
-                cells.extend(mchprs_blocks::BlockFace::values().into_iter().map(|face| above.offset(face)));
-                Some(cells)
-            } else { None };
-            let radius = if matches!(program.initial[component], Block::Piston { .. }) { 3 } else { 2 };
-            let contacts: HashSet<_> = self.positions.iter().copied().filter(|&at|
-                piston_contacts.as_ref().map_or_else(|| at.x.abs_diff(position.x) + at.y.abs_diff(position.y) + at.z.abs_diff(position.z) <= radius,
-                    |cells| cells.contains(&at) || cells.iter().any(|&cell| touches(cell, at)))).collect();
+            let piston_contacts = piston_contact_cells(position, program.initial[component]);
+            let contacts = reader_contact_positions(position, piston_contacts.as_ref(), &self.index);
             let axes = if matches!(program.initial[component], Block::RedstoneWire { .. }) { Vec::new() } else {
-                program.tokens.iter().enumerate().filter_map(|(token, record)| record.cells.iter().any(|&cell|
-                    piston_contacts.as_ref().map_or_else(|| cell.x.abs_diff(position.x) + cell.y.abs_diff(position.y) + cell.z.abs_diff(position.z) <= 2,
-                        |cells| cells.contains(&cell))
-                    || mchprs_blocks::BlockFace::values().iter().any(|&face| contacts.contains(&cell.offset(face))))
-                    .then_some(Axis::Token(token, record.cells.len()))).collect()
+                reader_token_axes(position, &program.tokens, &token_cells, piston_contacts.as_ref(), &contacts)
             };
             let table = compile_local(scratch, &program.tokens, axes, position, monitor, |world| {
                 let inputs = super::group_probe::ports_of(world, program, component, monitor, indexes)?;
@@ -346,6 +428,95 @@ mod tests {
     use super::*;
     use crate::redpiler::scratch::{ScratchEntry, discover_wire_sources};
     use mchprs_blocks::{BlockFace, blocks::RedstoneWire};
+
+    #[test]
+    fn routed_search_enforces_wire_visit_limit_and_can_restart() {
+        let root = BlockPos::new(0, 0, 0);
+        let next = BlockPos::new(1, 0, 0);
+        let graph = WireGraph {
+            positions: vec![root, next], index: HashMap::from([(root, 0), (next, 1)]), token_cells: HashMap::new(),
+            nodes: vec![Local { axes: vec![], ports: vec![Some(Ports { wires: vec![1], sources: vec![] })] },
+                Local { axes: vec![], ports: vec![Some(Ports { wires: vec![], sources: vec![] })] }],
+            source_ids: HashMap::new(), readers: vec![], by_component: vec![], by_token: vec![],
+        };
+        let mut search = Search { remaining: Some(1), ..Default::default() };
+        let error = graph.sources(root, |_| 0, &mut search).unwrap_err();
+        assert_eq!(error.reason, "runtime semantic operation limit exceeded");
+        assert_eq!(error.position, Some(next));
+        assert_eq!(search.spent, 1);
+        search.remaining = Some(2);
+        search.spent = 0;
+        assert!(graph.sources(root, |_| 0, &mut search).unwrap().is_empty());
+        assert_eq!(search.spent, 2);
+        assert_eq!(search.remaining, Some(0));
+    }
+
+
+    #[test]
+    fn spatial_candidate_indexes_match_brute_force_with_overlapping_tokens() {
+        use mchprs_blocks::{BlockFacing, blocks::RedstonePiston};
+
+        let plain_pos = BlockPos::new(0, 20, 0);
+        let piston_pos = BlockPos::new(30, 20, 0);
+        let piston = Block::Piston { piston: RedstonePiston { facing: BlockFacing::East, sticky: false, extended: false } };
+        let piston_cells: HashSet<_> = BlockFace::values().into_iter()
+            .filter(|&face| face != BlockFace::East).map(|face| piston_pos.offset(face)).collect();
+        let above = piston_pos.offset(BlockFace::Top);
+        let mut piston_cells = piston_cells;
+        piston_cells.extend(BlockFace::values().into_iter().map(|face| above.offset(face)));
+
+        let overlap = BlockPos::new(2, 20, 0);
+        let adjacent_to_piston_wire = piston_pos.offset(BlockFace::West).offset(BlockFace::North);
+        let excluded_piston_front = piston_pos.offset(BlockFace::East);
+        let tokens = vec![
+            PistonToken { block: Block::Stone {}, position: None, cells: vec![overlap, piston_pos.offset(BlockFace::West)] },
+            PistonToken { block: Block::RedstoneBlock, position: None, cells: vec![overlap, adjacent_to_piston_wire] },
+            PistonToken { block: Block::Stone {}, position: None, cells: vec![plain_pos + BlockPos::new(3, 0, 0), excluded_piston_front] },
+            PistonToken { block: Block::Stone {}, position: None, cells: vec![BlockPos::new(80, 80, 80)] },
+        ];
+        let token_cells = index_token_cells(&tokens);
+
+        let mut wire_positions = manhattan_positions(plain_pos, 2);
+        wire_positions.push(plain_pos + BlockPos::new(3, 0, 0));
+        for &cell in &piston_cells {
+            wire_positions.push(cell);
+            wire_positions.extend(adjacent_positions(cell));
+        }
+        wire_positions.push(piston_pos + BlockPos::new(4, 0, 0));
+        let wire_index: HashMap<_, _> = wire_positions.iter().enumerate().map(|(index, &pos)| (pos, index)).collect();
+
+        for wire in [plain_pos, piston_pos, overlap] {
+            let expected: Vec<_> = tokens.iter().enumerate().filter_map(|(token, record)|
+                record.cells.iter().any(|&cell| touches(wire, cell)).then_some(Axis::Token(token, record.cells.len()))).collect();
+            assert_eq!(wire_token_axes(wire, &tokens, &token_cells), expected, "wire at {wire:?}");
+        }
+
+        for (position, block) in [(plain_pos, Block::Stone {}), (piston_pos, piston)] {
+            let old_piston_cells = if let Block::Piston { piston } = block {
+                let mut cells: HashSet<_> = BlockFace::values().into_iter()
+                    .filter(|&face| face != piston.facing.into()).map(|face| position.offset(face)).collect();
+                let above = position.offset(BlockFace::Top);
+                cells.extend(BlockFace::values().into_iter().map(|face| above.offset(face)));
+                Some(cells)
+            } else { None };
+            let radius = if old_piston_cells.is_some() { 3 } else { 2 };
+            let old_contacts: HashSet<_> = wire_positions.iter().copied().filter(|&at|
+                old_piston_cells.as_ref().map_or_else(
+                    || at.x.abs_diff(position.x) + at.y.abs_diff(position.y) + at.z.abs_diff(position.z) <= radius,
+                    |cells| cells.contains(&at) || cells.iter().any(|&cell| touches(cell, at)))).collect();
+            let indexed_contacts = reader_contact_positions(position, old_piston_cells.as_ref(), &wire_index);
+            assert_eq!(indexed_contacts, old_contacts, "contacts at {position:?}");
+
+            let expected_axes: Vec<_> = tokens.iter().enumerate().filter_map(|(token, record)| record.cells.iter().any(|&cell|
+                old_piston_cells.as_ref().map_or_else(
+                    || cell.x.abs_diff(position.x) + cell.y.abs_diff(position.y) + cell.z.abs_diff(position.z) <= 2,
+                    |cells| cells.contains(&cell))
+                || BlockFace::values().iter().any(|&face| old_contacts.contains(&cell.offset(face))))
+                .then_some(Axis::Token(token, record.cells.len()))).collect();
+            assert_eq!(reader_token_axes(position, &tokens, &token_cells, old_piston_cells.as_ref(), &indexed_contacts), expected_axes,
+                "reader axes at {position:?}");
+        }
+    }
 
     #[test]
     fn piston_reader_ignores_unreachable_cells_and_keeps_joint_contacts() {

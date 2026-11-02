@@ -27,7 +27,7 @@ fn main() {
         &world,
         bounds,
         CompilerOptions {
-            llvm: true,
+            llvm: !std::env::args().any(|arg| arg == "--rust"),
             ..Default::default()
         },
         ticks,
