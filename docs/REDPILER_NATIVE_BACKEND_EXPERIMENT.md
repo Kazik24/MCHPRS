@@ -1,6 +1,22 @@
 # Sampled Redpiler → LLVM DLL experiment
 
-## Current measured checkpoint — ZCore runs in C
+## Current correctness work — local routing in Rust and C (2026-11-02)
+
+The compiler now builds local connectivity tables instead of depending on a single-token discovery seed. Small inputs retain dense arrangement tables (4,096 states per group); oversized or overlapping-token inputs retain an immutable routing graph. Dense lowering runs in batches capped at 65,536 source/state slots, with a 64 MiB retained-table estimate. These limits do not bound the entire compiler process or all graph metadata. Large tables remain binary data; no per-occurrence C functions or generated C initializers were added.
+
+The first hybrid Rust ANPU run matched interpreter component states and wire power for 5,000 ticks (`target/anpu-hybrid-shadow2.log`, 52.73 s including setup and comparison; sampled compilation 20.56 s). This comparison does not establish wire-side geometry, all effects, entities or full reset-continuation parity. The independent interpreter matched the frozen reference for its 4,096-tick prefix. These are correctness checks, not paired TPS measurements. The obsolete isolated Cartesian-probe diagnostic was removed after recording its historical measurements below.
+
+The C executor now evaluates the same local routing graph, selects physical token digits, searches dust paths to attenuation 14, and updates arrangement contributions before movement callbacks inside the DLL. Binary auxiliary tables 33–41 contain local records, token axes, ports, wire edges, tagged sources, reader links and token-to-reader dependencies. Table 42 carries comparator modes, static overrides and initial outputs. The ABI descriptor remains version 3; semantic version 10 rejects old DLLs, and snapshot schema 3 includes comparator outputs. Rust reads state at publication/handoff boundaries; it does not execute native ticks. Routing caches and analog input histograms are rebuilt during readback so continued Rust execution uses the live inputs.
+
+Observer fixes distinguish directed shape notifications from undirected dust power callbacks. Unpowered observers ignore the latter; powered observers without pending work can release. Dust watcher discovery uses the interpreter's turbo footprint. Both movement and ordinary wire callbacks preserve that distinction. Tests force the same fixture through dense and routed lowering, and exercise real DLL piston movement, dust paths, source changes, pending ticks and handoff.
+
+Comparator evaluation, analog side-input histograms and scheduled callbacks are implemented in C for static overrides. Dynamic comparator overrides, reactive callbacks and the remaining ANPU component families are still rejected before activation. This is not full LLVM ANPU support. Full-state ANPU acceptance and updated alternating Rust/native TPS trials remain required; the older ZCore throughput figures below are not measurements of this revision.
+
+Build command: `./scripts/build-llvm-native.ps1`, using the existing `target/llvm-23.1.4/bin/clang.exe` and matching `lld-link.exe`. The semantic-10 build took 492.0078 ms and produced a 35,840-byte DLL and 39,178-byte object; shared sources were 34,364 bytes (`engine.c`) plus 30,818 bytes (`native_movement.c`), with a 4,389-byte ABI header. This is one local compiler/link invocation, not a cold/warm trial series or Program conversion time. Exact flags, tool/source hashes and sizes are recorded in `target/native-engine-build.json`.
+
+Validation commands and final results for this revision are recorded below after execution.
+
+## Historical throughput checkpoint — ZCore runs in C
 
 The Windows x64 C executor now admits ZCore12B_FIX and executes its scheduler, wires, torch/observer/repeater callbacks, conditional arrangements, token movement, piston events and motion completion inside the DLL. The host uses `tick` and `read` operations; Rust retains the sampled Program and a publication adapter but never calls its tick runner while LLVM is selected. Full snapshots are currently read at publication boundaries, which adds publication overhead. The implementation is still opt-in with `/rp compile --llvm`.
 

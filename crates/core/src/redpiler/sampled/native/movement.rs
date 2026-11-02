@@ -180,7 +180,8 @@ impl super::NativeRuntime {
             reason: "invalid LLVM graph snapshot",
         };
         let words = unsafe { (self.library.snapshot_words)(self.state.as_ptr().cast()) } as usize;
-        let p = &runtime.program;
+        let program = std::sync::Arc::clone(&runtime.program);
+        let p = &program;
         let capacity = p.pistons.len() * 2 + p.tokens.len();
         let electrical = p.links.len() + p.arrangement_links.len() + p.movement_groups.len() + p.watched_wires.len() + p.initial.len() * 3;
         let limit = 8 + p.initial.len() + p.tokens.len() + p.pistons.len() + capacity * 9 + p.pistons.len() * 6 + electrical;

@@ -490,7 +490,7 @@ uint32_t ne_snapshot_words(const void *memory) {
     const NEEngine *e=(const NEEngine *)memory; if (!e) return 0u;
     uint32_t motions=0u; for (uint32_t slot=e->motion_first;slot!=NONE;slot=e->motions[slot].next) motions++;
     uint64_t size=8u+(uint64_t)e->program->component_count*4u+e->token_count+e->piston_count+(uint64_t)motions*9u+(uint64_t)e->piston_event_count*2u
-        +e->program->link_count+e->program->arrangement_link_count+table_words(e,27u)+e->program->watched_wire_count;
+        +e->program->link_count+e->program->arrangement_link_count+table_words(e,27u)+e->program->watched_wire_count+table_words(e,45u)/5u;
     return size<=UINT32_MAX?(uint32_t)size:0u;
 }
 uint32_t ne_read_snapshot(const void *memory,uint32_t *out,uint32_t words) {
@@ -498,7 +498,7 @@ uint32_t ne_read_snapshot(const void *memory,uint32_t *out,uint32_t words) {
     if (!e || !out || words!=ne_snapshot_words(memory)) return NE_INVALID;
     uint32_t motions=0u; for (uint32_t slot=e->motion_first;slot!=NONE;slot=e->motions[slot].next) motions++;
     out[0]=e->program->component_count; out[1]=e->token_count; out[2]=e->piston_count; out[3]=motions; out[4]=e->piston_event_count;
-    out[5]=(uint32_t)e->tick_count; out[6]=(uint32_t)(e->tick_count>>32u); out[7]=3u;
+    out[5]=(uint32_t)e->tick_count; out[6]=(uint32_t)(e->tick_count>>32u); out[7]=4u;
     uint32_t cursor=8u;
     for (uint32_t i=0;i<e->program->component_count;++i) out[cursor++]=e->component_state[i];
     for (uint32_t i=0;i<e->token_count;++i) out[cursor++]=e->token_cell[i];
@@ -517,5 +517,6 @@ uint32_t ne_read_snapshot(const void *memory,uint32_t *out,uint32_t words) {
     for (uint32_t i=0;i<e->program->watched_wire_count;++i) out[cursor++]=e->watched_strengths[i];
     for (uint32_t i=0;i<e->program->component_count;++i) { out[cursor++]=e->input_count[i]; out[cursor++]=e->side_count[i]; }
     for (uint32_t i=0;i<e->program->component_count;++i) out[cursor++]=e->comparator_outputs[i];
+    for (uint32_t i=0;i<table_words(e,45u)/5u;++i) out[cursor++]=e->reactive_strengths[i];
     return cursor==words?NE_OK:NE_INVALID;
 }

@@ -221,12 +221,21 @@ impl WireGraph {
         for &component in targets {
             if monitor.is_some_and(TaskMonitor::cancelled) { return Err(ScratchError { position: None, reason: "compilation cancelled" }); }
             let position = program.positions[component];
+            let piston_contacts = if let Block::Piston { piston } = program.initial[component] {
+                let mut cells: HashSet<_> = mchprs_blocks::BlockFace::values().into_iter()
+                    .filter(|&face| face != piston.facing.into()).map(|face| position.offset(face)).collect();
+                let above = position.offset(mchprs_blocks::BlockFace::Top);
+                cells.extend(mchprs_blocks::BlockFace::values().into_iter().map(|face| above.offset(face)));
+                Some(cells)
+            } else { None };
             let radius = if matches!(program.initial[component], Block::Piston { .. }) { 3 } else { 2 };
-            let contacts: HashSet<_> = self.positions.iter().copied().filter(|at|
-                at.x.abs_diff(position.x) + at.y.abs_diff(position.y) + at.z.abs_diff(position.z) <= radius).collect();
+            let contacts: HashSet<_> = self.positions.iter().copied().filter(|&at|
+                piston_contacts.as_ref().map_or_else(|| at.x.abs_diff(position.x) + at.y.abs_diff(position.y) + at.z.abs_diff(position.z) <= radius,
+                    |cells| cells.contains(&at) || cells.iter().any(|&cell| touches(cell, at)))).collect();
             let axes = if matches!(program.initial[component], Block::RedstoneWire { .. }) { Vec::new() } else {
                 program.tokens.iter().enumerate().filter_map(|(token, record)| record.cells.iter().any(|&cell|
-                    cell.x.abs_diff(position.x) + cell.y.abs_diff(position.y) + cell.z.abs_diff(position.z) <= 2
+                    piston_contacts.as_ref().map_or_else(|| cell.x.abs_diff(position.x) + cell.y.abs_diff(position.y) + cell.z.abs_diff(position.z) <= 2,
+                        |cells| cells.contains(&cell))
                     || mchprs_blocks::BlockFace::values().iter().any(|&face| contacts.contains(&cell.offset(face))))
                     .then_some(Axis::Token(token, record.cells.len()))).collect()
             };
@@ -337,6 +346,44 @@ mod tests {
     use super::*;
     use crate::redpiler::scratch::{ScratchEntry, discover_wire_sources};
     use mchprs_blocks::{BlockFace, blocks::RedstoneWire};
+
+    #[test]
+    fn piston_reader_ignores_unreachable_cells_and_keeps_joint_contacts() {
+        use mchprs_blocks::{BlockFacing, blocks::RedstonePiston};
+        let mut world = super::super::tests::host();
+        let pos = BlockPos::new(15, 15, 15);
+        let piston = Block::Piston { piston: RedstonePiston { facing: BlockFacing::East, sticky: true, extended: false } };
+        world.set_block(pos, piston);
+        let contacts = [pos.offset(BlockFace::West), pos.offset(BlockFace::Top).offset(BlockFace::East)];
+        let mut tokens: Vec<_> = contacts.iter().map(|&cell| PistonToken { block: Block::RedstoneBlock, position: None, cells: vec![cell] }).collect();
+        let direct: HashSet<_> = BlockFace::values().into_iter().filter(|&face| face != BlockFace::East).map(|face| pos.offset(face))
+            .chain(BlockFace::values().into_iter().map(|face| pos.offset(BlockFace::Top).offset(face))).collect();
+        for dx in -2i32..=2 { for dy in -2i32..=2 { for dz in -2i32..=2 {
+            if dx.abs() + dy.abs() + dz.abs() != 2 { continue; }
+            let cell = pos + BlockPos::new(dx, dy, dz);
+            if !direct.contains(&cell) { tokens.push(PistonToken { block: Block::Stone {}, position: None, cells: vec![cell] }); }
+        } } }
+        assert!(tokens.len() > 12);
+        let entry = ScratchEntry { scheduled: vec![], piston: world.piston_state().clone() };
+        let bounds = (BlockPos::new(10, 10, 10), BlockPos::new(20, 20, 20));
+        let mut scratch = ScratchWorld::from_world_monitored(&world, bounds, entry, None).unwrap();
+        let mut graph = WireGraph::compile(&mut scratch, vec![], &tokens, None).unwrap();
+        let mut program = Program::new(vec![pos], vec![piston], vec![], vec![[vec![], vec![]]], vec![], vec![], vec![]).unwrap();
+        program.tokens = tokens;
+        let components = HashMap::from([(pos, 0)]);
+        let indexes = ProbeIndexes::new(&components, &program.positions, &program.initial, &program.tokens, None).unwrap();
+        graph.compile_readers(&mut scratch, &program, &[0], &indexes, None).unwrap();
+        assert_eq!(graph.readers[0].table.ports.len(), 4);
+        for state in 0..4 {
+            for (token, &cell) in contacts.iter().enumerate() {
+                world.set_block(cell, if state & (1 << token) != 0 { Block::RedstoneBlock } else { Block::Air });
+            }
+            let actual = graph.reader_sources(0, |Axis::Token(token, _)| usize::from(state & (1 << token) != 0), &mut Search::default()).unwrap();
+            let expected = super::super::group_probe::inputs_of(&world, &program, 0, None, &indexes).unwrap()
+                .into_iter().map(|(key, (attenuation, _))| (key, attenuation)).collect();
+            assert_eq!(actual, expected, "state {state}");
+        }
+    }
 
     #[test]
     #[ignore = "ANPU local-connectivity census and tick-278 path check, without full compilation"]
