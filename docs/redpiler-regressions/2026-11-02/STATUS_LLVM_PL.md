@@ -30,4 +30,4 @@ Cztery błędy schematów nadal nie są naprawione. Pozostają też odłożone p
 
 Testowaliśmy wykonanie DLL na Windows. Nie potwierdziliśmy działania tej wersji na Linuksie.
 
-[Pełne wyniki i komendy](LLVM_STATUS.md) · [Raporty dla MAIR](mair-share/README.md) · [Zachowane logi i sumy kontrolne](EVIDENCE.md)
+[Pełne wyniki i komendy](LLVM_STATUS.md) · [Porównanie z MAIR](mair-comparison/README.md) · [Zachowane logi i sumy kontrolne](EVIDENCE.md)

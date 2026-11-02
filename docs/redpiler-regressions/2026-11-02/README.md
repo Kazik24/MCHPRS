@@ -2,7 +2,7 @@
 
 This bundle preserves the four RedstoneDB disagreements, exact input traces, diagnostic logs and patches, MAIR comparisons, and LLVM validation. It does not claim that the four interpreter/compiler defects have been fixed.
 
-**Proste raporty po polsku do wysłania autorowi MAIR:** [mair-share/README.md](mair-share/README.md). **Krótki status LLVM po polsku:** [STATUS_LLVM_PL.md](STATUS_LLVM_PL.md).
+**Krótkie porównanie MAIR i Redpilera po polsku:** [mair-comparison/README.md](mair-comparison/README.md). **Krótki status LLVM po polsku:** [STATUS_LLVM_PL.md](STATUS_LLVM_PL.md).
 
 | Report | First checked block disagreement | Earlier evidence |
 | --- | --- | --- |

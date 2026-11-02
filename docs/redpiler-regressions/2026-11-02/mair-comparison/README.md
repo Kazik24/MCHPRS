@@ -1,8 +1,8 @@
-# Raporty do autora MAIR
+# Porównanie MAIR i Redpilera
 
 Poniżej są krótkie zgłoszenia z dokładnym sposobem odtworzenia. Pełne wyniki, schematy i listy przełączeń są załączone w katalogu `evidence`.
 
-Do wysłania najlepiej skopiować cały katalog `2026-11-02`, aby zachować te załączniki.
+Raporty korzystają z załączników zapisanych w tym samym katalogu `2026-11-02`.
 
 | Problem | MAIR | Nasz Redpiler |
 | --- | --- | --- |
