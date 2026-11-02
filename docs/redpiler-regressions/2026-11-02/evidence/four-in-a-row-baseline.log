@@ -1,0 +1,185 @@
+
+running 1 test
+sampled source probe at BlockPos { x: 10, y: 9, z: 27 }: repeated transition differs
+sampled source probe at BlockPos { x: 14, y: 9, z: 27 }: repeated transition differs
+sampled source probe at BlockPos { x: 18, y: 9, z: 27 }: repeated transition differs
+sampled source probe at BlockPos { x: 22, y: 9, z: 27 }: repeated transition differs
+sampled source probe at BlockPos { x: 26, y: 9, z: 27 }: repeated transition differs
+sampled source probe at BlockPos { x: 30, y: 9, z: 27 }: repeated transition differs
+sampled source probe at BlockPos { x: 34, y: 9, z: 27 }: repeated transition differs
+sampled source probe at BlockPos { x: 10, y: 13, z: 27 }: repeated transition differs
+sampled source probe at BlockPos { x: 14, y: 13, z: 27 }: repeated transition differs
+sampled source probe at BlockPos { x: 18, y: 13, z: 27 }: repeated transition differs
+sampled source probe at BlockPos { x: 22, y: 13, z: 27 }: repeated transition differs
+sampled source probe at BlockPos { x: 26, y: 13, z: 27 }: repeated transition differs
+sampled source probe at BlockPos { x: 30, y: 13, z: 27 }: repeated transition differs
+sampled source probe at BlockPos { x: 34, y: 13, z: 27 }: repeated transition differs
+sampled source probe at BlockPos { x: 10, y: 17, z: 27 }: repeated transition differs
+sampled source probe at BlockPos { x: 14, y: 17, z: 27 }: repeated transition differs
+sampled source probe at BlockPos { x: 18, y: 17, z: 27 }: repeated transition differs
+sampled source probe at BlockPos { x: 22, y: 17, z: 27 }: repeated transition differs
+sampled source probe at BlockPos { x: 26, y: 17, z: 27 }: repeated transition differs
+sampled source probe at BlockPos { x: 30, y: 17, z: 27 }: repeated transition differs
+sampled source probe at BlockPos { x: 34, y: 17, z: 27 }: repeated transition differs
+sampled source probe at BlockPos { x: 10, y: 21, z: 27 }: repeated transition differs
+sampled source probe at BlockPos { x: 14, y: 21, z: 27 }: repeated transition differs
+sampled source probe at BlockPos { x: 18, y: 21, z: 27 }: repeated transition differs
+sampled source probe at BlockPos { x: 22, y: 21, z: 27 }: repeated transition differs
+sampled source probe at BlockPos { x: 26, y: 21, z: 27 }: repeated transition differs
+sampled source probe at BlockPos { x: 30, y: 21, z: 27 }: repeated transition differs
+sampled source probe at BlockPos { x: 34, y: 21, z: 27 }: repeated transition differs
+sampled source probe at BlockPos { x: 10, y: 25, z: 27 }: repeated transition differs
+sampled source probe at BlockPos { x: 14, y: 25, z: 27 }: repeated transition differs
+sampled source probe at BlockPos { x: 18, y: 25, z: 27 }: repeated transition differs
+sampled source probe at BlockPos { x: 22, y: 25, z: 27 }: repeated transition differs
+sampled source probe at BlockPos { x: 26, y: 25, z: 27 }: repeated transition differs
+sampled source probe at BlockPos { x: 30, y: 25, z: 27 }: repeated transition differs
+sampled source probe at BlockPos { x: 34, y: 25, z: 27 }: repeated transition differs
+sampled source probe at BlockPos { x: 10, y: 29, z: 27 }: repeated transition differs
+sampled source probe at BlockPos { x: 14, y: 29, z: 27 }: repeated transition differs
+sampled source probe at BlockPos { x: 18, y: 29, z: 27 }: repeated transition differs
+sampled source probe at BlockPos { x: 22, y: 29, z: 27 }: repeated transition differs
+sampled source probe at BlockPos { x: 26, y: 29, z: 27 }: repeated transition differs
+sampled source probe at BlockPos { x: 30, y: 29, z: 27 }: repeated transition differs
+sampled source probe at BlockPos { x: 34, y: 29, z: 27 }: repeated transition differs
+sampled source probe at BlockPos { x: 10, y: 9, z: 23 }: repeated transition differs
+sampled source probe at BlockPos { x: 14, y: 9, z: 23 }: repeated transition differs
+sampled source probe at BlockPos { x: 18, y: 9, z: 23 }: repeated transition differs
+sampled source probe at BlockPos { x: 22, y: 9, z: 23 }: repeated transition differs
+sampled source probe at BlockPos { x: 26, y: 9, z: 23 }: repeated transition differs
+sampled source probe at BlockPos { x: 30, y: 9, z: 23 }: repeated transition differs
+sampled source probe at BlockPos { x: 34, y: 9, z: 23 }: repeated transition differs
+sampled source probe at BlockPos { x: 16, y: 11, z: 21 }: repeated transition differs
+sampled source probe at BlockPos { x: 20, y: 11, z: 21 }: repeated transition differs
+sampled source probe at BlockPos { x: 24, y: 11, z: 21 }: repeated transition differs
+sampled source probe at BlockPos { x: 28, y: 11, z: 21 }: repeated transition differs
+sampled source probe at BlockPos { x: 10, y: 13, z: 23 }: repeated transition differs
+sampled source probe at BlockPos { x: 14, y: 13, z: 23 }: repeated transition differs
+sampled source probe at BlockPos { x: 18, y: 13, z: 23 }: repeated transition differs
+sampled source probe at BlockPos { x: 22, y: 13, z: 23 }: repeated transition differs
+sampled source probe at BlockPos { x: 26, y: 13, z: 23 }: repeated transition differs
+sampled source probe at BlockPos { x: 30, y: 13, z: 23 }: repeated transition differs
+sampled source probe at BlockPos { x: 34, y: 13, z: 23 }: repeated transition differs
+sampled source probe at BlockPos { x: 17, y: 15, z: 13 }: repeated transition differs
+sampled source probe at BlockPos { x: 21, y: 15, z: 13 }: repeated transition differs
+sampled source probe at BlockPos { x: 25, y: 15, z: 13 }: repeated transition differs
+sampled source probe at BlockPos { x: 29, y: 15, z: 13 }: repeated transition differs
+sampled source probe at BlockPos { x: 17, y: 15, z: 15 }: repeated transition differs
+sampled source probe at BlockPos { x: 21, y: 15, z: 15 }: repeated transition differs
+sampled source probe at BlockPos { x: 25, y: 15, z: 15 }: repeated transition differs
+sampled source probe at BlockPos { x: 29, y: 15, z: 15 }: repeated transition differs
+sampled source probe at BlockPos { x: 16, y: 15, z: 21 }: repeated transition differs
+sampled source probe at BlockPos { x: 20, y: 15, z: 21 }: repeated transition differs
+sampled source probe at BlockPos { x: 24, y: 15, z: 21 }: repeated transition differs
+sampled source probe at BlockPos { x: 28, y: 15, z: 21 }: repeated transition differs
+sampled source probe at BlockPos { x: 10, y: 17, z: 23 }: repeated transition differs
+sampled source probe at BlockPos { x: 14, y: 17, z: 23 }: repeated transition differs
+sampled source probe at BlockPos { x: 18, y: 17, z: 23 }: repeated transition differs
+sampled source probe at BlockPos { x: 22, y: 17, z: 23 }: repeated transition differs
+sampled source probe at BlockPos { x: 26, y: 17, z: 23 }: repeated transition differs
+sampled source probe at BlockPos { x: 30, y: 17, z: 23 }: repeated transition differs
+sampled source probe at BlockPos { x: 34, y: 17, z: 23 }: repeated transition differs
+sampled source probe at BlockPos { x: 17, y: 19, z: 13 }: repeated transition differs
+sampled source probe at BlockPos { x: 21, y: 19, z: 13 }: repeated transition differs
+sampled source probe at BlockPos { x: 25, y: 19, z: 13 }: repeated transition differs
+sampled source probe at BlockPos { x: 29, y: 19, z: 13 }: repeated transition differs
+sampled source probe at BlockPos { x: 17, y: 19, z: 15 }: repeated transition differs
+sampled source probe at BlockPos { x: 21, y: 19, z: 15 }: repeated transition differs
+sampled source probe at BlockPos { x: 25, y: 19, z: 15 }: repeated transition differs
+sampled source probe at BlockPos { x: 29, y: 19, z: 15 }: repeated transition differs
+sampled source probe at BlockPos { x: 16, y: 19, z: 21 }: repeated transition differs
+sampled source probe at BlockPos { x: 20, y: 19, z: 21 }: repeated transition differs
+sampled source probe at BlockPos { x: 24, y: 19, z: 21 }: repeated transition differs
+sampled source probe at BlockPos { x: 28, y: 19, z: 21 }: repeated transition differs
+sampled source probe at BlockPos { x: 10, y: 21, z: 23 }: repeated transition differs
+sampled source probe at BlockPos { x: 14, y: 21, z: 23 }: repeated transition differs
+sampled source probe at BlockPos { x: 18, y: 21, z: 23 }: repeated transition differs
+sampled source probe at BlockPos { x: 22, y: 21, z: 23 }: repeated transition differs
+sampled source probe at BlockPos { x: 26, y: 21, z: 23 }: repeated transition differs
+sampled source probe at BlockPos { x: 30, y: 21, z: 23 }: repeated transition differs
+sampled source probe at BlockPos { x: 34, y: 21, z: 23 }: repeated transition differs
+sampled source probe at BlockPos { x: 14, y: 22, z: 23 }: repeated transition differs
+sampled source probe at BlockPos { x: 16, y: 22, z: 23 }: repeated transition differs
+sampled source probe at BlockPos { x: 20, y: 22, z: 23 }: repeated transition differs
+sampled source probe at BlockPos { x: 24, y: 22, z: 23 }: repeated transition differs
+sampled source probe at BlockPos { x: 28, y: 22, z: 23 }: repeated transition differs
+sampled source probe at BlockPos { x: 17, y: 23, z: 13 }: repeated transition differs
+sampled source probe at BlockPos { x: 21, y: 23, z: 13 }: repeated transition differs
+sampled source probe at BlockPos { x: 25, y: 23, z: 13 }: repeated transition differs
+sampled source probe at BlockPos { x: 29, y: 23, z: 13 }: repeated transition differs
+sampled source probe at BlockPos { x: 17, y: 23, z: 15 }: repeated transition differs
+sampled source probe at BlockPos { x: 21, y: 23, z: 15 }: repeated transition differs
+sampled source probe at BlockPos { x: 25, y: 23, z: 15 }: repeated transition differs
+sampled source probe at BlockPos { x: 29, y: 23, z: 15 }: repeated transition differs
+sampled source probe at BlockPos { x: 16, y: 23, z: 21 }: repeated transition differs
+sampled source probe at BlockPos { x: 20, y: 23, z: 21 }: repeated transition differs
+sampled source probe at BlockPos { x: 24, y: 23, z: 21 }: repeated transition differs
+sampled source probe at BlockPos { x: 28, y: 23, z: 21 }: repeated transition differs
+sampled source probe at BlockPos { x: 13, y: 23, z: 22 }: repeated transition differs
+sampled source probe at BlockPos { x: 10, y: 25, z: 23 }: repeated transition differs
+sampled source probe at BlockPos { x: 14, y: 25, z: 23 }: repeated transition differs
+sampled source probe at BlockPos { x: 18, y: 25, z: 23 }: repeated transition differs
+sampled source probe at BlockPos { x: 22, y: 25, z: 23 }: repeated transition differs
+sampled source probe at BlockPos { x: 26, y: 25, z: 23 }: repeated transition differs
+sampled source probe at BlockPos { x: 30, y: 25, z: 23 }: repeated transition differs
+sampled source probe at BlockPos { x: 34, y: 25, z: 23 }: repeated transition differs
+sampled source probe at BlockPos { x: 14, y: 26, z: 23 }: repeated transition differs
+sampled source probe at BlockPos { x: 16, y: 26, z: 23 }: repeated transition differs
+sampled source probe at BlockPos { x: 20, y: 26, z: 23 }: repeated transition differs
+sampled source probe at BlockPos { x: 24, y: 26, z: 23 }: repeated transition differs
+sampled source probe at BlockPos { x: 28, y: 26, z: 23 }: repeated transition differs
+sampled source probe at BlockPos { x: 16, y: 27, z: 21 }: repeated transition differs
+sampled source probe at BlockPos { x: 20, y: 27, z: 21 }: repeated transition differs
+sampled source probe at BlockPos { x: 24, y: 27, z: 21 }: repeated transition differs
+sampled source probe at BlockPos { x: 28, y: 27, z: 21 }: repeated transition differs
+sampled source probe at BlockPos { x: 13, y: 27, z: 22 }: repeated transition differs
+sampled source probe at BlockPos { x: 10, y: 29, z: 23 }: repeated transition differs
+sampled source probe at BlockPos { x: 14, y: 29, z: 23 }: repeated transition differs
+sampled source probe at BlockPos { x: 18, y: 29, z: 23 }: repeated transition differs
+sampled source probe at BlockPos { x: 22, y: 29, z: 23 }: repeated transition differs
+sampled source probe at BlockPos { x: 26, y: 29, z: 23 }: repeated transition differs
+sampled source probe at BlockPos { x: 30, y: 29, z: 23 }: repeated transition differs
+sampled source probe at BlockPos { x: 34, y: 29, z: 23 }: repeated transition differs
+sampled source probe at BlockPos { x: 14, y: 30, z: 23 }: repeated transition differs
+sampled source probe at BlockPos { x: 16, y: 30, z: 23 }: repeated transition differs
+sampled source probe at BlockPos { x: 20, y: 30, z: 23 }: repeated transition differs
+sampled source probe at BlockPos { x: 24, y: 30, z: 23 }: repeated transition differs
+sampled source probe at BlockPos { x: 28, y: 30, z: 23 }: repeated transition differs
+sampled source probe at BlockPos { x: 16, y: 31, z: 21 }: repeated transition differs
+sampled source probe at BlockPos { x: 20, y: 31, z: 21 }: repeated transition differs
+sampled source probe at BlockPos { x: 24, y: 31, z: 21 }: repeated transition differs
+sampled source probe at BlockPos { x: 28, y: 31, z: 21 }: repeated transition differs
+sampled source probe at BlockPos { x: 13, y: 31, z: 22 }: repeated transition differs
+DIAG levers=[BlockPos { x: 8, y: 9, z: 27 }, BlockPos { x: 10, y: 9, z: 27 }, BlockPos { x: 12, y: 9, z: 27 }, BlockPos { x: 14, y: 9, z: 27 }, BlockPos { x: 16, y: 9, z: 27 }, BlockPos { x: 18, y: 9, z: 27 }, BlockPos { x: 20, y: 9, z: 27 }, BlockPos { x: 22, y: 9, z: 27 }, BlockPos { x: 24, y: 9, z: 27 }, BlockPos { x: 26, y: 9, z: 27 }, BlockPos { x: 28, y: 9, z: 27 }, BlockPos { x: 30, y: 9, z: 27 }, BlockPos { x: 32, y: 9, z: 27 }, BlockPos { x: 34, y: 9, z: 27 }, BlockPos { x: 8, y: 13, z: 27 }, BlockPos { x: 10, y: 13, z: 27 }, BlockPos { x: 12, y: 13, z: 27 }, BlockPos { x: 14, y: 13, z: 27 }, BlockPos { x: 16, y: 13, z: 27 }, BlockPos { x: 18, y: 13, z: 27 }, BlockPos { x: 20, y: 13, z: 27 }, BlockPos { x: 22, y: 13, z: 27 }, BlockPos { x: 24, y: 13, z: 27 }, BlockPos { x: 26, y: 13, z: 27 }, BlockPos { x: 28, y: 13, z: 27 }, BlockPos { x: 30, y: 13, z: 27 }, BlockPos { x: 32, y: 13, z: 27 }, BlockPos { x: 34, y: 13, z: 27 }, BlockPos { x: 8, y: 17, z: 27 }, BlockPos { x: 10, y: 17, z: 27 }, BlockPos { x: 12, y: 17, z: 27 }, BlockPos { x: 14, y: 17, z: 27 }, BlockPos { x: 16, y: 17, z: 27 }, BlockPos { x: 18, y: 17, z: 27 }, BlockPos { x: 20, y: 17, z: 27 }, BlockPos { x: 22, y: 17, z: 27 }, BlockPos { x: 24, y: 17, z: 27 }, BlockPos { x: 26, y: 17, z: 27 }, BlockPos { x: 28, y: 17, z: 27 }, BlockPos { x: 30, y: 17, z: 27 }, BlockPos { x: 32, y: 17, z: 27 }, BlockPos { x: 34, y: 17, z: 27 }, BlockPos { x: 8, y: 21, z: 27 }, BlockPos { x: 10, y: 21, z: 27 }, BlockPos { x: 12, y: 21, z: 27 }, BlockPos { x: 14, y: 21, z: 27 }, BlockPos { x: 16, y: 21, z: 27 }, BlockPos { x: 18, y: 21, z: 27 }, BlockPos { x: 20, y: 21, z: 27 }, BlockPos { x: 22, y: 21, z: 27 }, BlockPos { x: 24, y: 21, z: 27 }, BlockPos { x: 26, y: 21, z: 27 }, BlockPos { x: 28, y: 21, z: 27 }, BlockPos { x: 30, y: 21, z: 27 }, BlockPos { x: 32, y: 21, z: 27 }, BlockPos { x: 34, y: 21, z: 27 }, BlockPos { x: 8, y: 25, z: 27 }, BlockPos { x: 10, y: 25, z: 27 }, BlockPos { x: 12, y: 25, z: 27 }, BlockPos { x: 14, y: 25, z: 27 }, BlockPos { x: 16, y: 25, z: 27 }, BlockPos { x: 18, y: 25, z: 27 }, BlockPos { x: 20, y: 25, z: 27 }, BlockPos { x: 22, y: 25, z: 27 }, BlockPos { x: 24, y: 25, z: 27 }, BlockPos { x: 26, y: 25, z: 27 }, BlockPos { x: 28, y: 25, z: 27 }, BlockPos { x: 30, y: 25, z: 27 }, BlockPos { x: 32, y: 25, z: 27 }, BlockPos { x: 34, y: 25, z: 27 }, BlockPos { x: 8, y: 29, z: 27 }, BlockPos { x: 10, y: 29, z: 27 }, BlockPos { x: 12, y: 29, z: 27 }, BlockPos { x: 14, y: 29, z: 27 }, BlockPos { x: 16, y: 29, z: 27 }, BlockPos { x: 18, y: 29, z: 27 }, BlockPos { x: 20, y: 29, z: 27 }, BlockPos { x: 22, y: 29, z: 27 }, BlockPos { x: 24, y: 29, z: 27 }, BlockPos { x: 26, y: 29, z: 27 }, BlockPos { x: 28, y: 29, z: 27 }, BlockPos { x: 30, y: 29, z: 27 }, BlockPos { x: 32, y: 29, z: 27 }, BlockPos { x: 34, y: 29, z: 27 }]
+DIAG action=1 wait=20 native callbacks=[RedstoneUpdateObservation { pos: BlockPos { x: 10, y: 10, z: 27 }, block: Air, direction: Some(Bottom), input_on: None }, RedstoneUpdateObservation { pos: BlockPos { x: 10, y: 11, z: 27 }, block: Air, direction: Some(Bottom), input_on: None }, RedstoneUpdateObservation { pos: BlockPos { x: 10, y: 9, z: 27 }, block: Lever { lever: Lever { face: Wall, facing: South, powered: true } }, direction: Some(Top), input_on: None }, RedstoneUpdateObservation { pos: BlockPos { x: 10, y: 8, z: 27 }, block: Air, direction: Some(Top), input_on: None }, RedstoneUpdateObservation { pos: BlockPos { x: 10, y: 9, z: 27 }, block: Lever { lever: Lever { face: Wall, facing: South, powered: true } }, direction: Some(Bottom), input_on: None }, RedstoneUpdateObservation { pos: BlockPos { x: 10, y: 7, z: 27 }, block: Air, direction: Some(Top), input_on: None }, RedstoneUpdateObservation { pos: BlockPos { x: 10, y: 9, z: 26 }, block: Concrete { color: LightBlue }, direction: Some(South), input_on: None }, RedstoneUpdateObservation { pos: BlockPos { x: 10, y: 10, z: 26 }, block: Air, direction: Some(Bottom), input_on: None }, RedstoneUpdateObservation { pos: BlockPos { x: 10, y: 8, z: 26 }, block: Air, direction: Some(Top), input_on: None }, RedstoneUpdateObservation { pos: BlockPos { x: 10, y: 9, z: 28 }, block: Air, direction: Some(North), input_on: None }, RedstoneUpdateObservation { pos: BlockPos { x: 10, y: 10, z: 28 }, block: Air, direction: Some(Bottom), input_on: None }, RedstoneUpdateObservation { pos: BlockPos { x: 10, y: 8, z: 28 }, block: Air, direction: Some(Top), input_on: None }, RedstoneUpdateObservation { pos: BlockPos { x: 11, y: 9, z: 27 }, block: Air, direction: Some(West), input_on: None }, RedstoneUpdateObservation { pos: BlockPos { x: 11, y: 10, z: 27 }, block: Air, direction: Some(Bottom), input_on: None }, RedstoneUpdateObservation { pos: BlockPos { x: 11, y: 8, z: 27 }, block: Air, direction: Some(Top), input_on: None }, RedstoneUpdateObservation { pos: BlockPos { x: 9, y: 9, z: 27 }, block: Air, direction: Some(East), input_on: None }, RedstoneUpdateObservation { pos: BlockPos { x: 9, y: 10, z: 27 }, block: Air, direction: Some(Bottom), input_on: None }, RedstoneUpdateObservation { pos: BlockPos { x: 9, y: 8, z: 27 }, block: Air, direction: Some(Top), input_on: None }, RedstoneUpdateObservation { pos: BlockPos { x: 10, y: 10, z: 26 }, block: Air, direction: Some(Bottom), input_on: None }, RedstoneUpdateObservation { pos: BlockPos { x: 10, y: 11, z: 26 }, block: Air, direction: Some(Bottom), input_on: None }, RedstoneUpdateObservation { pos: BlockPos { x: 10, y: 9, z: 26 }, block: Concrete { color: LightBlue }, direction: Some(Top), input_on: None }, RedstoneUpdateObservation { pos: BlockPos { x: 10, y: 8, z: 26 }, block: Air, direction: Some(Top), input_on: None }, RedstoneUpdateObservation { pos: BlockPos { x: 10, y: 9, z: 26 }, block: Concrete { color: LightBlue }, direction: Some(Bottom), input_on: None }, RedstoneUpdateObservation { pos: BlockPos { x: 10, y: 7, z: 26 }, block: Air, direction: Some(Top), input_on: None }, RedstoneUpdateObservation { pos: BlockPos { x: 10, y: 9, z: 25 }, block: RedstoneWire { wire: RedstoneWire { north: Side, south: Side, east: Side, west: Side, power: 0 } }, direction: Some(South), input_on: None }, RedstoneUpdateObservation { pos: BlockPos { x: 10, y: 9, z: 23 }, block: RedstoneWallTorch { lit: true, facing: North }, direction: None, input_on: Some((true, false)) }, RedstoneUpdateObservation { pos: BlockPos { x: 10, y: 10, z: 25 }, block: Air, direction: Some(Bottom), input_on: None }, RedstoneUpdateObservation { pos: BlockPos { x: 10, y: 8, z: 25 }, block: StainedGlass { color: White }, direction: Some(Top), input_on: None }, RedstoneUpdateObservation { pos: BlockPos { x: 10, y: 9, z: 27 }, block: Lever { lever: Lever { face: Wall, facing: South, powered: true } }, direction: Some(North), input_on: None }, RedstoneUpdateObservation { pos: BlockPos { x: 10, y: 10, z: 27 }, block: Air, direction: Some(Bottom), input_on: None }, RedstoneUpdateObservation { pos: BlockPos { x: 10, y: 8, z: 27 }, block: Air, direction: Some(Top), input_on: None }, RedstoneUpdateObservation { pos: BlockPos { x: 11, y: 9, z: 26 }, block: Air, direction: Some(West), input_on: None }, RedstoneUpdateObservation { pos: BlockPos { x: 11, y: 10, z: 26 }, block: Air, direction: Some(Bottom), input_on: None }, RedstoneUpdateObservation { pos: BlockPos { x: 11, y: 8, z: 26 }, block: Air, direction: Some(Top), input_on: None }, RedstoneUpdateObservation { pos: BlockPos { x: 9, y: 9, z: 26 }, block: Air, direction: Some(East), input_on: None }, RedstoneUpdateObservation { pos: BlockPos { x: 9, y: 10, z: 26 }, block: Air, direction: Some(Bottom), input_on: None }, RedstoneUpdateObservation { pos: BlockPos { x: 9, y: 8, z: 26 }, block: Air, direction: Some(Top), input_on: None }]
+DIAG source=245 outputs true=[Contribution(7299), UpdateTorch(211), Contribution(116), RefreshWire(231)] false=[Contribution(7299), UpdateTorch(211), Contribution(116), RefreshWire(231)]
+DIAG pending after input native=[TickEntry { ticks_left: 2, tick_priority: Normal, pos: BlockPos { x: 10, y: 9, z: 23 }, block_type: Some(261) }] runtime=[TickEntry { ticks_left: 2, tick_priority: Normal, pos: BlockPos { x: 10, y: 9, z: 23 }, block_type: Some(261) }]
+DIAG post-use wire native=RedstoneWire { wire: RedstoneWire { north: Side, south: Side, east: None, west: None, power: 1 } } runtime=Some(RedstoneWire { wire: RedstoneWire { north: Side, south: Side, east: None, west: None, power: 1 } }) diffs=[]
+DIAG tick=1 callbacks=[] wire native=RedstoneWire { wire: RedstoneWire { north: Side, south: Side, east: None, west: None, power: 1 } } runtime=Some(RedstoneWire { wire: RedstoneWire { north: Side, south: Side, east: None, west: None, power: 1 } }) diffs=[]
+DIAG wire input=0 has=false incoming=[(BlockPos { x: 12, y: 9, z: 23 }, 12, 0, Some(RedstoneRepeater { repeater: RedstoneRepeater { delay: 1, facing: South, locked: false, powered: false } }))]
+DIAG tick=2 callbacks=[RedstoneUpdateObservation { pos: BlockPos { x: 10, y: 10, z: 23 }, block: Concrete { color: White }, direction: Some(Bottom), input_on: None }, RedstoneUpdateObservation { pos: BlockPos { x: 10, y: 11, z: 23 }, block: Air, direction: Some(Bottom), input_on: None }, RedstoneUpdateObservation { pos: BlockPos { x: 10, y: 9, z: 23 }, block: RedstoneWallTorch { lit: false, facing: North }, direction: Some(Top), input_on: Some((true, false)) }, RedstoneUpdateObservation { pos: BlockPos { x: 10, y: 8, z: 23 }, block: Air, direction: Some(Top), input_on: None }, RedstoneUpdateObservation { pos: BlockPos { x: 10, y: 9, z: 23 }, block: RedstoneWallTorch { lit: false, facing: North }, direction: Some(Bottom), input_on: Some((true, false)) }, RedstoneUpdateObservation { pos: BlockPos { x: 10, y: 7, z: 23 }, block: Air, direction: Some(Top), input_on: None }, RedstoneUpdateObservation { pos: BlockPos { x: 10, y: 9, z: 22 }, block: RedstoneWire { wire: RedstoneWire { north: Side, south: Side, east: None, west: None, power: 15 } }, direction: Some(South), input_on: None }, RedstoneUpdateObservation { pos: BlockPos { x: 10, y: 9, z: 23 }, block: RedstoneWallTorch { lit: false, facing: North }, direction: None, input_on: Some((true, false)) }, RedstoneUpdateObservation { pos: BlockPos { x: 10, y: 9, z: 23 }, block: RedstoneWallTorch { lit: false, facing: North }, direction: None, input_on: Some((true, false)) }, RedstoneUpdateObservation { pos: BlockPos { x: 10, y: 9, z: 23 }, block: RedstoneWallTorch { lit: false, facing: North }, direction: None, input_on: Some((true, false)) }, RedstoneUpdateObservation { pos: BlockPos { x: 12, y: 9, z: 23 }, block: RedstoneRepeater { repeater: RedstoneRepeater { delay: 1, facing: South, locked: false, powered: false } }, direction: None, input_on: Some((false, false)) }, RedstoneUpdateObservation { pos: BlockPos { x: 10, y: 9, z: 23 }, block: RedstoneWallTorch { lit: false, facing: North }, direction: None, input_on: Some((true, false)) }, RedstoneUpdateObservation { pos: BlockPos { x: 10, y: 9, z: 23 }, block: RedstoneWallTorch { lit: false, facing: North }, direction: None, input_on: Some((true, false)) }, RedstoneUpdateObservation { pos: BlockPos { x: 12, y: 13, z: 23 }, block: RedstoneRepeater { repeater: RedstoneRepeater { delay: 1, facing: South, locked: false, powered: false } }, direction: None, input_on: Some((false, false)) }, RedstoneUpdateObservation { pos: BlockPos { x: 10, y: 13, z: 23 }, block: RedstoneWallTorch { lit: true, facing: North }, direction: None, input_on: Some((false, false)) }, RedstoneUpdateObservation { pos: BlockPos { x: 10, y: 9, z: 23 }, block: RedstoneWallTorch { lit: false, facing: North }, direction: None, input_on: Some((true, false)) }, RedstoneUpdateObservation { pos: BlockPos { x: 10, y: 9, z: 23 }, block: RedstoneWallTorch { lit: false, facing: North }, direction: None, input_on: Some((true, false)) }, RedstoneUpdateObservation { pos: BlockPos { x: 10, y: 9, z: 8 }, block: RedstoneRepeater { repeater: RedstoneRepeater { delay: 1, facing: South, locked: false, powered: true } }, direction: None, input_on: Some((false, false)) }, RedstoneUpdateObservation { pos: BlockPos { x: 10, y: 9, z: 8 }, block: RedstoneRepeater { repeater: RedstoneRepeater { delay: 1, facing: South, locked: false, powered: true } }, direction: None, input_on: Some((false, false)) }, RedstoneUpdateObservation { pos: BlockPos { x: 12, y: 9, z: 8 }, block: RedstoneRepeater { repeater: RedstoneRepeater { delay: 1, facing: South, locked: false, powered: false } }, direction: None, input_on: Some((false, false)) }, RedstoneUpdateObservation { pos: BlockPos { x: 10, y: 9, z: 8 }, block: RedstoneRepeater { repeater: RedstoneRepeater { delay: 1, facing: South, locked: false, powered: true } }, direction: None, input_on: Some((false, false)) }, RedstoneUpdateObservation { pos: BlockPos { x: 10, y: 10, z: 22 }, block: Air, direction: Some(Bottom), input_on: None }, RedstoneUpdateObservation { pos: BlockPos { x: 10, y: 8, z: 22 }, block: StainedGlass { color: White }, direction: Some(Top), input_on: None }, RedstoneUpdateObservation { pos: BlockPos { x: 10, y: 9, z: 24 }, block: Concrete { color: White }, direction: Some(North), input_on: None }, RedstoneUpdateObservation { pos: BlockPos { x: 10, y: 10, z: 24 }, block: Air, direction: Some(Bottom), input_on: None }, RedstoneUpdateObservation { pos: BlockPos { x: 10, y: 8, z: 24 }, block: Air, direction: Some(Top), input_on: None }, RedstoneUpdateObservation { pos: BlockPos { x: 11, y: 9, z: 23 }, block: StainedGlass { color: White }, direction: Some(West), input_on: None }, RedstoneUpdateObservation { pos: BlockPos { x: 11, y: 10, z: 23 }, block: RedstoneWire { wire: RedstoneWire { north: Side, south: Up, east: None, west: None, power: 0 } }, direction: Some(Bottom), input_on: None }, RedstoneUpdateObservation { pos: BlockPos { x: 11, y: 8, z: 23 }, block: Air, direction: Some(Top), input_on: None }, RedstoneUpdateObservation { pos: BlockPos { x: 9, y: 9, z: 23 }, block: Air, direction: Some(East), input_on: None }, RedstoneUpdateObservation { pos: BlockPos { x: 9, y: 10, z: 23 }, block: Air, direction: Some(Bottom), input_on: None }, RedstoneUpdateObservation { pos: BlockPos { x: 9, y: 8, z: 23 }, block: Air, direction: Some(Top), input_on: None }] wire native=RedstoneWire { wire: RedstoneWire { north: Side, south: Side, east: None, west: None, power: 0 } } runtime=Some(RedstoneWire { wire: RedstoneWire { north: Side, south: Side, east: None, west: None, power: 1 } }) diffs=[(BlockPos { x: 12, y: 9, z: 10 }, RedstoneWire { wire: RedstoneWire { north: Side, south: Side, east: None, west: None, power: 0 } }, Some(RedstoneWire { wire: RedstoneWire { north: Side, south: Side, east: None, west: None, power: 1 } })), (BlockPos { x: 12, y: 9, z: 11 }, RedstoneWire { wire: RedstoneWire { north: Side, south: Side, east: None, west: None, power: 0 } }, Some(RedstoneWire { wire: RedstoneWire { north: Side, south: Side, east: None, west: None, power: 2 } })), (BlockPos { x: 12, y: 9, z: 12 }, RedstoneWire { wire: RedstoneWire { north: Side, south: Side, east: None, west: None, power: 0 } }, Some(RedstoneWire { wire: RedstoneWire { north: Side, south: Side, east: None, west: None, power: 3 } })), (BlockPos { x: 12, y: 9, z: 13 }, RedstoneWire { wire: RedstoneWire { north: Side, south: Side, east: None, west: None, power: 0 } }, Some(RedstoneWire { wire: RedstoneWire { north: Side, south: Side, east: None, west: None, power: 4 } }))]
+DIAG wire input=0 has=false incoming=[(BlockPos { x: 12, y: 9, z: 23 }, 12, 0, Some(RedstoneRepeater { repeater: RedstoneRepeater { delay: 1, facing: South, locked: false, powered: false } }))]
+
+thread 'redpiler::sampled::redstonedb_tests::redstonedb_levers_match_interpreter' (15492) panicked at crates\core\src\redpiler\sampled\..\tests\sampled\redstonedb.rs:94:25:
+assertion `left == right` failed: Four In A Row Detector: wire BlockPos { x: 12, y: 9, z: 10 } after BlockPos { x: 10, y: 9, z: 27 } action 1 (wait 20) tick 2
+  left: 0
+ right: 1
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+FAILED: Four In A Row Detector (b6a6e870229ace7eb2afd8cb387a514e, https://redstonedb.com/schematics/b6a6e870229ace7eb2afd8cb387a514e): assertion `left == right` failed: Four In A Row Detector: wire BlockPos { x: 12, y: 9, z: 10 } after BlockPos { x: 10, y: 9, z: 27 } action 1 (wait 20) tick 2
+  left: 0
+ right: 1
+
+thread 'redpiler::sampled::redstonedb_tests::redstonedb_levers_match_interpreter' (15492) panicked at crates\core\src\redpiler\sampled\..\tests\sampled\redstonedb.rs:111:5:
+1 RedstoneDB fixtures failed:
+Four In A Row Detector (b6a6e870229ace7eb2afd8cb387a514e, https://redstonedb.com/schematics/b6a6e870229ace7eb2afd8cb387a514e): assertion `left == right` failed: Four In A Row Detector: wire BlockPos { x: 12, y: 9, z: 10 } after BlockPos { x: 10, y: 9, z: 27 } action 1 (wait 20) tick 2
+  left: 0
+ right: 1
+test redpiler::sampled::redstonedb_tests::redstonedb_levers_match_interpreter ... FAILED
+
+failures:
+
+failures:
+    redpiler::sampled::redstonedb_tests::redstonedb_levers_match_interpreter
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 771 filtered out; finished in 0.53s
+

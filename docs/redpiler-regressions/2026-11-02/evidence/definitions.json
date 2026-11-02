@@ -1,0 +1,739 @@
+{
+  "schema_version": 1,
+  "circuits": [
+    {
+      "id": "3cb61be7800cec42ee155034c4788b12",
+      "schematic": "schematics/3cb61be7800cec42ee155034c4788b12-1_bit_Ripple_Carry_Adder.schem",
+      "description": "One-bit ripple-carry adder slice.",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [
+        {
+          "name": "a",
+          "width": 1
+        },
+        {
+          "name": "b",
+          "width": 1
+        },
+        {
+          "name": "carry_in",
+          "width": 1
+        }
+      ],
+      "outputs": [
+        {
+          "name": "sum",
+          "width": 1,
+          "expression": "a ^ b ^ carry_in"
+        },
+        {
+          "name": "carry_out",
+          "width": 1,
+          "expression": "(a & b) | (carry_in & (a ^ b))"
+        }
+      ],
+      "stimulus": "exhaustive"
+    },
+    {
+      "id": "13cb20d8fa6a0df232d3d999b8cfb1e1",
+      "schematic": "schematics/13cb20d8fa6a0df232d3d999b8cfb1e1-1_bit_XOR_Gate.schem",
+      "description": "One-bit XOR gate.",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [
+        {
+          "name": "a",
+          "width": 1
+        },
+        {
+          "name": "b",
+          "width": 1
+        }
+      ],
+      "outputs": [
+        {
+          "name": "y",
+          "width": 1,
+          "expression": "a ^ b"
+        }
+      ],
+      "stimulus": "exhaustive"
+    },
+    {
+      "id": "8111b000090d8f0b3e1370448bcb64a3",
+      "schematic": "schematics/8111b000090d8f0b3e1370448bcb64a3-8_bit_Carry_Cancel_Adder.schem",
+      "description": "Eight-bit carry-cancel adder.",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [
+        {
+          "name": "a",
+          "width": 8
+        },
+        {
+          "name": "b",
+          "width": 8
+        }
+      ],
+      "outputs": [
+        {
+          "name": "sum",
+          "width": 8,
+          "expression": "(a + b) & 255"
+        },
+        {
+          "name": "carry_out",
+          "width": 1,
+          "expression": "(a + b) >> 8"
+        }
+      ],
+      "stimulus": "edge_cases_and_deterministic_random"
+    },
+    {
+      "id": "2fbea8b21f13cfcecd690a2b54ed38bf",
+      "schematic": "schematics/2fbea8b21f13cfcecd690a2b54ed38bf-1_bit_Buffer.schem",
+      "description": "One-bit buffer.",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "fb723c5a2f1780ccfdefabc5abdafb98",
+      "schematic": "schematics/fb723c5a2f1780ccfdefabc5abdafb98-2_bit_Buffer.schem",
+      "description": "Two-bit buffer.",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "9bb637764e688e5a34dc3e5eef750daf",
+      "schematic": "schematics/9bb637764e688e5a34dc3e5eef750daf-1_bit_XNOR_Gate.schem",
+      "description": "One-bit XNOR gate.",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [
+        {
+          "name": "a",
+          "width": 1
+        },
+        {
+          "name": "b",
+          "width": 1
+        }
+      ],
+      "outputs": [
+        {
+          "name": "y",
+          "width": 1,
+          "expression": "1 ^ a ^ b"
+        }
+      ],
+      "stimulus": "exhaustive"
+    },
+    {
+      "id": "8f0a401ea8b82283d7c957fe69797cd9",
+      "schematic": "schematics/8f0a401ea8b82283d7c957fe69797cd9-3_tick_Monostable.schem",
+      "description": "Three-tick monostable pulse generator.",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "32a5c5139f6cf2a135a5f6051ed0f2b7",
+      "schematic": "schematics/32a5c5139f6cf2a135a5f6051ed0f2b7-8_bit_Incrementer.schem",
+      "description": "Eight-bit incrementer.",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "42371f8ed7bed5654072810648fd9c3d",
+      "schematic": "schematics/42371f8ed7bed5654072810648fd9c3d-1_bit_XNOR_Gate.schem",
+      "description": "1-bit XNOR Gate",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "1782f19efed92ad003d58b2d1932e324",
+      "schematic": "schematics/1782f19efed92ad003d58b2d1932e324-1_bit_XOR_Gate.schem",
+      "description": "1-bit XOR Gate",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "f13fb5f43d326e2b718ae4576e45870a",
+      "schematic": "schematics/f13fb5f43d326e2b718ae4576e45870a-1_bit_XNOR_Gate.schem",
+      "description": "1-bit XNOR Gate",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "699b1b30f3d31eaf4f25527c97a167b1",
+      "schematic": "schematics/699b1b30f3d31eaf4f25527c97a167b1-8_bit_Carry_Cancel_Adder.schem",
+      "description": "8-bit Carry Cancel Adder",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "d809b5a5a2d84ec829cfa90ef0352132",
+      "schematic": "schematics/d809b5a5a2d84ec829cfa90ef0352132-8_bit_Carry_Cancel_Adder.schem",
+      "description": "8-bit Carry Cancel Adder",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "2cdc24e68c78d7f0cdce7a141648385a",
+      "schematic": "schematics/2cdc24e68c78d7f0cdce7a141648385a-8_bit_Carry_Cancel_Adder.schem",
+      "description": "8-bit Carry Cancel Adder",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "134f721bdba7190fe91a3cc3d026b45c",
+      "schematic": "schematics/134f721bdba7190fe91a3cc3d026b45c-8_bit_Incrementer.schem",
+      "description": "8-bit Incrementer",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "485d5873cda3fab3a1b9f8201adf37c8",
+      "schematic": "schematics/485d5873cda3fab3a1b9f8201adf37c8-8_bit_Decrementer.schem",
+      "description": "8-bit Decrementer",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "cf4fe4731eb39b66bd60314db3e0e125",
+      "schematic": "schematics/cf4fe4731eb39b66bd60314db3e0e125-8_bit_Equality.schem",
+      "description": "8-bit Equality",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "2e446b86e70e825aa88b78cc1201d302",
+      "schematic": "schematics/2e446b86e70e825aa88b78cc1201d302-8_bit_Counter.schem",
+      "description": "8-bit Counter",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "a2cb291fe5fd39321977629ed587215e",
+      "schematic": "schematics/a2cb291fe5fd39321977629ed587215e-8_bit_Counter.schem",
+      "description": "8-bit Counter",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "f23a3a74482ce19fe09fe2b5ffdb01d5",
+      "schematic": "schematics/f23a3a74482ce19fe09fe2b5ffdb01d5-8_bit_Counter.schem",
+      "description": "8-bit Counter",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "0888fcdd5d01b6bada1d209c6b0dbe84",
+      "schematic": "schematics/0888fcdd5d01b6bada1d209c6b0dbe84-8_bit_Register.schem",
+      "description": "8-bit Register",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "0520aae23ac34c40614a6708d9c53c4e",
+      "schematic": "schematics/0520aae23ac34c40614a6708d9c53c4e-8_bit_Register.schem",
+      "description": "8-bit Register",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "7bb45d8e3fb208d696dc965f95630c3f",
+      "schematic": "schematics/7bb45d8e3fb208d696dc965f95630c3f-1_bit_Register.schem",
+      "description": "1-bit Register",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "4106b104ed6aa68f1a359c1dcd84b375",
+      "schematic": "schematics/4106b104ed6aa68f1a359c1dcd84b375-4_bit_Decoder.schem",
+      "description": "4-bit Decoder",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "c1c178d689ebd911104dcb22dcd15134",
+      "schematic": "schematics/c1c178d689ebd911104dcb22dcd15134-3_bit_Decoder.schem",
+      "description": "3-bit Decoder",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "80efbc578faa3d4cf5eaf734eed51ea7",
+      "schematic": "schematics/80efbc578faa3d4cf5eaf734eed51ea7-4_bit_Decoder.schem",
+      "description": "4-bit Decoder",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "46daff97352cd985d85fdc92e031928f",
+      "schematic": "schematics/46daff97352cd985d85fdc92e031928f-8_bit_Barrel_Shifter.schem",
+      "description": "8-bit Barrel Shifter",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "9ec66c2293606ca557a0ef9323012b6f",
+      "schematic": "schematics/9ec66c2293606ca557a0ef9323012b6f-1_bit_Inverter.schem",
+      "description": "1-bit Inverter",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "93616e4ff52a89fc1873a89b2ad39e63",
+      "schematic": "schematics/93616e4ff52a89fc1873a89b2ad39e63-8_bit_At_Least_3_Threshold.schem",
+      "description": "8-bit At Least 3 Threshold",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "cb49cff721a8343b94647256c1dc0f43",
+      "schematic": "schematics/cb49cff721a8343b94647256c1dc0f43-8_bit_Popcount.schem",
+      "description": "8-bit Popcount",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "ed41c4fe2baec2c27276942a180bb720",
+      "schematic": "schematics/ed41c4fe2baec2c27276942a180bb720-16_bit_Carry_Cancel_Subtractor.schem",
+      "description": "16-bit Carry Cancel Subtractor",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "a930a35978bcb7c509513e66a4072ded",
+      "schematic": "schematics/a930a35978bcb7c509513e66a4072ded-8_bit_Carry_Out.schem",
+      "description": "8-bit Carry Out",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "839bcd2814002e6882c7a41e92c0d03c",
+      "schematic": "schematics/839bcd2814002e6882c7a41e92c0d03c-8_bit_Absolute_Value.schem",
+      "description": "8-bit Absolute Value",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "cf85d927c798bbf904e97cb965f81e1e",
+      "schematic": "schematics/cf85d927c798bbf904e97cb965f81e1e-32_bit_Hex_Adder.schem",
+      "description": "32-bit Hex Adder",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "fb7308c168257df39f1806e18dceb930",
+      "schematic": "schematics/fb7308c168257df39f1806e18dceb930-8x8_16_Multiplier.schem",
+      "description": "8x8=16 Multiplier",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "d3ab0fc8becc0aee7bca369440e445e2",
+      "schematic": "schematics/d3ab0fc8becc0aee7bca369440e445e2-8_bit_ALU.schem",
+      "description": "8-bit ALU",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "3e50fefb1e375ffa98d6ba4abf531da8",
+      "schematic": "schematics/3e50fefb1e375ffa98d6ba4abf531da8-8_bit_Carry_Cancel_Adder.schem",
+      "description": "8-bit Carry Cancel Adder",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "551713a010117d5bc8c67c117e96bf1f",
+      "schematic": "schematics/551713a010117d5bc8c67c117e96bf1f-8_bit_Carry_Cancel_Adder.schem",
+      "description": "8-bit Carry Cancel Adder",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "cff90fd8bf7daff4815b621a9b220732",
+      "schematic": "schematics/cff90fd8bf7daff4815b621a9b220732-1_bit_XOR_Gate.schem",
+      "description": "1-bit XOR Gate",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "bf9b552a742e6bcef35d34e79dc6479d",
+      "schematic": "schematics/bf9b552a742e6bcef35d34e79dc6479d-1_bit_XOR_Gate.schem",
+      "description": "1-bit XOR Gate",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "27b758c2cb0ab90f23bd57a9aa633ce3",
+      "schematic": "schematics/27b758c2cb0ab90f23bd57a9aa633ce3-8_bit_Carry_Cancel_Adder.schem",
+      "description": "8-bit Carry Cancel Adder",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "0fb6667d5a30a0cc79497c8062caef67",
+      "schematic": "schematics/0fb6667d5a30a0cc79497c8062caef67-1_bit_XOR_Gate.schem",
+      "description": "1-bit XOR Gate",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "900e5fa2bb48a77ff267acf125465c31",
+      "schematic": "schematics/900e5fa2bb48a77ff267acf125465c31-2_bit_XNOR_Gate.schem",
+      "description": "2-bit XNOR Gate",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "593ec0d3b5d2872af7d10a271a33ef7a",
+      "schematic": "schematics/593ec0d3b5d2872af7d10a271a33ef7a-1_bit_XOR_Gate.schem",
+      "description": "1-bit XOR Gate",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "066515d8845f166f18c4563735e13366",
+      "schematic": "schematics/066515d8845f166f18c4563735e13366-1_bit_Ripple_Carry_Adder.schem",
+      "description": "1-bit Ripple Carry Adder",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "f3820d7d6480c905f0d73610f7d0086f",
+      "schematic": "schematics/f3820d7d6480c905f0d73610f7d0086f-1_bit_Ripple_Carry_Adder.schem",
+      "description": "1-bit Ripple Carry Adder",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "5c44e7868a1319b46f3a863991c95df6",
+      "schematic": "schematics/5c44e7868a1319b46f3a863991c95df6-1_bit_Ripple_Carry_Adder.schem",
+      "description": "1-bit Ripple Carry Adder",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "27133b3ba65a38241d85158637f3600e",
+      "schematic": "schematics/27133b3ba65a38241d85158637f3600e-Adder_Accumulator.schem",
+      "description": "Adder Accumulator",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "3234d4a46edc0fffa584336cb45bf12e",
+      "schematic": "schematics/3234d4a46edc0fffa584336cb45bf12e-8_bit_Carry_Cancel_Adder.schem",
+      "description": "8-bit Carry Cancel Adder",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "2735cc14b1051cab4197df60265878b2",
+      "schematic": "schematics/2735cc14b1051cab4197df60265878b2-8_bit_Adder.schem",
+      "description": "8-bit Adder",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "90ac9dae12b23bc3f01dc010a5355d26",
+      "schematic": "schematics/90ac9dae12b23bc3f01dc010a5355d26-8_bit_Serial_Write_Memory.schem",
+      "description": "8-bit Serial Write Memory",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "6fb36b5376dfe8e79acb8b30f9df1950",
+      "schematic": "schematics/6fb36b5376dfe8e79acb8b30f9df1950-8_bit_Absolute_Value.schem",
+      "description": "8-bit Absolute Value",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "c6610fca9ab22fba7f74b6ad843e3a0c",
+      "schematic": "schematics/c6610fca9ab22fba7f74b6ad843e3a0c-8_bit_Register.schem",
+      "description": "8-bit Register",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "e44b2bb4a37fb454dadde2a20478bdd7",
+      "schematic": "schematics/e44b2bb4a37fb454dadde2a20478bdd7-8_bit_Register.schem",
+      "description": "8-bit Register",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "7e9d9b2cac21cf543a1662324c1a4124",
+      "schematic": "schematics/7e9d9b2cac21cf543a1662324c1a4124-8_bit_Register.schem",
+      "description": "8-bit Register",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "c730b42d68c5465f51d18a45d88a97be",
+      "schematic": "schematics/c730b42d68c5465f51d18a45d88a97be-8_bit_Register.schem",
+      "description": "8-bit Register",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "ab2d9225ecd3fc2a3c140aee6945cd41",
+      "schematic": "schematics/ab2d9225ecd3fc2a3c140aee6945cd41-8_bit_Register.schem",
+      "description": "8-bit Register",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "ddf84a84bbe1b6c400d704ef43300700",
+      "schematic": "schematics/ddf84a84bbe1b6c400d704ef43300700-8_bit_Register.schem",
+      "description": "8-bit Register",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "f8f3eb394bbe72a71fc8a39ed23e4e56",
+      "schematic": "schematics/f8f3eb394bbe72a71fc8a39ed23e4e56-8_bit_Register.schem",
+      "description": "8-bit Register",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "7102db5d48eee336f8c57330977bbf0e",
+      "schematic": "schematics/7102db5d48eee336f8c57330977bbf0e-8_bit_Register.schem",
+      "description": "8-bit Register",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "3d45bc8ee4ee176bd6d6b69d37acd959",
+      "schematic": "schematics/3d45bc8ee4ee176bd6d6b69d37acd959-Content_Addressable_Memory.schem",
+      "description": "Content Addressable Memory",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "56dbf6a218cf0ca01e1630907a8d578f",
+      "schematic": "schematics/56dbf6a218cf0ca01e1630907a8d578f-8_bit_ALU.schem",
+      "description": "8-bit ALU",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "9a824d2e2d6440b79f5ea72044e386d8",
+      "schematic": "schematics/9a824d2e2d6440b79f5ea72044e386d8-8_bit_Binary_To_Bcd.schem",
+      "description": "8-bit Binary To Bcd",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "45c9e8d36554485c1b9292283c063626",
+      "schematic": "schematics/45c9e8d36554485c1b9292283c063626-10_bit_Bcd_To_Binary.schem",
+      "description": "10-bit Bcd To Binary",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "bc81940dde3e25490ed5aeac6db79981",
+      "schematic": "schematics/bc81940dde3e25490ed5aeac6db79981-8_bit_Divider.schem",
+      "description": "8-bit Divider",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "228d4638f038315fb254a4f1d2f40983",
+      "schematic": "schematics/228d4638f038315fb254a4f1d2f40983-8x8_16_Multiplier.schem",
+      "description": "8x8=16 Multiplier",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "3e6989a58036fcea5ff7b0c25114266e",
+      "schematic": "schematics/3e6989a58036fcea5ff7b0c25114266e-8_bit_ALU.schem",
+      "description": "8-bit ALU",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "557453a91053ad8d7c230ca37da07f17",
+      "schematic": "schematics/557453a91053ad8d7c230ca37da07f17-4_bit_Binary_to_Hex.schem",
+      "description": "4-bit Binary to Hex",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "7abf58b22e8e91c72ca27f70c1fd10b1",
+      "schematic": "schematics/7abf58b22e8e91c72ca27f70c1fd10b1-8_bit_Ram.schem",
+      "description": "8-bit Ram",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "72e896eb51685e6a24d41b26cfe1f756",
+      "schematic": "schematics/72e896eb51685e6a24d41b26cfe1f756-8x8_16_Multiplier.schem",
+      "description": "8x8=16 Multiplier",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "4ff460f958904f2ac03c0296d27a1452",
+      "schematic": "schematics/4ff460f958904f2ac03c0296d27a1452-8x8_16_Multiplier.schem",
+      "description": "8x8=16 Multiplier",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "67b92698c5aad3e8eefd52c459fa70aa",
+      "schematic": "schematics/67b92698c5aad3e8eefd52c459fa70aa-8_bit_Serial_Write_Memory.schem",
+      "description": "8-bit Serial Write Memory",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "b6a6e870229ace7eb2afd8cb387a514e",
+      "schematic": "schematics/b6a6e870229ace7eb2afd8cb387a514e-Four_In_A_Row_Detector.schem",
+      "description": "Four In A Row Detector",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "e18bb2e266c03ad21349144e98c960aa",
+      "schematic": "schematics/e18bb2e266c03ad21349144e98c960aa-1_bit_NAND_XNOR_Gate.schem",
+      "description": "1-bit NAND+XNOR Gate",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "c851df22a7203ec3f7b2d8d67014357d",
+      "schematic": "schematics/c851df22a7203ec3f7b2d8d67014357d-1_bit_XNOR_Gate.schem",
+      "description": "1-bit XNOR Gate",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "c176cead6f5f236f8e4b46155e0a21ed",
+      "schematic": "schematics/c176cead6f5f236f8e4b46155e0a21ed-8_bit_Counter.schem",
+      "description": "8-bit Counter",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "24525ee09969ca0511b711badaaffb03",
+      "schematic": "schematics/24525ee09969ca0511b711badaaffb03-8_bit_Binary_To_Bcd.schem",
+      "description": "8-bit Binary To Bcd",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "46853c0a60a907db5ee7eacd1396e6f2",
+      "schematic": "schematics/46853c0a60a907db5ee7eacd1396e6f2-10_bit_Bcd_To_Binary.schem",
+      "description": "10-bit Bcd To Binary",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "4c59c40976ae0c4b9fbdb0b7184840cb",
+      "schematic": "schematics/4c59c40976ae0c4b9fbdb0b7184840cb-8_bit_Shift_Register.schem",
+      "description": "8-bit Shift Register",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "3d4d284f9420f57d10a913b229b4b368",
+      "schematic": "schematics/3d4d284f9420f57d10a913b229b4b368-8_bit_Bussing.schem",
+      "description": "8-bit Bussing",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "fd953e29c151b67c1af6680bd9be465f",
+      "schematic": "schematics/fd953e29c151b67c1af6680bd9be465f-8_bit_Bussing.schem",
+      "description": "8-bit Bussing",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "35fd340ea55123de37b85a1e93963ecf",
+      "schematic": "schematics/35fd340ea55123de37b85a1e93963ecf-8x8_8_Multiplier.schem",
+      "description": "8x8=8 Multiplier",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    }
+  ]
+}

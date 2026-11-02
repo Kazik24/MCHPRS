@@ -1,0 +1,56 @@
+{
+  "pos": [
+    99,
+    49,
+    109
+  ],
+  "unconditional": [],
+  "conditional": [
+    {
+      "group": 1443,
+      "states": 3,
+      "sources": [
+        {
+          "node": 19972,
+          "distance": 2,
+          "pos": [
+            98,
+            48,
+            108
+          ],
+          "state": "minecraft:redstone_torch[lit=false]"
+        },
+        {
+          "node": 19989,
+          "distance": 2,
+          "pos": [
+            97,
+            50,
+            109
+          ],
+          "state": "minecraft:repeater[delay=1,facing=west,locked=false,powered=false]"
+        },
+        {
+          "node": 19976,
+          "distance": 2,
+          "pos": [
+            98,
+            48,
+            110
+          ],
+          "state": "minecraft:redstone_torch[lit=false]"
+        },
+        {
+          "node": 19993,
+          "distance": 2,
+          "pos": [
+            97,
+            50,
+            111
+          ],
+          "state": "minecraft:repeater[delay=1,facing=west,locked=false,powered=false]"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,94 @@
+diff --git a/crates/core/src/redpiler/tests/sampled/redstonedb.rs b/crates/core/src/redpiler/tests/sampled/redstonedb.rs
+index 9c091cb3..31f0ecc2 100644
+--- a/crates/core/src/redpiler/tests/sampled/redstonedb.rs
++++ b/crates/core/src/redpiler/tests/sampled/redstonedb.rs
+@@ -5,6 +5,7 @@ use crate::{
+     world::{World, storage::Chunk},
+ };
+ use mchprs_blocks::{BlockPos, blocks::Block};
++use rand::{RngExt, SeedableRng, rngs::StdRng};
+ use serde_json::Value;
+ use std::sync::Arc;
+ 
+@@ -12,8 +13,12 @@ use std::sync::Arc;
+ fn redstonedb_levers_match_interpreter() {
+     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../test_data/redstonedb");
+     let definitions: Value = serde_json::from_slice(&std::fs::read(root.join("definitions.json")).unwrap()).unwrap();
++    let mut failures = Vec::new();
+     for definition in definitions["circuits"].as_array().unwrap() {
+-        let name = definition["description"].as_str().unwrap();
++        let name = definition["description"].as_str().unwrap_or("unnamed fixture");
++        let id = definition["id"].as_str().unwrap_or("unknown");
++        if id != "8111b000090d8f0b3e1370448bcb64a3" { continue; }
++        let result = std::panic::catch_unwind(|| {
+         let mut clip = load_schematic(std::fs::File::open(root.join(definition["schematic"].as_str().unwrap())).unwrap()).unwrap();
+         clip.offset_x = 0;
+         clip.offset_y = 0;
+@@ -39,24 +44,63 @@ fn redstonedb_levers_match_interpreter() {
+         } else {
+             (0..levers.len()).chain((0..levers.len()).rev()).collect()
+         };
+-        for index in transitions {
++        let seed = id.as_bytes().iter().fold(0u64, |seed, byte| seed.wrapping_mul(31).wrapping_add(u64::from(*byte)));
++        let mut rng = StdRng::seed_from_u64(seed);
++        let mut transitions: Vec<_> = transitions.into_iter().map(|index| (index, 20)).collect();
++        transitions.extend((0..32).map(|_| (rng.random_range(0..levers.len()), rng.random_range(1..=8))));
++        let mut first_pending_divergence: Option<String> = None;
++        for (step, (index, wait)) in transitions.into_iter().enumerate() {
+             let lever = levers[index];
++            native.observe_redstone_updates(true);
+             use_redstone(native.get_block(lever), &mut native, lever, None);
++            let action_callbacks = native.take_redstone_update_observations();
++            native.observe_redstone_updates(true);
+             compiler.try_on_use_block(lever).unwrap();
+-            for tick in 1..=20 {
++            for tick in 1..=wait {
+                 native.tick_interpreted();
++                let native_callbacks = native.take_redstone_update_observations();
++                native.observe_redstone_updates(true);
+                 compiler.tick().unwrap();
+                 let runtime = compiler.runtime.as_ref().unwrap();
++                let native_pending: Vec<_> = native.scheduler().iter_entries().collect();
++                let rust_pending = runtime.pending_entries();
++                if native_pending != rust_pending && first_pending_divergence.is_none() {
++                    first_pending_divergence = Some(format!("action {step}, tick {tick}: native={native_pending:?}, rust={rust_pending:?}"));
++                }
++                if step >= 34 {
++                    let wire_pos = BlockPos::new(14, 9, 8);
++                    let comparator_pos = BlockPos::new(14, 9, 9);
++                    eprintln!("action {step} wait {wait} tick {tick}: lever={lever:?} callbacks(action={action_callbacks:?}, tick={native_callbacks:?}) pending(native={native_pending:?}, rust={rust_pending:?}) first_pending={first_pending_divergence:?}");
++                    for at in [wire_pos, comparator_pos] {
++                        if let Some(&component) = runtime.program.component_indices.get(&at) {
++                            let incoming: Vec<_> = runtime.program.incoming[component].iter().map(|&link_index| {
++                                let link = runtime.program.links[link_index];
++                                (link_index, runtime.program.positions[link.source], native.get_block(runtime.program.positions[link.source]), runtime.project(runtime.program.positions[link.source]), runtime.output(link.source), runtime.contributions[link_index], link.attenuation, runtime.program.effective_links[link_index])
++                            }).collect();
++                            eprintln!("node {at:?}: native={:?} rust={:?} rust_input={} reactive={} incoming={incoming:?}", native.get_block(at), runtime.project(at), runtime.input_strength(component), runtime.program.reactive[component]);
++                        }
++                    }
++                }
+                 for &pos in &runtime.program.positions {
+                     let expected = native.get_block(pos);
+                     let actual = runtime.project(pos);
+                     if let (Block::RedstoneWire { wire: a }, Some(Block::RedstoneWire { wire: b })) = (expected, actual) {
+-                        assert_eq!(a.power, b.power, "{name}: wire {pos:?} after {lever:?} tick {tick}");
++                        assert_eq!(a.power, b.power, "{name}: wire {pos:?} after {lever:?} action {step} (wait {wait}) tick {tick}");
+                     } else {
+-                        assert_eq!(Some(expected), actual, "{name}: block {pos:?} after {lever:?} tick {tick}");
++                        assert_eq!(Some(expected), actual, "{name}: block {pos:?} after {lever:?} action {step} (wait {wait}) tick {tick}");
+                     }
+                 }
+             }
+         }
++        });
++        if let Err(error) = result {
++            let detail = error.downcast_ref::<String>().map(String::as_str)
++                .or_else(|| error.downcast_ref::<&str>().copied())
++                .unwrap_or("non-string panic");
++            let failure = format!("{name} ({id}, https://redstonedb.com/schematics/{id}): {detail}");
++            eprintln!("FAILED: {failure}");
++            failures.push(failure);
++        }
+     }
++    assert!(failures.is_empty(), "{} RedstoneDB fixtures failed:\n{}", failures.len(), failures.join("\n"));
+ }

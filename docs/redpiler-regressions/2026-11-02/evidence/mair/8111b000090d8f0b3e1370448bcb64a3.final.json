@@ -1,0 +1,11439 @@
+{
+  "FixtureId": "8111b000090d8f0b3e1370448bcb64a3",
+  "Description": "Eight-bit carry-cancel adder.",
+  "Schematic": "schematics/8111b000090d8f0b3e1370448bcb64a3-8_bit_Carry_Cancel_Adder.schem",
+  "SchematicSha256": "19b2b16bb84371f320e9c7ac5d6fdac38fe6a0e248f1ba0f03eb12f623f9175d",
+  "DllSha256": "1510a2596486a0df240750bc96c7b0f446697fdf9fe6f3039f9b73787c99d5ac",
+  "DllVersion": "1.0.0.0",
+  "DllLocation": "E:\\codex-builds\\mchprs-mair-redstonedb-20261102\\bin\\Release\\net10.0\\MAIR.Core.dll",
+  "Width": 8,
+  "Height": 19,
+  "Length": 21,
+  "LoadedBlocks": 1641,
+  "SkippedStates": 0,
+  "LoadedContainers": 40,
+  "LoadedComparators": 72,
+  "LeverCount": 17,
+  "LeverPositions": [
+    [
+      8,
+      10,
+      27
+    ],
+    [
+      14,
+      10,
+      28
+    ],
+    [
+      10,
+      11,
+      28
+    ],
+    [
+      8,
+      12,
+      27
+    ],
+    [
+      10,
+      13,
+      28
+    ],
+    [
+      8,
+      14,
+      27
+    ],
+    [
+      10,
+      15,
+      28
+    ],
+    [
+      8,
+      16,
+      27
+    ],
+    [
+      10,
+      17,
+      28
+    ],
+    [
+      8,
+      18,
+      27
+    ],
+    [
+      10,
+      19,
+      28
+    ],
+    [
+      8,
+      20,
+      27
+    ],
+    [
+      10,
+      21,
+      28
+    ],
+    [
+      8,
+      22,
+      27
+    ],
+    [
+      10,
+      23,
+      28
+    ],
+    [
+      8,
+      24,
+      27
+    ],
+    [
+      10,
+      25,
+      28
+    ]
+  ],
+  "CompiledNodeCount": 176,
+  "CompiledWireCount": 614,
+  "TrackedPositionCount": 790,
+  "CompileMilliseconds": 117.798,
+  "Actions": [
+    {
+      "step": 0,
+      "index": 0,
+      "wait": 20
+    },
+    {
+      "step": 1,
+      "index": 1,
+      "wait": 20
+    },
+    {
+      "step": 2,
+      "index": 2,
+      "wait": 20
+    },
+    {
+      "step": 3,
+      "index": 3,
+      "wait": 20
+    },
+    {
+      "step": 4,
+      "index": 4,
+      "wait": 20
+    },
+    {
+      "step": 5,
+      "index": 5,
+      "wait": 20
+    },
+    {
+      "step": 6,
+      "index": 6,
+      "wait": 20
+    },
+    {
+      "step": 7,
+      "index": 7,
+      "wait": 20
+    },
+    {
+      "step": 8,
+      "index": 8,
+      "wait": 20
+    },
+    {
+      "step": 9,
+      "index": 9,
+      "wait": 20
+    },
+    {
+      "step": 10,
+      "index": 10,
+      "wait": 20
+    },
+    {
+      "step": 11,
+      "index": 11,
+      "wait": 20
+    },
+    {
+      "step": 12,
+      "index": 12,
+      "wait": 20
+    },
+    {
+      "step": 13,
+      "index": 13,
+      "wait": 20
+    },
+    {
+      "step": 14,
+      "index": 14,
+      "wait": 20
+    },
+    {
+      "step": 15,
+      "index": 15,
+      "wait": 20
+    },
+    {
+      "step": 16,
+      "index": 16,
+      "wait": 20
+    },
+    {
+      "step": 17,
+      "index": 16,
+      "wait": 20
+    },
+    {
+      "step": 18,
+      "index": 15,
+      "wait": 20
+    },
+    {
+      "step": 19,
+      "index": 14,
+      "wait": 20
+    },
+    {
+      "step": 20,
+      "index": 13,
+      "wait": 20
+    },
+    {
+      "step": 21,
+      "index": 12,
+      "wait": 20
+    },
+    {
+      "step": 22,
+      "index": 11,
+      "wait": 20
+    },
+    {
+      "step": 23,
+      "index": 10,
+      "wait": 20
+    },
+    {
+      "step": 24,
+      "index": 9,
+      "wait": 20
+    },
+    {
+      "step": 25,
+      "index": 8,
+      "wait": 20
+    },
+    {
+      "step": 26,
+      "index": 7,
+      "wait": 20
+    },
+    {
+      "step": 27,
+      "index": 6,
+      "wait": 20
+    },
+    {
+      "step": 28,
+      "index": 5,
+      "wait": 20
+    },
+    {
+      "step": 29,
+      "index": 4,
+      "wait": 20
+    },
+    {
+      "step": 30,
+      "index": 3,
+      "wait": 20
+    },
+    {
+      "step": 31,
+      "index": 2,
+      "wait": 20
+    },
+    {
+      "step": 32,
+      "index": 1,
+      "wait": 20
+    },
+    {
+      "step": 33,
+      "index": 0,
+      "wait": 20
+    },
+    {
+      "step": 34,
+      "index": 13,
+      "wait": 1
+    },
+    {
+      "step": 35,
+      "index": 9,
+      "wait": 6
+    },
+    {
+      "step": 36,
+      "index": 0,
+      "wait": 2
+    },
+    {
+      "step": 37,
+      "index": 6,
+      "wait": 4
+    },
+    {
+      "step": 38,
+      "index": 0,
+      "wait": 1
+    },
+    {
+      "step": 39,
+      "index": 1,
+      "wait": 5
+    },
+    {
+      "step": 40,
+      "index": 6,
+      "wait": 6
+    },
+    {
+      "step": 41,
+      "index": 15,
+      "wait": 8
+    },
+    {
+      "step": 42,
+      "index": 0,
+      "wait": 7
+    },
+    {
+      "step": 43,
+      "index": 1,
+      "wait": 7
+    },
+    {
+      "step": 44,
+      "index": 1,
+      "wait": 3
+    },
+    {
+      "step": 45,
+      "index": 12,
+      "wait": 1
+    },
+    {
+      "step": 46,
+      "index": 1,
+      "wait": 5
+    },
+    {
+      "step": 47,
+      "index": 0,
+      "wait": 6
+    },
+    {
+      "step": 48,
+      "index": 14,
+      "wait": 8
+    },
+    {
+      "step": 49,
+      "index": 1,
+      "wait": 5
+    },
+    {
+      "step": 50,
+      "index": 2,
+      "wait": 5
+    },
+    {
+      "step": 51,
+      "index": 13,
+      "wait": 1
+    },
+    {
+      "step": 52,
+      "index": 9,
+      "wait": 4
+    },
+    {
+      "step": 53,
+      "index": 5,
+      "wait": 8
+    },
+    {
+      "step": 54,
+      "index": 3,
+      "wait": 3
+    },
+    {
+      "step": 55,
+      "index": 1,
+      "wait": 7
+    },
+    {
+      "step": 56,
+      "index": 6,
+      "wait": 2
+    },
+    {
+      "step": 57,
+      "index": 6,
+      "wait": 2
+    },
+    {
+      "step": 58,
+      "index": 2,
+      "wait": 7
+    },
+    {
+      "step": 59,
+      "index": 13,
+      "wait": 7
+    },
+    {
+      "step": 60,
+      "index": 9,
+      "wait": 5
+    },
+    {
+      "step": 61,
+      "index": 4,
+      "wait": 3
+    },
+    {
+      "step": 62,
+      "index": 11,
+      "wait": 3
+    },
+    {
+      "step": 63,
+      "index": 9,
+      "wait": 7
+    },
+    {
+      "step": 64,
+      "index": 1,
+      "wait": 6
+    },
+    {
+      "step": 65,
+      "index": 7,
+      "wait": 6
+    }
+  ],
+  "FirstDifference": null,
+  "FirstPostUseDifference": null,
+  "FocusWireSources": {
+    "position": [
+      14,
+      9,
+      8
+    ],
+    "initialPower": 0,
+    "unconditional": [
+      {
+        "node": 1,
+        "distance": 0,
+        "position": [
+          14,
+          9,
+          9
+        ],
+        "type": "Comparator",
+        "state": "minecraft:comparator[facing=south,mode=subtract,powered=false]"
+      },
+      {
+        "node": 0,
+        "distance": 0,
+        "position": [
+          13,
+          9,
+          9
+        ],
+        "type": "Comparator",
+        "state": "minecraft:comparator[facing=south,mode=subtract,powered=false]"
+      }
+    ],
+    "conditional": []
+  },
+  "PreInputCheckpoint": {
+    "actionStep": 39,
+    "totalTicks": 694,
+    "leverIndex": 1,
+    "lever": [
+      14,
+      10,
+      28
+    ],
+    "target": [
+      14,
+      9,
+      8
+    ],
+    "interpreter": "minecraft:redstone_wire[east=none,north=side,power=1,south=side,west=none]",
+    "compiled": "minecraft:redstone_wire[east=none,north=side,power=1,south=side,west=none]",
+    "focusSources": [
+      {
+        "position": [
+          14,
+          9,
+          9
+        ],
+        "state": "minecraft:comparator[facing=south,mode=subtract,powered=true]"
+      },
+      {
+        "position": [
+          13,
+          9,
+          9
+        ],
+        "state": "minecraft:comparator[facing=south,mode=subtract,powered=false]"
+      }
+    ],
+    "interpreterPending": [
+      {
+        "position": [
+          14,
+          13,
+          9
+        ],
+        "block": "minecraft:comparator",
+        "TriggerTick": 695,
+        "priority": "Normal",
+        "Order": 367
+      }
+    ],
+    "compiledPending": [
+      {
+        "position": [
+          14,
+          13,
+          9
+        ],
+        "block": "minecraft:comparator",
+        "TriggerTick": 695,
+        "priority": "Normal",
+        "Order": 4611686018427387904
+      }
+    ]
+  },
+  "ProbeCheckpoints": [
+    {
+      "actionStep": 39,
+      "phase": "post-use",
+      "actionTick": 0,
+      "states": [
+        {
+          "position": [
+            14,
+            9,
+            8
+          ],
+          "interpreter": "minecraft:redstone_wire[east=none,north=side,power=1,south=side,west=none]",
+          "compiled": "minecraft:redstone_wire[east=none,north=side,power=1,south=side,west=none]"
+        }
+      ]
+    },
+    {
+      "actionStep": 39,
+      "phase": "tick",
+      "actionTick": 1,
+      "states": [
+        {
+          "position": [
+            14,
+            9,
+            8
+          ],
+          "interpreter": "minecraft:redstone_wire[east=none,north=side,power=1,south=side,west=none]",
+          "compiled": "minecraft:redstone_wire[east=none,north=side,power=1,south=side,west=none]"
+        }
+      ]
+    },
+    {
+      "actionStep": 39,
+      "phase": "tick",
+      "actionTick": 2,
+      "states": [
+        {
+          "position": [
+            14,
+            9,
+            8
+          ],
+          "interpreter": "minecraft:redstone_wire[east=none,north=side,power=1,south=side,west=none]",
+          "compiled": "minecraft:redstone_wire[east=none,north=side,power=1,south=side,west=none]"
+        }
+      ]
+    },
+    {
+      "actionStep": 39,
+      "phase": "tick",
+      "actionTick": 3,
+      "states": [
+        {
+          "position": [
+            14,
+            9,
+            8
+          ],
+          "interpreter": "minecraft:redstone_wire[east=none,north=side,power=1,south=side,west=none]",
+          "compiled": "minecraft:redstone_wire[east=none,north=side,power=1,south=side,west=none]"
+        }
+      ]
+    },
+    {
+      "actionStep": 39,
+      "phase": "tick",
+      "actionTick": 4,
+      "states": [
+        {
+          "position": [
+            14,
+            9,
+            8
+          ],
+          "interpreter": "minecraft:redstone_wire[east=none,north=side,power=1,south=side,west=none]",
+          "compiled": "minecraft:redstone_wire[east=none,north=side,power=1,south=side,west=none]"
+        }
+      ]
+    },
+    {
+      "actionStep": 39,
+      "phase": "tick",
+      "actionTick": 5,
+      "states": [
+        {
+          "position": [
+            14,
+            9,
+            8
+          ],
+          "interpreter": "minecraft:redstone_wire[east=none,north=side,power=0,south=side,west=none]",
+          "compiled": "minecraft:redstone_wire[east=none,north=side,power=0,south=side,west=none]"
+        }
+      ]
+    }
+  ],
+  "Timeline": [
+    {
+      "actionStep": 0,
+      "leverIndex": 0,
+      "lever": [
+        8,
+        10,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 1,
+      "totalTicks": 1,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 0,
+      "leverIndex": 0,
+      "lever": [
+        8,
+        10,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 2,
+      "totalTicks": 2,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 0,
+      "leverIndex": 0,
+      "lever": [
+        8,
+        10,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 3,
+      "totalTicks": 3,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 0,
+      "leverIndex": 0,
+      "lever": [
+        8,
+        10,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 4,
+      "totalTicks": 4,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 0,
+      "leverIndex": 0,
+      "lever": [
+        8,
+        10,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 5,
+      "totalTicks": 5,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 0,
+      "leverIndex": 0,
+      "lever": [
+        8,
+        10,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 6,
+      "totalTicks": 6,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 0,
+      "leverIndex": 0,
+      "lever": [
+        8,
+        10,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 7,
+      "totalTicks": 7,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 0,
+      "leverIndex": 0,
+      "lever": [
+        8,
+        10,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 8,
+      "totalTicks": 8,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 0,
+      "leverIndex": 0,
+      "lever": [
+        8,
+        10,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 9,
+      "totalTicks": 9,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 0,
+      "leverIndex": 0,
+      "lever": [
+        8,
+        10,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 10,
+      "totalTicks": 10,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 0,
+      "leverIndex": 0,
+      "lever": [
+        8,
+        10,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 11,
+      "totalTicks": 11,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 0,
+      "leverIndex": 0,
+      "lever": [
+        8,
+        10,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 12,
+      "totalTicks": 12,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 0,
+      "leverIndex": 0,
+      "lever": [
+        8,
+        10,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 13,
+      "totalTicks": 13,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 0,
+      "leverIndex": 0,
+      "lever": [
+        8,
+        10,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 14,
+      "totalTicks": 14,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 0,
+      "leverIndex": 0,
+      "lever": [
+        8,
+        10,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 15,
+      "totalTicks": 15,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 0,
+      "leverIndex": 0,
+      "lever": [
+        8,
+        10,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 16,
+      "totalTicks": 16,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 0,
+      "leverIndex": 0,
+      "lever": [
+        8,
+        10,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 17,
+      "totalTicks": 17,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 0,
+      "leverIndex": 0,
+      "lever": [
+        8,
+        10,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 18,
+      "totalTicks": 18,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 0,
+      "leverIndex": 0,
+      "lever": [
+        8,
+        10,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 19,
+      "totalTicks": 19,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 0,
+      "leverIndex": 0,
+      "lever": [
+        8,
+        10,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 20,
+      "totalTicks": 20,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 1,
+      "leverIndex": 1,
+      "lever": [
+        14,
+        10,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 1,
+      "totalTicks": 21,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 1,
+      "leverIndex": 1,
+      "lever": [
+        14,
+        10,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 2,
+      "totalTicks": 22,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 1,
+      "leverIndex": 1,
+      "lever": [
+        14,
+        10,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 3,
+      "totalTicks": 23,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 1,
+      "leverIndex": 1,
+      "lever": [
+        14,
+        10,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 4,
+      "totalTicks": 24,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 1,
+      "leverIndex": 1,
+      "lever": [
+        14,
+        10,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 5,
+      "totalTicks": 25,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 1,
+      "leverIndex": 1,
+      "lever": [
+        14,
+        10,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 6,
+      "totalTicks": 26,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 1,
+      "leverIndex": 1,
+      "lever": [
+        14,
+        10,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 7,
+      "totalTicks": 27,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 1,
+      "leverIndex": 1,
+      "lever": [
+        14,
+        10,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 8,
+      "totalTicks": 28,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 1,
+      "leverIndex": 1,
+      "lever": [
+        14,
+        10,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 9,
+      "totalTicks": 29,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 1,
+      "leverIndex": 1,
+      "lever": [
+        14,
+        10,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 10,
+      "totalTicks": 30,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 1,
+      "leverIndex": 1,
+      "lever": [
+        14,
+        10,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 11,
+      "totalTicks": 31,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 1,
+      "leverIndex": 1,
+      "lever": [
+        14,
+        10,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 12,
+      "totalTicks": 32,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 1,
+      "leverIndex": 1,
+      "lever": [
+        14,
+        10,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 13,
+      "totalTicks": 33,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 1,
+      "leverIndex": 1,
+      "lever": [
+        14,
+        10,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 14,
+      "totalTicks": 34,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 1,
+      "leverIndex": 1,
+      "lever": [
+        14,
+        10,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 15,
+      "totalTicks": 35,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 1,
+      "leverIndex": 1,
+      "lever": [
+        14,
+        10,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 16,
+      "totalTicks": 36,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 1,
+      "leverIndex": 1,
+      "lever": [
+        14,
+        10,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 17,
+      "totalTicks": 37,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 1,
+      "leverIndex": 1,
+      "lever": [
+        14,
+        10,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 18,
+      "totalTicks": 38,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 1,
+      "leverIndex": 1,
+      "lever": [
+        14,
+        10,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 19,
+      "totalTicks": 39,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 1,
+      "leverIndex": 1,
+      "lever": [
+        14,
+        10,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 20,
+      "totalTicks": 40,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 2,
+      "leverIndex": 2,
+      "lever": [
+        10,
+        11,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 1,
+      "totalTicks": 41,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 2,
+      "leverIndex": 2,
+      "lever": [
+        10,
+        11,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 2,
+      "totalTicks": 42,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 2,
+      "leverIndex": 2,
+      "lever": [
+        10,
+        11,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 3,
+      "totalTicks": 43,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 2,
+      "leverIndex": 2,
+      "lever": [
+        10,
+        11,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 4,
+      "totalTicks": 44,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 2,
+      "leverIndex": 2,
+      "lever": [
+        10,
+        11,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 5,
+      "totalTicks": 45,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 2,
+      "leverIndex": 2,
+      "lever": [
+        10,
+        11,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 6,
+      "totalTicks": 46,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 2,
+      "leverIndex": 2,
+      "lever": [
+        10,
+        11,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 7,
+      "totalTicks": 47,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 2,
+      "leverIndex": 2,
+      "lever": [
+        10,
+        11,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 8,
+      "totalTicks": 48,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 2,
+      "leverIndex": 2,
+      "lever": [
+        10,
+        11,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 9,
+      "totalTicks": 49,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 2,
+      "leverIndex": 2,
+      "lever": [
+        10,
+        11,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 10,
+      "totalTicks": 50,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 2,
+      "leverIndex": 2,
+      "lever": [
+        10,
+        11,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 11,
+      "totalTicks": 51,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 2,
+      "leverIndex": 2,
+      "lever": [
+        10,
+        11,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 12,
+      "totalTicks": 52,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 2,
+      "leverIndex": 2,
+      "lever": [
+        10,
+        11,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 13,
+      "totalTicks": 53,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 2,
+      "leverIndex": 2,
+      "lever": [
+        10,
+        11,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 14,
+      "totalTicks": 54,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 2,
+      "leverIndex": 2,
+      "lever": [
+        10,
+        11,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 15,
+      "totalTicks": 55,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 2,
+      "leverIndex": 2,
+      "lever": [
+        10,
+        11,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 16,
+      "totalTicks": 56,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 2,
+      "leverIndex": 2,
+      "lever": [
+        10,
+        11,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 17,
+      "totalTicks": 57,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 2,
+      "leverIndex": 2,
+      "lever": [
+        10,
+        11,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 18,
+      "totalTicks": 58,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 2,
+      "leverIndex": 2,
+      "lever": [
+        10,
+        11,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 19,
+      "totalTicks": 59,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 2,
+      "leverIndex": 2,
+      "lever": [
+        10,
+        11,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 20,
+      "totalTicks": 60,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 3,
+      "leverIndex": 3,
+      "lever": [
+        8,
+        12,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 1,
+      "totalTicks": 61,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 3,
+      "leverIndex": 3,
+      "lever": [
+        8,
+        12,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 2,
+      "totalTicks": 62,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 3,
+      "leverIndex": 3,
+      "lever": [
+        8,
+        12,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 3,
+      "totalTicks": 63,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 3,
+      "leverIndex": 3,
+      "lever": [
+        8,
+        12,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 4,
+      "totalTicks": 64,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 3,
+      "leverIndex": 3,
+      "lever": [
+        8,
+        12,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 5,
+      "totalTicks": 65,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 3,
+      "leverIndex": 3,
+      "lever": [
+        8,
+        12,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 6,
+      "totalTicks": 66,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 3,
+      "leverIndex": 3,
+      "lever": [
+        8,
+        12,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 7,
+      "totalTicks": 67,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 3,
+      "leverIndex": 3,
+      "lever": [
+        8,
+        12,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 8,
+      "totalTicks": 68,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 3,
+      "leverIndex": 3,
+      "lever": [
+        8,
+        12,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 9,
+      "totalTicks": 69,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 3,
+      "leverIndex": 3,
+      "lever": [
+        8,
+        12,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 10,
+      "totalTicks": 70,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 3,
+      "leverIndex": 3,
+      "lever": [
+        8,
+        12,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 11,
+      "totalTicks": 71,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 3,
+      "leverIndex": 3,
+      "lever": [
+        8,
+        12,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 12,
+      "totalTicks": 72,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 3,
+      "leverIndex": 3,
+      "lever": [
+        8,
+        12,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 13,
+      "totalTicks": 73,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 3,
+      "leverIndex": 3,
+      "lever": [
+        8,
+        12,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 14,
+      "totalTicks": 74,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 3,
+      "leverIndex": 3,
+      "lever": [
+        8,
+        12,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 15,
+      "totalTicks": 75,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 3,
+      "leverIndex": 3,
+      "lever": [
+        8,
+        12,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 16,
+      "totalTicks": 76,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 3,
+      "leverIndex": 3,
+      "lever": [
+        8,
+        12,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 17,
+      "totalTicks": 77,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 3,
+      "leverIndex": 3,
+      "lever": [
+        8,
+        12,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 18,
+      "totalTicks": 78,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 3,
+      "leverIndex": 3,
+      "lever": [
+        8,
+        12,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 19,
+      "totalTicks": 79,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 3,
+      "leverIndex": 3,
+      "lever": [
+        8,
+        12,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 20,
+      "totalTicks": 80,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 4,
+      "leverIndex": 4,
+      "lever": [
+        10,
+        13,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 1,
+      "totalTicks": 81,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 4,
+      "leverIndex": 4,
+      "lever": [
+        10,
+        13,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 2,
+      "totalTicks": 82,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 4,
+      "leverIndex": 4,
+      "lever": [
+        10,
+        13,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 3,
+      "totalTicks": 83,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 4,
+      "leverIndex": 4,
+      "lever": [
+        10,
+        13,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 4,
+      "totalTicks": 84,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 4,
+      "leverIndex": 4,
+      "lever": [
+        10,
+        13,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 5,
+      "totalTicks": 85,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 4,
+      "leverIndex": 4,
+      "lever": [
+        10,
+        13,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 6,
+      "totalTicks": 86,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 4,
+      "leverIndex": 4,
+      "lever": [
+        10,
+        13,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 7,
+      "totalTicks": 87,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 4,
+      "leverIndex": 4,
+      "lever": [
+        10,
+        13,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 8,
+      "totalTicks": 88,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 4,
+      "leverIndex": 4,
+      "lever": [
+        10,
+        13,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 9,
+      "totalTicks": 89,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 4,
+      "leverIndex": 4,
+      "lever": [
+        10,
+        13,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 10,
+      "totalTicks": 90,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 4,
+      "leverIndex": 4,
+      "lever": [
+        10,
+        13,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 11,
+      "totalTicks": 91,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 4,
+      "leverIndex": 4,
+      "lever": [
+        10,
+        13,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 12,
+      "totalTicks": 92,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 4,
+      "leverIndex": 4,
+      "lever": [
+        10,
+        13,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 13,
+      "totalTicks": 93,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 4,
+      "leverIndex": 4,
+      "lever": [
+        10,
+        13,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 14,
+      "totalTicks": 94,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 4,
+      "leverIndex": 4,
+      "lever": [
+        10,
+        13,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 15,
+      "totalTicks": 95,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 4,
+      "leverIndex": 4,
+      "lever": [
+        10,
+        13,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 16,
+      "totalTicks": 96,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 4,
+      "leverIndex": 4,
+      "lever": [
+        10,
+        13,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 17,
+      "totalTicks": 97,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 4,
+      "leverIndex": 4,
+      "lever": [
+        10,
+        13,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 18,
+      "totalTicks": 98,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 4,
+      "leverIndex": 4,
+      "lever": [
+        10,
+        13,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 19,
+      "totalTicks": 99,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 4,
+      "leverIndex": 4,
+      "lever": [
+        10,
+        13,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 20,
+      "totalTicks": 100,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 5,
+      "leverIndex": 5,
+      "lever": [
+        8,
+        14,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 1,
+      "totalTicks": 101,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 5,
+      "leverIndex": 5,
+      "lever": [
+        8,
+        14,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 2,
+      "totalTicks": 102,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 5,
+      "leverIndex": 5,
+      "lever": [
+        8,
+        14,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 3,
+      "totalTicks": 103,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 5,
+      "leverIndex": 5,
+      "lever": [
+        8,
+        14,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 4,
+      "totalTicks": 104,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 5,
+      "leverIndex": 5,
+      "lever": [
+        8,
+        14,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 5,
+      "totalTicks": 105,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 5,
+      "leverIndex": 5,
+      "lever": [
+        8,
+        14,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 6,
+      "totalTicks": 106,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 5,
+      "leverIndex": 5,
+      "lever": [
+        8,
+        14,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 7,
+      "totalTicks": 107,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 5,
+      "leverIndex": 5,
+      "lever": [
+        8,
+        14,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 8,
+      "totalTicks": 108,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 5,
+      "leverIndex": 5,
+      "lever": [
+        8,
+        14,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 9,
+      "totalTicks": 109,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 5,
+      "leverIndex": 5,
+      "lever": [
+        8,
+        14,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 10,
+      "totalTicks": 110,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 5,
+      "leverIndex": 5,
+      "lever": [
+        8,
+        14,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 11,
+      "totalTicks": 111,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 5,
+      "leverIndex": 5,
+      "lever": [
+        8,
+        14,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 12,
+      "totalTicks": 112,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 5,
+      "leverIndex": 5,
+      "lever": [
+        8,
+        14,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 13,
+      "totalTicks": 113,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 5,
+      "leverIndex": 5,
+      "lever": [
+        8,
+        14,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 14,
+      "totalTicks": 114,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 5,
+      "leverIndex": 5,
+      "lever": [
+        8,
+        14,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 15,
+      "totalTicks": 115,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 5,
+      "leverIndex": 5,
+      "lever": [
+        8,
+        14,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 16,
+      "totalTicks": 116,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 5,
+      "leverIndex": 5,
+      "lever": [
+        8,
+        14,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 17,
+      "totalTicks": 117,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 5,
+      "leverIndex": 5,
+      "lever": [
+        8,
+        14,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 18,
+      "totalTicks": 118,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 5,
+      "leverIndex": 5,
+      "lever": [
+        8,
+        14,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 19,
+      "totalTicks": 119,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 5,
+      "leverIndex": 5,
+      "lever": [
+        8,
+        14,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 20,
+      "totalTicks": 120,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 6,
+      "leverIndex": 6,
+      "lever": [
+        10,
+        15,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 1,
+      "totalTicks": 121,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 6,
+      "leverIndex": 6,
+      "lever": [
+        10,
+        15,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 2,
+      "totalTicks": 122,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 6,
+      "leverIndex": 6,
+      "lever": [
+        10,
+        15,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 3,
+      "totalTicks": 123,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 6,
+      "leverIndex": 6,
+      "lever": [
+        10,
+        15,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 4,
+      "totalTicks": 124,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 6,
+      "leverIndex": 6,
+      "lever": [
+        10,
+        15,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 5,
+      "totalTicks": 125,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 6,
+      "leverIndex": 6,
+      "lever": [
+        10,
+        15,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 6,
+      "totalTicks": 126,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 6,
+      "leverIndex": 6,
+      "lever": [
+        10,
+        15,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 7,
+      "totalTicks": 127,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 6,
+      "leverIndex": 6,
+      "lever": [
+        10,
+        15,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 8,
+      "totalTicks": 128,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 6,
+      "leverIndex": 6,
+      "lever": [
+        10,
+        15,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 9,
+      "totalTicks": 129,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 6,
+      "leverIndex": 6,
+      "lever": [
+        10,
+        15,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 10,
+      "totalTicks": 130,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 6,
+      "leverIndex": 6,
+      "lever": [
+        10,
+        15,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 11,
+      "totalTicks": 131,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 6,
+      "leverIndex": 6,
+      "lever": [
+        10,
+        15,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 12,
+      "totalTicks": 132,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 6,
+      "leverIndex": 6,
+      "lever": [
+        10,
+        15,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 13,
+      "totalTicks": 133,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 6,
+      "leverIndex": 6,
+      "lever": [
+        10,
+        15,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 14,
+      "totalTicks": 134,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 6,
+      "leverIndex": 6,
+      "lever": [
+        10,
+        15,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 15,
+      "totalTicks": 135,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 6,
+      "leverIndex": 6,
+      "lever": [
+        10,
+        15,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 16,
+      "totalTicks": 136,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 6,
+      "leverIndex": 6,
+      "lever": [
+        10,
+        15,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 17,
+      "totalTicks": 137,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 6,
+      "leverIndex": 6,
+      "lever": [
+        10,
+        15,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 18,
+      "totalTicks": 138,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 6,
+      "leverIndex": 6,
+      "lever": [
+        10,
+        15,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 19,
+      "totalTicks": 139,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 6,
+      "leverIndex": 6,
+      "lever": [
+        10,
+        15,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 20,
+      "totalTicks": 140,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 7,
+      "leverIndex": 7,
+      "lever": [
+        8,
+        16,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 1,
+      "totalTicks": 141,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 7,
+      "leverIndex": 7,
+      "lever": [
+        8,
+        16,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 2,
+      "totalTicks": 142,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 7,
+      "leverIndex": 7,
+      "lever": [
+        8,
+        16,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 3,
+      "totalTicks": 143,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 7,
+      "leverIndex": 7,
+      "lever": [
+        8,
+        16,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 4,
+      "totalTicks": 144,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 7,
+      "leverIndex": 7,
+      "lever": [
+        8,
+        16,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 5,
+      "totalTicks": 145,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 7,
+      "leverIndex": 7,
+      "lever": [
+        8,
+        16,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 6,
+      "totalTicks": 146,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 7,
+      "leverIndex": 7,
+      "lever": [
+        8,
+        16,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 7,
+      "totalTicks": 147,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 7,
+      "leverIndex": 7,
+      "lever": [
+        8,
+        16,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 8,
+      "totalTicks": 148,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 7,
+      "leverIndex": 7,
+      "lever": [
+        8,
+        16,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 9,
+      "totalTicks": 149,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 7,
+      "leverIndex": 7,
+      "lever": [
+        8,
+        16,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 10,
+      "totalTicks": 150,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 7,
+      "leverIndex": 7,
+      "lever": [
+        8,
+        16,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 11,
+      "totalTicks": 151,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 7,
+      "leverIndex": 7,
+      "lever": [
+        8,
+        16,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 12,
+      "totalTicks": 152,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 7,
+      "leverIndex": 7,
+      "lever": [
+        8,
+        16,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 13,
+      "totalTicks": 153,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 7,
+      "leverIndex": 7,
+      "lever": [
+        8,
+        16,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 14,
+      "totalTicks": 154,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 7,
+      "leverIndex": 7,
+      "lever": [
+        8,
+        16,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 15,
+      "totalTicks": 155,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 7,
+      "leverIndex": 7,
+      "lever": [
+        8,
+        16,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 16,
+      "totalTicks": 156,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 7,
+      "leverIndex": 7,
+      "lever": [
+        8,
+        16,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 17,
+      "totalTicks": 157,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 7,
+      "leverIndex": 7,
+      "lever": [
+        8,
+        16,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 18,
+      "totalTicks": 158,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 7,
+      "leverIndex": 7,
+      "lever": [
+        8,
+        16,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 19,
+      "totalTicks": 159,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 7,
+      "leverIndex": 7,
+      "lever": [
+        8,
+        16,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 20,
+      "totalTicks": 160,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 8,
+      "leverIndex": 8,
+      "lever": [
+        10,
+        17,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 1,
+      "totalTicks": 161,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 8,
+      "leverIndex": 8,
+      "lever": [
+        10,
+        17,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 2,
+      "totalTicks": 162,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 8,
+      "leverIndex": 8,
+      "lever": [
+        10,
+        17,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 3,
+      "totalTicks": 163,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 8,
+      "leverIndex": 8,
+      "lever": [
+        10,
+        17,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 4,
+      "totalTicks": 164,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 8,
+      "leverIndex": 8,
+      "lever": [
+        10,
+        17,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 5,
+      "totalTicks": 165,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 8,
+      "leverIndex": 8,
+      "lever": [
+        10,
+        17,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 6,
+      "totalTicks": 166,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 8,
+      "leverIndex": 8,
+      "lever": [
+        10,
+        17,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 7,
+      "totalTicks": 167,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 8,
+      "leverIndex": 8,
+      "lever": [
+        10,
+        17,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 8,
+      "totalTicks": 168,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 8,
+      "leverIndex": 8,
+      "lever": [
+        10,
+        17,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 9,
+      "totalTicks": 169,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 8,
+      "leverIndex": 8,
+      "lever": [
+        10,
+        17,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 10,
+      "totalTicks": 170,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 8,
+      "leverIndex": 8,
+      "lever": [
+        10,
+        17,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 11,
+      "totalTicks": 171,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 8,
+      "leverIndex": 8,
+      "lever": [
+        10,
+        17,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 12,
+      "totalTicks": 172,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 8,
+      "leverIndex": 8,
+      "lever": [
+        10,
+        17,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 13,
+      "totalTicks": 173,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 8,
+      "leverIndex": 8,
+      "lever": [
+        10,
+        17,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 14,
+      "totalTicks": 174,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 8,
+      "leverIndex": 8,
+      "lever": [
+        10,
+        17,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 15,
+      "totalTicks": 175,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 8,
+      "leverIndex": 8,
+      "lever": [
+        10,
+        17,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 16,
+      "totalTicks": 176,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 8,
+      "leverIndex": 8,
+      "lever": [
+        10,
+        17,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 17,
+      "totalTicks": 177,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 8,
+      "leverIndex": 8,
+      "lever": [
+        10,
+        17,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 18,
+      "totalTicks": 178,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 8,
+      "leverIndex": 8,
+      "lever": [
+        10,
+        17,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 19,
+      "totalTicks": 179,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 8,
+      "leverIndex": 8,
+      "lever": [
+        10,
+        17,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 20,
+      "totalTicks": 180,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 9,
+      "leverIndex": 9,
+      "lever": [
+        8,
+        18,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 1,
+      "totalTicks": 181,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 9,
+      "leverIndex": 9,
+      "lever": [
+        8,
+        18,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 2,
+      "totalTicks": 182,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 9,
+      "leverIndex": 9,
+      "lever": [
+        8,
+        18,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 3,
+      "totalTicks": 183,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 9,
+      "leverIndex": 9,
+      "lever": [
+        8,
+        18,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 4,
+      "totalTicks": 184,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 9,
+      "leverIndex": 9,
+      "lever": [
+        8,
+        18,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 5,
+      "totalTicks": 185,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 9,
+      "leverIndex": 9,
+      "lever": [
+        8,
+        18,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 6,
+      "totalTicks": 186,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 9,
+      "leverIndex": 9,
+      "lever": [
+        8,
+        18,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 7,
+      "totalTicks": 187,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 9,
+      "leverIndex": 9,
+      "lever": [
+        8,
+        18,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 8,
+      "totalTicks": 188,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 9,
+      "leverIndex": 9,
+      "lever": [
+        8,
+        18,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 9,
+      "totalTicks": 189,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 9,
+      "leverIndex": 9,
+      "lever": [
+        8,
+        18,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 10,
+      "totalTicks": 190,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 9,
+      "leverIndex": 9,
+      "lever": [
+        8,
+        18,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 11,
+      "totalTicks": 191,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 9,
+      "leverIndex": 9,
+      "lever": [
+        8,
+        18,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 12,
+      "totalTicks": 192,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 9,
+      "leverIndex": 9,
+      "lever": [
+        8,
+        18,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 13,
+      "totalTicks": 193,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 9,
+      "leverIndex": 9,
+      "lever": [
+        8,
+        18,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 14,
+      "totalTicks": 194,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 9,
+      "leverIndex": 9,
+      "lever": [
+        8,
+        18,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 15,
+      "totalTicks": 195,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 9,
+      "leverIndex": 9,
+      "lever": [
+        8,
+        18,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 16,
+      "totalTicks": 196,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 9,
+      "leverIndex": 9,
+      "lever": [
+        8,
+        18,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 17,
+      "totalTicks": 197,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 9,
+      "leverIndex": 9,
+      "lever": [
+        8,
+        18,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 18,
+      "totalTicks": 198,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 9,
+      "leverIndex": 9,
+      "lever": [
+        8,
+        18,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 19,
+      "totalTicks": 199,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 9,
+      "leverIndex": 9,
+      "lever": [
+        8,
+        18,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 20,
+      "totalTicks": 200,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 10,
+      "leverIndex": 10,
+      "lever": [
+        10,
+        19,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 1,
+      "totalTicks": 201,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 10,
+      "leverIndex": 10,
+      "lever": [
+        10,
+        19,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 2,
+      "totalTicks": 202,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 10,
+      "leverIndex": 10,
+      "lever": [
+        10,
+        19,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 3,
+      "totalTicks": 203,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 10,
+      "leverIndex": 10,
+      "lever": [
+        10,
+        19,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 4,
+      "totalTicks": 204,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 10,
+      "leverIndex": 10,
+      "lever": [
+        10,
+        19,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 5,
+      "totalTicks": 205,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 10,
+      "leverIndex": 10,
+      "lever": [
+        10,
+        19,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 6,
+      "totalTicks": 206,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 10,
+      "leverIndex": 10,
+      "lever": [
+        10,
+        19,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 7,
+      "totalTicks": 207,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 10,
+      "leverIndex": 10,
+      "lever": [
+        10,
+        19,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 8,
+      "totalTicks": 208,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 10,
+      "leverIndex": 10,
+      "lever": [
+        10,
+        19,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 9,
+      "totalTicks": 209,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 10,
+      "leverIndex": 10,
+      "lever": [
+        10,
+        19,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 10,
+      "totalTicks": 210,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 10,
+      "leverIndex": 10,
+      "lever": [
+        10,
+        19,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 11,
+      "totalTicks": 211,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 10,
+      "leverIndex": 10,
+      "lever": [
+        10,
+        19,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 12,
+      "totalTicks": 212,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 10,
+      "leverIndex": 10,
+      "lever": [
+        10,
+        19,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 13,
+      "totalTicks": 213,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 10,
+      "leverIndex": 10,
+      "lever": [
+        10,
+        19,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 14,
+      "totalTicks": 214,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 10,
+      "leverIndex": 10,
+      "lever": [
+        10,
+        19,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 15,
+      "totalTicks": 215,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 10,
+      "leverIndex": 10,
+      "lever": [
+        10,
+        19,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 16,
+      "totalTicks": 216,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 10,
+      "leverIndex": 10,
+      "lever": [
+        10,
+        19,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 17,
+      "totalTicks": 217,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 10,
+      "leverIndex": 10,
+      "lever": [
+        10,
+        19,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 18,
+      "totalTicks": 218,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 10,
+      "leverIndex": 10,
+      "lever": [
+        10,
+        19,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 19,
+      "totalTicks": 219,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 10,
+      "leverIndex": 10,
+      "lever": [
+        10,
+        19,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 20,
+      "totalTicks": 220,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 11,
+      "leverIndex": 11,
+      "lever": [
+        8,
+        20,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 1,
+      "totalTicks": 221,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 11,
+      "leverIndex": 11,
+      "lever": [
+        8,
+        20,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 2,
+      "totalTicks": 222,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 11,
+      "leverIndex": 11,
+      "lever": [
+        8,
+        20,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 3,
+      "totalTicks": 223,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 11,
+      "leverIndex": 11,
+      "lever": [
+        8,
+        20,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 4,
+      "totalTicks": 224,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 11,
+      "leverIndex": 11,
+      "lever": [
+        8,
+        20,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 5,
+      "totalTicks": 225,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 11,
+      "leverIndex": 11,
+      "lever": [
+        8,
+        20,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 6,
+      "totalTicks": 226,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 11,
+      "leverIndex": 11,
+      "lever": [
+        8,
+        20,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 7,
+      "totalTicks": 227,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 11,
+      "leverIndex": 11,
+      "lever": [
+        8,
+        20,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 8,
+      "totalTicks": 228,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 11,
+      "leverIndex": 11,
+      "lever": [
+        8,
+        20,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 9,
+      "totalTicks": 229,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 11,
+      "leverIndex": 11,
+      "lever": [
+        8,
+        20,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 10,
+      "totalTicks": 230,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 11,
+      "leverIndex": 11,
+      "lever": [
+        8,
+        20,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 11,
+      "totalTicks": 231,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 11,
+      "leverIndex": 11,
+      "lever": [
+        8,
+        20,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 12,
+      "totalTicks": 232,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 11,
+      "leverIndex": 11,
+      "lever": [
+        8,
+        20,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 13,
+      "totalTicks": 233,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 11,
+      "leverIndex": 11,
+      "lever": [
+        8,
+        20,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 14,
+      "totalTicks": 234,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 11,
+      "leverIndex": 11,
+      "lever": [
+        8,
+        20,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 15,
+      "totalTicks": 235,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 11,
+      "leverIndex": 11,
+      "lever": [
+        8,
+        20,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 16,
+      "totalTicks": 236,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 11,
+      "leverIndex": 11,
+      "lever": [
+        8,
+        20,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 17,
+      "totalTicks": 237,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 11,
+      "leverIndex": 11,
+      "lever": [
+        8,
+        20,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 18,
+      "totalTicks": 238,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 11,
+      "leverIndex": 11,
+      "lever": [
+        8,
+        20,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 19,
+      "totalTicks": 239,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 11,
+      "leverIndex": 11,
+      "lever": [
+        8,
+        20,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 20,
+      "totalTicks": 240,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 12,
+      "leverIndex": 12,
+      "lever": [
+        10,
+        21,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 1,
+      "totalTicks": 241,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 12,
+      "leverIndex": 12,
+      "lever": [
+        10,
+        21,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 2,
+      "totalTicks": 242,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 12,
+      "leverIndex": 12,
+      "lever": [
+        10,
+        21,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 3,
+      "totalTicks": 243,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 12,
+      "leverIndex": 12,
+      "lever": [
+        10,
+        21,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 4,
+      "totalTicks": 244,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 12,
+      "leverIndex": 12,
+      "lever": [
+        10,
+        21,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 5,
+      "totalTicks": 245,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 12,
+      "leverIndex": 12,
+      "lever": [
+        10,
+        21,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 6,
+      "totalTicks": 246,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 12,
+      "leverIndex": 12,
+      "lever": [
+        10,
+        21,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 7,
+      "totalTicks": 247,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 12,
+      "leverIndex": 12,
+      "lever": [
+        10,
+        21,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 8,
+      "totalTicks": 248,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 12,
+      "leverIndex": 12,
+      "lever": [
+        10,
+        21,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 9,
+      "totalTicks": 249,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 12,
+      "leverIndex": 12,
+      "lever": [
+        10,
+        21,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 10,
+      "totalTicks": 250,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 12,
+      "leverIndex": 12,
+      "lever": [
+        10,
+        21,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 11,
+      "totalTicks": 251,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 12,
+      "leverIndex": 12,
+      "lever": [
+        10,
+        21,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 12,
+      "totalTicks": 252,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 12,
+      "leverIndex": 12,
+      "lever": [
+        10,
+        21,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 13,
+      "totalTicks": 253,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 12,
+      "leverIndex": 12,
+      "lever": [
+        10,
+        21,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 14,
+      "totalTicks": 254,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 12,
+      "leverIndex": 12,
+      "lever": [
+        10,
+        21,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 15,
+      "totalTicks": 255,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 12,
+      "leverIndex": 12,
+      "lever": [
+        10,
+        21,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 16,
+      "totalTicks": 256,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 12,
+      "leverIndex": 12,
+      "lever": [
+        10,
+        21,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 17,
+      "totalTicks": 257,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 12,
+      "leverIndex": 12,
+      "lever": [
+        10,
+        21,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 18,
+      "totalTicks": 258,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 12,
+      "leverIndex": 12,
+      "lever": [
+        10,
+        21,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 19,
+      "totalTicks": 259,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 12,
+      "leverIndex": 12,
+      "lever": [
+        10,
+        21,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 20,
+      "totalTicks": 260,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 13,
+      "leverIndex": 13,
+      "lever": [
+        8,
+        22,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 1,
+      "totalTicks": 261,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 13,
+      "leverIndex": 13,
+      "lever": [
+        8,
+        22,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 2,
+      "totalTicks": 262,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 13,
+      "leverIndex": 13,
+      "lever": [
+        8,
+        22,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 3,
+      "totalTicks": 263,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 13,
+      "leverIndex": 13,
+      "lever": [
+        8,
+        22,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 4,
+      "totalTicks": 264,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 13,
+      "leverIndex": 13,
+      "lever": [
+        8,
+        22,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 5,
+      "totalTicks": 265,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 13,
+      "leverIndex": 13,
+      "lever": [
+        8,
+        22,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 6,
+      "totalTicks": 266,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 13,
+      "leverIndex": 13,
+      "lever": [
+        8,
+        22,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 7,
+      "totalTicks": 267,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 13,
+      "leverIndex": 13,
+      "lever": [
+        8,
+        22,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 8,
+      "totalTicks": 268,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 13,
+      "leverIndex": 13,
+      "lever": [
+        8,
+        22,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 9,
+      "totalTicks": 269,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 13,
+      "leverIndex": 13,
+      "lever": [
+        8,
+        22,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 10,
+      "totalTicks": 270,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 13,
+      "leverIndex": 13,
+      "lever": [
+        8,
+        22,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 11,
+      "totalTicks": 271,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 13,
+      "leverIndex": 13,
+      "lever": [
+        8,
+        22,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 12,
+      "totalTicks": 272,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 13,
+      "leverIndex": 13,
+      "lever": [
+        8,
+        22,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 13,
+      "totalTicks": 273,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 13,
+      "leverIndex": 13,
+      "lever": [
+        8,
+        22,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 14,
+      "totalTicks": 274,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 13,
+      "leverIndex": 13,
+      "lever": [
+        8,
+        22,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 15,
+      "totalTicks": 275,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 13,
+      "leverIndex": 13,
+      "lever": [
+        8,
+        22,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 16,
+      "totalTicks": 276,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 13,
+      "leverIndex": 13,
+      "lever": [
+        8,
+        22,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 17,
+      "totalTicks": 277,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 13,
+      "leverIndex": 13,
+      "lever": [
+        8,
+        22,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 18,
+      "totalTicks": 278,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 13,
+      "leverIndex": 13,
+      "lever": [
+        8,
+        22,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 19,
+      "totalTicks": 279,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 13,
+      "leverIndex": 13,
+      "lever": [
+        8,
+        22,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 20,
+      "totalTicks": 280,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 14,
+      "leverIndex": 14,
+      "lever": [
+        10,
+        23,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 1,
+      "totalTicks": 281,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 14,
+      "leverIndex": 14,
+      "lever": [
+        10,
+        23,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 2,
+      "totalTicks": 282,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 14,
+      "leverIndex": 14,
+      "lever": [
+        10,
+        23,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 3,
+      "totalTicks": 283,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 14,
+      "leverIndex": 14,
+      "lever": [
+        10,
+        23,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 4,
+      "totalTicks": 284,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 14,
+      "leverIndex": 14,
+      "lever": [
+        10,
+        23,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 5,
+      "totalTicks": 285,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 14,
+      "leverIndex": 14,
+      "lever": [
+        10,
+        23,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 6,
+      "totalTicks": 286,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 14,
+      "leverIndex": 14,
+      "lever": [
+        10,
+        23,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 7,
+      "totalTicks": 287,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 14,
+      "leverIndex": 14,
+      "lever": [
+        10,
+        23,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 8,
+      "totalTicks": 288,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 14,
+      "leverIndex": 14,
+      "lever": [
+        10,
+        23,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 9,
+      "totalTicks": 289,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 14,
+      "leverIndex": 14,
+      "lever": [
+        10,
+        23,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 10,
+      "totalTicks": 290,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 14,
+      "leverIndex": 14,
+      "lever": [
+        10,
+        23,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 11,
+      "totalTicks": 291,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 14,
+      "leverIndex": 14,
+      "lever": [
+        10,
+        23,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 12,
+      "totalTicks": 292,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 14,
+      "leverIndex": 14,
+      "lever": [
+        10,
+        23,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 13,
+      "totalTicks": 293,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 14,
+      "leverIndex": 14,
+      "lever": [
+        10,
+        23,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 14,
+      "totalTicks": 294,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 14,
+      "leverIndex": 14,
+      "lever": [
+        10,
+        23,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 15,
+      "totalTicks": 295,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 14,
+      "leverIndex": 14,
+      "lever": [
+        10,
+        23,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 16,
+      "totalTicks": 296,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 14,
+      "leverIndex": 14,
+      "lever": [
+        10,
+        23,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 17,
+      "totalTicks": 297,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 14,
+      "leverIndex": 14,
+      "lever": [
+        10,
+        23,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 18,
+      "totalTicks": 298,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 14,
+      "leverIndex": 14,
+      "lever": [
+        10,
+        23,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 19,
+      "totalTicks": 299,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 14,
+      "leverIndex": 14,
+      "lever": [
+        10,
+        23,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 20,
+      "totalTicks": 300,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 15,
+      "leverIndex": 15,
+      "lever": [
+        8,
+        24,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 1,
+      "totalTicks": 301,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 15,
+      "leverIndex": 15,
+      "lever": [
+        8,
+        24,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 2,
+      "totalTicks": 302,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 15,
+      "leverIndex": 15,
+      "lever": [
+        8,
+        24,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 3,
+      "totalTicks": 303,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 15,
+      "leverIndex": 15,
+      "lever": [
+        8,
+        24,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 4,
+      "totalTicks": 304,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 15,
+      "leverIndex": 15,
+      "lever": [
+        8,
+        24,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 5,
+      "totalTicks": 305,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 15,
+      "leverIndex": 15,
+      "lever": [
+        8,
+        24,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 6,
+      "totalTicks": 306,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 15,
+      "leverIndex": 15,
+      "lever": [
+        8,
+        24,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 7,
+      "totalTicks": 307,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 15,
+      "leverIndex": 15,
+      "lever": [
+        8,
+        24,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 8,
+      "totalTicks": 308,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 15,
+      "leverIndex": 15,
+      "lever": [
+        8,
+        24,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 9,
+      "totalTicks": 309,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 15,
+      "leverIndex": 15,
+      "lever": [
+        8,
+        24,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 10,
+      "totalTicks": 310,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 15,
+      "leverIndex": 15,
+      "lever": [
+        8,
+        24,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 11,
+      "totalTicks": 311,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 15,
+      "leverIndex": 15,
+      "lever": [
+        8,
+        24,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 12,
+      "totalTicks": 312,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 15,
+      "leverIndex": 15,
+      "lever": [
+        8,
+        24,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 13,
+      "totalTicks": 313,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 15,
+      "leverIndex": 15,
+      "lever": [
+        8,
+        24,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 14,
+      "totalTicks": 314,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 15,
+      "leverIndex": 15,
+      "lever": [
+        8,
+        24,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 15,
+      "totalTicks": 315,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 15,
+      "leverIndex": 15,
+      "lever": [
+        8,
+        24,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 16,
+      "totalTicks": 316,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 15,
+      "leverIndex": 15,
+      "lever": [
+        8,
+        24,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 17,
+      "totalTicks": 317,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 15,
+      "leverIndex": 15,
+      "lever": [
+        8,
+        24,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 18,
+      "totalTicks": 318,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 15,
+      "leverIndex": 15,
+      "lever": [
+        8,
+        24,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 19,
+      "totalTicks": 319,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 15,
+      "leverIndex": 15,
+      "lever": [
+        8,
+        24,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 20,
+      "totalTicks": 320,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 16,
+      "leverIndex": 16,
+      "lever": [
+        10,
+        25,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 1,
+      "totalTicks": 321,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 16,
+      "leverIndex": 16,
+      "lever": [
+        10,
+        25,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 2,
+      "totalTicks": 322,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 16,
+      "leverIndex": 16,
+      "lever": [
+        10,
+        25,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 3,
+      "totalTicks": 323,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 16,
+      "leverIndex": 16,
+      "lever": [
+        10,
+        25,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 4,
+      "totalTicks": 324,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 16,
+      "leverIndex": 16,
+      "lever": [
+        10,
+        25,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 5,
+      "totalTicks": 325,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 16,
+      "leverIndex": 16,
+      "lever": [
+        10,
+        25,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 6,
+      "totalTicks": 326,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 16,
+      "leverIndex": 16,
+      "lever": [
+        10,
+        25,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 7,
+      "totalTicks": 327,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 16,
+      "leverIndex": 16,
+      "lever": [
+        10,
+        25,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 8,
+      "totalTicks": 328,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 16,
+      "leverIndex": 16,
+      "lever": [
+        10,
+        25,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 9,
+      "totalTicks": 329,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 16,
+      "leverIndex": 16,
+      "lever": [
+        10,
+        25,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 10,
+      "totalTicks": 330,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 16,
+      "leverIndex": 16,
+      "lever": [
+        10,
+        25,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 11,
+      "totalTicks": 331,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 16,
+      "leverIndex": 16,
+      "lever": [
+        10,
+        25,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 12,
+      "totalTicks": 332,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 16,
+      "leverIndex": 16,
+      "lever": [
+        10,
+        25,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 13,
+      "totalTicks": 333,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 16,
+      "leverIndex": 16,
+      "lever": [
+        10,
+        25,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 14,
+      "totalTicks": 334,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 16,
+      "leverIndex": 16,
+      "lever": [
+        10,
+        25,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 15,
+      "totalTicks": 335,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 16,
+      "leverIndex": 16,
+      "lever": [
+        10,
+        25,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 16,
+      "totalTicks": 336,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 16,
+      "leverIndex": 16,
+      "lever": [
+        10,
+        25,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 17,
+      "totalTicks": 337,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 16,
+      "leverIndex": 16,
+      "lever": [
+        10,
+        25,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 18,
+      "totalTicks": 338,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 16,
+      "leverIndex": 16,
+      "lever": [
+        10,
+        25,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 19,
+      "totalTicks": 339,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 16,
+      "leverIndex": 16,
+      "lever": [
+        10,
+        25,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 20,
+      "totalTicks": 340,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 17,
+      "leverIndex": 16,
+      "lever": [
+        10,
+        25,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 1,
+      "totalTicks": 341,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 17,
+      "leverIndex": 16,
+      "lever": [
+        10,
+        25,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 2,
+      "totalTicks": 342,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 17,
+      "leverIndex": 16,
+      "lever": [
+        10,
+        25,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 3,
+      "totalTicks": 343,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 17,
+      "leverIndex": 16,
+      "lever": [
+        10,
+        25,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 4,
+      "totalTicks": 344,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 17,
+      "leverIndex": 16,
+      "lever": [
+        10,
+        25,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 5,
+      "totalTicks": 345,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 17,
+      "leverIndex": 16,
+      "lever": [
+        10,
+        25,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 6,
+      "totalTicks": 346,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 17,
+      "leverIndex": 16,
+      "lever": [
+        10,
+        25,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 7,
+      "totalTicks": 347,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 17,
+      "leverIndex": 16,
+      "lever": [
+        10,
+        25,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 8,
+      "totalTicks": 348,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 17,
+      "leverIndex": 16,
+      "lever": [
+        10,
+        25,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 9,
+      "totalTicks": 349,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 17,
+      "leverIndex": 16,
+      "lever": [
+        10,
+        25,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 10,
+      "totalTicks": 350,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 17,
+      "leverIndex": 16,
+      "lever": [
+        10,
+        25,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 11,
+      "totalTicks": 351,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 17,
+      "leverIndex": 16,
+      "lever": [
+        10,
+        25,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 12,
+      "totalTicks": 352,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 17,
+      "leverIndex": 16,
+      "lever": [
+        10,
+        25,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 13,
+      "totalTicks": 353,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 17,
+      "leverIndex": 16,
+      "lever": [
+        10,
+        25,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 14,
+      "totalTicks": 354,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 17,
+      "leverIndex": 16,
+      "lever": [
+        10,
+        25,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 15,
+      "totalTicks": 355,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 17,
+      "leverIndex": 16,
+      "lever": [
+        10,
+        25,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 16,
+      "totalTicks": 356,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 17,
+      "leverIndex": 16,
+      "lever": [
+        10,
+        25,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 17,
+      "totalTicks": 357,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 17,
+      "leverIndex": 16,
+      "lever": [
+        10,
+        25,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 18,
+      "totalTicks": 358,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 17,
+      "leverIndex": 16,
+      "lever": [
+        10,
+        25,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 19,
+      "totalTicks": 359,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 17,
+      "leverIndex": 16,
+      "lever": [
+        10,
+        25,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 20,
+      "totalTicks": 360,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 18,
+      "leverIndex": 15,
+      "lever": [
+        8,
+        24,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 1,
+      "totalTicks": 361,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 18,
+      "leverIndex": 15,
+      "lever": [
+        8,
+        24,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 2,
+      "totalTicks": 362,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 18,
+      "leverIndex": 15,
+      "lever": [
+        8,
+        24,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 3,
+      "totalTicks": 363,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 18,
+      "leverIndex": 15,
+      "lever": [
+        8,
+        24,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 4,
+      "totalTicks": 364,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 18,
+      "leverIndex": 15,
+      "lever": [
+        8,
+        24,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 5,
+      "totalTicks": 365,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 18,
+      "leverIndex": 15,
+      "lever": [
+        8,
+        24,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 6,
+      "totalTicks": 366,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 18,
+      "leverIndex": 15,
+      "lever": [
+        8,
+        24,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 7,
+      "totalTicks": 367,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 18,
+      "leverIndex": 15,
+      "lever": [
+        8,
+        24,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 8,
+      "totalTicks": 368,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 18,
+      "leverIndex": 15,
+      "lever": [
+        8,
+        24,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 9,
+      "totalTicks": 369,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 18,
+      "leverIndex": 15,
+      "lever": [
+        8,
+        24,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 10,
+      "totalTicks": 370,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 18,
+      "leverIndex": 15,
+      "lever": [
+        8,
+        24,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 11,
+      "totalTicks": 371,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 18,
+      "leverIndex": 15,
+      "lever": [
+        8,
+        24,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 12,
+      "totalTicks": 372,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 18,
+      "leverIndex": 15,
+      "lever": [
+        8,
+        24,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 13,
+      "totalTicks": 373,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 18,
+      "leverIndex": 15,
+      "lever": [
+        8,
+        24,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 14,
+      "totalTicks": 374,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 18,
+      "leverIndex": 15,
+      "lever": [
+        8,
+        24,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 15,
+      "totalTicks": 375,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 18,
+      "leverIndex": 15,
+      "lever": [
+        8,
+        24,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 16,
+      "totalTicks": 376,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 18,
+      "leverIndex": 15,
+      "lever": [
+        8,
+        24,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 17,
+      "totalTicks": 377,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 18,
+      "leverIndex": 15,
+      "lever": [
+        8,
+        24,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 18,
+      "totalTicks": 378,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 18,
+      "leverIndex": 15,
+      "lever": [
+        8,
+        24,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 19,
+      "totalTicks": 379,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 18,
+      "leverIndex": 15,
+      "lever": [
+        8,
+        24,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 20,
+      "totalTicks": 380,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 19,
+      "leverIndex": 14,
+      "lever": [
+        10,
+        23,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 1,
+      "totalTicks": 381,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 19,
+      "leverIndex": 14,
+      "lever": [
+        10,
+        23,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 2,
+      "totalTicks": 382,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 19,
+      "leverIndex": 14,
+      "lever": [
+        10,
+        23,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 3,
+      "totalTicks": 383,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 19,
+      "leverIndex": 14,
+      "lever": [
+        10,
+        23,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 4,
+      "totalTicks": 384,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 19,
+      "leverIndex": 14,
+      "lever": [
+        10,
+        23,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 5,
+      "totalTicks": 385,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 19,
+      "leverIndex": 14,
+      "lever": [
+        10,
+        23,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 6,
+      "totalTicks": 386,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 19,
+      "leverIndex": 14,
+      "lever": [
+        10,
+        23,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 7,
+      "totalTicks": 387,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 19,
+      "leverIndex": 14,
+      "lever": [
+        10,
+        23,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 8,
+      "totalTicks": 388,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 19,
+      "leverIndex": 14,
+      "lever": [
+        10,
+        23,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 9,
+      "totalTicks": 389,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 19,
+      "leverIndex": 14,
+      "lever": [
+        10,
+        23,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 10,
+      "totalTicks": 390,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 19,
+      "leverIndex": 14,
+      "lever": [
+        10,
+        23,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 11,
+      "totalTicks": 391,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 19,
+      "leverIndex": 14,
+      "lever": [
+        10,
+        23,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 12,
+      "totalTicks": 392,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 19,
+      "leverIndex": 14,
+      "lever": [
+        10,
+        23,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 13,
+      "totalTicks": 393,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 19,
+      "leverIndex": 14,
+      "lever": [
+        10,
+        23,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 14,
+      "totalTicks": 394,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 19,
+      "leverIndex": 14,
+      "lever": [
+        10,
+        23,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 15,
+      "totalTicks": 395,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 19,
+      "leverIndex": 14,
+      "lever": [
+        10,
+        23,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 16,
+      "totalTicks": 396,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 19,
+      "leverIndex": 14,
+      "lever": [
+        10,
+        23,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 17,
+      "totalTicks": 397,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 19,
+      "leverIndex": 14,
+      "lever": [
+        10,
+        23,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 18,
+      "totalTicks": 398,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 19,
+      "leverIndex": 14,
+      "lever": [
+        10,
+        23,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 19,
+      "totalTicks": 399,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 19,
+      "leverIndex": 14,
+      "lever": [
+        10,
+        23,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 20,
+      "totalTicks": 400,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 20,
+      "leverIndex": 13,
+      "lever": [
+        8,
+        22,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 1,
+      "totalTicks": 401,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 20,
+      "leverIndex": 13,
+      "lever": [
+        8,
+        22,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 2,
+      "totalTicks": 402,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 20,
+      "leverIndex": 13,
+      "lever": [
+        8,
+        22,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 3,
+      "totalTicks": 403,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 20,
+      "leverIndex": 13,
+      "lever": [
+        8,
+        22,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 4,
+      "totalTicks": 404,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 20,
+      "leverIndex": 13,
+      "lever": [
+        8,
+        22,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 5,
+      "totalTicks": 405,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 20,
+      "leverIndex": 13,
+      "lever": [
+        8,
+        22,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 6,
+      "totalTicks": 406,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 20,
+      "leverIndex": 13,
+      "lever": [
+        8,
+        22,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 7,
+      "totalTicks": 407,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 20,
+      "leverIndex": 13,
+      "lever": [
+        8,
+        22,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 8,
+      "totalTicks": 408,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 20,
+      "leverIndex": 13,
+      "lever": [
+        8,
+        22,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 9,
+      "totalTicks": 409,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 20,
+      "leverIndex": 13,
+      "lever": [
+        8,
+        22,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 10,
+      "totalTicks": 410,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 20,
+      "leverIndex": 13,
+      "lever": [
+        8,
+        22,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 11,
+      "totalTicks": 411,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 20,
+      "leverIndex": 13,
+      "lever": [
+        8,
+        22,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 12,
+      "totalTicks": 412,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 20,
+      "leverIndex": 13,
+      "lever": [
+        8,
+        22,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 13,
+      "totalTicks": 413,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 20,
+      "leverIndex": 13,
+      "lever": [
+        8,
+        22,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 14,
+      "totalTicks": 414,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 20,
+      "leverIndex": 13,
+      "lever": [
+        8,
+        22,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 15,
+      "totalTicks": 415,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 20,
+      "leverIndex": 13,
+      "lever": [
+        8,
+        22,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 16,
+      "totalTicks": 416,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 20,
+      "leverIndex": 13,
+      "lever": [
+        8,
+        22,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 17,
+      "totalTicks": 417,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 20,
+      "leverIndex": 13,
+      "lever": [
+        8,
+        22,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 18,
+      "totalTicks": 418,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 20,
+      "leverIndex": 13,
+      "lever": [
+        8,
+        22,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 19,
+      "totalTicks": 419,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 20,
+      "leverIndex": 13,
+      "lever": [
+        8,
+        22,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 20,
+      "totalTicks": 420,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 21,
+      "leverIndex": 12,
+      "lever": [
+        10,
+        21,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 1,
+      "totalTicks": 421,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 21,
+      "leverIndex": 12,
+      "lever": [
+        10,
+        21,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 2,
+      "totalTicks": 422,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 21,
+      "leverIndex": 12,
+      "lever": [
+        10,
+        21,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 3,
+      "totalTicks": 423,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 21,
+      "leverIndex": 12,
+      "lever": [
+        10,
+        21,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 4,
+      "totalTicks": 424,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 21,
+      "leverIndex": 12,
+      "lever": [
+        10,
+        21,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 5,
+      "totalTicks": 425,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 21,
+      "leverIndex": 12,
+      "lever": [
+        10,
+        21,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 6,
+      "totalTicks": 426,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 21,
+      "leverIndex": 12,
+      "lever": [
+        10,
+        21,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 7,
+      "totalTicks": 427,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 21,
+      "leverIndex": 12,
+      "lever": [
+        10,
+        21,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 8,
+      "totalTicks": 428,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 21,
+      "leverIndex": 12,
+      "lever": [
+        10,
+        21,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 9,
+      "totalTicks": 429,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 21,
+      "leverIndex": 12,
+      "lever": [
+        10,
+        21,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 10,
+      "totalTicks": 430,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 21,
+      "leverIndex": 12,
+      "lever": [
+        10,
+        21,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 11,
+      "totalTicks": 431,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 21,
+      "leverIndex": 12,
+      "lever": [
+        10,
+        21,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 12,
+      "totalTicks": 432,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 21,
+      "leverIndex": 12,
+      "lever": [
+        10,
+        21,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 13,
+      "totalTicks": 433,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 21,
+      "leverIndex": 12,
+      "lever": [
+        10,
+        21,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 14,
+      "totalTicks": 434,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 21,
+      "leverIndex": 12,
+      "lever": [
+        10,
+        21,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 15,
+      "totalTicks": 435,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 21,
+      "leverIndex": 12,
+      "lever": [
+        10,
+        21,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 16,
+      "totalTicks": 436,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 21,
+      "leverIndex": 12,
+      "lever": [
+        10,
+        21,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 17,
+      "totalTicks": 437,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 21,
+      "leverIndex": 12,
+      "lever": [
+        10,
+        21,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 18,
+      "totalTicks": 438,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 21,
+      "leverIndex": 12,
+      "lever": [
+        10,
+        21,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 19,
+      "totalTicks": 439,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 21,
+      "leverIndex": 12,
+      "lever": [
+        10,
+        21,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 20,
+      "totalTicks": 440,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 22,
+      "leverIndex": 11,
+      "lever": [
+        8,
+        20,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 1,
+      "totalTicks": 441,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 22,
+      "leverIndex": 11,
+      "lever": [
+        8,
+        20,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 2,
+      "totalTicks": 442,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 22,
+      "leverIndex": 11,
+      "lever": [
+        8,
+        20,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 3,
+      "totalTicks": 443,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 22,
+      "leverIndex": 11,
+      "lever": [
+        8,
+        20,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 4,
+      "totalTicks": 444,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 22,
+      "leverIndex": 11,
+      "lever": [
+        8,
+        20,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 5,
+      "totalTicks": 445,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 22,
+      "leverIndex": 11,
+      "lever": [
+        8,
+        20,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 6,
+      "totalTicks": 446,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 22,
+      "leverIndex": 11,
+      "lever": [
+        8,
+        20,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 7,
+      "totalTicks": 447,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 22,
+      "leverIndex": 11,
+      "lever": [
+        8,
+        20,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 8,
+      "totalTicks": 448,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 22,
+      "leverIndex": 11,
+      "lever": [
+        8,
+        20,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 9,
+      "totalTicks": 449,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 22,
+      "leverIndex": 11,
+      "lever": [
+        8,
+        20,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 10,
+      "totalTicks": 450,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 22,
+      "leverIndex": 11,
+      "lever": [
+        8,
+        20,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 11,
+      "totalTicks": 451,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 22,
+      "leverIndex": 11,
+      "lever": [
+        8,
+        20,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 12,
+      "totalTicks": 452,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 22,
+      "leverIndex": 11,
+      "lever": [
+        8,
+        20,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 13,
+      "totalTicks": 453,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 22,
+      "leverIndex": 11,
+      "lever": [
+        8,
+        20,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 14,
+      "totalTicks": 454,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 22,
+      "leverIndex": 11,
+      "lever": [
+        8,
+        20,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 15,
+      "totalTicks": 455,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 22,
+      "leverIndex": 11,
+      "lever": [
+        8,
+        20,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 16,
+      "totalTicks": 456,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 22,
+      "leverIndex": 11,
+      "lever": [
+        8,
+        20,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 17,
+      "totalTicks": 457,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 22,
+      "leverIndex": 11,
+      "lever": [
+        8,
+        20,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 18,
+      "totalTicks": 458,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 22,
+      "leverIndex": 11,
+      "lever": [
+        8,
+        20,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 19,
+      "totalTicks": 459,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 22,
+      "leverIndex": 11,
+      "lever": [
+        8,
+        20,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 20,
+      "totalTicks": 460,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 23,
+      "leverIndex": 10,
+      "lever": [
+        10,
+        19,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 1,
+      "totalTicks": 461,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 23,
+      "leverIndex": 10,
+      "lever": [
+        10,
+        19,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 2,
+      "totalTicks": 462,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 23,
+      "leverIndex": 10,
+      "lever": [
+        10,
+        19,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 3,
+      "totalTicks": 463,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 23,
+      "leverIndex": 10,
+      "lever": [
+        10,
+        19,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 4,
+      "totalTicks": 464,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 23,
+      "leverIndex": 10,
+      "lever": [
+        10,
+        19,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 5,
+      "totalTicks": 465,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 23,
+      "leverIndex": 10,
+      "lever": [
+        10,
+        19,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 6,
+      "totalTicks": 466,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 23,
+      "leverIndex": 10,
+      "lever": [
+        10,
+        19,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 7,
+      "totalTicks": 467,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 23,
+      "leverIndex": 10,
+      "lever": [
+        10,
+        19,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 8,
+      "totalTicks": 468,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 23,
+      "leverIndex": 10,
+      "lever": [
+        10,
+        19,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 9,
+      "totalTicks": 469,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 23,
+      "leverIndex": 10,
+      "lever": [
+        10,
+        19,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 10,
+      "totalTicks": 470,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 23,
+      "leverIndex": 10,
+      "lever": [
+        10,
+        19,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 11,
+      "totalTicks": 471,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 23,
+      "leverIndex": 10,
+      "lever": [
+        10,
+        19,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 12,
+      "totalTicks": 472,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 23,
+      "leverIndex": 10,
+      "lever": [
+        10,
+        19,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 13,
+      "totalTicks": 473,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 23,
+      "leverIndex": 10,
+      "lever": [
+        10,
+        19,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 14,
+      "totalTicks": 474,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 23,
+      "leverIndex": 10,
+      "lever": [
+        10,
+        19,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 15,
+      "totalTicks": 475,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 23,
+      "leverIndex": 10,
+      "lever": [
+        10,
+        19,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 16,
+      "totalTicks": 476,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 23,
+      "leverIndex": 10,
+      "lever": [
+        10,
+        19,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 17,
+      "totalTicks": 477,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 23,
+      "leverIndex": 10,
+      "lever": [
+        10,
+        19,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 18,
+      "totalTicks": 478,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 23,
+      "leverIndex": 10,
+      "lever": [
+        10,
+        19,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 19,
+      "totalTicks": 479,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 23,
+      "leverIndex": 10,
+      "lever": [
+        10,
+        19,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 20,
+      "totalTicks": 480,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 24,
+      "leverIndex": 9,
+      "lever": [
+        8,
+        18,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 1,
+      "totalTicks": 481,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 24,
+      "leverIndex": 9,
+      "lever": [
+        8,
+        18,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 2,
+      "totalTicks": 482,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 24,
+      "leverIndex": 9,
+      "lever": [
+        8,
+        18,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 3,
+      "totalTicks": 483,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 24,
+      "leverIndex": 9,
+      "lever": [
+        8,
+        18,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 4,
+      "totalTicks": 484,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 24,
+      "leverIndex": 9,
+      "lever": [
+        8,
+        18,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 5,
+      "totalTicks": 485,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 24,
+      "leverIndex": 9,
+      "lever": [
+        8,
+        18,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 6,
+      "totalTicks": 486,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 24,
+      "leverIndex": 9,
+      "lever": [
+        8,
+        18,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 7,
+      "totalTicks": 487,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 24,
+      "leverIndex": 9,
+      "lever": [
+        8,
+        18,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 8,
+      "totalTicks": 488,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 24,
+      "leverIndex": 9,
+      "lever": [
+        8,
+        18,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 9,
+      "totalTicks": 489,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 24,
+      "leverIndex": 9,
+      "lever": [
+        8,
+        18,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 10,
+      "totalTicks": 490,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 24,
+      "leverIndex": 9,
+      "lever": [
+        8,
+        18,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 11,
+      "totalTicks": 491,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 24,
+      "leverIndex": 9,
+      "lever": [
+        8,
+        18,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 12,
+      "totalTicks": 492,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 24,
+      "leverIndex": 9,
+      "lever": [
+        8,
+        18,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 13,
+      "totalTicks": 493,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 24,
+      "leverIndex": 9,
+      "lever": [
+        8,
+        18,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 14,
+      "totalTicks": 494,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 24,
+      "leverIndex": 9,
+      "lever": [
+        8,
+        18,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 15,
+      "totalTicks": 495,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 24,
+      "leverIndex": 9,
+      "lever": [
+        8,
+        18,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 16,
+      "totalTicks": 496,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 24,
+      "leverIndex": 9,
+      "lever": [
+        8,
+        18,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 17,
+      "totalTicks": 497,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 24,
+      "leverIndex": 9,
+      "lever": [
+        8,
+        18,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 18,
+      "totalTicks": 498,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 24,
+      "leverIndex": 9,
+      "lever": [
+        8,
+        18,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 19,
+      "totalTicks": 499,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 24,
+      "leverIndex": 9,
+      "lever": [
+        8,
+        18,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 20,
+      "totalTicks": 500,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 25,
+      "leverIndex": 8,
+      "lever": [
+        10,
+        17,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 1,
+      "totalTicks": 501,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 25,
+      "leverIndex": 8,
+      "lever": [
+        10,
+        17,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 2,
+      "totalTicks": 502,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 25,
+      "leverIndex": 8,
+      "lever": [
+        10,
+        17,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 3,
+      "totalTicks": 503,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 25,
+      "leverIndex": 8,
+      "lever": [
+        10,
+        17,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 4,
+      "totalTicks": 504,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 25,
+      "leverIndex": 8,
+      "lever": [
+        10,
+        17,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 5,
+      "totalTicks": 505,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 25,
+      "leverIndex": 8,
+      "lever": [
+        10,
+        17,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 6,
+      "totalTicks": 506,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 25,
+      "leverIndex": 8,
+      "lever": [
+        10,
+        17,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 7,
+      "totalTicks": 507,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 25,
+      "leverIndex": 8,
+      "lever": [
+        10,
+        17,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 8,
+      "totalTicks": 508,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 25,
+      "leverIndex": 8,
+      "lever": [
+        10,
+        17,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 9,
+      "totalTicks": 509,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 25,
+      "leverIndex": 8,
+      "lever": [
+        10,
+        17,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 10,
+      "totalTicks": 510,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 25,
+      "leverIndex": 8,
+      "lever": [
+        10,
+        17,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 11,
+      "totalTicks": 511,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 25,
+      "leverIndex": 8,
+      "lever": [
+        10,
+        17,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 12,
+      "totalTicks": 512,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 25,
+      "leverIndex": 8,
+      "lever": [
+        10,
+        17,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 13,
+      "totalTicks": 513,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 25,
+      "leverIndex": 8,
+      "lever": [
+        10,
+        17,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 14,
+      "totalTicks": 514,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 25,
+      "leverIndex": 8,
+      "lever": [
+        10,
+        17,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 15,
+      "totalTicks": 515,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 25,
+      "leverIndex": 8,
+      "lever": [
+        10,
+        17,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 16,
+      "totalTicks": 516,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 25,
+      "leverIndex": 8,
+      "lever": [
+        10,
+        17,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 17,
+      "totalTicks": 517,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 25,
+      "leverIndex": 8,
+      "lever": [
+        10,
+        17,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 18,
+      "totalTicks": 518,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 25,
+      "leverIndex": 8,
+      "lever": [
+        10,
+        17,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 19,
+      "totalTicks": 519,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 25,
+      "leverIndex": 8,
+      "lever": [
+        10,
+        17,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 20,
+      "totalTicks": 520,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 26,
+      "leverIndex": 7,
+      "lever": [
+        8,
+        16,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 1,
+      "totalTicks": 521,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 26,
+      "leverIndex": 7,
+      "lever": [
+        8,
+        16,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 2,
+      "totalTicks": 522,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 26,
+      "leverIndex": 7,
+      "lever": [
+        8,
+        16,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 3,
+      "totalTicks": 523,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 26,
+      "leverIndex": 7,
+      "lever": [
+        8,
+        16,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 4,
+      "totalTicks": 524,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 26,
+      "leverIndex": 7,
+      "lever": [
+        8,
+        16,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 5,
+      "totalTicks": 525,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 26,
+      "leverIndex": 7,
+      "lever": [
+        8,
+        16,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 6,
+      "totalTicks": 526,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 26,
+      "leverIndex": 7,
+      "lever": [
+        8,
+        16,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 7,
+      "totalTicks": 527,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 26,
+      "leverIndex": 7,
+      "lever": [
+        8,
+        16,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 8,
+      "totalTicks": 528,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 26,
+      "leverIndex": 7,
+      "lever": [
+        8,
+        16,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 9,
+      "totalTicks": 529,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 26,
+      "leverIndex": 7,
+      "lever": [
+        8,
+        16,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 10,
+      "totalTicks": 530,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 26,
+      "leverIndex": 7,
+      "lever": [
+        8,
+        16,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 11,
+      "totalTicks": 531,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 26,
+      "leverIndex": 7,
+      "lever": [
+        8,
+        16,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 12,
+      "totalTicks": 532,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 26,
+      "leverIndex": 7,
+      "lever": [
+        8,
+        16,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 13,
+      "totalTicks": 533,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 26,
+      "leverIndex": 7,
+      "lever": [
+        8,
+        16,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 14,
+      "totalTicks": 534,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 26,
+      "leverIndex": 7,
+      "lever": [
+        8,
+        16,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 15,
+      "totalTicks": 535,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 26,
+      "leverIndex": 7,
+      "lever": [
+        8,
+        16,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 16,
+      "totalTicks": 536,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 26,
+      "leverIndex": 7,
+      "lever": [
+        8,
+        16,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 17,
+      "totalTicks": 537,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 26,
+      "leverIndex": 7,
+      "lever": [
+        8,
+        16,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 18,
+      "totalTicks": 538,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 26,
+      "leverIndex": 7,
+      "lever": [
+        8,
+        16,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 19,
+      "totalTicks": 539,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 26,
+      "leverIndex": 7,
+      "lever": [
+        8,
+        16,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 20,
+      "totalTicks": 540,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 27,
+      "leverIndex": 6,
+      "lever": [
+        10,
+        15,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 1,
+      "totalTicks": 541,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 27,
+      "leverIndex": 6,
+      "lever": [
+        10,
+        15,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 2,
+      "totalTicks": 542,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 27,
+      "leverIndex": 6,
+      "lever": [
+        10,
+        15,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 3,
+      "totalTicks": 543,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 27,
+      "leverIndex": 6,
+      "lever": [
+        10,
+        15,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 4,
+      "totalTicks": 544,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 27,
+      "leverIndex": 6,
+      "lever": [
+        10,
+        15,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 5,
+      "totalTicks": 545,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 27,
+      "leverIndex": 6,
+      "lever": [
+        10,
+        15,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 6,
+      "totalTicks": 546,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 27,
+      "leverIndex": 6,
+      "lever": [
+        10,
+        15,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 7,
+      "totalTicks": 547,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 27,
+      "leverIndex": 6,
+      "lever": [
+        10,
+        15,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 8,
+      "totalTicks": 548,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 27,
+      "leverIndex": 6,
+      "lever": [
+        10,
+        15,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 9,
+      "totalTicks": 549,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 27,
+      "leverIndex": 6,
+      "lever": [
+        10,
+        15,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 10,
+      "totalTicks": 550,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 27,
+      "leverIndex": 6,
+      "lever": [
+        10,
+        15,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 11,
+      "totalTicks": 551,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 27,
+      "leverIndex": 6,
+      "lever": [
+        10,
+        15,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 12,
+      "totalTicks": 552,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 27,
+      "leverIndex": 6,
+      "lever": [
+        10,
+        15,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 13,
+      "totalTicks": 553,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 27,
+      "leverIndex": 6,
+      "lever": [
+        10,
+        15,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 14,
+      "totalTicks": 554,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 27,
+      "leverIndex": 6,
+      "lever": [
+        10,
+        15,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 15,
+      "totalTicks": 555,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 27,
+      "leverIndex": 6,
+      "lever": [
+        10,
+        15,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 16,
+      "totalTicks": 556,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 27,
+      "leverIndex": 6,
+      "lever": [
+        10,
+        15,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 17,
+      "totalTicks": 557,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 27,
+      "leverIndex": 6,
+      "lever": [
+        10,
+        15,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 18,
+      "totalTicks": 558,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 27,
+      "leverIndex": 6,
+      "lever": [
+        10,
+        15,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 19,
+      "totalTicks": 559,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 27,
+      "leverIndex": 6,
+      "lever": [
+        10,
+        15,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 20,
+      "totalTicks": 560,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 28,
+      "leverIndex": 5,
+      "lever": [
+        8,
+        14,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 1,
+      "totalTicks": 561,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 28,
+      "leverIndex": 5,
+      "lever": [
+        8,
+        14,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 2,
+      "totalTicks": 562,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 28,
+      "leverIndex": 5,
+      "lever": [
+        8,
+        14,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 3,
+      "totalTicks": 563,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 28,
+      "leverIndex": 5,
+      "lever": [
+        8,
+        14,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 4,
+      "totalTicks": 564,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 28,
+      "leverIndex": 5,
+      "lever": [
+        8,
+        14,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 5,
+      "totalTicks": 565,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 28,
+      "leverIndex": 5,
+      "lever": [
+        8,
+        14,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 6,
+      "totalTicks": 566,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 28,
+      "leverIndex": 5,
+      "lever": [
+        8,
+        14,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 7,
+      "totalTicks": 567,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 28,
+      "leverIndex": 5,
+      "lever": [
+        8,
+        14,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 8,
+      "totalTicks": 568,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 28,
+      "leverIndex": 5,
+      "lever": [
+        8,
+        14,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 9,
+      "totalTicks": 569,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 28,
+      "leverIndex": 5,
+      "lever": [
+        8,
+        14,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 10,
+      "totalTicks": 570,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 28,
+      "leverIndex": 5,
+      "lever": [
+        8,
+        14,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 11,
+      "totalTicks": 571,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 28,
+      "leverIndex": 5,
+      "lever": [
+        8,
+        14,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 12,
+      "totalTicks": 572,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 28,
+      "leverIndex": 5,
+      "lever": [
+        8,
+        14,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 13,
+      "totalTicks": 573,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 28,
+      "leverIndex": 5,
+      "lever": [
+        8,
+        14,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 14,
+      "totalTicks": 574,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 28,
+      "leverIndex": 5,
+      "lever": [
+        8,
+        14,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 15,
+      "totalTicks": 575,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 28,
+      "leverIndex": 5,
+      "lever": [
+        8,
+        14,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 16,
+      "totalTicks": 576,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 28,
+      "leverIndex": 5,
+      "lever": [
+        8,
+        14,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 17,
+      "totalTicks": 577,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 28,
+      "leverIndex": 5,
+      "lever": [
+        8,
+        14,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 18,
+      "totalTicks": 578,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 28,
+      "leverIndex": 5,
+      "lever": [
+        8,
+        14,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 19,
+      "totalTicks": 579,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 28,
+      "leverIndex": 5,
+      "lever": [
+        8,
+        14,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 20,
+      "totalTicks": 580,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 29,
+      "leverIndex": 4,
+      "lever": [
+        10,
+        13,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 1,
+      "totalTicks": 581,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 29,
+      "leverIndex": 4,
+      "lever": [
+        10,
+        13,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 2,
+      "totalTicks": 582,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 29,
+      "leverIndex": 4,
+      "lever": [
+        10,
+        13,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 3,
+      "totalTicks": 583,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 29,
+      "leverIndex": 4,
+      "lever": [
+        10,
+        13,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 4,
+      "totalTicks": 584,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 29,
+      "leverIndex": 4,
+      "lever": [
+        10,
+        13,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 5,
+      "totalTicks": 585,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 29,
+      "leverIndex": 4,
+      "lever": [
+        10,
+        13,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 6,
+      "totalTicks": 586,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 29,
+      "leverIndex": 4,
+      "lever": [
+        10,
+        13,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 7,
+      "totalTicks": 587,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 29,
+      "leverIndex": 4,
+      "lever": [
+        10,
+        13,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 8,
+      "totalTicks": 588,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 29,
+      "leverIndex": 4,
+      "lever": [
+        10,
+        13,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 9,
+      "totalTicks": 589,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 29,
+      "leverIndex": 4,
+      "lever": [
+        10,
+        13,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 10,
+      "totalTicks": 590,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 29,
+      "leverIndex": 4,
+      "lever": [
+        10,
+        13,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 11,
+      "totalTicks": 591,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 29,
+      "leverIndex": 4,
+      "lever": [
+        10,
+        13,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 12,
+      "totalTicks": 592,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 29,
+      "leverIndex": 4,
+      "lever": [
+        10,
+        13,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 13,
+      "totalTicks": 593,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 29,
+      "leverIndex": 4,
+      "lever": [
+        10,
+        13,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 14,
+      "totalTicks": 594,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 29,
+      "leverIndex": 4,
+      "lever": [
+        10,
+        13,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 15,
+      "totalTicks": 595,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 29,
+      "leverIndex": 4,
+      "lever": [
+        10,
+        13,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 16,
+      "totalTicks": 596,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 29,
+      "leverIndex": 4,
+      "lever": [
+        10,
+        13,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 17,
+      "totalTicks": 597,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 29,
+      "leverIndex": 4,
+      "lever": [
+        10,
+        13,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 18,
+      "totalTicks": 598,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 29,
+      "leverIndex": 4,
+      "lever": [
+        10,
+        13,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 19,
+      "totalTicks": 599,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 29,
+      "leverIndex": 4,
+      "lever": [
+        10,
+        13,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 20,
+      "totalTicks": 600,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 30,
+      "leverIndex": 3,
+      "lever": [
+        8,
+        12,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 1,
+      "totalTicks": 601,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 30,
+      "leverIndex": 3,
+      "lever": [
+        8,
+        12,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 2,
+      "totalTicks": 602,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 30,
+      "leverIndex": 3,
+      "lever": [
+        8,
+        12,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 3,
+      "totalTicks": 603,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 30,
+      "leverIndex": 3,
+      "lever": [
+        8,
+        12,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 4,
+      "totalTicks": 604,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 30,
+      "leverIndex": 3,
+      "lever": [
+        8,
+        12,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 5,
+      "totalTicks": 605,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 30,
+      "leverIndex": 3,
+      "lever": [
+        8,
+        12,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 6,
+      "totalTicks": 606,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 30,
+      "leverIndex": 3,
+      "lever": [
+        8,
+        12,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 7,
+      "totalTicks": 607,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 30,
+      "leverIndex": 3,
+      "lever": [
+        8,
+        12,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 8,
+      "totalTicks": 608,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 30,
+      "leverIndex": 3,
+      "lever": [
+        8,
+        12,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 9,
+      "totalTicks": 609,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 30,
+      "leverIndex": 3,
+      "lever": [
+        8,
+        12,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 10,
+      "totalTicks": 610,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 30,
+      "leverIndex": 3,
+      "lever": [
+        8,
+        12,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 11,
+      "totalTicks": 611,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 30,
+      "leverIndex": 3,
+      "lever": [
+        8,
+        12,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 12,
+      "totalTicks": 612,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 30,
+      "leverIndex": 3,
+      "lever": [
+        8,
+        12,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 13,
+      "totalTicks": 613,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 30,
+      "leverIndex": 3,
+      "lever": [
+        8,
+        12,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 14,
+      "totalTicks": 614,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 30,
+      "leverIndex": 3,
+      "lever": [
+        8,
+        12,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 15,
+      "totalTicks": 615,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 30,
+      "leverIndex": 3,
+      "lever": [
+        8,
+        12,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 16,
+      "totalTicks": 616,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 30,
+      "leverIndex": 3,
+      "lever": [
+        8,
+        12,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 17,
+      "totalTicks": 617,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 30,
+      "leverIndex": 3,
+      "lever": [
+        8,
+        12,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 18,
+      "totalTicks": 618,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 30,
+      "leverIndex": 3,
+      "lever": [
+        8,
+        12,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 19,
+      "totalTicks": 619,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 30,
+      "leverIndex": 3,
+      "lever": [
+        8,
+        12,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 20,
+      "totalTicks": 620,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 31,
+      "leverIndex": 2,
+      "lever": [
+        10,
+        11,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 1,
+      "totalTicks": 621,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 31,
+      "leverIndex": 2,
+      "lever": [
+        10,
+        11,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 2,
+      "totalTicks": 622,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 31,
+      "leverIndex": 2,
+      "lever": [
+        10,
+        11,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 3,
+      "totalTicks": 623,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 31,
+      "leverIndex": 2,
+      "lever": [
+        10,
+        11,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 4,
+      "totalTicks": 624,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 31,
+      "leverIndex": 2,
+      "lever": [
+        10,
+        11,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 5,
+      "totalTicks": 625,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 31,
+      "leverIndex": 2,
+      "lever": [
+        10,
+        11,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 6,
+      "totalTicks": 626,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 31,
+      "leverIndex": 2,
+      "lever": [
+        10,
+        11,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 7,
+      "totalTicks": 627,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 31,
+      "leverIndex": 2,
+      "lever": [
+        10,
+        11,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 8,
+      "totalTicks": 628,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 31,
+      "leverIndex": 2,
+      "lever": [
+        10,
+        11,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 9,
+      "totalTicks": 629,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 31,
+      "leverIndex": 2,
+      "lever": [
+        10,
+        11,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 10,
+      "totalTicks": 630,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 31,
+      "leverIndex": 2,
+      "lever": [
+        10,
+        11,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 11,
+      "totalTicks": 631,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 31,
+      "leverIndex": 2,
+      "lever": [
+        10,
+        11,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 12,
+      "totalTicks": 632,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 31,
+      "leverIndex": 2,
+      "lever": [
+        10,
+        11,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 13,
+      "totalTicks": 633,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 31,
+      "leverIndex": 2,
+      "lever": [
+        10,
+        11,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 14,
+      "totalTicks": 634,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 31,
+      "leverIndex": 2,
+      "lever": [
+        10,
+        11,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 15,
+      "totalTicks": 635,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 31,
+      "leverIndex": 2,
+      "lever": [
+        10,
+        11,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 16,
+      "totalTicks": 636,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 31,
+      "leverIndex": 2,
+      "lever": [
+        10,
+        11,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 17,
+      "totalTicks": 637,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 31,
+      "leverIndex": 2,
+      "lever": [
+        10,
+        11,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 18,
+      "totalTicks": 638,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 31,
+      "leverIndex": 2,
+      "lever": [
+        10,
+        11,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 19,
+      "totalTicks": 639,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 31,
+      "leverIndex": 2,
+      "lever": [
+        10,
+        11,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 20,
+      "totalTicks": 640,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 32,
+      "leverIndex": 1,
+      "lever": [
+        14,
+        10,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 1,
+      "totalTicks": 641,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 32,
+      "leverIndex": 1,
+      "lever": [
+        14,
+        10,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 2,
+      "totalTicks": 642,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 32,
+      "leverIndex": 1,
+      "lever": [
+        14,
+        10,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 3,
+      "totalTicks": 643,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 32,
+      "leverIndex": 1,
+      "lever": [
+        14,
+        10,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 4,
+      "totalTicks": 644,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 32,
+      "leverIndex": 1,
+      "lever": [
+        14,
+        10,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 5,
+      "totalTicks": 645,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 32,
+      "leverIndex": 1,
+      "lever": [
+        14,
+        10,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 6,
+      "totalTicks": 646,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 32,
+      "leverIndex": 1,
+      "lever": [
+        14,
+        10,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 7,
+      "totalTicks": 647,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 32,
+      "leverIndex": 1,
+      "lever": [
+        14,
+        10,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 8,
+      "totalTicks": 648,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 32,
+      "leverIndex": 1,
+      "lever": [
+        14,
+        10,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 9,
+      "totalTicks": 649,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 32,
+      "leverIndex": 1,
+      "lever": [
+        14,
+        10,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 10,
+      "totalTicks": 650,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 32,
+      "leverIndex": 1,
+      "lever": [
+        14,
+        10,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 11,
+      "totalTicks": 651,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 32,
+      "leverIndex": 1,
+      "lever": [
+        14,
+        10,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 12,
+      "totalTicks": 652,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 32,
+      "leverIndex": 1,
+      "lever": [
+        14,
+        10,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 13,
+      "totalTicks": 653,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 32,
+      "leverIndex": 1,
+      "lever": [
+        14,
+        10,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 14,
+      "totalTicks": 654,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 32,
+      "leverIndex": 1,
+      "lever": [
+        14,
+        10,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 15,
+      "totalTicks": 655,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 32,
+      "leverIndex": 1,
+      "lever": [
+        14,
+        10,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 16,
+      "totalTicks": 656,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 32,
+      "leverIndex": 1,
+      "lever": [
+        14,
+        10,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 17,
+      "totalTicks": 657,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 32,
+      "leverIndex": 1,
+      "lever": [
+        14,
+        10,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 18,
+      "totalTicks": 658,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 32,
+      "leverIndex": 1,
+      "lever": [
+        14,
+        10,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 19,
+      "totalTicks": 659,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 32,
+      "leverIndex": 1,
+      "lever": [
+        14,
+        10,
+        28
+      ],
+      "wait": 20,
+      "actionTick": 20,
+      "totalTicks": 660,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 33,
+      "leverIndex": 0,
+      "lever": [
+        8,
+        10,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 1,
+      "totalTicks": 661,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 33,
+      "leverIndex": 0,
+      "lever": [
+        8,
+        10,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 2,
+      "totalTicks": 662,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 33,
+      "leverIndex": 0,
+      "lever": [
+        8,
+        10,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 3,
+      "totalTicks": 663,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 33,
+      "leverIndex": 0,
+      "lever": [
+        8,
+        10,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 4,
+      "totalTicks": 664,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 33,
+      "leverIndex": 0,
+      "lever": [
+        8,
+        10,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 5,
+      "totalTicks": 665,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 33,
+      "leverIndex": 0,
+      "lever": [
+        8,
+        10,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 6,
+      "totalTicks": 666,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 33,
+      "leverIndex": 0,
+      "lever": [
+        8,
+        10,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 7,
+      "totalTicks": 667,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 33,
+      "leverIndex": 0,
+      "lever": [
+        8,
+        10,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 8,
+      "totalTicks": 668,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 33,
+      "leverIndex": 0,
+      "lever": [
+        8,
+        10,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 9,
+      "totalTicks": 669,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 33,
+      "leverIndex": 0,
+      "lever": [
+        8,
+        10,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 10,
+      "totalTicks": 670,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 33,
+      "leverIndex": 0,
+      "lever": [
+        8,
+        10,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 11,
+      "totalTicks": 671,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 33,
+      "leverIndex": 0,
+      "lever": [
+        8,
+        10,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 12,
+      "totalTicks": 672,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 33,
+      "leverIndex": 0,
+      "lever": [
+        8,
+        10,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 13,
+      "totalTicks": 673,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 33,
+      "leverIndex": 0,
+      "lever": [
+        8,
+        10,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 14,
+      "totalTicks": 674,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 33,
+      "leverIndex": 0,
+      "lever": [
+        8,
+        10,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 15,
+      "totalTicks": 675,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 33,
+      "leverIndex": 0,
+      "lever": [
+        8,
+        10,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 16,
+      "totalTicks": 676,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 33,
+      "leverIndex": 0,
+      "lever": [
+        8,
+        10,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 17,
+      "totalTicks": 677,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 33,
+      "leverIndex": 0,
+      "lever": [
+        8,
+        10,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 18,
+      "totalTicks": 678,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 33,
+      "leverIndex": 0,
+      "lever": [
+        8,
+        10,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 19,
+      "totalTicks": 679,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 33,
+      "leverIndex": 0,
+      "lever": [
+        8,
+        10,
+        27
+      ],
+      "wait": 20,
+      "actionTick": 20,
+      "totalTicks": 680,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 34,
+      "leverIndex": 13,
+      "lever": [
+        8,
+        22,
+        27
+      ],
+      "wait": 1,
+      "actionTick": 1,
+      "totalTicks": 681,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 35,
+      "leverIndex": 9,
+      "lever": [
+        8,
+        18,
+        27
+      ],
+      "wait": 6,
+      "actionTick": 1,
+      "totalTicks": 682,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 35,
+      "leverIndex": 9,
+      "lever": [
+        8,
+        18,
+        27
+      ],
+      "wait": 6,
+      "actionTick": 2,
+      "totalTicks": 683,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 35,
+      "leverIndex": 9,
+      "lever": [
+        8,
+        18,
+        27
+      ],
+      "wait": 6,
+      "actionTick": 3,
+      "totalTicks": 684,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 35,
+      "leverIndex": 9,
+      "lever": [
+        8,
+        18,
+        27
+      ],
+      "wait": 6,
+      "actionTick": 4,
+      "totalTicks": 685,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 35,
+      "leverIndex": 9,
+      "lever": [
+        8,
+        18,
+        27
+      ],
+      "wait": 6,
+      "actionTick": 5,
+      "totalTicks": 686,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 35,
+      "leverIndex": 9,
+      "lever": [
+        8,
+        18,
+        27
+      ],
+      "wait": 6,
+      "actionTick": 6,
+      "totalTicks": 687,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 36,
+      "leverIndex": 0,
+      "lever": [
+        8,
+        10,
+        27
+      ],
+      "wait": 2,
+      "actionTick": 1,
+      "totalTicks": 688,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 36,
+      "leverIndex": 0,
+      "lever": [
+        8,
+        10,
+        27
+      ],
+      "wait": 2,
+      "actionTick": 2,
+      "totalTicks": 689,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 37,
+      "leverIndex": 6,
+      "lever": [
+        10,
+        15,
+        28
+      ],
+      "wait": 4,
+      "actionTick": 1,
+      "totalTicks": 690,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 37,
+      "leverIndex": 6,
+      "lever": [
+        10,
+        15,
+        28
+      ],
+      "wait": 4,
+      "actionTick": 2,
+      "totalTicks": 691,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 37,
+      "leverIndex": 6,
+      "lever": [
+        10,
+        15,
+        28
+      ],
+      "wait": 4,
+      "actionTick": 3,
+      "totalTicks": 692,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 37,
+      "leverIndex": 6,
+      "lever": [
+        10,
+        15,
+        28
+      ],
+      "wait": 4,
+      "actionTick": 4,
+      "totalTicks": 693,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 38,
+      "leverIndex": 0,
+      "lever": [
+        8,
+        10,
+        27
+      ],
+      "wait": 1,
+      "actionTick": 1,
+      "totalTicks": 694,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 39,
+      "leverIndex": 1,
+      "lever": [
+        14,
+        10,
+        28
+      ],
+      "wait": 5,
+      "actionTick": 1,
+      "totalTicks": 695,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 39,
+      "leverIndex": 1,
+      "lever": [
+        14,
+        10,
+        28
+      ],
+      "wait": 5,
+      "actionTick": 2,
+      "totalTicks": 696,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 39,
+      "leverIndex": 1,
+      "lever": [
+        14,
+        10,
+        28
+      ],
+      "wait": 5,
+      "actionTick": 3,
+      "totalTicks": 697,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 39,
+      "leverIndex": 1,
+      "lever": [
+        14,
+        10,
+        28
+      ],
+      "wait": 5,
+      "actionTick": 4,
+      "totalTicks": 698,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 39,
+      "leverIndex": 1,
+      "lever": [
+        14,
+        10,
+        28
+      ],
+      "wait": 5,
+      "actionTick": 5,
+      "totalTicks": 699,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 40,
+      "leverIndex": 6,
+      "lever": [
+        10,
+        15,
+        28
+      ],
+      "wait": 6,
+      "actionTick": 1,
+      "totalTicks": 700,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 40,
+      "leverIndex": 6,
+      "lever": [
+        10,
+        15,
+        28
+      ],
+      "wait": 6,
+      "actionTick": 2,
+      "totalTicks": 701,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 40,
+      "leverIndex": 6,
+      "lever": [
+        10,
+        15,
+        28
+      ],
+      "wait": 6,
+      "actionTick": 3,
+      "totalTicks": 702,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 40,
+      "leverIndex": 6,
+      "lever": [
+        10,
+        15,
+        28
+      ],
+      "wait": 6,
+      "actionTick": 4,
+      "totalTicks": 703,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 40,
+      "leverIndex": 6,
+      "lever": [
+        10,
+        15,
+        28
+      ],
+      "wait": 6,
+      "actionTick": 5,
+      "totalTicks": 704,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 40,
+      "leverIndex": 6,
+      "lever": [
+        10,
+        15,
+        28
+      ],
+      "wait": 6,
+      "actionTick": 6,
+      "totalTicks": 705,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 41,
+      "leverIndex": 15,
+      "lever": [
+        8,
+        24,
+        27
+      ],
+      "wait": 8,
+      "actionTick": 1,
+      "totalTicks": 706,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 41,
+      "leverIndex": 15,
+      "lever": [
+        8,
+        24,
+        27
+      ],
+      "wait": 8,
+      "actionTick": 2,
+      "totalTicks": 707,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 41,
+      "leverIndex": 15,
+      "lever": [
+        8,
+        24,
+        27
+      ],
+      "wait": 8,
+      "actionTick": 3,
+      "totalTicks": 708,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 41,
+      "leverIndex": 15,
+      "lever": [
+        8,
+        24,
+        27
+      ],
+      "wait": 8,
+      "actionTick": 4,
+      "totalTicks": 709,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 41,
+      "leverIndex": 15,
+      "lever": [
+        8,
+        24,
+        27
+      ],
+      "wait": 8,
+      "actionTick": 5,
+      "totalTicks": 710,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 41,
+      "leverIndex": 15,
+      "lever": [
+        8,
+        24,
+        27
+      ],
+      "wait": 8,
+      "actionTick": 6,
+      "totalTicks": 711,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 41,
+      "leverIndex": 15,
+      "lever": [
+        8,
+        24,
+        27
+      ],
+      "wait": 8,
+      "actionTick": 7,
+      "totalTicks": 712,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 41,
+      "leverIndex": 15,
+      "lever": [
+        8,
+        24,
+        27
+      ],
+      "wait": 8,
+      "actionTick": 8,
+      "totalTicks": 713,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 42,
+      "leverIndex": 0,
+      "lever": [
+        8,
+        10,
+        27
+      ],
+      "wait": 7,
+      "actionTick": 1,
+      "totalTicks": 714,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 42,
+      "leverIndex": 0,
+      "lever": [
+        8,
+        10,
+        27
+      ],
+      "wait": 7,
+      "actionTick": 2,
+      "totalTicks": 715,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 42,
+      "leverIndex": 0,
+      "lever": [
+        8,
+        10,
+        27
+      ],
+      "wait": 7,
+      "actionTick": 3,
+      "totalTicks": 716,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 42,
+      "leverIndex": 0,
+      "lever": [
+        8,
+        10,
+        27
+      ],
+      "wait": 7,
+      "actionTick": 4,
+      "totalTicks": 717,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 42,
+      "leverIndex": 0,
+      "lever": [
+        8,
+        10,
+        27
+      ],
+      "wait": 7,
+      "actionTick": 5,
+      "totalTicks": 718,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 42,
+      "leverIndex": 0,
+      "lever": [
+        8,
+        10,
+        27
+      ],
+      "wait": 7,
+      "actionTick": 6,
+      "totalTicks": 719,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 42,
+      "leverIndex": 0,
+      "lever": [
+        8,
+        10,
+        27
+      ],
+      "wait": 7,
+      "actionTick": 7,
+      "totalTicks": 720,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 43,
+      "leverIndex": 1,
+      "lever": [
+        14,
+        10,
+        28
+      ],
+      "wait": 7,
+      "actionTick": 1,
+      "totalTicks": 721,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 43,
+      "leverIndex": 1,
+      "lever": [
+        14,
+        10,
+        28
+      ],
+      "wait": 7,
+      "actionTick": 2,
+      "totalTicks": 722,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 43,
+      "leverIndex": 1,
+      "lever": [
+        14,
+        10,
+        28
+      ],
+      "wait": 7,
+      "actionTick": 3,
+      "totalTicks": 723,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 43,
+      "leverIndex": 1,
+      "lever": [
+        14,
+        10,
+        28
+      ],
+      "wait": 7,
+      "actionTick": 4,
+      "totalTicks": 724,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 43,
+      "leverIndex": 1,
+      "lever": [
+        14,
+        10,
+        28
+      ],
+      "wait": 7,
+      "actionTick": 5,
+      "totalTicks": 725,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 43,
+      "leverIndex": 1,
+      "lever": [
+        14,
+        10,
+        28
+      ],
+      "wait": 7,
+      "actionTick": 6,
+      "totalTicks": 726,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 43,
+      "leverIndex": 1,
+      "lever": [
+        14,
+        10,
+        28
+      ],
+      "wait": 7,
+      "actionTick": 7,
+      "totalTicks": 727,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 44,
+      "leverIndex": 1,
+      "lever": [
+        14,
+        10,
+        28
+      ],
+      "wait": 3,
+      "actionTick": 1,
+      "totalTicks": 728,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 44,
+      "leverIndex": 1,
+      "lever": [
+        14,
+        10,
+        28
+      ],
+      "wait": 3,
+      "actionTick": 2,
+      "totalTicks": 729,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 44,
+      "leverIndex": 1,
+      "lever": [
+        14,
+        10,
+        28
+      ],
+      "wait": 3,
+      "actionTick": 3,
+      "totalTicks": 730,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 45,
+      "leverIndex": 12,
+      "lever": [
+        10,
+        21,
+        28
+      ],
+      "wait": 1,
+      "actionTick": 1,
+      "totalTicks": 731,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 46,
+      "leverIndex": 1,
+      "lever": [
+        14,
+        10,
+        28
+      ],
+      "wait": 5,
+      "actionTick": 1,
+      "totalTicks": 732,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 46,
+      "leverIndex": 1,
+      "lever": [
+        14,
+        10,
+        28
+      ],
+      "wait": 5,
+      "actionTick": 2,
+      "totalTicks": 733,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 46,
+      "leverIndex": 1,
+      "lever": [
+        14,
+        10,
+        28
+      ],
+      "wait": 5,
+      "actionTick": 3,
+      "totalTicks": 734,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 46,
+      "leverIndex": 1,
+      "lever": [
+        14,
+        10,
+        28
+      ],
+      "wait": 5,
+      "actionTick": 4,
+      "totalTicks": 735,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 46,
+      "leverIndex": 1,
+      "lever": [
+        14,
+        10,
+        28
+      ],
+      "wait": 5,
+      "actionTick": 5,
+      "totalTicks": 736,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 47,
+      "leverIndex": 0,
+      "lever": [
+        8,
+        10,
+        27
+      ],
+      "wait": 6,
+      "actionTick": 1,
+      "totalTicks": 737,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 47,
+      "leverIndex": 0,
+      "lever": [
+        8,
+        10,
+        27
+      ],
+      "wait": 6,
+      "actionTick": 2,
+      "totalTicks": 738,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 47,
+      "leverIndex": 0,
+      "lever": [
+        8,
+        10,
+        27
+      ],
+      "wait": 6,
+      "actionTick": 3,
+      "totalTicks": 739,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 47,
+      "leverIndex": 0,
+      "lever": [
+        8,
+        10,
+        27
+      ],
+      "wait": 6,
+      "actionTick": 4,
+      "totalTicks": 740,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 47,
+      "leverIndex": 0,
+      "lever": [
+        8,
+        10,
+        27
+      ],
+      "wait": 6,
+      "actionTick": 5,
+      "totalTicks": 741,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 47,
+      "leverIndex": 0,
+      "lever": [
+        8,
+        10,
+        27
+      ],
+      "wait": 6,
+      "actionTick": 6,
+      "totalTicks": 742,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 48,
+      "leverIndex": 14,
+      "lever": [
+        10,
+        23,
+        28
+      ],
+      "wait": 8,
+      "actionTick": 1,
+      "totalTicks": 743,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 48,
+      "leverIndex": 14,
+      "lever": [
+        10,
+        23,
+        28
+      ],
+      "wait": 8,
+      "actionTick": 2,
+      "totalTicks": 744,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 48,
+      "leverIndex": 14,
+      "lever": [
+        10,
+        23,
+        28
+      ],
+      "wait": 8,
+      "actionTick": 3,
+      "totalTicks": 745,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 48,
+      "leverIndex": 14,
+      "lever": [
+        10,
+        23,
+        28
+      ],
+      "wait": 8,
+      "actionTick": 4,
+      "totalTicks": 746,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 48,
+      "leverIndex": 14,
+      "lever": [
+        10,
+        23,
+        28
+      ],
+      "wait": 8,
+      "actionTick": 5,
+      "totalTicks": 747,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 48,
+      "leverIndex": 14,
+      "lever": [
+        10,
+        23,
+        28
+      ],
+      "wait": 8,
+      "actionTick": 6,
+      "totalTicks": 748,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 48,
+      "leverIndex": 14,
+      "lever": [
+        10,
+        23,
+        28
+      ],
+      "wait": 8,
+      "actionTick": 7,
+      "totalTicks": 749,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 48,
+      "leverIndex": 14,
+      "lever": [
+        10,
+        23,
+        28
+      ],
+      "wait": 8,
+      "actionTick": 8,
+      "totalTicks": 750,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 49,
+      "leverIndex": 1,
+      "lever": [
+        14,
+        10,
+        28
+      ],
+      "wait": 5,
+      "actionTick": 1,
+      "totalTicks": 751,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 49,
+      "leverIndex": 1,
+      "lever": [
+        14,
+        10,
+        28
+      ],
+      "wait": 5,
+      "actionTick": 2,
+      "totalTicks": 752,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 49,
+      "leverIndex": 1,
+      "lever": [
+        14,
+        10,
+        28
+      ],
+      "wait": 5,
+      "actionTick": 3,
+      "totalTicks": 753,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 49,
+      "leverIndex": 1,
+      "lever": [
+        14,
+        10,
+        28
+      ],
+      "wait": 5,
+      "actionTick": 4,
+      "totalTicks": 754,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 49,
+      "leverIndex": 1,
+      "lever": [
+        14,
+        10,
+        28
+      ],
+      "wait": 5,
+      "actionTick": 5,
+      "totalTicks": 755,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 50,
+      "leverIndex": 2,
+      "lever": [
+        10,
+        11,
+        28
+      ],
+      "wait": 5,
+      "actionTick": 1,
+      "totalTicks": 756,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 50,
+      "leverIndex": 2,
+      "lever": [
+        10,
+        11,
+        28
+      ],
+      "wait": 5,
+      "actionTick": 2,
+      "totalTicks": 757,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 50,
+      "leverIndex": 2,
+      "lever": [
+        10,
+        11,
+        28
+      ],
+      "wait": 5,
+      "actionTick": 3,
+      "totalTicks": 758,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 50,
+      "leverIndex": 2,
+      "lever": [
+        10,
+        11,
+        28
+      ],
+      "wait": 5,
+      "actionTick": 4,
+      "totalTicks": 759,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 50,
+      "leverIndex": 2,
+      "lever": [
+        10,
+        11,
+        28
+      ],
+      "wait": 5,
+      "actionTick": 5,
+      "totalTicks": 760,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 51,
+      "leverIndex": 13,
+      "lever": [
+        8,
+        22,
+        27
+      ],
+      "wait": 1,
+      "actionTick": 1,
+      "totalTicks": 761,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 52,
+      "leverIndex": 9,
+      "lever": [
+        8,
+        18,
+        27
+      ],
+      "wait": 4,
+      "actionTick": 1,
+      "totalTicks": 762,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 52,
+      "leverIndex": 9,
+      "lever": [
+        8,
+        18,
+        27
+      ],
+      "wait": 4,
+      "actionTick": 2,
+      "totalTicks": 763,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 52,
+      "leverIndex": 9,
+      "lever": [
+        8,
+        18,
+        27
+      ],
+      "wait": 4,
+      "actionTick": 3,
+      "totalTicks": 764,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 52,
+      "leverIndex": 9,
+      "lever": [
+        8,
+        18,
+        27
+      ],
+      "wait": 4,
+      "actionTick": 4,
+      "totalTicks": 765,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 53,
+      "leverIndex": 5,
+      "lever": [
+        8,
+        14,
+        27
+      ],
+      "wait": 8,
+      "actionTick": 1,
+      "totalTicks": 766,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 53,
+      "leverIndex": 5,
+      "lever": [
+        8,
+        14,
+        27
+      ],
+      "wait": 8,
+      "actionTick": 2,
+      "totalTicks": 767,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 53,
+      "leverIndex": 5,
+      "lever": [
+        8,
+        14,
+        27
+      ],
+      "wait": 8,
+      "actionTick": 3,
+      "totalTicks": 768,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 53,
+      "leverIndex": 5,
+      "lever": [
+        8,
+        14,
+        27
+      ],
+      "wait": 8,
+      "actionTick": 4,
+      "totalTicks": 769,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 53,
+      "leverIndex": 5,
+      "lever": [
+        8,
+        14,
+        27
+      ],
+      "wait": 8,
+      "actionTick": 5,
+      "totalTicks": 770,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 53,
+      "leverIndex": 5,
+      "lever": [
+        8,
+        14,
+        27
+      ],
+      "wait": 8,
+      "actionTick": 6,
+      "totalTicks": 771,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 53,
+      "leverIndex": 5,
+      "lever": [
+        8,
+        14,
+        27
+      ],
+      "wait": 8,
+      "actionTick": 7,
+      "totalTicks": 772,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 53,
+      "leverIndex": 5,
+      "lever": [
+        8,
+        14,
+        27
+      ],
+      "wait": 8,
+      "actionTick": 8,
+      "totalTicks": 773,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 54,
+      "leverIndex": 3,
+      "lever": [
+        8,
+        12,
+        27
+      ],
+      "wait": 3,
+      "actionTick": 1,
+      "totalTicks": 774,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 54,
+      "leverIndex": 3,
+      "lever": [
+        8,
+        12,
+        27
+      ],
+      "wait": 3,
+      "actionTick": 2,
+      "totalTicks": 775,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 54,
+      "leverIndex": 3,
+      "lever": [
+        8,
+        12,
+        27
+      ],
+      "wait": 3,
+      "actionTick": 3,
+      "totalTicks": 776,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 55,
+      "leverIndex": 1,
+      "lever": [
+        14,
+        10,
+        28
+      ],
+      "wait": 7,
+      "actionTick": 1,
+      "totalTicks": 777,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 55,
+      "leverIndex": 1,
+      "lever": [
+        14,
+        10,
+        28
+      ],
+      "wait": 7,
+      "actionTick": 2,
+      "totalTicks": 778,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 55,
+      "leverIndex": 1,
+      "lever": [
+        14,
+        10,
+        28
+      ],
+      "wait": 7,
+      "actionTick": 3,
+      "totalTicks": 779,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 55,
+      "leverIndex": 1,
+      "lever": [
+        14,
+        10,
+        28
+      ],
+      "wait": 7,
+      "actionTick": 4,
+      "totalTicks": 780,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 55,
+      "leverIndex": 1,
+      "lever": [
+        14,
+        10,
+        28
+      ],
+      "wait": 7,
+      "actionTick": 5,
+      "totalTicks": 781,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 55,
+      "leverIndex": 1,
+      "lever": [
+        14,
+        10,
+        28
+      ],
+      "wait": 7,
+      "actionTick": 6,
+      "totalTicks": 782,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 55,
+      "leverIndex": 1,
+      "lever": [
+        14,
+        10,
+        28
+      ],
+      "wait": 7,
+      "actionTick": 7,
+      "totalTicks": 783,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 56,
+      "leverIndex": 6,
+      "lever": [
+        10,
+        15,
+        28
+      ],
+      "wait": 2,
+      "actionTick": 1,
+      "totalTicks": 784,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 56,
+      "leverIndex": 6,
+      "lever": [
+        10,
+        15,
+        28
+      ],
+      "wait": 2,
+      "actionTick": 2,
+      "totalTicks": 785,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 57,
+      "leverIndex": 6,
+      "lever": [
+        10,
+        15,
+        28
+      ],
+      "wait": 2,
+      "actionTick": 1,
+      "totalTicks": 786,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 57,
+      "leverIndex": 6,
+      "lever": [
+        10,
+        15,
+        28
+      ],
+      "wait": 2,
+      "actionTick": 2,
+      "totalTicks": 787,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 58,
+      "leverIndex": 2,
+      "lever": [
+        10,
+        11,
+        28
+      ],
+      "wait": 7,
+      "actionTick": 1,
+      "totalTicks": 788,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 58,
+      "leverIndex": 2,
+      "lever": [
+        10,
+        11,
+        28
+      ],
+      "wait": 7,
+      "actionTick": 2,
+      "totalTicks": 789,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 58,
+      "leverIndex": 2,
+      "lever": [
+        10,
+        11,
+        28
+      ],
+      "wait": 7,
+      "actionTick": 3,
+      "totalTicks": 790,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 58,
+      "leverIndex": 2,
+      "lever": [
+        10,
+        11,
+        28
+      ],
+      "wait": 7,
+      "actionTick": 4,
+      "totalTicks": 791,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 58,
+      "leverIndex": 2,
+      "lever": [
+        10,
+        11,
+        28
+      ],
+      "wait": 7,
+      "actionTick": 5,
+      "totalTicks": 792,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 58,
+      "leverIndex": 2,
+      "lever": [
+        10,
+        11,
+        28
+      ],
+      "wait": 7,
+      "actionTick": 6,
+      "totalTicks": 793,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 58,
+      "leverIndex": 2,
+      "lever": [
+        10,
+        11,
+        28
+      ],
+      "wait": 7,
+      "actionTick": 7,
+      "totalTicks": 794,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 59,
+      "leverIndex": 13,
+      "lever": [
+        8,
+        22,
+        27
+      ],
+      "wait": 7,
+      "actionTick": 1,
+      "totalTicks": 795,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 59,
+      "leverIndex": 13,
+      "lever": [
+        8,
+        22,
+        27
+      ],
+      "wait": 7,
+      "actionTick": 2,
+      "totalTicks": 796,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 59,
+      "leverIndex": 13,
+      "lever": [
+        8,
+        22,
+        27
+      ],
+      "wait": 7,
+      "actionTick": 3,
+      "totalTicks": 797,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 59,
+      "leverIndex": 13,
+      "lever": [
+        8,
+        22,
+        27
+      ],
+      "wait": 7,
+      "actionTick": 4,
+      "totalTicks": 798,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 59,
+      "leverIndex": 13,
+      "lever": [
+        8,
+        22,
+        27
+      ],
+      "wait": 7,
+      "actionTick": 5,
+      "totalTicks": 799,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 59,
+      "leverIndex": 13,
+      "lever": [
+        8,
+        22,
+        27
+      ],
+      "wait": 7,
+      "actionTick": 6,
+      "totalTicks": 800,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 59,
+      "leverIndex": 13,
+      "lever": [
+        8,
+        22,
+        27
+      ],
+      "wait": 7,
+      "actionTick": 7,
+      "totalTicks": 801,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 60,
+      "leverIndex": 9,
+      "lever": [
+        8,
+        18,
+        27
+      ],
+      "wait": 5,
+      "actionTick": 1,
+      "totalTicks": 802,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 60,
+      "leverIndex": 9,
+      "lever": [
+        8,
+        18,
+        27
+      ],
+      "wait": 5,
+      "actionTick": 2,
+      "totalTicks": 803,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 60,
+      "leverIndex": 9,
+      "lever": [
+        8,
+        18,
+        27
+      ],
+      "wait": 5,
+      "actionTick": 3,
+      "totalTicks": 804,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 60,
+      "leverIndex": 9,
+      "lever": [
+        8,
+        18,
+        27
+      ],
+      "wait": 5,
+      "actionTick": 4,
+      "totalTicks": 805,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 60,
+      "leverIndex": 9,
+      "lever": [
+        8,
+        18,
+        27
+      ],
+      "wait": 5,
+      "actionTick": 5,
+      "totalTicks": 806,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 61,
+      "leverIndex": 4,
+      "lever": [
+        10,
+        13,
+        28
+      ],
+      "wait": 3,
+      "actionTick": 1,
+      "totalTicks": 807,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 61,
+      "leverIndex": 4,
+      "lever": [
+        10,
+        13,
+        28
+      ],
+      "wait": 3,
+      "actionTick": 2,
+      "totalTicks": 808,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 61,
+      "leverIndex": 4,
+      "lever": [
+        10,
+        13,
+        28
+      ],
+      "wait": 3,
+      "actionTick": 3,
+      "totalTicks": 809,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 62,
+      "leverIndex": 11,
+      "lever": [
+        8,
+        20,
+        27
+      ],
+      "wait": 3,
+      "actionTick": 1,
+      "totalTicks": 810,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 62,
+      "leverIndex": 11,
+      "lever": [
+        8,
+        20,
+        27
+      ],
+      "wait": 3,
+      "actionTick": 2,
+      "totalTicks": 811,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 62,
+      "leverIndex": 11,
+      "lever": [
+        8,
+        20,
+        27
+      ],
+      "wait": 3,
+      "actionTick": 3,
+      "totalTicks": 812,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 63,
+      "leverIndex": 9,
+      "lever": [
+        8,
+        18,
+        27
+      ],
+      "wait": 7,
+      "actionTick": 1,
+      "totalTicks": 813,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 63,
+      "leverIndex": 9,
+      "lever": [
+        8,
+        18,
+        27
+      ],
+      "wait": 7,
+      "actionTick": 2,
+      "totalTicks": 814,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 63,
+      "leverIndex": 9,
+      "lever": [
+        8,
+        18,
+        27
+      ],
+      "wait": 7,
+      "actionTick": 3,
+      "totalTicks": 815,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 63,
+      "leverIndex": 9,
+      "lever": [
+        8,
+        18,
+        27
+      ],
+      "wait": 7,
+      "actionTick": 4,
+      "totalTicks": 816,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 63,
+      "leverIndex": 9,
+      "lever": [
+        8,
+        18,
+        27
+      ],
+      "wait": 7,
+      "actionTick": 5,
+      "totalTicks": 817,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 63,
+      "leverIndex": 9,
+      "lever": [
+        8,
+        18,
+        27
+      ],
+      "wait": 7,
+      "actionTick": 6,
+      "totalTicks": 818,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 63,
+      "leverIndex": 9,
+      "lever": [
+        8,
+        18,
+        27
+      ],
+      "wait": 7,
+      "actionTick": 7,
+      "totalTicks": 819,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 64,
+      "leverIndex": 1,
+      "lever": [
+        14,
+        10,
+        28
+      ],
+      "wait": 6,
+      "actionTick": 1,
+      "totalTicks": 820,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 64,
+      "leverIndex": 1,
+      "lever": [
+        14,
+        10,
+        28
+      ],
+      "wait": 6,
+      "actionTick": 2,
+      "totalTicks": 821,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 64,
+      "leverIndex": 1,
+      "lever": [
+        14,
+        10,
+        28
+      ],
+      "wait": 6,
+      "actionTick": 3,
+      "totalTicks": 822,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 64,
+      "leverIndex": 1,
+      "lever": [
+        14,
+        10,
+        28
+      ],
+      "wait": 6,
+      "actionTick": 4,
+      "totalTicks": 823,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 64,
+      "leverIndex": 1,
+      "lever": [
+        14,
+        10,
+        28
+      ],
+      "wait": 6,
+      "actionTick": 5,
+      "totalTicks": 824,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 64,
+      "leverIndex": 1,
+      "lever": [
+        14,
+        10,
+        28
+      ],
+      "wait": 6,
+      "actionTick": 6,
+      "totalTicks": 825,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 65,
+      "leverIndex": 7,
+      "lever": [
+        8,
+        16,
+        27
+      ],
+      "wait": 6,
+      "actionTick": 1,
+      "totalTicks": 826,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 65,
+      "leverIndex": 7,
+      "lever": [
+        8,
+        16,
+        27
+      ],
+      "wait": 6,
+      "actionTick": 2,
+      "totalTicks": 827,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 65,
+      "leverIndex": 7,
+      "lever": [
+        8,
+        16,
+        27
+      ],
+      "wait": 6,
+      "actionTick": 3,
+      "totalTicks": 828,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 65,
+      "leverIndex": 7,
+      "lever": [
+        8,
+        16,
+        27
+      ],
+      "wait": 6,
+      "actionTick": 4,
+      "totalTicks": 829,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 65,
+      "leverIndex": 7,
+      "lever": [
+        8,
+        16,
+        27
+      ],
+      "wait": 6,
+      "actionTick": 5,
+      "totalTicks": 830,
+      "differenceCount": 0
+    },
+    {
+      "actionStep": 65,
+      "leverIndex": 7,
+      "lever": [
+        8,
+        16,
+        27
+      ],
+      "wait": 6,
+      "actionTick": 6,
+      "totalTicks": 831,
+      "differenceCount": 0
+    }
+  ]
+}
