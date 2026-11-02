@@ -49,6 +49,53 @@ fn clipboard_geometry(cb: &WorldEditClipboard, pos: BlockPos) -> Result<(BlockPo
     ))
 }
 
+fn fitting_position(world: &PlotWorld, cb: &WorldEditClipboard, current: BlockPos) -> Option<BlockPos> {
+    use crate::plot::PLOT_BLOCK_WIDTH;
+    let mut coordinates = [0; 3];
+    for (index, (plot, capacity, size, offset, current)) in [
+        (i64::from(world.x) * i64::from(PLOT_BLOCK_WIDTH), PLOT_BLOCK_WIDTH, cb.size_x, cb.offset_x, current.x),
+        (0, PLOT_BLOCK_HEIGHT, cb.size_y, cb.offset_y, current.y),
+        (i64::from(world.z) * i64::from(PLOT_BLOCK_WIDTH), PLOT_BLOCK_WIDTH, cb.size_z, cb.offset_z, current.z),
+    ].into_iter().enumerate() {
+        if size == 0 || i64::from(size) > i64::from(capacity) { return None; }
+        // The paste must fit, and its player anchor must remain inside this plot.
+        let low = (plot + i64::from(offset)).max(plot);
+        let high = (plot + i64::from(capacity) - i64::from(size) + i64::from(offset))
+            .min(plot + i64::from(capacity) - 1);
+        if low > high { return None; }
+        coordinates[index] = i32::try_from(i64::from(current).clamp(low, high)).ok()?;
+    }
+    Some(BlockPos::new(coordinates[0], coordinates[1], coordinates[2]))
+}
+
+pub(super) fn paste_placement_help(world: &PlotWorld, cb: &WorldEditClipboard, current: BlockPos) -> serde_json::Value {
+    use crate::plot::PLOT_BLOCK_WIDTH;
+    use serde_json::json;
+    let mut text = messages::clipboard_dimensions(cb.size_x, cb.size_y, cb.size_z);
+    if let Ok((first, last)) = clipboard_geometry(cb, current) {
+        text.push_str(&format!("\n{}", messages::clipboard_paste_bounds(first, last)));
+    }
+    text.push('\n');
+    if cb.size_x > PLOT_BLOCK_WIDTH as u32 || cb.size_y > PLOT_BLOCK_HEIGHT as u32 || cb.size_z > PLOT_BLOCK_WIDTH as u32 {
+        text.push_str(&messages::clipboard_too_large(PLOT_BLOCK_WIDTH, PLOT_BLOCK_HEIGHT, PLOT_BLOCK_WIDTH));
+        return json!({"text": text, "color": "yellow"});
+    }
+    let Some(position) = fitting_position(world, cb, current) else {
+        text.push_str(messages::WE_PASTE_ORIGIN_OUTSIDE_PLOT);
+        return json!({"text": text, "color": "yellow"});
+    };
+    if position == current {
+        text.push_str(messages::WE_PASTE_FITS_HERE);
+        return json!({"text": text, "color": "yellow"});
+    }
+    text.push_str(&messages::clipboard_stand_at(position));
+    json!({"text": text, "color": "yellow", "extra": [{
+        "text": messages::WE_TELEPORT_TO_FIT, "color": "aqua", "underlined": true,
+        "click_event": {"action": "run_command", "command": format!("/tp {} {} {}", position.x, position.y, position.z)},
+        "hover_event": {"action": "show_text", "value": {"text": messages::WE_TELEPORT_TO_FIT_TOOLTIP}}
+    }]})
+}
+
 pub(super) fn validate_request(world: &PlotWorld, player: &Player, name: &str, command: &WorldeditCommand, args: &[Argument]) -> Result<(), String> {
     // Every numeric command argument stays small enough for downstream i32 math.
     if args.iter().any(|arg| matches!(arg, Argument::UnsignedInteger(n) if *n > 4096)) {
@@ -110,6 +157,46 @@ mod tests {
     use super::*;
     use crate::plot::{PLOT_BLOCK_WIDTH, PLOT_WIDTH};
     use crate::world::storage::Chunk;
+
+    fn placement_clipboard() -> WorldEditClipboard {
+        WorldEditClipboard {
+            offset_x: 7, offset_y: 5, offset_z: -4,
+            size_x: 20, size_y: 30, size_z: 40,
+            data: PalettedBitBuffer::new(20 * 30 * 40, 9),
+            block_entities: Default::default(),
+        }
+    }
+
+    #[test]
+    fn paste_teleport_honors_offsets_negative_plots_and_world_height() {
+        let world = PlotWorld::from_chunks(-2, 3, vec![], Default::default());
+        let cb = placement_clipboard();
+        let current = BlockPos::new(-513, PLOT_BLOCK_HEIGHT - 1, 1535);
+        let destination = fitting_position(&world, &cb, current).unwrap();
+        assert_eq!(destination, BlockPos::new(-525, PLOT_BLOCK_HEIGHT - 25, 1536));
+        let (first, last) = clipboard_geometry(&cb, destination).unwrap();
+        assert!(region(&world, first, last).is_ok());
+        assert!(Plot::in_plot_bounds(world.x, world.z, destination.x, destination.z));
+        let help = paste_placement_help(&world, &cb, current);
+        assert_eq!(help["extra"][0]["click_event"]["command"], format!("/tp {} {} {}", destination.x, destination.y, destination.z));
+        assert!(paste_placement_help(&world, &cb, destination).get("extra").is_none());
+    }
+
+    #[test]
+    fn paste_help_does_not_offer_teleports_for_impossible_sizes_or_origins() {
+        let world = PlotWorld::from_chunks(0, 0, vec![], Default::default());
+        let mut cb = placement_clipboard();
+        cb.size_y = PLOT_BLOCK_HEIGHT as u32 + 17;
+        assert!(fitting_position(&world, &cb, BlockPos::zero()).is_none());
+        let help = paste_placement_help(&world, &cb, BlockPos::zero());
+        assert!(help.get("extra").is_none());
+        assert!(help["text"].as_str().unwrap().contains("cannot fit"));
+        cb.size_y = 30;
+        cb.offset_x = 1000;
+        assert!(fitting_position(&world, &cb, BlockPos::zero()).is_none());
+        assert!(paste_placement_help(&world, &cb, BlockPos::zero()).get("extra").is_none());
+    }
+
     #[test]
     fn pm1_sort_and_full_plot_clipboards_fit_the_work_limit() {
         let chunks = (0..PLOT_WIDTH).flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x, z))).collect();

@@ -207,6 +207,9 @@ pub(super) fn execute_load(ctx: CommandExecuteContext<'_>) {
                 ctx.player.send_worldedit_message(&message);
             }
             ctx.player.send_worldedit_message(&messages::schematic_loaded(start_time.elapsed()));
+            let clipboard = ctx.player.worldedit_clipboard.as_ref().unwrap();
+            let help = super::safety::paste_placement_help(ctx.plot, clipboard, ctx.player.pos.block_pos());
+            ctx.player.send_raw_system_message(help.to_string());
         }
         Err(e) => {
             if let Some(e) = e.downcast_ref::<std::io::Error>() {

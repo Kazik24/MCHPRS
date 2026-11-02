@@ -51,6 +51,13 @@ fn llvm_handoff_errors_identify_pending_pistons_and_partial_ticks() {
     let Err(CompileError::Unsupported(error)) = compile(&world) else { panic!("pending piston was accepted") };
     assert_eq!(error.position, Some(pos));
     world.piston_state_mut().events.clear();
+    let moving = pos.offset(BlockFace::East);
+    world.piston_state_mut().motions.push_back(mchprs_world::PistonMotion {
+        pos: moving, identity: 1, progress: 0.5, previous_progress: 0.0, last_tick: 0, carried_entity: None,
+    });
+    let Err(CompileError::Unsupported(error)) = compile(&world) else { panic!("moving piston was accepted") };
+    assert_eq!(error.position, Some(moving));
+    world.piston_state_mut().motions.clear();
     world.piston_state_mut().phase = AdvancePhase::ScheduledTicks;
     let Err(CompileError::Unsupported(error)) = compile(&world) else { panic!("partial tick was accepted") };
     assert_eq!(error.position, None);

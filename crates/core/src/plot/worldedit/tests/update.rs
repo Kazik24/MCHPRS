@@ -8,6 +8,37 @@ use mchprs_network::test_support::read_frame;
 use mchprs_network::{BlockActionAcknowledgement, PlayerPacketSender, test_support::connection};
 
 #[test]
+fn rejected_paste_offers_a_teleport_that_makes_the_same_clipboard_fit() {
+    let (mut plot, mut peer) = crate::plot::client_sync_tests::fixture(false);
+    plot.owner = Some(plot.players[0].uuid);
+    plot.players[0].set_test_permissions(&["mchprs.access.commands", "mchprs.build", "plots.worldedit.bypass",
+        "worldedit.clipboard.paste", "commands.teleport"]);
+    let edge = crate::plot::PLOT_BLOCK_WIDTH - 1;
+    plot.players[0].pos.x = f64::from(edge) + 0.5;
+    let mut clipboard = WorldEditClipboard {
+        offset_x: 0, offset_y: 0, offset_z: 0, size_x: 2, size_y: 1, size_z: 1,
+        data: PalettedBitBuffer::new(2, 9), block_entities: Default::default(),
+    };
+    for index in 0..2 { clipboard.data.set_entry(index, Block::Stone {}.get_id()); }
+    let help = safety::paste_placement_help(&plot.world, &clipboard, plot.players[0].pos.block_pos());
+    let command = help["extra"][0]["click_event"]["command"].as_str().unwrap().to_owned();
+    plot.players[0].worldedit_clipboard = Some(clipboard);
+    plot.handle_command(0, "//paste", vec![]);
+    assert_eq!(plot.world.get_block(BlockPos::new(edge, 21, 35)), Block::Air);
+    assert_eq!(read_frame(&mut peer, false).unwrap().0, 0x72);
+    let (id, packet) = read_frame(&mut peer, false).unwrap();
+    assert_eq!(id, 0x72);
+    let text = String::from_utf8_lossy(packet.get_ref());
+    assert!(text.contains(messages::WE_TELEPORT_TO_FIT));
+    assert!(text.contains(&command));
+    let mut parts = command.split_whitespace();
+    plot.handle_command(0, parts.next().unwrap(), parts.collect());
+    plot.handle_command(0, "//paste", vec![]);
+    assert_eq!(plot.world.get_block(BlockPos::new(edge - 1, 21, 35)), Block::Stone {});
+    assert_eq!(plot.world.get_block(BlockPos::new(edge, 21, 35)), Block::Stone {});
+}
+
+#[test]
 fn replace_removes_all_moving_piston_states_and_their_motion_entities() {
     use mchprs_blocks::block_entities::MovingPistonEntity;
     use mchprs_blocks::blocks::RedstoneMovingPiston;

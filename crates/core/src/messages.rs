@@ -41,6 +41,10 @@ catalog! {
         GIT_OWNER_STORAGE_LIMIT_UNAVAILABLE = "Could not sniff out the plot owner's Git storage allowance. Try again in a moment, pup.";
         WE_SELECTION_VOLUME_OVERFLOW = "This selection is beyond the volume these paws can count.";
         WE_OPERATION_OUTSIDE_PLOT = "This WorldEdit pawstep would leave the current plot or world height.";
+        WE_PASTE_FITS_HERE = "Fits at your current position. Use //paste to place it.";
+        WE_PASTE_ORIGIN_OUTSIDE_PLOT = "The saved clipboard origin cannot be reached inside this plot. Re-copy with an origin inside the selection.";
+        WE_TELEPORT_TO_FIT = "[Teleport to fit]";
+        WE_TELEPORT_TO_FIT_TOOLTIP = "Move to a position where this clipboard fits, then use //paste.";
         WE_CLIPBOARD_COORDINATES_OVERFLOW = "This clipboard reaches beyond the coordinate range of these paws.";
         WE_EMPTY_CLIPBOARD_DIMENSION = "This clipboard has an empty dimension, pup.";
         WE_NUMERIC_ARGUMENT_LIMIT = "WorldEdit counts cannot exceed 4096, pup.";
@@ -541,6 +545,10 @@ catalog! {
         ascended(levels: impl Display) = "Hopped up {levels} levels!";
         clipboard_flipped(elapsed: Duration) = "Rolled your clipboard copy over ({elapsed:.00?}).";
         clipboard_pasted(elapsed: Duration) = "Unpacked your clipboard onto the plot ({elapsed:.00?}).";
+        clipboard_dimensions(x: u32, y: u32, z: u32) = "Clipboard: {x} × {y} × {z} blocks (X × Y × Z).";
+        clipboard_paste_bounds(first: impl Display, last: impl Display) = "Paste bounds from here: {first} to {last}.";
+        clipboard_stand_at(position: impl Display) = "Stand at {position}. ";
+        clipboard_too_large(x: i32, y: i32, z: i32) = "It cannot fit in this plot ({x} × {y} × {z}); teleporting will not help.";
         clipboard_rotated(elapsed: Duration) = "Gave your clipboard copy a twirl ({elapsed:.00?}).";
         copies_stacked(count: impl Display) = "Piled up {count} copies. Rawr!";
         wire_built(count: impl Display) = "Placed {count} blocks.";

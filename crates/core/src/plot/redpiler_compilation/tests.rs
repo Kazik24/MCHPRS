@@ -73,11 +73,13 @@ fn activation_waits_for_poll_and_preserves_imported_deadlines() {
 
     plot.start_redpiler(Default::default());
     assert!(plot.compilation.is_some());
+    let monitor = plot.compilation.as_ref().unwrap().monitor.clone();
     assert!(!plot.redpiler.is_active());
     assert_eq!(plot.world.scheduler().iter_entries().collect::<Vec<_>>(), pending);
     assert!(!plot.tick(), "manual ticks must not advance the compilation input");
 
     plot.wait_for_redpiler();
+    assert!(monitor.status().contains("1 nodes, 0 wires, 0 pistons"));
     assert!(plot.redpiler.is_active());
     assert!(plot.world.scheduler().iter_entries().next().is_none());
     plot.reset_redpiler().unwrap();
