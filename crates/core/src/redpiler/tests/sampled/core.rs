@@ -1761,6 +1761,15 @@ fn watched_wire_observes_raw_strength_changes_only() {
 
 #[test]
 fn wire_power_callbacks_do_not_start_observer_pulses() {
+    check_wire_power_observer(mchprs_blocks::BlockFacing::South, false);
+}
+
+#[test]
+fn wire_power_callbacks_release_powered_observers_without_pending_ticks() {
+    check_wire_power_observer(mchprs_blocks::BlockFacing::East, true);
+}
+
+fn check_wire_power_observer(facing: mchprs_blocks::BlockFacing, powered: bool) {
     let mut world = host();
     let lever = BlockPos::new(10, 10, 10);
     let wire = BlockPos::new(11, 10, 10);
@@ -1769,7 +1778,8 @@ fn wire_power_callbacks_do_not_start_observer_pulses() {
     world.set_block(lever.offset(BlockFace::Bottom), Block::Stone {});
     world.set_block(wire.offset(BlockFace::Bottom), Block::Stone {});
     let Block::Observer { mut observer } = Block::from_name("observer").unwrap() else { unreachable!() };
-    observer.facing = mchprs_blocks::BlockFacing::South;
+    observer.facing = facing;
+    observer.powered = powered;
     world.set_block(observer_pos, Block::Observer { observer });
     world.set_block(wire, Block::RedstoneWire { wire: RedstoneWire::default() });
     let placed = crate::redstone::wire::get_state_for_placement(&world, wire);
@@ -1782,9 +1792,10 @@ fn wire_power_callbacks_do_not_start_observer_pulses() {
             runtime.use_control(lever).unwrap();
         }
         world.tick_interpreted(); runtime.tick().unwrap();
-        assert!(matches!(world.get_block(observer_pos), Block::Observer { observer } if !observer.powered));
+        if !powered { assert!(matches!(world.get_block(observer_pos), Block::Observer { observer } if !observer.powered)); }
         assert_eq!(runtime.project(observer_pos), Some(world.get_block(observer_pos)), "tick {tick}");
     }
+    assert!(matches!(world.get_block(observer_pos), Block::Observer { observer } if !observer.powered));
 }
 #[test]
 fn watched_wire_notification_is_separate_from_lamp_power() {

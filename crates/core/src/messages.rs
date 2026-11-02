@@ -174,6 +174,7 @@ catalog! {
         SCOREBOARD_ENGINE_INTERPRETER = "Engine: Interpreter";
         SCOREBOARD_ENGINE_COMPILING = "Engine: Compiling...";
         SCOREBOARD_ENGINE_REDPILER = "Engine: Redpiler ON";
+        SCOREBOARD_ENGINE_REDPILER_LLVM = "Engine: Redpiler-LLVM";
         SCOREBOARD_HISTORY_OFF = "Hist: Off :3";
         SCOREBOARD_VISUAL_OFF = "Visual: OFF :3";
         SCOREBOARD_ON = "on";

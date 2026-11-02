@@ -4,12 +4,11 @@ use super::{Program, ScratchEntry, ScratchError, ScratchWorld};
 use crate::redpiler::TaskMonitor;
 use crate::world::World;
 use mchprs_blocks::{BlockFace, BlockPos, blocks::Block};
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 type InputKey = (ArrangementSource, bool);
 type InputValue = (u8, bool);
 type Inputs = BTreeMap<InputKey, InputValue>;
-type Dependency = (usize, ArrangementSource, bool);
 
 #[derive(Clone, Copy)]
 enum ReaderKind {
@@ -39,10 +38,6 @@ pub(super) struct ProbeIndexes<'a> {
     redstone_tokens: HashMap<BlockPos, usize>,
     /// wire world positions mapped to component IDs.
     wire_at: HashMap<BlockPos, usize>,
-    /// per wire component, neighboring wire component IDs.
-    wire_neighbors: Vec<Vec<usize>>,
-    /// non-wire reader positions mapped to component IDs.
-    readers: HashMap<BlockPos, usize>,
 }
 
 impl<'a> ProbeIndexes<'a> {
@@ -60,7 +55,6 @@ impl<'a> ProbeIndexes<'a> {
     ) -> Result<ProbeIndexes<'a>, ScratchError> {
         let mut redstone_tokens = HashMap::new();
         let mut wire_at = HashMap::new();
-        let mut readers = HashMap::new();
         for (&pos, &block) in positions.iter().zip(initial) {
             if monitor.is_some_and(TaskMonitor::cancelled) {
                 return Err(ScratchError {
@@ -69,9 +63,6 @@ impl<'a> ProbeIndexes<'a> {
                 });
             }
             let index = components[&pos];
-            if reader_kind(block).is_some_and(|kind| !matches!(kind, ReaderKind::Wire)) {
-                readers.insert(pos, index);
-            }
             if matches!(block, Block::RedstoneWire { .. }) {
                 wire_at.insert(pos, index);
             }
@@ -83,111 +74,12 @@ impl<'a> ProbeIndexes<'a> {
                 }
             }
         }
-        let mut wire_neighbors = vec![Vec::new(); positions.len()];
-        for (&pos, &wire) in &wire_at {
-            if monitor.is_some_and(TaskMonitor::cancelled) {
-                return Err(ScratchError {
-                    position: None,
-                    reason: "compilation cancelled",
-                });
-            }
-            let neighbors = &mut wire_neighbors[wire];
-            for (dx, dz) in [(-1, 0), (1, 0), (0, -1), (0, 1)] {
-                for dy in -1..=1 {
-                    if let Some(&neighbor) = wire_at.get(&BlockPos::new(pos.x + dx, pos.y + dy, pos.z + dz)) {
-                        neighbors.push(neighbor);
-                    }
-                }
-            }
-            neighbors.sort_unstable();
-        }
         Ok(Self {
             components,
             redstone_tokens,
             wire_at,
-            wire_neighbors,
-            readers,
         })
     }
-}
-
-#[derive(Default)]
-struct ProbeMetrics {
-    /// number of arrangement samples evaluated.
-    samples: usize,
-    /// number of component reads performed while sampling.
-    member_reads: usize,
-    /// number of affected arrangement members visited.
-    affected_members: usize,
-    #[cfg(test)]
-    sample_times: [std::time::Duration; 4],
-}
-
-impl ProbeMetrics {
-    fn add(&mut self, other: Self) {
-        self.samples += other.samples;
-        self.member_reads += other.member_reads;
-        self.affected_members += other.affected_members;
-    }
-}
-
-fn affected_members(
-    token_cells: &[BlockPos],
-    positions: &[BlockPos],
-    indexes: &ProbeIndexes<'_>,
-    monitor: Option<&TaskMonitor>,
-) -> Result<BTreeSet<usize>, ScratchError> {
-    let mut touched = HashSet::new();
-    let mut queue = VecDeque::new();
-    for &cell in token_cells {
-        for dx in -1..=1 {
-            for dy in -1..=1 {
-                for dz in -1..=1 {
-                    if let Some(&wire) = indexes.wire_at.get(&BlockPos::new(cell.x + dx, cell.y + dy, cell.z + dz))
-                        && touched.insert(wire)
-                    {
-                        queue.push_back((wire, 0));
-                    }
-                }
-            }
-        }
-    }
-    while let Some((wire, depth)) = queue.pop_front() {
-        if monitor.is_some_and(TaskMonitor::cancelled) {
-            return Err(ScratchError {
-                position: None,
-                reason: "compilation cancelled",
-            });
-        }
-        if depth < 15 {
-            queue.extend(
-                indexes.wire_neighbors[wire]
-                    .iter()
-                    .copied()
-                    .filter_map(|neighbor| touched.insert(neighbor).then_some((neighbor, depth + 1))),
-            );
-        }
-    }
-
-    let mut members: BTreeSet<_> = touched.iter().copied().collect();
-    for center in token_cells.iter().copied().chain(touched.iter().map(|&wire| positions[wire])) {
-        if monitor.is_some_and(TaskMonitor::cancelled) {
-            return Err(ScratchError {
-                position: None,
-                reason: "compilation cancelled",
-            });
-        }
-        for dx in -2..=2 {
-            for dy in -2..=2 {
-                for dz in -2..=2 {
-                    if let Some(&reader) = indexes.readers.get(&BlockPos::new(center.x + dx, center.y + dy, center.z + dz)) {
-                        members.insert(reader);
-                    }
-                }
-            }
-        }
-    }
-    Ok(members)
 }
 
 fn wire_sources(
@@ -307,60 +199,6 @@ fn discover_inputs(world: &impl World, program: &Program, member: usize, monitor
     Ok(result)
 }
 
-fn sample(
-    scratch: &mut ScratchWorld,
-    program: &Program,
-    placements: &[(usize, usize)],
-    members: &[usize],
-    monitor: Option<&TaskMonitor>,
-    indexes: &ProbeIndexes<'_>,
-    metrics: &mut ProbeMetrics,
-) -> Result<Vec<Inputs>, ScratchError> {
-    if monitor.is_some_and(TaskMonitor::cancelled) {
-        return Err(ScratchError {
-            position: None,
-            reason: "compilation cancelled",
-        });
-    }
-    #[cfg(test)]
-    let started = std::time::Instant::now();
-    scratch.revert();
-    #[cfg(test)]
-    let placed = { metrics.sample_times[0] += started.elapsed(); std::time::Instant::now() };
-    for &(token, digit) in placements {
-        let record = &program.tokens[token];
-        let next = digit.checked_sub(1).map(|cell| record.cells[cell]);
-        if record.position != next {
-            if let Some(initial) = record.position {
-                scratch.world_mut().set_block(initial, Block::Air);
-            }
-        }
-        if let Some(next) = next {
-            scratch.world_mut().set_block(next, record.block);
-        }
-    }
-    #[cfg(test)]
-    let queried = { metrics.sample_times[1] += placed.elapsed(); std::time::Instant::now() };
-    let mut result = Vec::with_capacity(members.len());
-    metrics.samples += 1;
-    metrics.member_reads += members.len();
-    for &member in members {
-        if monitor.is_some_and(TaskMonitor::cancelled) {
-            return Err(ScratchError {
-                position: None,
-                reason: "compilation cancelled",
-            });
-        }
-        result.push(inputs_of(scratch.world(), program, member, monitor, indexes)?);
-    }
-    #[cfg(test)]
-    let checked = { metrics.sample_times[2] += queried.elapsed(); std::time::Instant::now() };
-    scratch.finish_probe()?;
-    #[cfg(test)]
-    { metrics.sample_times[3] += checked.elapsed(); }
-    Ok(result)
-}
-
 fn electrical_states(program: &Program, indexes: &ProbeIndexes<'_>, tokens: &[usize], target: usize) -> Vec<Vec<usize>> {
     tokens.iter().map(|&token| {
         let record = &program.tokens[token];
@@ -377,24 +215,6 @@ fn electrical_states(program: &Program, indexes: &ProbeIndexes<'_>, tokens: &[us
             }
         })).collect()
     }).collect()
-}
-
-fn count(program: &Program, tokens: &[usize], axes: &[Vec<usize>], pos: BlockPos) -> Result<usize, ScratchError> {
-    let n = tokens
-        .iter()
-        .zip(axes).try_fold(1usize, |n, (_, states)| n.checked_mul(states.iter().copied().max().unwrap_or(0) + 1))
-        .unwrap_or(usize::MAX);
-    if n > super::program::MAX_ARRANGEMENT_STATES {
-        if std::env::var_os("MCHPRS_REDPILER_BOUNDARY_TRACE").is_some() {
-            eprintln!("Arrangement limit at {pos:?}: states={n}, tokens={:?}", tokens.iter().map(|&token| (token, &program.tokens[token])).collect::<Vec<_>>());
-        }
-        Err(ScratchError {
-            position: Some(pos),
-            reason: "too many piston states near dependency",
-        })
-    } else {
-        Ok(n)
-    }
 }
 
 fn placements(tokens: &[usize], axes: &[Vec<usize>], mut arrangement: usize) -> Vec<(usize, usize)> {
@@ -431,29 +251,44 @@ pub(super) fn run(
     let targets: Vec<_> = program.initial.iter().enumerate().filter_map(|(node, &block)| reader_kind(block).is_some().then_some(node)).collect();
     graph.compile_readers(&mut scratch, program, &targets, indexes, monitor)?;
     let initial: Vec<_> = program.tokens.iter().map(|record| record.position.and_then(|pos| record.cells.iter().position(|&cell| cell == pos)).map_or(0, |cell| cell + 1)).collect();
-    let jobs: Vec<_> = (0..graph.reader_count()).filter(|&reader| !graph.reader_dependencies(reader).is_empty()).collect();
-    let lowered = scratch.probe_jobs(&jobs, monitor, |_, &reader| {
-        let target = graph.reader_component(reader);
+    const MAX_TEMP_SLOTS: usize = 65_536;
+    const MAX_DENSE_BYTES: usize = 64 * 1024 * 1024;
+    let mut jobs = Vec::new();
+    let mut fallback = BTreeSet::new();
+    for reader in 0..graph.reader_count() {
         let tokens = graph.reader_dependencies(reader);
-        let mut search = Search::default();
-        let basis = graph.reader_sources(reader, |Axis::Token(token, _)| initial[token], &mut search)?;
+        if tokens.is_empty() { continue; }
+        let target = graph.reader_component(reader);
         let axes = electrical_states(program, indexes, tokens, target);
         let states = axes.iter().try_fold(1usize, |count, axis| count.checked_mul(axis.iter().copied().max().unwrap_or(0) + 1));
         let mut occupied = HashSet::new();
         let overlaps = tokens.iter().flat_map(|&token| &program.tokens[token].cells).any(|&cell| !occupied.insert(cell));
-        let Some(states) = states.filter(|&count| count <= super::program::MAX_ARRANGEMENT_STATES && !overlaps) else {
-            return Ok((reader, None));
-        };
-        let mut axis_index = vec![usize::MAX; program.tokens.len()];
-        for (axis, &token) in tokens.iter().enumerate() { axis_index[token] = axis; }
+        let sources = graph.potential_sources(reader).len();
+        let slots = states.map_or(usize::MAX, |states| states.saturating_mul(sources.max(1)));
+        if !overlaps && states.is_some_and(|states| states <= super::program::MAX_ARRANGEMENT_STATES) && slots <= MAX_TEMP_SLOTS {
+            jobs.push((reader, axes, states.unwrap(), slots));
+        } else { fallback.insert(reader); }
+    }
+    let mut groups = Vec::new();
+    let mut routed = BTreeSet::new();
+    let mut dense_bytes = 0usize;
+    let mut start = 0;
+    while start < jobs.len() {
+        let mut end = start;
+        let mut slots = 0usize;
+        while end < jobs.len() && slots + jobs[end].3 <= MAX_TEMP_SLOTS { slots += jobs[end].3; end += 1; }
+        let lowered = scratch.probe_jobs(&jobs[start..end], monitor, |_, &(reader, ref axes, states, _)| {
+            let target = graph.reader_component(reader);
+            let tokens = graph.reader_dependencies(reader);
+            let mut search = Search::default();
+            let basis = graph.reader_sources(reader, |Axis::Token(token, _)| initial[token], &mut search)?;
         let mut maps = Vec::with_capacity(states);
         let mut conditional = BTreeSet::new();
         for state in 0..states {
             if monitor.is_some_and(TaskMonitor::cancelled) { return Err(ScratchError { position: None, reason: "compilation cancelled" }); }
             let positions = placements(tokens, &axes, state);
             let inputs = graph.reader_sources(reader, |Axis::Token(token, _)| {
-                let axis = axis_index[token];
-                if axis == usize::MAX { initial[token] } else { positions[axis].1 }
+                tokens.binary_search(&token).map_or(initial[token], |axis| positions[axis].1)
             }, &mut search)?;
             conditional.extend(find_changed_links(&basis, &inputs));
             maps.push(inputs);
@@ -467,25 +302,26 @@ pub(super) fn run(
             groups.push(InputArrangement { target, side, silent: matches!(program.initial[target], Block::Piston { .. }),
                 tokens: tokens.to_vec(), token_states: axes.clone(), conditional_sources: sources, inputs });
         }
-        Ok((reader, Some(groups)))
-    })?;
-    let mut groups = Vec::new();
-    let mut routed = BTreeSet::new();
-    let mut dense_bytes = 0usize;
-    for (reader, lowered) in lowered {
-        let estimate = lowered.as_ref().map(|groups| groups.iter().fold(0usize, |total, group| {
-            let conditions: HashSet<_> = group.inputs.iter().flatten().copied().collect();
-            let ranges = group.inputs.len().saturating_mul(group.tokens.len()).saturating_mul(2);
-            total.saturating_add(ranges.saturating_mul(std::mem::size_of::<std::ops::Range<usize>>()
-                + conditions.len().saturating_mul(std::mem::size_of::<super::program::ArrangementFlip>())))
-        }));
-        if let (Some(lowered), Some(estimate)) = (lowered, estimate) {
-            if dense_bytes.saturating_add(estimate) <= 64 * 1024 * 1024 {
-                dense_bytes += estimate;
-                groups.extend(lowered);
-                continue;
-            }
+            Ok((reader, groups))
+        })?;
+        for (reader, lowered) in lowered {
+            let estimate = lowered.iter().fold(0usize, |total, group| {
+                let conditions: HashSet<_> = group.inputs.iter().flatten().copied().collect();
+                let ranges = group.inputs.len().saturating_mul(group.tokens.len()).saturating_mul(2);
+                let row_bytes = group.inputs.capacity().saturating_mul(std::mem::size_of::<Vec<(ArrangementSource, u8)>>());
+                let value_bytes = group.inputs.iter().map(|row| row.capacity().saturating_mul(std::mem::size_of::<(ArrangementSource, u8)>())).sum::<usize>();
+                let plan_bytes = ranges.saturating_mul(2 * std::mem::size_of::<std::ops::Range<usize>>()
+                    + 2 * conditions.len().saturating_mul(std::mem::size_of::<super::program::ArrangementFlip>()));
+                let mask_bytes = conditions.len().saturating_mul(group.inputs.len() + std::mem::size_of::<super::program::ArrangementLink>());
+                total.saturating_add(row_bytes).saturating_add(value_bytes).saturating_add(plan_bytes).saturating_add(mask_bytes)
+            });
+            if dense_bytes.saturating_add(estimate) <= MAX_DENSE_BYTES { dense_bytes += estimate; groups.extend(lowered); }
+            else { fallback.insert(reader); }
         }
+        start = end;
+    }
+    for reader in fallback {
+        graph.reader_sources(reader, |Axis::Token(token, _)| initial[token], &mut Search::default())?;
         let target = graph.reader_component(reader);
         routed.insert(target);
         let potential = graph.potential_sources(reader);
@@ -499,78 +335,13 @@ pub(super) fn run(
     }
     graph.retain_readers(&routed);
     if std::env::var_os("MCHPRS_REDPILER_PHASE_TIMINGS").is_some() {
-        eprintln!("Redpiler topology lowering: targets={} dense_groups={} routed_targets={} dense_table_bound_bytes={} elapsed_ms={}", targets.len(), groups.len(), routed.len(), dense_bytes, started.elapsed().as_millis());
+        eprintln!("Redpiler topology lowering: targets={} arrangement_groups={} routed_targets={} dense_table_estimated_bytes={} elapsed_ms={}", targets.len(), groups.len(), routed.len(), dense_bytes, started.elapsed().as_millis());
     }
     Ok(Discovery { groups, routing: (!routed.is_empty()).then_some(graph) })
 }
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    #[ignore = "isolated ANPU geometry sampling; measures one target, not a full compile"]
-    fn isolated_anpu_joint_probe_cost() {
-        use super::super::cpu_trace::cpus;
-        let cpu = cpus::CPUS[1];
-        let world = cpus::load_cpu(cpu);
-        let clip = crate::plot::worldedit::load_schematic(std::fs::File::open(
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../test_data").join(cpu.schematic)).unwrap()).unwrap();
-        let bounds = (cpu.origin, cpu.origin + BlockPos::new(clip.size_x as i32 - 1, clip.size_y as i32 - 1, clip.size_z as i32 - 1));
-        let mut positions = Vec::new();
-        crate::world::for_each_block_optimized(&world, bounds.0, bounds.1, |pos| {
-            let block = world.get_block(pos);
-            if reader_kind(block).is_some() || block.pressure_plate_powered().is_some()
-                || matches!(block, Block::RedstoneBlock | Block::Lever { .. } | Block::StoneButton { .. } | Block::Observer { .. }) {
-                positions.push(pos);
-            }
-        });
-        let components: HashMap<_, _> = positions.iter().enumerate().map(|(node, &pos)| (pos, node)).collect();
-        let target = components[&BlockPos::new(84, 37, 72)];
-        let initial: Vec<_> = positions.iter().map(|&pos| world.get_block(pos)).collect();
-        let repeaters = initial.iter().enumerate().filter_map(|(component, block)| matches!(block, Block::RedstoneRepeater { .. })
-            .then_some(super::super::program::RepeaterRecord { component, output_is_diode: false, side_sources: None })).collect();
-        let mut program = Program::new(positions, initial, vec![], vec![[vec![], vec![]]; components.len()], vec![], vec![], repeaters).unwrap();
-        for z in (61..=75).step_by(2) {
-            for x in [84, 86] {
-                let lower = BlockPos::new(x, 38, z);
-                let block = world.get_block(lower);
-                assert!(matches!(block, Block::Concrete { .. }));
-                program.tokens.push(super::super::compiler::PistonToken {
-                    block, position: Some(lower), cells: vec![BlockPos::new(x, 39, z), lower],
-                });
-            }
-        }
-        let indexes = ProbeIndexes::new(&components, &program.positions, &program.initial, &program.tokens, None).unwrap();
-        let entry = ScratchEntry { scheduled: vec![], piston: world.piston_state().clone() };
-        let mut scratch = ScratchWorld::from_world_monitored(&world, bounds, entry, None).unwrap();
-        let max_axes = std::env::var("MCHPRS_PROBE_AXES").ok().map_or(10, |s| s.parse::<usize>().unwrap());
-        assert!((2..=14).contains(&max_axes));
-        let mut rows = Vec::new();
-        for axes_count in (2..=max_axes).step_by(2) {
-            let tokens: Vec<_> = (0..axes_count).collect();
-            let axes = electrical_states(&program, &indexes, &tokens, target);
-            let states: usize = axes.iter().map(|axis| axis.iter().copied().max().unwrap_or(0) + 1).product();
-            let mut metrics = ProbeMetrics::default();
-            let mut changed = 0;
-            let started = std::time::Instant::now();
-            for state in 0..states {
-                let mut base = placements(&tokens, &axes, state);
-                let before = sample(&mut scratch, &program, &base, &[target], None, &indexes, &mut metrics).unwrap();
-                base.push((14, 0));
-                let after = sample(&mut scratch, &program, &base, &[target], None, &indexes, &mut metrics).unwrap();
-                changed += usize::from(before != after);
-            }
-            assert_eq!(metrics.samples, states * 2);
-            let row = serde_json::json!({"axes":axes_count,"states":states,"baseline_samples":states,"candidate_samples":states,
-                "restoration_samples":0,"changed_inputs":changed,"wall_ms":started.elapsed().as_secs_f64()*1000.0,
-                "revert_ms":metrics.sample_times[0].as_secs_f64()*1000.0,"placement_ms":metrics.sample_times[1].as_secs_f64()*1000.0,
-                "input_discovery_ms":metrics.sample_times[2].as_secs_f64()*1000.0,"boundary_check_ms":metrics.sample_times[3].as_secs_f64()*1000.0});
-            eprintln!("isolated ANPU sweep: {row}");
-            rows.push(row);
-        }
-        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/anpu-isolated-probe-cost.json");
-        std::fs::write(path, serde_json::to_vec_pretty(&rows).unwrap()).unwrap();
-    }
 
     #[test]
     fn concrete_wire_axes_fold_only_cells_without_wire_contacts() {
@@ -589,87 +360,4 @@ mod tests {
         assert_eq!(electrical_states(&program, &indexes, &[0], 1), vec![vec![0, 1, 2]]);
     }
 
-    #[test]
-    fn indexed_affected_regions_match_full_scan() {
-        let mut positions = Vec::new();
-        let mut wire_at = HashMap::new();
-        for x in 20..=42 {
-            let pos = BlockPos::new(x, 10 + (x % 3 == 0) as i32, 30);
-            wire_at.insert(pos, positions.len());
-            positions.push(pos);
-        }
-        let reader_positions = [
-            BlockPos::new(20, 12, 32),
-            BlockPos::new(28, 12, 32),
-            BlockPos::new(42, 10, 30),
-            BlockPos::new(50, 10, 30),
-        ];
-        let readers: HashMap<_, _> = reader_positions
-            .into_iter()
-            .map(|pos| {
-                let index = positions.len();
-                positions.push(pos);
-                (pos, index)
-            })
-            .collect();
-        let wire_neighbors = positions
-            .iter()
-            .enumerate()
-            .map(|(wire, &pos)| {
-                if wire >= wire_at.len() {
-                    return Vec::new();
-                }
-                let mut neighbors = Vec::new();
-                for (dx, dz) in [(-1, 0), (1, 0), (0, -1), (0, 1)] {
-                    for dy in -1..=1 {
-                        if let Some(&next) = wire_at.get(&BlockPos::new(pos.x + dx, pos.y + dy, pos.z + dz)) {
-                            neighbors.push(next);
-                        }
-                    }
-                }
-                neighbors.sort_unstable();
-                neighbors
-            })
-            .collect();
-        let components: HashMap<_, _> = positions.iter().enumerate().map(|(i, &pos)| (pos, i)).collect();
-        let indexes = ProbeIndexes {
-            components: &components,
-            redstone_tokens: HashMap::new(),
-            wire_at: wire_at.clone(),
-            wire_neighbors,
-            readers: readers.clone(),
-        };
-        let mut wire_list: Vec<_> = wire_at.values().copied().collect();
-        wire_list.sort_unstable();
-        let token_cells = [BlockPos::new(19, 10, 30), BlockPos::new(30, 11, 31)];
-        let mut expected = BTreeSet::new();
-        let mut touched = HashSet::new();
-        let mut queue = VecDeque::new();
-        for &wire in &wire_list {
-            if token_cells.iter().any(|&cell| near(cell, positions[wire], 1)) {
-                touched.insert(wire);
-                queue.push_back((wire, 0));
-            }
-        }
-        while let Some((wire, depth)) = queue.pop_front() {
-            if depth == 15 {
-                continue;
-            }
-            let pos = positions[wire];
-            for &next in &wire_list {
-                let at = positions[next];
-                if pos.x.abs_diff(at.x) + pos.z.abs_diff(at.z) == 1 && pos.y.abs_diff(at.y) <= 1 && touched.insert(next) {
-                    queue.push_back((next, depth + 1));
-                }
-            }
-        }
-        expected.extend(touched.iter().copied());
-        for (&pos, &reader) in &readers {
-            if token_cells.iter().any(|&cell| near(cell, pos, 2)) || touched.iter().any(|&wire| near(positions[wire], pos, 2)) {
-                expected.insert(reader);
-            }
-        }
-
-        assert_eq!(affected_members(&token_cells, &positions, &indexes, None).unwrap(), expected);
-    }
 }

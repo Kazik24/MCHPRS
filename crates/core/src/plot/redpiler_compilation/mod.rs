@@ -164,6 +164,11 @@ impl Plot {
             self.reject_redpiler(job.started, messages::REDPILER_COMPILATION_CHANGED);
         } else {
             self.redpiler = output.compiler;
+            let state = if self.redpiler.current_flags().is_some_and(|options| options.llvm) {
+                RedpilerState::RunningLlvm
+            } else {
+                RedpilerState::Running
+            };
             if let Some(stats) = self.redpiler.stats() {
                 for line in stats.chat_summary_lines() {
                     for player in &self.players {
@@ -178,7 +183,7 @@ impl Plot {
                 let bytes = self.world.history.disable();
                 self.broadcast_plot_chat_message(&messages::history_disabled_for_compilation(history::format_memory(bytes)));
             }
-            self.scoreboard.set_redpiler_state(&self.players, RedpilerState::Running);
+            self.scoreboard.set_redpiler_state(&self.players, state);
             info!(
                 plot_x = self.world.x,
                 plot_z = self.world.z,

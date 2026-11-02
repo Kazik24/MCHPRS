@@ -167,22 +167,15 @@ pub(in super::super) fn run<'a>(
         }
     }
 
-    for (observer, &pos) in positions.iter().enumerate() {
-        if let Block::Observer { observer: state } = world.get_block(pos) {
-            let at = pos.offset(state.facing.into());
-            if let Some(&wire) = position_index
-                .get(&at)
-                .filter(|_| matches!(world.get_block(at), Block::RedstoneWire { .. }))
-            {
-                if let Some(record) = watched_wires.iter_mut().find(|record| record.wire == wire) {
-                    record.watchers.push(observer);
-                } else {
-                    watched_wires.push(WatchedWire {
-                        wire,
-                        watchers: vec![observer],
-                    });
-                }
-            }
+    for &pos in &wire_positions {
+        let observers: Vec<_> = crate::world::wire_cache::positions(pos).into_iter().filter_map(|at|
+            position_index.get(&at).copied().filter(|_| matches!(world.get_block(at), Block::Observer { .. }))).collect();
+        if observers.is_empty() { continue; }
+        let wire = position_index[&pos];
+        if let Some(record) = watched_wires.iter_mut().find(|record| record.wire == wire) {
+            record.watchers.extend(observers);
+        } else {
+            watched_wires.push(WatchedWire { wire, watchers: observers });
         }
     }
     scratch.finish_probe()?;

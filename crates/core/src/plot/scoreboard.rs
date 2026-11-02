@@ -14,6 +14,7 @@ pub enum RedpilerState {
     Stopped,
     Compiling,
     Running,
+    RunningLlvm,
 }
 
 impl RedpilerState {
@@ -22,6 +23,7 @@ impl RedpilerState {
             RedpilerState::Stopped => messages::SCOREBOARD_ENGINE_INTERPRETER,
             RedpilerState::Compiling => messages::SCOREBOARD_ENGINE_COMPILING,
             RedpilerState::Running => messages::SCOREBOARD_ENGINE_REDPILER,
+            RedpilerState::RunningLlvm => messages::SCOREBOARD_ENGINE_REDPILER_LLVM,
         }
     }
 }
@@ -186,7 +188,7 @@ impl Scoreboard {
             self.metrics.history_memory.clone(),
             self.metrics.visual_updates.clone(),
         ];
-        if self.redpiler_state == RedpilerState::Running && !self.compiler_flags.is_empty() {
+        if matches!(self.redpiler_state, RedpilerState::Running | RedpilerState::RunningLlvm) && !self.compiler_flags.is_empty() {
             lines.extend(self.compiler_flags.iter().map(messages::scoreboard_flag));
         }
         lines.extend([self.metrics.pistons.clone(), self.metrics.screen_only.clone(), self.metrics.git.clone()]);
@@ -194,7 +196,7 @@ impl Scoreboard {
     }
 
     fn set_lines(&mut self, players: &[Player], lines: Vec<String>, git_readers: HashSet<u128>) {
-        debug_assert!(lines.iter().all(|line| line.is_ascii() && line.len() <= 20));
+        debug_assert!(lines.iter().all(|line| line.is_ascii() && line.len() <= 24));
         debug_assert!(lines.first().is_some_and(|first| lines.iter().all(|line| first.len() >= line.len())));
         if lines == self.current_state && git_readers == self.git_readers {
             return;
@@ -280,7 +282,7 @@ impl Scoreboard {
 
     pub fn set_redpiler_state(&mut self, players: &[Player], state: RedpilerState) {
         self.redpiler_state = state;
-        if state != RedpilerState::Running {
+        if !matches!(state, RedpilerState::Running | RedpilerState::RunningLlvm) {
             self.compiler_flags.clear();
         }
         self.refresh_lines(players);
@@ -398,7 +400,7 @@ mod tests {
             &board.current_state[7..],
             &["Pistons: auto/off", "Screen only: on", "Git: very-long-b...",]
         );
-        for engine in [RedpilerState::Running, RedpilerState::Compiling, RedpilerState::Stopped] {
+        for engine in [RedpilerState::Running, RedpilerState::RunningLlvm, RedpilerState::Compiling, RedpilerState::Stopped] {
             board.set_redpiler_state(&[], engine);
             let lines = &board.current_state;
             assert!(lines.len() <= 15);
