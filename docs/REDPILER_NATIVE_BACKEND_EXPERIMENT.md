@@ -1,5 +1,40 @@
 # LLVM Redpiler backend experiment
 
+### 2026-11-02 — resumed defect and architecture review
+
+The resumed checkout was clean at `846996e4`. No applicable `AGENTS.md` was found in the checkout or its parent directories. The user excludes piston dropping-block semantics and asks for defects, an architecture review, and the smallest graph-bounded fix before implementation. Production sources have not been changed during this review. RedstoneDB files changed independently during the review and are being preserved.
+
+Fresh reproduction commands (PowerShell; each command's output redirected to its separately named log):
+
+```powershell
+./scripts/build-llvm-native.ps1
+$env:MCHPRS_LLVM_DLL = (Resolve-Path target/native_engine.dll).Path
+cargo test -p mchprs_core --lib redpiler::
+cargo test -p mchprs_core --lib redstonedb_levers_match_interpreter
+cargo build --profile bench -p mchprs_core --example bench_cpus --example bench_llvm_zcore
+$env:MCHPRS_BENCH_PUBLISH_ALL = '1'
+target/anpu-resume-20261102-baseline-cpus.exe zcore 5000 1 integrated
+target/anpu-resume-20261102-baseline-kernel.exe 5000 3
+```
+
+The two named executables are copies of the freshly built examples. Existing default benchmark JSON files were copied to `target/redpiler-bench-results/anpu-resume-20261102-prior-*` before running. New screen evidence is `target/anpu-resume-20261102-baseline-screen.log` and `target/redpiler-bench-results/anpu-resume-20261102-baseline-screen.json`. The full-publication screen comparison passed through 5,000 Run ticks. Integrated timing is not a kernel performance measurement. Kernel trials run separately in alternating Rust/LLVM order; their log is `target/anpu-resume-20261102-baseline-kernel.log`.
+
+The fresh DLL built in 520.9 ms, 40,960 bytes. The DLL-selected Redpiler suite reproduced **176 passed, five failed, 17 ignored**; DLL execution tests ran successfully, including movement/reset, scheduling, and controls. Logs: `target/anpu-resume-20261102-{dll-build,suite-baseline,redstonedb,build-benches}.log`. The separate RedstoneDB test passed before the independently arriving fixture edits.
+
+Defects and architectural findings:
+
+* Torch watcher order: `compiler::update_footprint` uses West-first generic neighbors and a two-hop footprint; the interpreter torch path uses `surrounding_notifications` with direct/vertical-diagonal callbacks in its own order. The retained fixture proves East-before-West. Correct the torch-specific compiled recipient order, without changing the global update order or the scheduler.
+* Empty piston observer FIFO: extension currently notifies base source watchers before head shape observers. The interpreter's movement phase delivers destination/head shape notifications before the base notification. Correct the phase placement of existing notifications, preserving power callback placement and avoiding double delivery. This is not evidence of a scheduler FIFO implementation defect.
+* Wire sides: `notify_shape` handles observers only; `finish_token_part` restores a token using movement power steps without the directional wire-side callback. Existing runtime `Block` values already store full Rust wire sides. Extend existing movement plans with fixed wire component IDs/directions and fixed local geometry references; apply the historical side transition to stored sides. Do not normalize from final geometry, enumerate joint wire-history states, or traverse world wires at runtime. Departure, extension, retraction and interruption need separate validation.
+* LLVM: semantic-12 state/snapshot tables preserve wire power but lack mutable side state. After Rust validation, serialize the same movement instructions and initial sides, retain sides in DLL state, and export them through the existing snapshot. Validate indices/encodings/ranges and advance semantic identity. The ABI test and publication/reset test are two manifestations of this missing behavior.
+* Source-order limitation: `source_order.rs` deduplicates target callbacks, logs repeated-transition differences, and skips captured-frame replay for appended output sources. This is a known acceptance gap and a plausible area for the deferred ANPU tick-218 investigation, not a demonstrated explanation for ZCore tick 1,520. Do not revive staged source lowering or context variants on that basis.
+
+The shared `Program` already supplies flattened source operations, movement ranges, arrangement flips, projection cell indices, and watcher lists. Rust and LLVM use serial priority/FIFO scheduling. Retain these structures. Arrangement lowering already caps states at 4,096, temporary slots at 65,536, and estimated dense tables at 768 MiB; these are not a total compile-time or process-memory guarantee. Existing fallback routing searches the compiled wire graph with operation charging and a distance bound; it does not run interpreter wire propagation. This review proposes no additional runtime graph search or interpreter call.
+
+The best candidate is an extension of existing indexed movement instructions, with compile-time recipient selection and constant-size local geometry reads only for an affected wire. Changed-side callbacks must be compiled with their original directions, order and meaningful duplicates and executed through existing component operations. This is not yet an implemented or validated fix. Additional work must be measured: no architecture argument alone guarantees 2,600–3,000 TPS. The old experimental screen divergence at Run tick 1,520 remains unexplained; the backup must not be reapplied wholesale.
+
+The three alternating 5,000-tick baseline pairs completed: Rust **2,304.0 / 2,388.3 / 2,377.8 TPS**, median **2,377.8**; LLVM **2,517.5 / 3,936.1 / 3,856.8 TPS**, median **3,856.8**. All six final screen hashes were `563a79fbd276a5b3601a404c3b7f278fe302f171960d5a6ed294c34219c7175b`. Rust setup was 15.24 / 23.45 / 24.01 s; LLVM 22.18 / 28.43 / 24.67 s. This fresh baseline does not reproduce the historical single 2,716.4 Rust sample and does not meet the target. No performance cause was isolated. Raw results: `target/redpiler-bench-results/anpu-resume-20261102-baseline-kernel.json`. The separate full-publication interpreter comparison recorded 244 screen changes and no first difference. No production algorithm was changed or accepted in this review.
+
 The backend implementation now lives in `crates/core/src/redpiler/sampled/llvm/`, including `llvm_movement.c`; Rust refers to `LlvmRuntime` and `LlvmProgram`. The existing C ABI exports, `MCHPRS_LLVM_DLL` override, development DLL filename, cache ownership marker, directory and lock names remain compatible with existing installations. The historical commands and filenames recorded below are retained as they were executed. `./scripts/build-llvm-native.ps1` builds the renamed sources; Clang/link completed in approximately 549 ms on this machine (`target/redpiler-llvm-rename-cbuild.log`).
 
 LLVM DLL LTO has not been benchmarked. The cached build uses Clang `-O3` without `-flto`; `llvm_movement.c` is included into `engine.c`, so these executor sources already form one C translation unit. Cargo's release `lto = "fat"` applies to Rust, not this separately built DLL. The Program is currently binary data, so DLL LTO alone does not specialize for a particular graph. After correctness is established, compare DLL builds with and without LTO using separate correctness checks and alternating active-work throughput trials; record cold compile time, DLL size and warm setup separately.

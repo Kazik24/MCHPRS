@@ -7,13 +7,30 @@
       "description": "One-bit ripple-carry adder slice.",
       "port_positions": "pending_manual_mapping",
       "inputs": [
-        { "name": "a", "width": 1 },
-        { "name": "b", "width": 1 },
-        { "name": "carry_in", "width": 1 }
+        {
+          "name": "a",
+          "width": 1
+        },
+        {
+          "name": "b",
+          "width": 1
+        },
+        {
+          "name": "carry_in",
+          "width": 1
+        }
       ],
       "outputs": [
-        { "name": "sum", "width": 1, "expression": "a ^ b ^ carry_in" },
-        { "name": "carry_out", "width": 1, "expression": "(a & b) | (carry_in & (a ^ b))" }
+        {
+          "name": "sum",
+          "width": 1,
+          "expression": "a ^ b ^ carry_in"
+        },
+        {
+          "name": "carry_out",
+          "width": 1,
+          "expression": "(a & b) | (carry_in & (a ^ b))"
+        }
       ],
       "stimulus": "exhaustive"
     },
@@ -23,11 +40,21 @@
       "description": "One-bit XOR gate.",
       "port_positions": "pending_manual_mapping",
       "inputs": [
-        { "name": "a", "width": 1 },
-        { "name": "b", "width": 1 }
+        {
+          "name": "a",
+          "width": 1
+        },
+        {
+          "name": "b",
+          "width": 1
+        }
       ],
       "outputs": [
-        { "name": "y", "width": 1, "expression": "a ^ b" }
+        {
+          "name": "y",
+          "width": 1,
+          "expression": "a ^ b"
+        }
       ],
       "stimulus": "exhaustive"
     },
@@ -37,14 +64,284 @@
       "description": "Eight-bit carry-cancel adder.",
       "port_positions": "pending_manual_mapping",
       "inputs": [
-        { "name": "a", "width": 8 },
-        { "name": "b", "width": 8 }
+        {
+          "name": "a",
+          "width": 8
+        },
+        {
+          "name": "b",
+          "width": 8
+        }
       ],
       "outputs": [
-        { "name": "sum", "width": 8, "expression": "(a + b) & 255" },
-        { "name": "carry_out", "width": 1, "expression": "(a + b) >> 8" }
+        {
+          "name": "sum",
+          "width": 8,
+          "expression": "(a + b) & 255"
+        },
+        {
+          "name": "carry_out",
+          "width": 1,
+          "expression": "(a + b) >> 8"
+        }
       ],
       "stimulus": "edge_cases_and_deterministic_random"
+    },
+    {
+      "id": "2fbea8b21f13cfcecd690a2b54ed38bf",
+      "schematic": "schematics/2fbea8b21f13cfcecd690a2b54ed38bf-1_bit_Buffer.schem",
+      "description": "One-bit buffer.",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "fb723c5a2f1780ccfdefabc5abdafb98",
+      "schematic": "schematics/fb723c5a2f1780ccfdefabc5abdafb98-2_bit_Buffer.schem",
+      "description": "Two-bit buffer.",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "9bb637764e688e5a34dc3e5eef750daf",
+      "schematic": "schematics/9bb637764e688e5a34dc3e5eef750daf-1_bit_XNOR_Gate.schem",
+      "description": "One-bit XNOR gate.",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [
+        {
+          "name": "a",
+          "width": 1
+        },
+        {
+          "name": "b",
+          "width": 1
+        }
+      ],
+      "outputs": [
+        {
+          "name": "y",
+          "width": 1,
+          "expression": "1 ^ a ^ b"
+        }
+      ],
+      "stimulus": "exhaustive"
+    },
+    {
+      "id": "8f0a401ea8b82283d7c957fe69797cd9",
+      "schematic": "schematics/8f0a401ea8b82283d7c957fe69797cd9-3_tick_Monostable.schem",
+      "description": "Three-tick monostable pulse generator.",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "32a5c5139f6cf2a135a5f6051ed0f2b7",
+      "schematic": "schematics/32a5c5139f6cf2a135a5f6051ed0f2b7-8_bit_Incrementer.schem",
+      "description": "Eight-bit incrementer.",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "42371f8ed7bed5654072810648fd9c3d",
+      "schematic": "schematics/42371f8ed7bed5654072810648fd9c3d-1_bit_XNOR_Gate.schem",
+      "description": "1-bit XNOR Gate",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "1782f19efed92ad003d58b2d1932e324",
+      "schematic": "schematics/1782f19efed92ad003d58b2d1932e324-1_bit_XOR_Gate.schem",
+      "description": "1-bit XOR Gate",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "f13fb5f43d326e2b718ae4576e45870a",
+      "schematic": "schematics/f13fb5f43d326e2b718ae4576e45870a-1_bit_XNOR_Gate.schem",
+      "description": "1-bit XNOR Gate",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "699b1b30f3d31eaf4f25527c97a167b1",
+      "schematic": "schematics/699b1b30f3d31eaf4f25527c97a167b1-8_bit_Carry_Cancel_Adder.schem",
+      "description": "8-bit Carry Cancel Adder",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "d809b5a5a2d84ec829cfa90ef0352132",
+      "schematic": "schematics/d809b5a5a2d84ec829cfa90ef0352132-8_bit_Carry_Cancel_Adder.schem",
+      "description": "8-bit Carry Cancel Adder",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "2cdc24e68c78d7f0cdce7a141648385a",
+      "schematic": "schematics/2cdc24e68c78d7f0cdce7a141648385a-8_bit_Carry_Cancel_Adder.schem",
+      "description": "8-bit Carry Cancel Adder",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "134f721bdba7190fe91a3cc3d026b45c",
+      "schematic": "schematics/134f721bdba7190fe91a3cc3d026b45c-8_bit_Incrementer.schem",
+      "description": "8-bit Incrementer",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "485d5873cda3fab3a1b9f8201adf37c8",
+      "schematic": "schematics/485d5873cda3fab3a1b9f8201adf37c8-8_bit_Decrementer.schem",
+      "description": "8-bit Decrementer",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "cf4fe4731eb39b66bd60314db3e0e125",
+      "schematic": "schematics/cf4fe4731eb39b66bd60314db3e0e125-8_bit_Equality.schem",
+      "description": "8-bit Equality",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "2e446b86e70e825aa88b78cc1201d302",
+      "schematic": "schematics/2e446b86e70e825aa88b78cc1201d302-8_bit_Counter.schem",
+      "description": "8-bit Counter",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "a2cb291fe5fd39321977629ed587215e",
+      "schematic": "schematics/a2cb291fe5fd39321977629ed587215e-8_bit_Counter.schem",
+      "description": "8-bit Counter",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "f23a3a74482ce19fe09fe2b5ffdb01d5",
+      "schematic": "schematics/f23a3a74482ce19fe09fe2b5ffdb01d5-8_bit_Counter.schem",
+      "description": "8-bit Counter",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "0888fcdd5d01b6bada1d209c6b0dbe84",
+      "schematic": "schematics/0888fcdd5d01b6bada1d209c6b0dbe84-8_bit_Register.schem",
+      "description": "8-bit Register",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "0520aae23ac34c40614a6708d9c53c4e",
+      "schematic": "schematics/0520aae23ac34c40614a6708d9c53c4e-8_bit_Register.schem",
+      "description": "8-bit Register",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "7bb45d8e3fb208d696dc965f95630c3f",
+      "schematic": "schematics/7bb45d8e3fb208d696dc965f95630c3f-1_bit_Register.schem",
+      "description": "1-bit Register",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "4106b104ed6aa68f1a359c1dcd84b375",
+      "schematic": "schematics/4106b104ed6aa68f1a359c1dcd84b375-4_bit_Decoder.schem",
+      "description": "4-bit Decoder",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "c1c178d689ebd911104dcb22dcd15134",
+      "schematic": "schematics/c1c178d689ebd911104dcb22dcd15134-3_bit_Decoder.schem",
+      "description": "3-bit Decoder",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "80efbc578faa3d4cf5eaf734eed51ea7",
+      "schematic": "schematics/80efbc578faa3d4cf5eaf734eed51ea7-4_bit_Decoder.schem",
+      "description": "4-bit Decoder",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "46daff97352cd985d85fdc92e031928f",
+      "schematic": "schematics/46daff97352cd985d85fdc92e031928f-8_bit_Barrel_Shifter.schem",
+      "description": "8-bit Barrel Shifter",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "9ec66c2293606ca557a0ef9323012b6f",
+      "schematic": "schematics/9ec66c2293606ca557a0ef9323012b6f-1_bit_Inverter.schem",
+      "description": "1-bit Inverter",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "93616e4ff52a89fc1873a89b2ad39e63",
+      "schematic": "schematics/93616e4ff52a89fc1873a89b2ad39e63-8_bit_At_Least_3_Threshold.schem",
+      "description": "8-bit At Least 3 Threshold",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "cb49cff721a8343b94647256c1dc0f43",
+      "schematic": "schematics/cb49cff721a8343b94647256c1dc0f43-8_bit_Popcount.schem",
+      "description": "8-bit Popcount",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "ed41c4fe2baec2c27276942a180bb720",
+      "schematic": "schematics/ed41c4fe2baec2c27276942a180bb720-16_bit_Carry_Cancel_Subtractor.schem",
+      "description": "16-bit Carry Cancel Subtractor",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "a930a35978bcb7c509513e66a4072ded",
+      "schematic": "schematics/a930a35978bcb7c509513e66a4072ded-8_bit_Carry_Out.schem",
+      "description": "8-bit Carry Out",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": "839bcd2814002e6882c7a41e92c0d03c",
+      "schematic": "schematics/839bcd2814002e6882c7a41e92c0d03c-8_bit_Absolute_Value.schem",
+      "description": "8-bit Absolute Value",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [],
+      "outputs": []
     }
   ]
 }

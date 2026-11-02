@@ -34,7 +34,8 @@ fn redstonedb_levers_match_interpreter() {
             .filter(|&pos| matches!(native.get_block(pos), Block::Lever { .. })).collect();
         assert!(!levers.is_empty(), "{name}: no levers found");
         let transitions: Vec<usize> = if levers.len() <= 3 {
-            (1..(1usize << levers.len())).map(|step| step.trailing_zeros() as usize).collect()
+            (1..(1usize << levers.len())).map(|step| step.trailing_zeros() as usize)
+                .chain(std::iter::once(levers.len() - 1)).collect()
         } else {
             (0..levers.len()).chain((0..levers.len()).rev()).collect()
         };
