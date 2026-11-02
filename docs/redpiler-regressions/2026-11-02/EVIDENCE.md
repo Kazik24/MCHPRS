@@ -63,3 +63,5 @@ SHA-256 and byte lengths for archived evidence. Diagnostic patches were generate
 | [evidence/fixtures/2735cc14b1051cab4197df60265878b2-8_bit_Adder.schem](evidence/fixtures/2735cc14b1051cab4197df60265878b2-8_bit_Adder.schem) | 2235 | 1f58889c7eb3394b2dfd74398d475005269074092c1a20dc0fbffa15db4fa2c7 |
 | [evidence/fixtures/b6a6e870229ace7eb2afd8cb387a514e-Four_In_A_Row_Detector.schem](evidence/fixtures/b6a6e870229ace7eb2afd8cb387a514e-Four_In_A_Row_Detector.schem) | 2667 | 7cc18d21ad5c43873330a4196a5c19ea6efc7bdcf95d2f24068a7464ce8621bf |
 | [evidence/fixtures/Q2CK@Q2CK_Anpu1_Pong_KBTV.schem](evidence/fixtures/Q2CK@Q2CK_Anpu1_Pong_KBTV.schem) | 68616 | f4068257797399531ce31d56c972af32d0f73f7d8d496ce1b7b8cd1c178decec |
+| [evidence/java-8111-carry-cancel.json](evidence/java-8111-carry-cancel.json) | 5282 | 38719aa610f60269d1a1840d0ea06b69f95a09dac266d3c1dcf1458be43d649b |
+| [evidence/java-8111-capture.py](evidence/java-8111-capture.py) | 14343 | 286d84b85df9a47d51f125b254c0d202eb30a512f923c623f507a72f9104f0ea |

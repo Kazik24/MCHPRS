@@ -1264,6 +1264,12 @@ mod security_tests {
 
     #[test]
     fn redpiler_completion_offers_only_supported_compile_flags() {
+        let nodes = declared_command_nodes();
+        let redpiler = nodes.iter().find(|node| node.name == Some("redpiler")).unwrap();
+        let compile = redpiler.children.iter().map(|&id| &nodes[id as usize]).find(|node| node.name == Some("compile")).unwrap();
+        let flags = &nodes[compile.children[0] as usize];
+        assert_eq!(flags.name, Some("flags"));
+        assert_eq!(flags.suggestions_type, Some("minecraft:ask_server"));
         for (text, expected) in [
             ("/rp compile --", vec!["--publish-all", "--publish-redstone", "--io-only", "--update", "--llvm"]),
             ("/redpiler c -", vec!["--publish-all", "--publish-redstone", "--io-only", "--update", "--llvm", "-i", "-u"]),

@@ -11,9 +11,9 @@ Raporty korzystają z załączników zapisanych w tym samym katalogu `2026-11-02
 | [Carry-cancel 2cdc](02-carry-cancel-2cdc.md) | Błąd w akcji 43 | Nadal ten sam błąd |
 | [Adder 2735](03-adder-2735.md) | Błąd w akcji 63 | Nadal ten sam błąd |
 | [Four In A Row](04-four-in-a-row.md) | Błąd w akcji 1 | Nadal ten sam błąd |
-| [Carry-cancel 8111](01-carry-cancel-8111.md) | Obie wersje zgadzają się ze sobą | U nas wersje się różnią; inaczej zachowują się też nasze zwykłe symulacje |
+| [Carry-cancel 8111](01-carry-cancel-8111.md) | Obie wersje zwracają 0; Java 1.21.5 potwierdza 0 | Redpiler zwraca 0 jak Java; zwykła symulacja MCHPRS zwraca 1 |
 
-Nie zaliczamy ostatniego przypadku do potwierdzonych błędów MAIR. Nie zakładamy też, że każda nasza ostatnia poprawka była błędem MAIR. Dodatkowy test 8-bit RAM nie znalazł różnicy między dwiema wersjami MAIR przez 80 akcji i 1104 ticki: [wynik](../evidence/mair/7abf58b22e8e91c72ca27f70c1fd10b1.final.json).
+W przypadku 8111 ślad Java potwierdza wynik obu wersji MAIR, ale nie rozstrzyga pozostałych przypadków. Nie zakładamy też, że każda nasza ostatnia poprawka była błędem MAIR. Dodatkowy test 8-bit RAM nie znalazł różnicy między dwiema wersjami MAIR przez 80 akcji i 1104 ticki: [wynik](../evidence/mair/7abf58b22e8e91c72ca27f70c1fd10b1.final.json).
 
 ## Jak czytać zgłoszenia
 

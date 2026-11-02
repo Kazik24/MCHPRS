@@ -22,7 +22,7 @@ mod incremental_input_tests;
 mod input;
 mod routing;
 mod llvm;
-pub(in crate::redpiler) use llvm::LlvmRuntime;
+pub(in crate::redpiler) use llvm::{LlvmRuntime, unsupported_components};
 pub(super) use llvm::initialize_cache;
 mod program;
 #[cfg(test)]

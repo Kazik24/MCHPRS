@@ -94,11 +94,8 @@ impl LlvmRuntime {
             }
             eprintln!("LLVM Program component kinds: {kinds:?}");
         }
-        if !supported(&program) {
-            return Err(ScratchError {
-                position: None,
-                reason: "LLVM does not yet support this Program's component or movement features",
-            });
+        if let Some(error) = unsupported_reason(&program) {
+            return Err(error);
         }
         if ticks.len() > program.component_count().checked_add(64).ok_or_else(overflow)? {
             return Err(ScratchError {
@@ -377,69 +374,65 @@ impl LlvmRuntime {
     }
 }
 
-fn supported(program: &Program) -> bool {
-    program.comparators.iter().all(|record| [record.rear_override, record.far_override].into_iter().flatten().all(|input| matches!(input, super::program::ComparatorInput::Static(_))))
-        && program.command_blocks.is_empty()
-        && program.command_output_state.is_none()
-        && program.initial.iter().all(|block| {
-            matches!(
-                block,
-                Block::Lever { .. }
-                    | Block::StoneButton { .. }
-                    | Block::RedstoneLamp { .. }
-                    | Block::RedstoneBlock
-                    | Block::RedstoneRepeater { .. }
-                    | Block::RedstoneWire { .. }
-                    | Block::Observer { .. }
-                    | Block::RedstoneTorch { .. }
-                    | Block::RedstoneWallTorch { .. }
-                    | Block::Piston { .. }
-                    | Block::RedstoneComparator { .. }
-                    | Block::Hopper { .. } | Block::NoteBlock { .. } | Block::StonePressurePlate { .. }
-            )
-        })
-        && program.links.iter().all(|link| {
-            matches!(
-                program.initial[link.source],
-                Block::Lever { .. }
-                    | Block::StoneButton { .. }
-                    | Block::RedstoneBlock
-                    | Block::RedstoneRepeater { .. }
-                    | Block::RedstoneWire { .. }
-                    | Block::Observer { .. }
-                    | Block::RedstoneTorch { .. }
-                    | Block::RedstoneWallTorch { .. }
-                    | Block::Piston { .. }
-                    | Block::RedstoneComparator { .. }
-                    | Block::Hopper { .. } | Block::NoteBlock { .. } | Block::StonePressurePlate { .. }
-            ) && matches!(
-                program.initial[link.target],
-                Block::RedstoneLamp { .. }
-                    | Block::RedstoneRepeater { .. }
-                    | Block::RedstoneWire { .. }
-                    | Block::Observer { .. }
-                    | Block::RedstoneTorch { .. }
-                    | Block::RedstoneWallTorch { .. }
-                    | Block::Piston { .. }
-                    | Block::RedstoneComparator { .. }
-                    | Block::Hopper { .. } | Block::NoteBlock { .. } | Block::StonePressurePlate { .. }
-            )
-        })
-        && program.operations.iter().all(|op| {
-            matches!(
-                op,
-                Operation::Contribution(_)
-                    | Operation::UpdateLamp(_)
-                    | Operation::UpdateRepeater(_)
-                    | Operation::RefreshWire(_)
-                    | Operation::CheckWatchedWire(_)
-                    | Operation::UpdateTorch(_)
-                    | Operation::ArrangementContribution(_)
-                    | Operation::UpdatePiston(_)
-                    | Operation::UpdateComparator(_)
-                    | Operation::UpdateHopper(_) | Operation::UpdateNoteBlock(_)
-            )
-        })
+pub(in crate::redpiler) fn unsupported_components(program: &Program) -> (Vec<ScratchError>, usize) {
+    let mut first = Vec::new();
+    let mut count = 0;
+    for (node, block) in program.initial.iter().enumerate() {
+        if !matches!(block, Block::Lever { .. } | Block::StoneButton { .. } | Block::RedstoneLamp { .. } | Block::RedstoneBlock
+            | Block::RedstoneRepeater { .. } | Block::RedstoneWire { .. } | Block::Observer { .. } | Block::RedstoneTorch { .. }
+            | Block::RedstoneWallTorch { .. } | Block::Piston { .. } | Block::RedstoneComparator { .. } | Block::Hopper { .. }
+            | Block::NoteBlock { .. } | Block::StonePressurePlate { .. }) {
+            count += 1;
+            if first.len() < 3 {
+                let reason = match block {
+                    block if block.is_command_block() => "LLVM does not support command blocks",
+                    Block::IronTrapdoor { .. } => "LLVM does not support iron trapdoors",
+                    block if block.is_copper_bulb() => "LLVM does not support copper bulbs",
+                    _ => block.get_name(),
+                };
+                first.push(ScratchError { position: Some(program.positions[node]), reason });
+            }
+        }
+    }
+    (first, count)
+}
+
+fn unsupported_reason(program: &Program) -> Option<ScratchError> {
+    let error = |position, reason| Some(ScratchError { position, reason });
+    if let Some(issue) = unsupported_components(program).0.into_iter().next() {
+        return Some(issue);
+    }
+    if let Some(&pos) = program.command_blocks.keys().min_by_key(|pos| (pos.x, pos.y, pos.z)) {
+        return error(Some(pos), "LLVM does not support command block entities");
+    }
+    if program.command_output_state.is_some() {
+        return error(None, "LLVM does not support command block output state");
+    }
+    for record in &program.comparators {
+        for input in [record.rear_override, record.far_override].into_iter().flatten() {
+            let reason = match input {
+                super::program::ComparatorInput::Static(_) => continue,
+                super::program::ComparatorInput::CommandBlock(_) => "LLVM does not support comparator input from a command block",
+                super::program::ComparatorInput::CopperBulb(_) => "LLVM does not support comparator input from a copper bulb",
+            };
+            return error(Some(program.positions[record.component]), reason);
+        }
+    }
+    for link in &program.links {
+        if matches!(program.initial[link.target], Block::Lever { .. } | Block::StoneButton { .. } | Block::RedstoneBlock) {
+            return error(Some(program.positions[link.target]), "LLVM does not support this electrical link target");
+        }
+    }
+    for op in &program.operations {
+        let (node, reason) = match *op {
+            Operation::UpdateTrapdoor(node) => (node, "LLVM does not support trapdoor updates"),
+            Operation::UpdateCommandBlock(node) => (node, "LLVM does not support command block updates"),
+            Operation::UpdateCopperBulb(node) => (node, "LLVM does not support copper bulb updates"),
+            _ => continue,
+        };
+        return error(program.positions.get(node).copied(), reason);
+    }
+    None
 }
 
 #[cfg(windows)]
@@ -468,7 +461,10 @@ unsafe impl Send for Library {}
 #[cfg(windows)]
 impl Library {
     fn load() -> Result<Self, ScratchError> {
-        let path = cache::module_path(None).map_err(|_| ScratchError { position: None, reason: "could not build LLVM module" })?;
+        let path = cache::module_path(None).map_err(|error| {
+            tracing::warn!(%error, "LLVM module preparation failed");
+            ScratchError { position: None, reason: "could not prepare LLVM module; see server log for details" }
+        })?;
         let wide: Vec<u16> = path.as_os_str().encode_wide().chain(Some(0)).collect();
         let handle = unsafe { LoadLibraryW(wide.as_ptr()) };
         if handle.is_null() {
@@ -550,7 +546,10 @@ unsafe impl Send for Library {}
 impl Library {
     fn load() -> Result<Self, ScratchError> {
         use std::ffi::CString;
-        let path = cache::module_path(None).map_err(|_| ScratchError { position: None, reason: "could not build LLVM module" })?;
+        let path = cache::module_path(None).map_err(|error| {
+            tracing::warn!(%error, "LLVM module preparation failed");
+            ScratchError { position: None, reason: "could not prepare LLVM module; see server log for details" }
+        })?;
         let path = CString::new(path.to_string_lossy().as_bytes()).map_err(|_| ScratchError { position: None, reason: "invalid LLVM module path" })?;
         let handle = unsafe { dlopen(path.as_ptr(), 2) };
         if handle.is_null() { return Err(ScratchError { position: None, reason: "could not load LLVM module" }); }
@@ -970,6 +969,29 @@ fn overflow() -> ScratchError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn unsupported_command_block_reports_its_position() {
+        let pos = BlockPos::new(-199, 66, -175);
+        let block = Block::from_name("command_block").unwrap();
+        let program = Program::new(vec![pos], vec![block], vec![], vec![[vec![], vec![]]], vec![], vec![], vec![]).unwrap();
+        let error = unsupported_reason(&program).unwrap();
+        assert_eq!(error.position, Some(pos));
+        assert_eq!(error.reason, "LLVM does not support command blocks");
+        assert!(crate::redpiler::CompileError::Unsupported(error).to_string().contains("-199"));
+    }
+
+    #[test]
+    fn unsupported_components_count_all_and_keep_first_three() {
+        let positions: Vec<_> = (0..5).map(|x| BlockPos::new(x, 66, 0)).collect();
+        let blocks = vec![Block::from_name("command_block").unwrap(); positions.len()];
+        let program = Program::new(positions.clone(), blocks, vec![], vec![[vec![], vec![]]; 5], vec![], vec![], vec![]).unwrap();
+        let (first, total) = unsupported_components(&program);
+        assert_eq!(total, 5);
+        assert_eq!(first.iter().map(|e| e.position.unwrap()).collect::<Vec<_>>(), positions[..3]);
+        let message = crate::redpiler::CompileError::UnsupportedComponents { first, total }.to_string();
+        assert!(message.contains("and 2 other unsupported LLVM components"));
+    }
 
     include!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/redpiler/tests/sampled/llvm_regressions.rs"));
 

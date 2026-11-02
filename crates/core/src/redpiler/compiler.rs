@@ -11,6 +11,7 @@ use std::time::{Duration, Instant};
 pub enum CompileError {
     AlreadyActive,
     Unsupported(ScratchError),
+    UnsupportedComponents { first: Vec<ScratchError>, total: usize },
     Cancelled,
 }
 
@@ -24,6 +25,18 @@ impl std::fmt::Display for CompileError {
                 } else {
                     f.write_str(error.reason)
                 }
+            }
+            Self::UnsupportedComponents { first, total } => {
+                for (index, error) in first.iter().enumerate() {
+                    if index > 0 { f.write_str("; ")?; }
+                    if let Some(pos) = error.position {
+                        write!(f, "{} at ({}, {}, {})", error.reason, pos.x, pos.y, pos.z)?;
+                    } else { f.write_str(error.reason)?; }
+                }
+                if *total > first.len() {
+                    write!(f, "; and {} other unsupported LLVM components", total - first.len())?;
+                }
+                Ok(())
             }
             Self::Cancelled => f.write_str("compilation cancelled"),
         }
@@ -153,6 +166,10 @@ impl Compiler {
                     position: None,
                     reason: "LLVM does not yet import piston handoff state",
                 }));
+            }
+            let (first, total) = sampled::unsupported_components(&program);
+            if total > 1 {
+                return Err(CompileError::UnsupportedComponents { first, total });
             }
             Some(LlvmRuntime::new(program.clone(), &ticks).map_err(CompileError::Unsupported)?)
         } else { None };

@@ -6,7 +6,7 @@ This bundle preserves the four RedstoneDB disagreements, exact input traces, dia
 
 | Report | First checked block disagreement | Earlier evidence |
 | --- | --- | --- |
-| [Carry-cancel action 39](carry-cancel-action-39.md) | Action 39, tick 5, wire `(14,9,8)`: interpreter 1, sampled 0 | Lost comparator pulse at local tick 3 |
+| [Carry-cancel action 39](carry-cancel-action-39.md) | Action 39, tick 5, wire `(14,9,8)`: interpreter 1, sampled/Java 0 | Java 1.21.5 confirms sampled; native pulse explanation does not yield vanilla's power-1 result |
 | [Carry-cancel action 43](carry-cancel-action-43.md) | Action 43, tick 1, wire `(11,15,9)`: 14 vs 0 | Comparator/torch FIFO reversed at action 18 |
 | [Adder action 63](adder-action-63.md) | Action 63, tick 1, wire `(11,17,14)`: 13 vs 0 | Missing comparator tick at action 3, tick 4 |
 | [Four In A Row](four-in-a-row.md) | Action 1, tick 2, wire `(12,9,10)`: 0 vs 1 | Post-input and tick 1 still match |

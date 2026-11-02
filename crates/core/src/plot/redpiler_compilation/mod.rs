@@ -56,6 +56,7 @@ impl EntryVersion {
 fn rejected_position(error: &CompileError) -> Option<BlockPos> {
     match error {
         CompileError::Unsupported(error) => error.position,
+        CompileError::UnsupportedComponents { first, .. } => first.iter().find_map(|error| error.position),
         _ => None,
     }
 }

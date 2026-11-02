@@ -1,6 +1,6 @@
 # Eight-bit carry-cancel adder — action 39
 
-Status: reproduced on baseline `6ef1b165` and current `ea297c16`; no fix applied. Use the [common reproduction instructions](README.md).
+Status: reproduced on baseline `6ef1b165` and current `ea297c16`; vanilla Java 1.21.5 confirms the sampled/LLVM result at the failing checkpoint. No fix applied. Use the [common reproduction instructions](README.md).
 
 Fixture: `8111b000090d8f0b3e1370448bcb64a3`, [schematic](../../../test_data/redstonedb/schematics/8111b000090d8f0b3e1370448bcb64a3-8_bit_Carry_Cancel_Adder.schem).
 SHA-256: `19b2b16bb84371f320e9c7ac5d6fdac38fe6a0e248f1ba0f03eb12f623f9175d`.
@@ -8,9 +8,9 @@ Trace: 17 levers, 66 actions, 831 ticks; no initial settling.
 
 ## Exact disagreement
 
-Action **39**, lever index **1**, position **`(14,10,28)`**, wait **5**. The action starts after absolute tick **694**. At local tick **5**, absolute tick **699**, wire **`(14,9,8)`** has interpreter power **1**, sampled Rust power **0**. The unchanged full prefix is required.
+Action **39**, lever index **1**, position **`(14,10,28)`**, wait **5**. The action starts after absolute tick **694**. At local tick **5**, absolute tick **699**, wire **`(14,9,8)`** has interpreter power **1**, sampled Rust power **0**, and vanilla Java 1.21.5 power **0**. The unchanged full prefix is required.
 
-## Proven causal evidence
+## MCHPRS scheduling trace
 
 | Local tick within action 39 | Observation |
 | --- | --- |
@@ -20,25 +20,27 @@ Action **39**, lever index **1**, position **`(14,10,28)`**, wait **5**. The act
 | 4 | Rear becomes 1. Sampled execution now schedules the comparator for tick 6; native already has its earlier pending tick. |
 | 5 | Native comparator output/powered state becomes 1/true, feeding wire power 1. Sampled output/power remains 0. |
 
+The independent [Java 1.21.5 replay](evidence/java-8111-carry-cancel.json) sees source output 7 through local tick 2, 0 from tick 3, target comparator output 0 through tick 5, and wire power 0 at tick 5. This confirms the sampled/LLVM result and shows that MCHPRS's extra tick does not match vanilla's visible output. The Java capture does not expose its pending queue or callback order, so it does not independently confirm the native simulator's intermediate rear/side callback.
+
 The comparator at `(14,9,9)` is false in both engines at the failure. The differing direct source is `(13,9,9)`, which has no rear or far override. Another comparator `(11,11,12)` supplies stable strength 7 and faces a redstone-stocked barrel at `(11,11,13)`; container state influences the surrounding circuit, but the failing target itself has no override.
 
 Relevant existing code: [executor.rs](../../../crates/core/src/redpiler/sampled/executor.rs), `set_component` (line 217), `update_side_inputs` (780), `execute_output_program` (1383), `update_comparator` (1531), and `tick_comparator` (1550), as recorded at `ea297c16`.
 
-An earlier pending-order difference was observed at action 18, but the investigation identified action39/tick1 as the first additional semantic scheduling difference relevant to this trace: a native comparator tick at `(9,10,11)` is absent in Rust. The proven target-level explanation is the lost local-tick-3 pulse above. Do not equate every earlier FIFO difference with the eventual visible failure.
+An earlier pending-order difference was observed at action 18, but the investigation identified action39/tick1 as the first additional scheduling difference relevant to this trace: a native comparator tick at `(9,10,11)` is absent in Rust. The analysis above explains the MCHPRS engines' internal divergence; Java shows that the native simulator's pulse does not produce the correct visible output at tick 5. Do not equate every earlier FIFO difference with the eventual visible failure.
 
 ## MAIR and LLVM
 
-MAIR's own interpreter and compiled engine agree throughout all 831 ticks. At this exact failing checkpoint they both produce power **0**, while MCHPRS's interpreter produces **1**. Before action 39, both MAIR engines show target power 1; it becomes 0 on tick 5. Thus MAIR does not reproduce the same internal compiler disagreement, and its reference execution cannot decide which interpreter is correct here.
+MAIR's own interpreter and compiled engine agree throughout all 831 ticks. At this checkpoint they both produce power **0**, matching vanilla Java 1.21.5; MCHPRS's interpreter produces **1**. Before action 39, both MAIR engines show target power 1; it becomes 0 on tick 5.
 
-LLVM semantic 19 matches sampled Rust throughout the complete trace, including projected states, effects and ordered pending entries. This is a shared MCHPRS interpreter/compiler gap, not a demonstrated LLVM-only defect.
+LLVM semantic 19 matches sampled Rust throughout the complete trace, including projected states, effects and ordered pending entries. At the failing checkpoint both match vanilla. The remaining discrepancy is in the MCHPRS interpreter, not an LLVM-only defect.
 
-## Evidence and next step
+## Evidence
 
 - [Baseline trace](evidence/action39-baseline.log), [current trace](evidence/action39-current.log), [diagnostic patch](evidence/action39-baseline-diagnostics.patch).
-- [MAIR full result](evidence/mair/8111b000090d8f0b3e1370448bcb64a3.final.json), [source/pending checkpoint](evidence/mair/8111b000090d8f0b3e1370448bcb64a3.source-result.json).
+- [MAIR full result](evidence/mair/8111b000090d8f0b3e1370448bcb64a3.final.json), [source/pending checkpoint](evidence/mair/8111b000090d8f0b3e1370448bcb64a3.source-result.json), [Java 1.21.5 result](evidence/java-8111-carry-cancel.json), and [capture script](evidence/java-8111-capture.py).
 - [LLVM/Rust full-trace result](evidence/llvm-four-fixtures-parity.log).
 
-Candidate to validate: preserve the comparator callback between side-link and rear-link changes when one source supplies both paths. Use existing indexed graph operations and scheduling. No candidate was implemented or validated against other dual-path circuits; do not generalize this ordering to every comparator without replay evidence.
+The earlier candidate to preserve the native comparator callback between side-link and rear-link changes is rejected for this case: it would retain the interpreter's power-1 result that vanilla does not produce. No production fix was applied.
 
 ## Complete recorded action sequence
 

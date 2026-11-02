@@ -76,23 +76,23 @@ pub(in super::super) fn run(context: &Context<'_, impl World>, phases: &mut Comp
                         positions.push(pos);
                     }
                     block if !crate::redstone::has_neighbor_update(block) => {}
-                    _ => return Err(error(pos, "unsupported component")),
+                    block => return Err(error(pos, block.get_name())),
                 }
 
                 if let Some(entity) = world.get_block_entity(pos) {
                     let block = world.get_block(pos);
-                    let supported = match (block, entity) {
-                        (Block::RedstoneComparator { .. }, BlockEntity::Comparator { output_strength: 0..=15 }) => true,
-                        (Block::RedstoneComparator { .. }, BlockEntity::Comparator { .. }) => false,
+                    let reason = match (block, entity) {
+                        (Block::RedstoneComparator { .. }, BlockEntity::Comparator { output_strength: 0..=15 }) => None,
+                        (Block::RedstoneComparator { .. }, BlockEntity::Comparator { .. }) => Some("comparator output strength exceeds 15"),
                         (block, BlockEntity::Container { comparator_override, .. }) if ContainerType::from_block(block).is_some() => {
-                            *comparator_override <= 15
+                            (*comparator_override > 15).then_some("container comparator output exceeds 15")
                         }
-                        (Block::MovingPiston { .. }, _) => false,
+                        (Block::MovingPiston { .. }, _) => Some("moving piston block entity is unsupported"),
                         // The interpreter ignores stale entities attached to other block types.
-                        _ => true,
+                        _ => None,
                     };
-                    if !supported {
-                        return Err(error(pos, "unsupported block entity"));
+                    if let Some(reason) = reason {
+                        return Err(error(pos, reason));
                     }
                 }
             }

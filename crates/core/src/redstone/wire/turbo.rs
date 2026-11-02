@@ -3,11 +3,11 @@
 //! https://bugs.mojang.com/browse/MC-81098.
 
 use crate::redstone;
-use crate::world::World;
 use crate::world::wire_cache::{self, Facts};
+use crate::world::World;
 use mchprs_blocks::blocks::{Block, RedstoneWire};
 use mchprs_blocks::{BlockFace, BlockPos};
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 use std::cell::RefCell;
 use std::collections::hash_map::Entry;
 use std::num::NonZeroU32;
@@ -333,6 +333,9 @@ impl RedstoneWireTurbo {
     fn breadth_first_walk(&mut self, world: &mut impl World) {
         self.shift_queue();
         self.current_walk_layer = 1;
+        // Comparators read several dust paths, so defer them until this walk settles.
+        let mut comparator_updates = Vec::new();
+        let mut seen_comparators = FxHashSet::default();
 
         // TODO Include piston events here if this walk gains three-tick lookahead.
         while !self.update_queue[0].is_empty() || !self.update_queue[1].is_empty() {
@@ -344,6 +347,12 @@ impl RedstoneWireTurbo {
                 match self.nodes[node_id.index()].state {
                     Block::RedstoneWire { .. } => {
                         self.update_node(world, node_id, self.current_walk_layer);
+                    }
+                    Block::RedstoneComparator { .. } => {
+                        let pos = self.nodes[node_id.index()].pos;
+                        if seen_comparators.insert(pos) {
+                            comparator_updates.push(pos);
+                        }
                     }
                     // Non-wire callbacks receive the state captured for this walk;
                     // handlers that need current state must read it from the world.
@@ -360,6 +369,9 @@ impl RedstoneWireTurbo {
         }
 
         self.current_walk_layer = 0;
+        for pos in comparator_updates {
+            redstone::update(world.get_block(pos), world, pos, None);
+        }
     }
 
     fn shift_queue(&mut self) {

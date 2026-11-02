@@ -1,0 +1,193 @@
+{
+  "schema_version": 1,
+  "engine": "Java",
+  "engine_version": "1.21.5",
+  "server_sha1": "e6ec2f64e6080b9b5d9b471b291c33cc7f509733",
+  "server_sha256": "ae7681dadce21b6b4017d28e7eb567d86b6c100a6969994f540b9e54f812dc29",
+  "fixture": "8111b000090d8f0b3e1370448bcb64a3",
+  "fixture_sha256": "19b2b16bb84371f320e9c7ac5d6fdac38fe6a0e248f1ba0f03eb12f623f9175d",
+  "actions_sha256": "96370eff5841a886be29ee87c9acd7051d072fdf37223e02de8a3dbaa95b2f27",
+  "origin": [
+    8,
+    8,
+    8
+  ],
+  "lever_order": [
+    [
+      0,
+      2,
+      19
+    ],
+    [
+      6,
+      2,
+      20
+    ],
+    [
+      2,
+      3,
+      20
+    ],
+    [
+      0,
+      4,
+      19
+    ],
+    [
+      2,
+      5,
+      20
+    ],
+    [
+      0,
+      6,
+      19
+    ],
+    [
+      2,
+      7,
+      20
+    ],
+    [
+      0,
+      8,
+      19
+    ],
+    [
+      2,
+      9,
+      20
+    ],
+    [
+      0,
+      10,
+      19
+    ],
+    [
+      2,
+      11,
+      20
+    ],
+    [
+      0,
+      12,
+      19
+    ],
+    [
+      2,
+      13,
+      20
+    ],
+    [
+      0,
+      14,
+      19
+    ],
+    [
+      2,
+      15,
+      20
+    ],
+    [
+      0,
+      16,
+      19
+    ],
+    [
+      2,
+      17,
+      20
+    ]
+  ],
+  "game_time_at_start": 1,
+  "setup": "isolated flat void world; Java setblock + data merge of saved schematic states; frozen ticks; vanilla offline-player UseItemOn lever packets",
+  "absolute_tick_before_action_39": 694,
+  "absolute_tick_after_action_39_wait": 699,
+  "samples": [
+    {
+      "action": 39,
+      "tick": -1,
+      "gametime": "The time is 695",
+      "source_comparator": "comparator[facing=south,mode=subtract,powered=true]",
+      "target_comparator": "comparator[facing=south,mode=subtract,powered=false]",
+      "source_output_signal": "10, 10, 11 has the following block data: 7",
+      "target_output_signal": "13, 9, 9 has the following block data: 0",
+      "target_wire_power": "redstone_wire[power=1]"
+    },
+    {
+      "action": 39,
+      "tick": 0,
+      "gametime": "The time is 695",
+      "source_comparator": "comparator[facing=south,mode=subtract,powered=true]",
+      "target_comparator": "comparator[facing=south,mode=subtract,powered=false]",
+      "source_output_signal": "10, 10, 11 has the following block data: 7",
+      "target_output_signal": "13, 9, 9 has the following block data: 0",
+      "target_wire_power": "redstone_wire[power=1]"
+    },
+    {
+      "action": 39,
+      "tick": 1,
+      "gametime": "The time is 696",
+      "source_comparator": "comparator[facing=south,mode=subtract,powered=true]",
+      "target_comparator": "comparator[facing=south,mode=subtract,powered=false]",
+      "source_output_signal": "10, 10, 11 has the following block data: 7",
+      "target_output_signal": "13, 9, 9 has the following block data: 0",
+      "target_wire_power": "redstone_wire[power=1]"
+    },
+    {
+      "action": 39,
+      "tick": 2,
+      "gametime": "The time is 697",
+      "source_comparator": "comparator[facing=south,mode=subtract,powered=true]",
+      "target_comparator": "comparator[facing=south,mode=subtract,powered=false]",
+      "source_output_signal": "10, 10, 11 has the following block data: 7",
+      "target_output_signal": "13, 9, 9 has the following block data: 0",
+      "target_wire_power": "redstone_wire[power=1]"
+    },
+    {
+      "action": 39,
+      "tick": 3,
+      "gametime": "The time is 698",
+      "source_comparator": "comparator[facing=south,mode=subtract,powered=false]",
+      "target_comparator": "comparator[facing=south,mode=subtract,powered=false]",
+      "source_output_signal": "10, 10, 11 has the following block data: 0",
+      "target_output_signal": "13, 9, 9 has the following block data: 0",
+      "target_wire_power": "redstone_wire[power=1]"
+    },
+    {
+      "action": 39,
+      "tick": 4,
+      "gametime": "The time is 699",
+      "source_comparator": "comparator[facing=south,mode=subtract,powered=false]",
+      "target_comparator": "comparator[facing=south,mode=subtract,powered=false]",
+      "source_output_signal": "10, 10, 11 has the following block data: 0",
+      "target_output_signal": "13, 9, 9 has the following block data: 0",
+      "target_wire_power": "redstone_wire[power=1]"
+    },
+    {
+      "action": 39,
+      "tick": 5,
+      "gametime": "The time is 700",
+      "source_comparator": "comparator[facing=south,mode=subtract,powered=false]",
+      "target_comparator": "comparator[facing=south,mode=subtract,powered=false]",
+      "source_output_signal": "10, 10, 11 has the following block data: 0",
+      "target_output_signal": "13, 9, 9 has the following block data: 0",
+      "target_wire_power": "redstone_wire[power=0]"
+    }
+  ],
+  "player": {
+    "method": "vanilla UseItemOn packet from offline player",
+    "protocol": {
+      "event": "ready",
+      "version": "1.62.0"
+    }
+  },
+  "capture_command": [
+    "py",
+    "docs\\redpiler-regressions\\2026-11-02\\evidence\\java-8111-capture.py",
+    "--server-jar",
+    "E:\\codex-builds\\java-1215-carry-cancel\\server.jar",
+    "--run-dir",
+    "E:\\codex-builds\\java-1215-carry-cancel\\run8"
+  ]
+}

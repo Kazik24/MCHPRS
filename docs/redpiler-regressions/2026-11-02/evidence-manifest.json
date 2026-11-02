@@ -340,5 +340,17 @@
     "sha256": "F4068257797399531CE31D56C972AF32D0F73F7D8D496CE1B7B8CD1C178DECEC",
     "bytes": 68616,
     "source": "test_data/Q2CK@Q2CK_Anpu1_Pong_KBTV.schem"
+  },
+  {
+    "file": "evidence/java-8111-carry-cancel.json",
+    "sha256": "38719AA610F60269D1A1840D0EA06B69F95A09DAC266D3C1DCF1458BE43D649B",
+    "bytes": 5282,
+    "source": "captured by evidence/java-8111-capture.py using the official Mojang Java 1.21.5 server"
+  },
+  {
+    "file": "evidence/java-8111-capture.py",
+    "sha256": "286D84B85DF9A47D51F125B254C0D202EB30A512F923C623F507A72F9104F0EA",
+    "bytes": 14343,
+    "source": "workspace capture harness"
   }
 ]

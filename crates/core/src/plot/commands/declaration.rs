@@ -252,9 +252,10 @@ pub(super) fn declared_command_nodes() -> Vec<Node<'static>> {
         Node::argument("options", Parser::String(2), &[])
             .executable()
             .suggestions("minecraft:ask_server"),
-        // Reserved protocol node IDs; the removed command nodes stay unused.
+        // Reserved protocol node ID.
         Node::literal("reserved", &[]),
-        Node::literal("reserved", &[]),
+        // /redpiler compile [flags]
+        Node::argument("flags", Parser::String(2), &[]).executable().suggestions("minecraft:ask_server"),
         // gamemode alias, names, IDs and legacy shortcuts.
         Node::redirect("gm", 131),
         Node::literal("gamemode", &[132, 133, 134, 135, 136, 137, 161]),
