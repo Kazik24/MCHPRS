@@ -958,6 +958,8 @@ fn overflow() -> ScratchError {
 mod tests {
     use super::*;
 
+    include!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/redpiler/tests/sampled/llvm_regressions.rs"));
+
     #[cfg(any(windows, target_os = "linux"))]
     #[test]
     fn llvm_read_marks_changes_without_losing_unpublished_cells() {

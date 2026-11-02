@@ -11,6 +11,9 @@ mod compiler;
 #[cfg(test)]
 #[path = "../tests/sampled/cpu_trace.rs"]
 mod cpu_trace;
+#[cfg(test)]
+#[path = "../tests/sampled/redstonedb.rs"]
+mod redstonedb_tests;
 mod executor;
 mod group_probe;
 #[cfg(test)]

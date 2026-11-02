@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "circuits": [
+    {
+      "id": "3cb61be7800cec42ee155034c4788b12",
+      "schematic": "schematics/3cb61be7800cec42ee155034c4788b12-1_bit_Ripple_Carry_Adder.schem",
+      "description": "One-bit ripple-carry adder slice.",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [
+        { "name": "a", "width": 1 },
+        { "name": "b", "width": 1 },
+        { "name": "carry_in", "width": 1 }
+      ],
+      "outputs": [
+        { "name": "sum", "width": 1, "expression": "a ^ b ^ carry_in" },
+        { "name": "carry_out", "width": 1, "expression": "(a & b) | (carry_in & (a ^ b))" }
+      ],
+      "stimulus": "exhaustive"
+    },
+    {
+      "id": "13cb20d8fa6a0df232d3d999b8cfb1e1",
+      "schematic": "schematics/13cb20d8fa6a0df232d3d999b8cfb1e1-1_bit_XOR_Gate.schem",
+      "description": "One-bit XOR gate.",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [
+        { "name": "a", "width": 1 },
+        { "name": "b", "width": 1 }
+      ],
+      "outputs": [
+        { "name": "y", "width": 1, "expression": "a ^ b" }
+      ],
+      "stimulus": "exhaustive"
+    },
+    {
+      "id": "8111b000090d8f0b3e1370448bcb64a3",
+      "schematic": "schematics/8111b000090d8f0b3e1370448bcb64a3-8_bit_Carry_Cancel_Adder.schem",
+      "description": "Eight-bit carry-cancel adder.",
+      "port_positions": "pending_manual_mapping",
+      "inputs": [
+        { "name": "a", "width": 8 },
+        { "name": "b", "width": 8 }
+      ],
+      "outputs": [
+        { "name": "sum", "width": 8, "expression": "(a + b) & 255" },
+        { "name": "carry_out", "width": 1, "expression": "(a + b) >> 8" }
+      ],
+      "stimulus": "edge_cases_and_deterministic_random"
+    }
+  ]
+}

@@ -56,6 +56,40 @@ fn anpu_interpreter_prefix_matches_frozen_reference() {
 }
 
 #[test]
+#[ignore = "full ANPU interpreter and sampled scheduler regression"]
+fn anpu_ordered_pending_ticks_match_interpreter() {
+    let cpu = cpus::CPUS[1];
+    let mut interpreter = cpus::load_cpu(cpu);
+    let (_, mut compiler, _) = cpus::compile_cpu(cpus::load_cpu(cpu), cpu);
+    cpus::click_cpu(&mut interpreter, cpu, cpu.start);
+    compiler.try_on_use_block(cpu.origin + cpu.start).unwrap();
+
+    for tick in 0..=218 {
+        let runtime = compiler.runtime.as_ref().unwrap();
+        for &pos in &runtime.program.positions {
+            let expected = interpreter.get_block(pos);
+            let actual = runtime.project(pos);
+            if matches!(expected, Block::RedstoneWire { .. }) || matches!(actual, Some(Block::RedstoneWire { .. })) {
+                assert_eq!(actual, Some(expected), "ANPU wire state differs at tick {tick}, {pos:?}");
+            }
+        }
+        let actual = runtime.pending_entries();
+        let expected: Vec<_> = interpreter.scheduler().iter_entries().collect();
+        if actual != expected {
+            let first = actual.iter().zip(&expected).position(|(a, b)| a != b);
+            panic!(
+                "ANPU pending ticks differ at tick {tick}: actual={} expected={} first={first:?} actual_first={:?} expected_first={:?}",
+                actual.len(), expected.len(), first.and_then(|index| actual.get(index)), first.and_then(|index| expected.get(index))
+            );
+        }
+        if tick < 218 {
+            interpreter.tick_interpreted();
+            compiler.tick().unwrap();
+        }
+    }
+}
+
+#[test]
 #[ignore = "ANPU interpreter/sampled first-divergence diagnostic"]
 fn anpu_first_native_compiled_divergence() {
     let cpu=cpus::CPUS[1];
@@ -65,12 +99,24 @@ fn anpu_first_native_compiled_divergence() {
     compiler.try_on_use_block(cpu.origin+cpu.start).unwrap();
     let ticks=std::env::var("MCHPRS_ANPU_VERIFY_TICKS").ok().map_or(512,|s|s.parse().unwrap());
     let compare_wire_sides = std::env::var_os("MCHPRS_ANPU_VERIFY_WIRE_SIDES").is_some();
+    let compare_pending = std::env::var_os("MCHPRS_ANPU_VERIFY_PENDING").is_some();
+    let trace_pending = std::env::var_os("MCHPRS_ANPU_TRACE_PENDING").is_some();
     for tick in 0..=ticks {
         let runtime=compiler.runtime.as_ref().unwrap();
-        if compare_wire_sides {
-            let pos = BlockPos::new(128, 36, 65);
-            for near in [pos, pos + BlockPos::new(0, 0, -1), pos + BlockPos::new(0, 1, -1), pos + BlockPos::new(0, 1, 0)] {
-                eprintln!("WIRE_DIAG tick={tick} pos={near:?} interpreter={:?} sampled={:?}", native.get_block(near), runtime.project(near));
+        if trace_pending && tick == 149 {
+            let nearby = |pos: BlockPos| (106..=112).contains(&pos.x) && (37..=39).contains(&pos.y) && (74..=76).contains(&pos.z);
+            eprintln!("INTERPRETER_MOTIONS {:?}", native.piston_state().motions.iter().filter(|motion| nearby(motion.pos)).collect::<Vec<_>>());
+            eprintln!("RUNTIME_MOTIONS {:?}", runtime.active_motions.iter().map(|&slot| &runtime.motions[slot])
+                .filter(|motion| nearby(runtime.program.projection_positions[motion.destination]))
+                .map(|motion| (runtime.program.pistons[motion.piston].base, runtime.program.projection_positions[motion.destination], motion.start, motion.landing, motion.extending)).collect::<Vec<_>>());
+        }
+        if compare_pending {
+            let actual = runtime.pending_entries();
+            let expected: Vec<_> = native.scheduler().iter_entries().collect();
+            if actual != expected {
+                let first = actual.iter().zip(&expected).position(|(a, b)| a != b);
+                panic!("ANPU pending divergence at tick {tick}: actual={} expected={} first={first:?} actual_first={:?} expected_first={:?}",
+                    actual.len(), expected.len(), first.and_then(|index| actual.get(index)), first.and_then(|index| expected.get(index)));
             }
         }
         let differences:Vec<_>=runtime.program.positions.iter().enumerate().filter_map(|(node,&pos)| {
@@ -97,7 +143,16 @@ fn anpu_first_native_compiled_divergence() {
             std::fs::write(&path,serde_json::to_vec_pretty(&report).unwrap()).unwrap();
             panic!("ANPU first block divergence at tick {tick}: {:?}; {}",differences[0],path.display());
         }
-        native.tick_interpreted(); compiler.tick().unwrap();
+        if trace_pending && tick == 217 { native.observe_redstone_updates(true); }
+        native.tick_interpreted();
+        if trace_pending && tick == 217 {
+            for event in native.take_redstone_update_observations() {
+                if event.pos.y == 55 && event.pos.z == 124 && (event.pos.x == 92 || event.pos.x == 108) {
+                    eprintln!("INTERPRETER_CALLBACK tick={} event={event:?}", tick + 1);
+                }
+            }
+        }
+        compiler.tick().unwrap();
     }
 }
 
@@ -114,6 +169,14 @@ fn anpu_rust_reset_continues_like_interpreter() {
         interpreter.tick_interpreted();
         compiler.tick().unwrap();
     }
+    let compiled_pending = compiler.runtime.as_ref().unwrap().pending_entries();
+    let interpreter_pending: Vec<_> = interpreter.scheduler().iter_entries().collect();
+    if compiled_pending != interpreter_pending {
+        let first = compiled_pending.iter().zip(&interpreter_pending).position(|(a, b)| a != b);
+        eprintln!("pending before reset: actual={} expected={} first={first:?} actual_first={:?} expected_first={:?}",
+            compiled_pending.len(), interpreter_pending.len(), first.and_then(|index| compiled_pending.get(index)),
+            first.and_then(|index| interpreter_pending.get(index)));
+    }
     compiler.try_reset(&mut restored, (cpu.origin, cpu.origin)).unwrap();
     for tick in 0..=128 {
         for &pos in &positions {
@@ -121,7 +184,20 @@ fn anpu_rust_reset_continues_like_interpreter() {
         }
         let expected: Vec<_> = interpreter.scheduler().iter_entries().collect();
         let actual: Vec<_> = restored.scheduler().iter_entries().collect();
-        assert_eq!(actual, expected, "pending ticks at reset continuation tick {tick}");
+        if actual != expected {
+            let first = actual.iter().zip(&expected).position(|(a, b)| a != b);
+            let counts = |entries: &[mchprs_world::TickEntry]| {
+                let mut counts = std::collections::HashMap::new();
+                for entry in entries { *counts.entry(entry.clone()).or_insert(0usize) += 1; }
+                counts
+            };
+            let actual_counts = counts(&actual);
+            let expected_counts = counts(&expected);
+            let missing: Vec<_> = expected_counts.iter().filter(|(entry, count)| actual_counts.get(*entry).copied().unwrap_or(0) < **count).take(8).collect();
+            let extra: Vec<_> = actual_counts.iter().filter(|(entry, count)| expected_counts.get(*entry).copied().unwrap_or(0) < **count).take(8).collect();
+            panic!("pending ticks at reset continuation tick {tick}: actual={} expected={} first={first:?} actual_first={:?} expected_first={:?} missing={missing:?} extra={extra:?}",
+                actual.len(), expected.len(), first.and_then(|index| actual.get(index)), first.and_then(|index| expected.get(index)));
+        }
         assert_eq!(restored.command_output().collect::<Vec<_>>(), interpreter.command_output().collect::<Vec<_>>(), "command output at tick {tick}");
         if tick < 128 {
             interpreter.tick_interpreted();

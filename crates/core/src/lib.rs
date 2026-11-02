@@ -7,6 +7,9 @@ extern crate self as mchprs_core;
 mod utils;
 mod chat;
 mod chat_commands;
+#[cfg(test)]
+#[path = "tests/circuit_geometry.rs"]
+mod circuit_geometry;
 mod config;
 mod container;
 pub mod headless;

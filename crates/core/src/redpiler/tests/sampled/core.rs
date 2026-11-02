@@ -944,6 +944,101 @@ fn compiled_floor_and_wall_torches_delay_recheck_and_rearm() {
     }
 }
 #[test]
+fn torch_piston_watchers_follow_interpreter_notification_order() {
+    let mut world = host();
+    let torch = BlockPos::new(15, 15, 15);
+    let west = torch.offset(BlockFace::West);
+    let east = torch.offset(BlockFace::East);
+    world.set_block(torch, Block::RedstoneTorch { lit: true });
+    world.set_block(torch.offset(BlockFace::Bottom), Block::Stone {});
+    for pos in [west, east] {
+        world.set_block(pos, Block::Piston { piston: RedstonePiston { facing: BlockFacing::North, sticky: true, extended: false } });
+    }
+    let program = compile(&world, (BlockPos::new(10, 10, 10), BlockPos::new(22, 22, 22)), entry(&world)).unwrap();
+    let source = program.component_indices[&torch];
+    let actual: Vec<_> = program.source_watchers[source].iter().map(|&index| program.positions[index]).collect();
+    world.observe_redstone_updates(true);
+    crate::redstone::on_torch_state_change(&mut world, torch);
+    let mut expected = Vec::new();
+    for event in world.take_redstone_update_observations() {
+        if [east, west].contains(&event.pos) && !expected.contains(&event.pos) { expected.push(event.pos); }
+    }
+    assert_eq!(expected, vec![east, west]);
+    assert_eq!(actual, expected);
+}
+
+#[test]
+fn empty_piston_shape_observers_follow_interpreter_fifo() {
+    use mchprs_blocks::blocks::RedstoneObserver;
+    let mut world = host();
+    let base = BlockPos::new(15, 15, 15);
+    let home = base.offset(BlockFace::East);
+    let lever = base.offset(BlockFace::West);
+    let base_observer = base.offset(BlockFace::North);
+    let head_observer = home.offset(BlockFace::North);
+    world.set_block(base, Block::Piston { piston: RedstonePiston { facing: BlockFacing::East, sticky: true, extended: false } });
+    world.set_block(lever.offset(BlockFace::Bottom), Block::Stone {});
+    world.set_block(lever, Block::Lever { lever: Lever::new(LeverFace::Floor, BlockDirection::North, false) });
+    for pos in [base_observer, head_observer] {
+        world.set_block(pos, Block::Observer { observer: RedstoneObserver { facing: BlockFacing::South, powered: false } });
+    }
+    let program = compile(&world, (BlockPos::new(10, 10, 10), BlockPos::new(22, 22, 22)), entry(&world)).unwrap();
+    let mut runtime = program.start();
+    crate::interaction::use_redstone(world.get_block(lever), &mut world, lever, None);
+    runtime.use_control(lever).unwrap();
+    for tick in 0..8 {
+        world.tick_interpreted();
+        runtime.tick().unwrap();
+        for pos in [base_observer, head_observer] {
+            assert_eq!(runtime.project(pos), Some(world.get_block(pos)), "observer at {pos:?} after tick {tick}");
+        }
+        assert_eq!(runtime.pending_entries(), world.scheduler().iter_entries().collect::<Vec<_>>(), "pending ticks after tick {tick}");
+    }
+}
+
+#[test]
+fn piston_payload_landing_updates_wire_shape_in_interpreter_order() {
+    use mchprs_blocks::blocks::RedstoneObserver;
+    let mut world = host();
+    let wire_pos = BlockPos::new(15, 15, 15);
+    let north = wire_pos.offset(BlockFace::North);
+    let south = wire_pos.offset(BlockFace::South);
+    let base = wire_pos + BlockPos::new(-2, 1, 0);
+    let home = base.offset(BlockFace::East);
+    let lever = base.offset(BlockFace::West);
+    let observer = wire_pos.offset(BlockFace::East);
+    let cap_observer = observer.offset(BlockFace::Top);
+    for pos in [wire_pos.offset(BlockFace::Bottom), south.offset(BlockFace::Bottom), north, home, lever.offset(BlockFace::Bottom)] {
+        world.set_block(pos, Block::Stone {});
+    }
+    world.set_block(base, Block::Piston { piston: RedstonePiston { facing: BlockFacing::East, sticky: true, extended: false } });
+    world.set_block(lever, Block::Lever { lever: Lever::new(LeverFace::Floor, BlockDirection::North, false) });
+    world.set_block(observer, Block::Observer { observer: RedstoneObserver { facing: BlockFacing::West, powered: false } });
+    world.set_block(cap_observer, Block::Observer { observer: RedstoneObserver { facing: BlockFacing::West, powered: false } });
+    for pos in [wire_pos, south, north.offset(BlockFace::Top)] {
+        world.set_block(pos, Block::RedstoneWire { wire: RedstoneWire::default() });
+    }
+    for pos in [wire_pos, south, north.offset(BlockFace::Top)] {
+        let wire = crate::redstone::wire::get_state_for_placement(&world, pos);
+        world.set_block(pos, Block::RedstoneWire { wire });
+    }
+    let program = compile(&world, (BlockPos::new(9, 9, 9), BlockPos::new(22, 22, 22)), entry(&world)).unwrap();
+    let mut runtime = program.start();
+    for phase in 0..2 {
+        crate::interaction::use_redstone(world.get_block(lever), &mut world, lever, None);
+        runtime.use_control(lever).unwrap();
+        for tick in 0..8 {
+            world.tick_interpreted();
+            runtime.tick().unwrap();
+            assert_eq!(runtime.project(wire_pos), Some(world.get_block(wire_pos)), "wire shape after phase {phase} tick {tick}");
+            assert_eq!(runtime.project(observer), Some(world.get_block(observer)), "observer state after phase {phase} tick {tick}");
+            assert_eq!(runtime.project(cap_observer), Some(world.get_block(cap_observer)), "cap observer state after phase {phase} tick {tick}");
+            assert_eq!(runtime.pending_entries(), world.scheduler().iter_entries().collect::<Vec<_>>(), "pending ticks after phase {phase} tick {tick}");
+        }
+    }
+}
+
+#[test]
 fn piston_request_moves_token_after_two_motion_ticks() {
     let base = BlockPos::new(15, 15, 15);
     let home = base.offset(BlockFace::East);

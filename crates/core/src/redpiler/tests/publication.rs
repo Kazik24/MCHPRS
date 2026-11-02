@@ -75,6 +75,52 @@ fn explicit_publication_modes_select_piston_projection() {
 }
 
 #[test]
+#[cfg(any(windows, target_os = "linux"))]
+fn llvm_wire_shapes_publish_and_reset_like_rust_in_each_mode() {
+    for (publication, io_only) in [(Some(PublicationMode::All), false), (Some(PublicationMode::Redstone), false), (None, true)] {
+        let (mut rust_world, lever, base, home, far, _, _, bounds) = piston_world();
+        let (mut llvm_world, _, _, _, _, _, _, _) = piston_world();
+        let wire = far.offset(BlockFace::East);
+        for world in [&mut rust_world, &mut llvm_world] {
+            world.set_block(wire.offset(BlockFace::Bottom), Block::Stone {});
+            world.set_block(wire, Block::from_name("redstone_wire").unwrap());
+            let sides = crate::redstone::wire::get_state_for_placement(world, wire);
+            world.set_block(wire, Block::RedstoneWire { wire: sides });
+        }
+        let mut rust = Compiler::default();
+        let mut llvm = Compiler::default();
+        rust.compile(&rust_world, bounds, CompilerOptions { publication, io_only, ..Default::default() }, vec![], Arc::new(TaskMonitor::default())).unwrap();
+        llvm.compile(&llvm_world, bounds, CompilerOptions { llvm: true, publication, io_only, ..Default::default() }, vec![], Arc::new(TaskMonitor::default())).unwrap();
+        let mut side_change = false;
+        let Block::RedstoneWire { wire: initial } = rust_world.get_block(wire) else { unreachable!() };
+        for tick in 0..20 {
+            if [0, 8, 15].contains(&tick) {
+                rust.try_on_use_block(lever).unwrap();
+                llvm.try_on_use_block(lever).unwrap();
+            }
+            rust.tick().unwrap();
+            llvm.tick().unwrap();
+            rust.try_flush(&mut rust_world).unwrap();
+            llvm.try_flush(&mut llvm_world).unwrap();
+            if let Some(Block::RedstoneWire { wire: current }) = rust.runtime.as_ref().unwrap().project(wire) {
+                side_change |= (current.north, current.south, current.east, current.west)
+                    != (initial.north, initial.south, initial.east, initial.west);
+            }
+            for pos in [lever, base, home, far, wire] {
+                assert_eq!(llvm_world.get_block(pos), rust_world.get_block(pos), "{publication:?} io_only={io_only} tick={tick} at {pos:?}");
+            }
+        }
+        assert!(side_change, "fixture must exercise a wire-side change");
+        rust.try_reset(&mut rust_world, bounds).unwrap();
+        llvm.try_reset(&mut llvm_world, bounds).unwrap();
+        for pos in [lever, base, home, far, wire] {
+            assert_eq!(llvm_world.get_block(pos), rust_world.get_block(pos), "reset at {pos:?}");
+        }
+        assert_eq!(llvm_world.scheduler().iter_entries().collect::<Vec<_>>(), rust_world.scheduler().iter_entries().collect::<Vec<_>>());
+    }
+}
+
+#[test]
 fn effects_can_be_drained_without_publishing_blocks() {
     let (mut world, lever, _, _, _, _, _, bounds) = piston_world();
     let note = lever.offset(BlockFace::North);
