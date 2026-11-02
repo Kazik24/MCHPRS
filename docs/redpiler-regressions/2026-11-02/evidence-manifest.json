@@ -241,9 +241,9 @@
   },
   {
     "file": "evidence/llvm-short-pulse-regression.patch",
-    "sha256": "01BA4719C80B6FE911B091A7C05124B64EEECE964E09C058EF8F9805DACA546B",
-    "bytes": 1,
-    "source": "F:/rustrepos/MCHPRS diff against aaba884cf839f91f54c64bd27324102141020111"
+    "sha256": "8623FD81C0CFAAB2FA1D0FF7C967A37C609EEB6ACAC14EC1EE0CF14D8109F1DA",
+    "bytes": 3307,
+    "source": "git diff ea297c16 aaba884c -- crates/core/src/redpiler/tests/sampled/llvm_regressions.rs"
   },
   {
     "file": "evidence/mair/7abf58b22e8e91c72ca27f70c1fd10b1.actions.json",

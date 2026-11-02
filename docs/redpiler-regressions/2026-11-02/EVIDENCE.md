@@ -1,6 +1,8 @@
 # Evidence checksums
 
-SHA-256 and byte lengths for archived evidence. Diagnostic patches were generated from the stated Git worktrees; other files were copied byte-for-byte. Original paths are preserved in evidence-manifest.json.
+Git line-ending conversion is disabled in `evidence/` to preserve the archived bytes and these SHA-256 values across checkouts.
+
+SHA-256 and byte lengths for archived evidence. Diagnostic patches were generated from the stated Git worktrees or commit diffs; other files were copied byte-for-byte. Original paths are preserved in evidence-manifest.json.
 
 | Saved file | Bytes | SHA-256 |
 | --- | ---: | --- |
@@ -44,7 +46,7 @@ SHA-256 and byte lengths for archived evidence. Diagnostic patches were generate
 | [evidence/action43-baseline-diagnostics.patch](evidence/action43-baseline-diagnostics.patch) | 9936 | 7f3502bd5fdc1a227c011616b63116bc149cd841458750985f2fc13f9e174500 |
 | [evidence/action63-baseline-diagnostics.patch](evidence/action63-baseline-diagnostics.patch) | 13650 | 8c2844df0f96e7715e5da7f10765a55ac951eed42c803b8ca9a93e1543f5eb38 |
 | [evidence/four-in-a-row-baseline-diagnostics.patch](evidence/four-in-a-row-baseline-diagnostics.patch) | 6835 | 0daddbcf4f4bbb2f60c4571ee148fcff52104d3cbf1833b4f3dad30939475843 |
-| [evidence/llvm-short-pulse-regression.patch](evidence/llvm-short-pulse-regression.patch) | 1 | 01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b |
+| [evidence/llvm-short-pulse-regression.patch](evidence/llvm-short-pulse-regression.patch) | 3307 | 8623fd81c0cfaab2fa1d0ff7c967a37c609eeb6acac14ec1ee0cf14d8109f1da |
 | [evidence/mair/7abf58b22e8e91c72ca27f70c1fd10b1.actions.json](evidence/mair/7abf58b22e8e91c72ca27f70c1fd10b1.actions.json) | 2565 | bf29bbc59b1febeee24be94f42fb78ee11bc393906935d88b41f41fd2c19dc19 |
 | [evidence/mair/7abf58b22e8e91c72ca27f70c1fd10b1.final.json](evidence/mair/7abf58b22e8e91c72ca27f70c1fd10b1.final.json) | 258423 | d2a99652c3eecafe52341f1e40e2fe8b461445d4202d9ed7532172c1e88dc98d |
 | [evidence/anpu-local-graph-census.log](evidence/anpu-local-graph-census.log) | 568 | 9cf68f8524d18eb593b13397f91bb8c9f8447785141d33b6d7826188c4496338 |

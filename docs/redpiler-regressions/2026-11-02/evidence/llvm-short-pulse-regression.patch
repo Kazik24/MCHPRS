@@ -1,1 +1,54 @@
-
+diff --git a/crates/core/src/redpiler/tests/sampled/llvm_regressions.rs b/crates/core/src/redpiler/tests/sampled/llvm_regressions.rs
+index 307349f5..1d9f832e 100644
+--- a/crates/core/src/redpiler/tests/sampled/llvm_regressions.rs
++++ b/crates/core/src/redpiler/tests/sampled/llvm_regressions.rs
+@@ -137,6 +137,49 @@
+         }
+     }
+ 
++    #[cfg(any(windows, target_os = "linux"))]
++    #[test]
++    fn llvm_redstonedb_short_pulse_traces_match_rust() {
++        use crate::plot::worldedit::{load_schematic, paste_clipboard};
++        use crate::world::World;
++        use rand::{RngExt, SeedableRng, rngs::StdRng};
++        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../test_data/redstonedb");
++        let definitions: serde_json::Value = serde_json::from_slice(&std::fs::read(root.join("definitions.json")).unwrap()).unwrap();
++        for (id, expected_ticks) in [
++            ("8111b000090d8f0b3e1370448bcb64a3", 831), ("2cdc24e68c78d7f0cdce7a141648385a", 813),
++            ("2735cc14b1051cab4197df60265878b2", 834), ("b6a6e870229ace7eb2afd8cb387a514e", 3496),
++        ] {
++            let definition = definitions["circuits"].as_array().unwrap().iter().find(|d| d["id"] == id).unwrap();
++            let mut clip = load_schematic(std::fs::File::open(root.join(definition["schematic"].as_str().unwrap())).unwrap()).unwrap();
++            clip.offset_x = 0;
++            clip.offset_y = 0;
++            clip.offset_z = 0;
++            let origin = BlockPos::new(8, 8, 8);
++            let end = origin + BlockPos::new(clip.size_x as i32 - 1, clip.size_y as i32 - 1, clip.size_z as i32 - 1);
++            let mut world = super::super::tests::host();
++            paste_clipboard(&mut world, &clip, origin, false);
++            let program = super::super::compile_program(&world, (origin, end),
++                super::super::ScratchEntry { scheduled: vec![], piston: world.piston_state().clone() }, None).unwrap();
++            let levers: Vec<_> = (origin.y..=end.y).flat_map(|y| (origin.z..=end.z)
++                .flat_map(move |z| (origin.x..=end.x).map(move |x| BlockPos::new(x, y, z))))
++                .filter(|&pos| matches!(world.get_block(pos), Block::Lever { .. })).collect();
++            assert!(levers.len() > 3);
++            let seed = id.as_bytes().iter().fold(0u64, |seed, byte| seed.wrapping_mul(31).wrapping_add(u64::from(*byte)));
++            let mut rng = StdRng::seed_from_u64(seed);
++            let mut time = 0usize;
++            let mut controls = Vec::new();
++            for (index, wait) in (0..levers.len()).chain((0..levers.len()).rev()).map(|index| (index, 20i32))
++                .chain((0..32).map(|_| (rng.random_range(0..levers.len()), rng.random_range(1..=8))))
++            {
++                controls.push((time, program.component_indices[&levers[index]]));
++                time += wait as usize;
++            }
++            eprintln!("LLVM/Rust full short-pulse trace: {id}, {} actions, {time} ticks", controls.len());
++            assert_eq!(time, expected_ticks, "seeded action trace changed for {id}");
++            compare_execution(program, &controls, time);
++        }
++    }
++
+     #[cfg(any(windows, target_os = "linux"))]
+     #[test]
+     #[ignore = "full ANPU Rust/LLVM reset and interpreted continuation comparison"]
