@@ -811,6 +811,32 @@ use mchprs_network::packets::clientbound::ClientBoundPacket;
 #[cfg(test)]
 mod security_tests {
     #[test]
+    fn speed_command_sends_updated_creative_flight_speed() {
+        use mchprs_network::packets::PacketDecoderExt;
+        use mchprs_network::test_support::read_frame;
+        for compressed in [false, true] {
+            let (mut plot, mut peer) = super::super::client_sync_tests::fixture(compressed);
+            plot.players[0].set_test_permissions(&["mchprs.access.commands", "commands.speed"]);
+            plot.players[0].gamemode = crate::player::Gamemode::Creative;
+            plot.players[0].flying = true;
+            for (value, expected) in [("10", 0.5f32), ("3", 0.15), ("0", 0.0), ("1", 0.05)] {
+                plot.handle_command(0, "/speed", vec![value]);
+                let (id, mut packet) = read_frame(&mut peer, compressed).unwrap();
+                assert_eq!(id, 0x39);
+                assert_eq!(packet.read_unsigned_byte().unwrap(), 0x0f);
+                assert!((packet.read_float().unwrap() - expected).abs() < f32::EPSILON);
+                assert_eq!(packet.read_float().unwrap(), 0.1);
+                assert_eq!(read_frame(&mut peer, compressed).unwrap().0, 0x72);
+            }
+            for value in ["20", "50"] {
+                plot.handle_command(0, "/speed", vec![value]);
+                assert_eq!(plot.players[0].fly_speed, 1.0);
+                assert_eq!(read_frame(&mut peer, compressed).unwrap().0, 0x72);
+            }
+        }
+    }
+
+    #[test]
     fn waveform_actions_require_base_action_and_plot_access() {
         let (mut plot, _peer) = super::super::client_sync_tests::fixture(false);
         plot.owner = Some(plot.players[0].uuid);

@@ -1304,6 +1304,7 @@ impl ScratchWorld {
         probe: impl Fn(&mut Self, &J) -> Result<R, ScratchError> + Sync,
     ) -> Result<Vec<R>, ScratchError> {
         use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+        if let Some(monitor) = monitor { monitor.set_progress(0, jobs.len()); }
         let workers = std::thread::available_parallelism().map_or(1, usize::from).min((jobs.len() / 128).max(1));
         if workers == 1 {
             return jobs
@@ -1316,7 +1317,9 @@ impl ScratchWorld {
                             reason: "compilation cancelled",
                         });
                     }
-                    probe(self, job)
+                    let result = probe(self, job)?;
+                    if let Some(monitor) = monitor { monitor.advance_progress(); }
+                    Ok(result)
                 })
                 .collect();
         }
@@ -1355,6 +1358,8 @@ impl ScratchWorld {
                             };
                             if result.is_err() {
                                 stopped.store(true, Ordering::Relaxed);
+                            } else if let Some(monitor) = monitor {
+                                monitor.advance_progress();
                             }
                             results.push((index, result));
                         }

@@ -7,7 +7,7 @@
 #define NE_OPERATION_LIMIT 4u
 #define NE_MAX_TICK_OPERATIONS 1000000u
 #define NE_MAX_STATE_BYTES (256u * 1024u * 1024u)
-#define NE_TABLES 59u
+#define NE_TABLES 61u
 #define NONE UINT32_MAX
 
 typedef struct {
@@ -191,12 +191,16 @@ static uint8_t input_strength(const NEEngine *e, uint32_t node) {
     return 0u;
 }
 
+static uint8_t comparator_override(const NEEngine *e, uint32_t value) {
+    return value & 0x80000000u ? (e->component_state[value & 0x7fffffffu] & 1u ? 15u : 0u) : (uint8_t)(value - 1u);
+}
+
 static void comparator_result(const NEEngine *e, uint32_t node, uint8_t *level, uint8_t *powered) {
     const uint32_t *r=table(e,42u)+node*4u;
     uint8_t rear=input_strength(e,node), side=0u;
     for (uint32_t i=15u;i;--i) if (e->side_histograms[(size_t)node*16u+i]) { side=(uint8_t)i; break; }
-    if (r[1]) rear=(uint8_t)(r[1]-1u);
-    else if (rear<15u && r[2]) rear=(uint8_t)(r[2]-1u);
+    if (r[1]) rear=comparator_override(e,r[1]);
+    else if (rear<15u && r[2]) rear=comparator_override(e,r[2]);
     uint8_t subtract=(uint8_t)((r[0]>>1u)&1u);
     *powered=(uint8_t)(rear>0u && (rear>side || (rear==side && !subtract)));
     *level=side>rear?0u:subtract?(uint8_t)(rear-side):rear;
@@ -248,6 +252,18 @@ static uint32_t dispatch_lamp(NEEngine *engine, uint32_t component) {
     return NE_OK;
 }
 
+static uint32_t update_copper_bulb(NEEngine *e, uint32_t node) {
+    uint8_t state=e->component_state[node], powered=e->input_count[node]!=0u;
+    if (((state>>1u)&1u)==powered) return NE_OK;
+    set_component(e,node,(uint8_t)(((state&1u)^powered)|(powered<<1u)));
+    const uint32_t *row=table(e,59u)+node*2u;
+    for (uint32_t i=0;i<row[1];++i) {
+        uint32_t status=update_comparator(e,table(e,60u)[row[0]+i]);
+        if (status) return status;
+    }
+    return notify(e,node,1u,1u);
+}
+
 static uint32_t update_component(NEEngine *e, uint32_t node) {
     uint8_t kind = components(e)[node].kind;
     if (kind == 2u) return dispatch_lamp(e, node);
@@ -256,6 +272,7 @@ static uint32_t update_component(NEEngine *e, uint32_t node) {
     if (kind == 9u) return update_comparator(e,node);
     if (kind == 10u) { set_component(e,node,(uint8_t)!e->input_count[node]); return NE_OK; }
     if (kind == 12u) return update_note(e,node);
+    if (kind == 13u) return update_copper_bulb(e,node);
     if (kind == 6u && e->component_state[node] == (e->input_count[node] != 0u)) return schedule(e, node, 2u, 3u);
     if (kind == 7u && !e->component_state[node]) return schedule(e, node, 2u, 3u);
     return NE_OK;
@@ -297,6 +314,7 @@ static uint32_t execute_operation(NEEngine *engine, const uint8_t *operation) {
     if (operation[0] == 4u) return dispatch_lamp(engine, operand);
     if (operation[0] == 5u) return update_component(engine, operand);
     if (operation[0] == 8u) return update_note(engine,operand);
+    if (operation[0] == 9u) return update_copper_bulb(engine,operand);
     if (operation[0] == 10u) return update_repeater(engine, operand);
     if (operation[0] == 1u) { refresh_arranged(engine, operand); return NE_OK; }
     if (operation[0] == 2u) { refresh_wire(engine, operand); return NE_OK; }
@@ -447,11 +465,12 @@ static uint32_t valid_aux(const MchprsNativeProgramDescriptor *p, const uint8_t 
     if (cursor != p->total_bytes || (uint64_t)n[42] != (uint64_t)p->component_count*4u || (uint64_t)n[43] != (uint64_t)p->component_count*5u
         || (uint64_t)n[49] != (uint64_t)p->component_count*6u || n[16]%7u || n[11]%3u || n[50]!=n[16]/7u || n[51]!=n[11]/3u
         || n[45]%5u || n[46]%2u || (uint64_t)n[0] != (uint64_t)p->component_count * 2u
-        || n[2] != n[0] || n[5] != n[0] || n[1] % 2u || (uint64_t)n[3] != (uint64_t)p->watched_wire_count * 3u) return 0u;
+        || n[2] != n[0] || n[5] != n[0] || n[59] != n[0] || n[1] % 2u || (uint64_t)n[3] != (uint64_t)p->watched_wire_count * 3u) return 0u;
     for (uint32_t node = 0; node < p->component_count; ++node) {
         if ((uint64_t)t[0][node * 2u] + t[0][node * 2u + 1u] > n[1] / 2u
             || (uint64_t)t[2][node * 2u] + t[2][node * 2u + 1u] > n[4]
-            || (uint64_t)t[5][node * 2u] + t[5][node * 2u + 1u] > n[6]) return 0u;
+            || (uint64_t)t[5][node * 2u] + t[5][node * 2u + 1u] > n[6]
+            || (uint64_t)t[59][node * 2u] + t[59][node * 2u + 1u] > n[60]) return 0u;
     }
     for (uint32_t i = 0; i < n[1]; i += 2u) if (t[1][i] >= p->component_count || t[1][i + 1u] > 15u) return 0u;
     for (uint32_t i = 0; i < n[3]; i += 3u) {
@@ -501,7 +520,7 @@ static uint32_t valid_program(const MchprsNativeProgramDescriptor *program, cons
     if (!valid_aux(program, blob)) return 0u;
     const MchprsNativeComponent *component = (const MchprsNativeComponent *)(blob + program->component_offset);
     for (uint32_t i = 0; i < program->component_count; ++i) {
-        if (component[i].kind > 12u || component[i].initial_state > (component[i].kind == 5u ? 15u : component[i].kind == 4u ? 3u : 1u)
+        if (component[i].kind > 13u || component[i].initial_state > (component[i].kind == 5u ? 15u : (component[i].kind == 4u || component[i].kind == 13u) ? 3u : 1u)
             || (component[i].kind == 4u ? (component[i].reserved[0] < 1u || component[i].reserved[0] > 4u || component[i].reserved[1] > 6u || (component[i].reserved[1] & 1u))
                 : (component[i].reserved[0] || component[i].reserved[1]))
             || (uint64_t)component[i].on_offset + component[i].on_count > program->operation_count
@@ -509,9 +528,19 @@ static uint32_t valid_program(const MchprsNativeProgramDescriptor *program, cons
         if (component[i].kind == 2u && (component[i].on_count || component[i].off_count)) return 0u;
         const uint32_t *c=(const uint32_t *)(blob + ((const uint32_t *)(blob+program->source_offset+(size_t)program->source_count*4u))[42u*2u])+i*4u;
         if (component[i].kind==9u) {
-            if (!(c[0]&1u) || c[0]>7u || c[1]>16u || c[2]>16u || c[3]>15u) return 0u;
+            if (!(c[0]&1u) || c[0]>7u || c[3]>15u) return 0u;
+            for (uint32_t j=1u;j<=2u;++j) {
+                if (c[j]&0x80000000u) {
+                    uint32_t bulb=c[j]&0x7fffffffu;
+                    if (bulb>=program->component_count || component[bulb].kind!=13u) return 0u;
+                } else if (c[j]>16u) return 0u;
+            }
         } else if (c[0] || c[1] || c[2] || c[3]) return 0u;
     }
+    const uint32_t *override_ids=(const uint32_t *)(blob+((const uint32_t *)(blob+program->source_offset+(size_t)program->source_count*4u))[60u*2u]);
+    uint32_t override_count=((const uint32_t *)(blob+program->source_offset+(size_t)program->source_count*4u))[60u*2u+1u];
+    for (uint32_t i=0;i<override_count;++i)
+        if (override_ids[i]>=program->component_count || component[override_ids[i]].kind!=9u) return 0u;
     const uint8_t *link = blob + program->link_offset;
     for (uint32_t i = 0; i < program->link_count; ++i, link += 12u) {
         uint32_t source = read_u32(link), target = read_u32(link + 4);
@@ -530,6 +559,8 @@ static uint32_t valid_program(const MchprsNativeProgramDescriptor *program, cons
             if (operand >= program->component_count || component[operand].kind != 10u) return 0u;
         } else if (op[0] == 8u) {
             if (operand >= program->component_count || component[operand].kind != 12u) return 0u;
+        } else if (op[0] == 9u) {
+            if (operand >= program->component_count || component[operand].kind != 13u) return 0u;
         } else if (op[0] == 10u) {
             if (operand >= program->component_count || component[operand].kind != 4u) return 0u;
         } else if (op[0] == 2u || op[0] == 12u || op[0] == 11u || op[0] == 13u) {
@@ -549,7 +580,7 @@ static uint32_t valid_program(const MchprsNativeProgramDescriptor *program, cons
 static size_t align8(size_t value) { return (value + 7u) & ~(size_t)7u; }
 
 MchprsNativeApiDescriptor ne_api_descriptor(void) {
-    MchprsNativeApiDescriptor value = {3u, 16u, 20u};
+    MchprsNativeApiDescriptor value = {3u, 16u, 21u};
     return value;
 }
 

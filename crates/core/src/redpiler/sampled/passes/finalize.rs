@@ -1,7 +1,7 @@
 //! Validate discovered records and build the indexes required by runtime activation.
 use super::*;
 
-pub(in super::super) fn run(program: &mut Program, monitor: Option<&TaskMonitor>, phases: &mut CompilePhases) -> Result<(), ScratchError> {
+pub(in super::super) fn run(program: &mut Program, monitor: Option<&TaskMonitor>, phases: &mut CompilePhases<'_>) -> Result<(), ScratchError> {
     phases.next("program finalization");
     check_cancelled(monitor)?;
     program.validate()?;

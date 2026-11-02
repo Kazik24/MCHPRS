@@ -6,7 +6,7 @@ pub(in super::super) fn run<'a>(
     scratch: ScratchWorld,
     inventory: Inventory,
     position_index: &'a HashMap<BlockPos, usize>,
-    phases: &mut CompilePhases,
+    phases: &mut CompilePhases<'_>,
 ) -> Result<(Program, ProbeIndexes<'a>), ScratchError> {
     let world = context.world;
     let bounds = context.bounds;

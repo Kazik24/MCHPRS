@@ -11,6 +11,7 @@ mod tests;
 pub(super) struct CompilationJob {
     /// Time the request started, including snapshot preparation.
     started: Instant,
+    last_progress: Instant,
     /// Cooperative cancellation shared with the compiler worker.
     monitor: Arc<TaskMonitor>,
     /// Live entry state that must still match before activation.
@@ -125,6 +126,7 @@ impl Plot {
             Ok(worker) => {
                 self.compilation = Some(CompilationJob {
                     started,
+                    last_progress: Instant::now(),
                     monitor,
                     entry,
                     worker,
@@ -136,6 +138,18 @@ impl Plot {
     }
 
     pub(super) fn poll_redpiler_compilation(&mut self) {
+        if let Some(job) = &mut self.compilation
+            && !job.worker.is_finished() && !job.monitor.cancelled()
+            && job.last_progress.elapsed() >= Duration::from_secs(3)
+        {
+            job.last_progress = Instant::now();
+            let status = job.monitor.status();
+            let text = format!("Redpiler compiling ({}s): {status}", job.started.elapsed().as_secs());
+            info!(elapsed_secs = job.started.elapsed().as_secs(), %status, "Redpiler compilation progress");
+            for player in &self.players {
+                player.send_raw_system_message(crate::player::diagnostic_component(&text).to_string());
+            }
+        }
         if !self.compilation.as_ref().is_some_and(|job| job.worker.is_finished()) {
             return;
         }

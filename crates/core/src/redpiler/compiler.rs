@@ -137,6 +137,23 @@ impl Compiler {
         if monitor.cancelled() {
             return Err(CompileError::Cancelled);
         }
+        if options.llvm {
+            let piston = world.piston_state();
+            if !piston.events.is_empty() || !piston.motions.is_empty() || !piston.movement_work.is_empty()
+                || piston.movement_cursor != 0 || piston.phase != AdvancePhase::BetweenTicks {
+                return Err(CompileError::Unsupported(ScratchError {
+                    position: piston.events.front().map(|event| event.pos)
+                        .or_else(|| piston.motions.front().map(|motion| motion.pos))
+                        .or_else(|| piston.movement_work.get(piston.movement_cursor).map(|&(pos, _)| pos)),
+                    reason: match piston.phase {
+                        AdvancePhase::ScheduledTicks => "LLVM cannot compile during scheduled ticks; finish the current tick first",
+                        AdvancePhase::PistonEvents => "LLVM cannot compile during piston events; finish the current tick first",
+                        AdvancePhase::MovingEntities => "LLVM cannot compile during piston movement; finish the current tick first",
+                        AdvancePhase::BetweenTicks => "LLVM cannot import pending piston work; let it settle before compiling",
+                    },
+                }));
+            }
+        }
         let entry = ScratchEntry {
             scheduled: ticks.clone(),
             piston: world.piston_state().clone(),
@@ -154,25 +171,14 @@ impl Compiler {
         let components = program.component_count();
         let pending_ticks = ticks.len();
         let llvm = if options.llvm {
-            let piston = world.piston_state();
-            if !piston.events.is_empty()
-                || !piston.motions.is_empty()
-                || !piston.movement_work.is_empty()
-                || piston.movement_cursor != 0
-                || piston.scheduled_advanced
-                || piston.phase != AdvancePhase::BetweenTicks
-            {
-                return Err(CompileError::Unsupported(ScratchError {
-                    position: None,
-                    reason: "LLVM does not yet import piston handoff state",
-                }));
-            }
+            monitor.set_phase("LLVM code generation and initialization");
             let (first, total) = sampled::unsupported_components(&program);
             if total > 1 {
                 return Err(CompileError::UnsupportedComponents { first, total });
             }
             Some(LlvmRuntime::new(program.clone(), &ticks).map_err(CompileError::Unsupported)?)
         } else { None };
+        monitor.set_phase("initializing runtime");
         let runtime = sampled::start_runtime(program, ticks, world.piston_state().clone()).map_err(CompileError::Unsupported)?;
         let capacity = runtime.motion_part_capacity();
         self.publication_parts.clear();

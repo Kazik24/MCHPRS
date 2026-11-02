@@ -234,7 +234,7 @@ impl super::LlvmRuntime {
             let kind = super::component_state(p.initial[node]).0;
             if state
                 > match kind {
-                    4 => 3,
+                    4 | 13 => 3,
                     5 => 15,
                     _ => 1,
                 }
@@ -312,6 +312,7 @@ impl super::LlvmRuntime {
                     Block::StoneButton { button }
                 }
                 Block::RedstoneLamp { .. } => Block::RedstoneLamp { lit: state != 0 },
+                block if block.is_copper_bulb() => block.with_copper_bulb_state(state & 1 != 0, state & 2 != 0).ok_or_else(invalid)?,
                 Block::RedstoneComparator { mut comparator } => {
                     comparator.powered = state != 0;
                     Block::RedstoneComparator { comparator }

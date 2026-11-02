@@ -20,6 +20,7 @@ fn install_job(plot: &mut Plot, work: impl FnOnce(PlotWorld, Arc<TaskMonitor>) -
     let world = plot.world.activation_snapshot();
     plot.compilation = Some(CompilationJob {
         started: Instant::now(),
+        last_progress: Instant::now(),
         entry: EntryVersion::capture(&plot.world),
         monitor,
         worker: thread::spawn(move || work(world, worker_monitor)),
@@ -36,6 +37,30 @@ fn blocked_compile(plot: &mut Plot) -> mpsc::Sender<()> {
         CompilationResult { world, compiler, result }
     });
     release
+}
+
+#[test]
+fn blocked_compiler_reports_phase_counts_and_elapsed_time_without_blocking_poll() {
+    let (mut plot, mut peer) = fixture(false);
+    let release = blocked_compile(&mut plot);
+    let job = plot.compilation.as_mut().unwrap();
+    job.started = Instant::now() - Duration::from_secs(10);
+    job.last_progress = Instant::now() - Duration::from_secs(4);
+    job.monitor.set_phase("source transition sampling");
+    job.monitor.set_counts(120, 80, 4);
+    job.monitor.set_progress(2, 10);
+    plot.poll_redpiler_compilation();
+    assert!(!plot.redpiler.is_active());
+    assert!(plot.compilation.is_some());
+    let (id, packet) = mchprs_network::test_support::read_frame(&mut peer, false).unwrap();
+    plot.cancel_redpiler_compilation();
+    release.send(()).unwrap();
+    plot.wait_for_redpiler();
+    assert_eq!(id, 0x72);
+    let text = String::from_utf8_lossy(packet.get_ref());
+    assert!(text.contains("source transition sampling"));
+    assert!(text.contains("2/10 completed"));
+    assert!(text.contains("120 nodes, 80 wires, 4 pistons"));
 }
 
 #[test]

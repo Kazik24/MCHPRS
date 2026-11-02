@@ -1,7 +1,7 @@
 //! Share identical immutable rise/fall programs without merging component state.
 use super::*;
 
-pub(in super::super) fn run(program: &mut Program, monitor: Option<&TaskMonitor>, phases: &mut CompilePhases) -> Result<(), ScratchError> {
+pub(in super::super) fn run(program: &mut Program, monitor: Option<&TaskMonitor>, phases: &mut CompilePhases<'_>) -> Result<(), ScratchError> {
     check_cancelled(monitor)?;
     phases.next("share output programs");
     let original_operations = program.operations.len();

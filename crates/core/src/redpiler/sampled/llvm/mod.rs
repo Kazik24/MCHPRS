@@ -23,7 +23,7 @@ pub(in crate::redpiler) use cache::initialize as initialize_cache;
 use movement::encode_movement;
 
 pub(super) const ABI_VERSION: u32 = 3;
-const AUX_TABLES: usize = 59;
+const AUX_TABLES: usize = 61;
 const MAGIC: [u8; 4] = *b"MCHN";
 const HEADER_BYTES: usize = 16;
 const OP_BYTES: usize = 8;
@@ -150,7 +150,7 @@ impl LlvmRuntime {
         }
         let library = Library::load()?;
         let api = unsafe { (library.api_descriptor)() };
-        if api.abi_version != ABI_VERSION || api.descriptor_bytes != 16 || api.semantic_version != 20 {
+        if api.abi_version != ABI_VERSION || api.descriptor_bytes != 16 || api.semantic_version != 21 {
             return Err(ScratchError {
                 position: None,
                 reason: "LLVM DLL ABI/version mismatch",
@@ -241,7 +241,7 @@ impl LlvmRuntime {
         let status = unsafe { (self.library.read_state)(self.state.as_ptr().cast(), states.as_mut_ptr(), states.len() as u32) };
         self.call_status(status)?;
         for ((&pos, &initial), state) in self.positions.iter().zip(&self.initial).zip(states) {
-            if io_only && !matches!(initial, Block::Lever { .. } | Block::StoneButton { .. } | Block::RedstoneLamp { .. }) {
+            if io_only && !matches!(initial, Block::Lever { .. } | Block::StoneButton { .. } | Block::RedstoneLamp { .. }) && !initial.is_copper_bulb() {
                 continue;
             }
             let block = match initial {
@@ -254,6 +254,7 @@ impl LlvmRuntime {
                     Block::StoneButton { button }
                 }
                 Block::RedstoneLamp { .. } => Block::RedstoneLamp { lit: state != 0 },
+                block if block.is_copper_bulb() => block.with_copper_bulb_state(state & 1 != 0, state & 2 != 0).unwrap(),
                 Block::RedstoneRepeater { mut repeater } => {
                     repeater.powered = state & 1 != 0;
                     repeater.locked = state & 2 != 0;
@@ -382,13 +383,12 @@ pub(in crate::redpiler) fn unsupported_components(program: &Program) -> (Vec<Scr
         if !matches!(block, Block::Lever { .. } | Block::StoneButton { .. } | Block::RedstoneLamp { .. } | Block::RedstoneBlock
             | Block::RedstoneRepeater { .. } | Block::RedstoneWire { .. } | Block::Observer { .. } | Block::RedstoneTorch { .. }
             | Block::RedstoneWallTorch { .. } | Block::Piston { .. } | Block::RedstoneComparator { .. } | Block::Hopper { .. }
-            | Block::NoteBlock { .. } | Block::StonePressurePlate { .. }) {
+            | Block::NoteBlock { .. } | Block::StonePressurePlate { .. }) && !block.is_copper_bulb() {
             count += 1;
             if first.len() < 3 {
                 let reason = match block {
                     block if block.is_command_block() => "LLVM does not support command blocks",
                     Block::IronTrapdoor { .. } => "LLVM does not support iron trapdoors",
-                    block if block.is_copper_bulb() => "LLVM does not support copper bulbs",
                     _ => block.get_name(),
                 };
                 first.push(ScratchError { position: Some(program.positions[node]), reason });
@@ -412,9 +412,8 @@ fn unsupported_reason(program: &Program) -> Option<ScratchError> {
     for record in &program.comparators {
         for input in [record.rear_override, record.far_override].into_iter().flatten() {
             let reason = match input {
-                super::program::ComparatorInput::Static(_) => continue,
+                super::program::ComparatorInput::Static(_) | super::program::ComparatorInput::CopperBulb(_) => continue,
                 super::program::ComparatorInput::CommandBlock(_) => "LLVM does not support comparator input from a command block",
-                super::program::ComparatorInput::CopperBulb(_) => "LLVM does not support comparator input from a copper bulb",
             };
             return error(Some(program.positions[record.component]), reason);
         }
@@ -428,7 +427,6 @@ fn unsupported_reason(program: &Program) -> Option<ScratchError> {
         let (node, reason) = match *op {
             Operation::UpdateTrapdoor(node) => (node, "LLVM does not support trapdoor updates"),
             Operation::UpdateCommandBlock(node) => (node, "LLVM does not support command block updates"),
-            Operation::UpdateCopperBulb(node) => (node, "LLVM does not support copper bulb updates"),
             _ => continue,
         };
         return error(program.positions.get(node).copied(), reason);
@@ -693,6 +691,12 @@ fn encode_comparators(program: &Program, table: &mut Vec<u32>) -> Result<(), Scr
     let level = |input| match input {
         None => Ok(0),
         Some(ComparatorInput::Static(level)) => Ok(u32::from(level) + 1),
+        Some(ComparatorInput::CopperBulb(source)) => {
+            // Static levels use 1..=16; the high bit tags a live bulb component.
+            let source = u32::try_from(source).map_err(|_| overflow())?;
+            if source >= 0x8000_0000 { return Err(overflow()); }
+            Ok(0x8000_0000 | source)
+        }
         _ => Err(ScratchError { position: None, reason: "LLVM does not support dynamic comparator overrides" }),
     };
     table.resize(program.initial.len().checked_mul(4).ok_or_else(overflow)?, 0);
@@ -743,6 +747,11 @@ fn encode_aux(program: &Program, blob: &mut Vec<u8>) -> Result<(), ScratchError>
     encode_comparators(program, &mut tables[42])?;
     effects::encode(program, &mut tables)?;
     shapes::encode(program, &mut tables)?;
+    for row in &program.comparators_by_override {
+        let start = id(tables[60].len())?;
+        tables[59].extend([start, id(row.len())?]);
+        for &node in row { tables[60].push(id(node)?); }
+    }
     tables[52] = program.initial.iter().map(|block| match block {
         Block::RedstoneWire { wire } => wire.north.get_id() | (wire.south.get_id() << 2)
             | (wire.east.get_id() << 4) | (wire.west.get_id() << 6),
@@ -828,11 +837,11 @@ pub(super) fn validate_blob(descriptor: &NativeProgramDescriptor, blob: &[u8]) -
         let on_count = u32::from_le_bytes(component[20..24].try_into().unwrap()) as usize;
         let off_start = u32::from_le_bytes(component[24..28].try_into().unwrap()) as usize;
         let off_count = u32::from_le_bytes(component[28..32].try_into().unwrap()) as usize;
-        if (kind > 12 && kind != u8::MAX)
+        if (kind > 13 && kind != u8::MAX)
             || component[13]
                 > (if kind == 5 {
                     15
-                } else if kind == 4 {
+                } else if kind == 4 || kind == 13 {
                     3
                 } else {
                     1
@@ -880,6 +889,7 @@ pub(super) fn validate_blob(descriptor: &NativeProgramDescriptor, blob: &[u8]) -
         || tables[1].len() % 2 != 0
         || tables[3].len() != descriptor.watched_wire_count as usize * 3
         || tables[52].len() != descriptor.component_count as usize
+        || tables[59].len() != descriptor.component_count as usize * 2
     {
         return Err(invalid());
     }
@@ -890,7 +900,7 @@ pub(super) fn validate_blob(descriptor: &NativeProgramDescriptor, blob: &[u8]) -
             return Err(invalid());
         }
     }
-    for (rows, limit) in [(0, tables[1].len() / 2), (2, tables[4].len()), (5, tables[6].len())] {
+    for (rows, limit) in [(0, tables[1].len() / 2), (2, tables[4].len()), (5, tables[6].len()), (59, tables[60].len())] {
         for row in tables[rows].chunks_exact(2) {
             if u64::from(row[0]) + u64::from(row[1]) > limit as u64 {
                 return Err(invalid());
@@ -908,6 +918,10 @@ pub(super) fn validate_blob(descriptor: &NativeProgramDescriptor, blob: &[u8]) -
         }
     }
     if tables[4].iter().any(|&node| node >= descriptor.component_count) || tables[6].iter().any(|&link| link >= descriptor.link_count) {
+        return Err(invalid());
+    }
+    if tables[60].iter().any(|&node| node >= descriptor.component_count
+        || blob[descriptor.component_offset as usize + node as usize * COMPONENT_BYTES + 12] != 9) {
         return Err(invalid());
     }
     Ok(())
@@ -948,6 +962,10 @@ fn component_state(block: Block) -> (u8, u8) {
         Block::Hopper { enabled, .. } => (10, u8::from(enabled)),
         block if block.pressure_plate_powered().is_some() => (11, u8::from(block.pressure_plate_powered() == Some(true))),
         Block::NoteBlock { powered, .. } => (12, u8::from(powered)),
+        block if block.is_copper_bulb() => {
+            let (lit, powered) = block.copper_bulb_state().unwrap();
+            (13, u8::from(lit) | (u8::from(powered) << 1))
+        }
         _ => (u8::MAX, 0),
     }
 }

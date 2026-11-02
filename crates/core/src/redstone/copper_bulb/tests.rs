@@ -156,6 +156,16 @@ fn interpreter_bulbs_match_java_1_21_5() {
 
 #[test]
 fn compiled_bulbs_match_java_1_21_5() {
+    compiled_bulbs_match_java(false);
+}
+
+#[test]
+#[cfg(any(windows, target_os = "linux"))]
+fn llvm_copper_bulbs_match_java_1_21_5() {
+    compiled_bulbs_match_java(true);
+}
+
+fn compiled_bulbs_match_java(llvm: bool) {
     use crate::redpiler::{Compiler, CompilerOptions};
 
     let reference: serde_json::Value = serde_json::from_str(include_str!("../../../../../test_data/copper-bulbs/java-1.21.5.json")).unwrap();
@@ -171,7 +181,7 @@ fn compiled_bulbs_match_java_1_21_5() {
             .compile(
                 &world,
                 (BlockPos::new(35, 25, 35), BlockPos::new(47, 35, 47)),
-                CompilerOptions::default(),
+                CompilerOptions { llvm, ..Default::default() },
                 Vec::new(),
                 Default::default(),
             )
@@ -205,19 +215,44 @@ fn compiled_bulbs_match_java_1_21_5() {
 
 #[test]
 fn compiled_copper_bulb_matches_native_latch_comparators_and_observer() {
+    compiled_copper_bulb_matches_native("copper_bulb", false, false, false);
+}
+
+#[test]
+#[cfg(any(windows, target_os = "linux"))]
+fn llvm_copper_bulbs_match_native_latch_comparators_observer_and_reset() {
+    for name in ["copper_bulb", "exposed_copper_bulb", "weathered_copper_bulb", "oxidized_copper_bulb",
+        "waxed_copper_bulb", "waxed_exposed_copper_bulb", "waxed_weathered_copper_bulb", "waxed_oxidized_copper_bulb"] {
+        for (lit, powered) in [(false, false), (true, false), (false, true), (true, true)] {
+            compiled_copper_bulb_matches_native(name, lit, powered, false);
+            compiled_copper_bulb_matches_native(name, lit, powered, true);
+        }
+    }
+}
+
+fn compiled_copper_bulb_matches_native(name: &str, lit: bool, powered: bool, llvm: bool) {
     use crate::redpiler::{Compiler, CompilerOptions};
 
-    let mut world = circuit("copper_bulb", false, false);
+    let mut world = circuit(name, lit, powered);
     world.schedule_tick(DIRECT, 5, mchprs_world::TickPriority::Normal);
-    let mut compiled_world = circuit("copper_bulb", false, false);
+    let mut compiled_world = circuit(name, lit, powered);
     compiled_world.schedule_tick(DIRECT, 5, mchprs_world::TickPriority::Normal);
+    let second = BULB.offset(BlockFace::Top);
+    for world in [&mut world, &mut compiled_world] {
+        // The multi-input circuit starts settled; stale latch states have separate Java traces.
+        let Block::Lever { mut lever } = world.get_block(INPUT) else { unreachable!() };
+        lever.powered = powered;
+        world.set_block(INPUT, Block::Lever { lever });
+        world.set_block(second, Block::Lever { lever: Lever::new(LeverFace::Floor, BlockDirection::North, false) });
+    }
+    let bounds = (BULB - BlockPos::new(4, 2, 4), BULB + BlockPos::new(4, 2, 4));
     let ticks = world.scheduler().iter_entries().collect();
     let mut compiler = Compiler::default();
     compiler
         .compile(
             &compiled_world,
-            compiled_world.get_corners(),
-            CompilerOptions::default(),
+            bounds,
+            CompilerOptions { llvm, ..Default::default() },
             ticks,
             Default::default(),
         )
@@ -227,22 +262,24 @@ fn compiled_copper_bulb_matches_native_latch_comparators_and_observer() {
     let positions = [
         BULB,
         INPUT,
+        second,
         DIRECT,
         FAR,
         OBSERVER,
         DIRECT.offset(BlockFace::South),
         FAR.offset(BlockFace::East),
     ];
-    for _ in 0..3 {
-        crate::interaction::use_redstone(world.get_block(INPUT), &mut world, INPUT, None);
-        compiler.try_on_use_block(INPUT).unwrap();
+    for input in [INPUT, second, INPUT, second, INPUT, INPUT] {
+        crate::interaction::use_redstone(world.get_block(input), &mut world, input, None);
+        compiler.try_on_use_block(input).unwrap();
         compiler.try_flush(&mut compiled_world).unwrap();
+        assert_eq!(world.get_block(BULB), compiled_world.get_block(BULB), "immediate latch after {input:?}");
         for tick in 1..=3 {
             world.tick_interpreted();
             compiler.tick().unwrap();
             compiler.try_flush(&mut compiled_world).unwrap();
             for pos in positions {
-                assert_eq!(world.get_block(pos), compiled_world.get_block(pos), "block {pos:?}, pulse tick {tick}");
+                assert_eq!(world.get_block(pos), compiled_world.get_block(pos), "{name} initial lit={lit} powered={powered}, input {input:?}, block {pos:?}, pulse tick {tick}, llvm={llvm}");
             }
             for pos in [DIRECT, FAR] {
                 assert_eq!(
@@ -252,6 +289,10 @@ fn compiled_copper_bulb_matches_native_latch_comparators_and_observer() {
                 );
             }
         }
+    }
+    compiler.try_reset(&mut compiled_world, bounds).unwrap();
+    for pos in positions {
+        assert_eq!(world.get_block(pos), compiled_world.get_block(pos), "reset at {pos:?}");
     }
 }
 

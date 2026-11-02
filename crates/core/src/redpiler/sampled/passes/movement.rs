@@ -5,7 +5,7 @@ pub(in super::super) fn run(
     context: &Context<'_, impl World>,
     program: &mut Program,
     probe_indexes: &ProbeIndexes<'_>,
-    phases: &mut CompilePhases,
+    phases: &mut CompilePhases<'_>,
 ) -> Result<(), ScratchError> {
     let world = context.world;
     let bounds = context.bounds;
@@ -120,14 +120,20 @@ pub(in super::super) fn run(
                 watchers.push((order, node));
             }
         }
-        if let Some(observers) = observers_by_target.get(&pos) {
-            watchers.extend(
-                observers
-                    .iter()
-                    .copied()
-                    .filter(|&node| node != source && seen.insert(node))
-                    .map(|node| (usize::MAX, node)),
-            );
+        // Controls also notify observers of their support, even if that block's state stays unchanged.
+        let support = matches!(program.initial[source], Block::Lever { .. } | Block::StoneButton { .. })
+            .then(|| crate::interaction::attachment_support(program.initial[source], pos).map(|(support, _)| support))
+            .flatten();
+        for observed in std::iter::once(pos).chain(support) {
+            if let Some(observers) = observers_by_target.get(&observed) {
+                watchers.extend(
+                    observers
+                        .iter()
+                        .copied()
+                        .filter(|&node| node != source && seen.insert(node))
+                        .map(|node| (usize::MAX, node)),
+                );
+            }
         }
         watchers.sort_by_key(|&(order, _)| order);
         program.source_watchers[source] = watchers.into_iter().map(|(_, node)| node).collect();

@@ -4,7 +4,7 @@ use crate::redpiler::scratch::ScratchError;
 use crate::world::{World, storage::Chunk};
 use mchprs_blocks::blocks::{ButtonFace, Lever, LeverFace, RedstonePiston, StoneButton};
 use mchprs_blocks::{BlockDirection, BlockFace, BlockFacing, BlockPos, block_entities::BlockEntity, blocks::Block};
-use mchprs_world::{TickEntry, TickPriority};
+use mchprs_world::{AdvancePhase, TickEntry, TickPriority};
 use std::sync::Arc;
 
 fn button_world(face: ButtonFace, facing: BlockDirection) -> (PlotWorld, BlockPos, BlockPos, (BlockPos, BlockPos)) {
@@ -38,6 +38,34 @@ fn compile_button(world: &PlotWorld, bounds: (BlockPos, BlockPos)) -> Compiler {
         .compile(world, bounds, CompilerOptions::default(), Vec::new(), Arc::new(TaskMonitor::default()))
         .unwrap();
     compiler
+}
+
+#[test]
+fn llvm_handoff_errors_identify_pending_pistons_and_partial_ticks() {
+    let (mut world, pos, _, bounds) = button_world(ButtonFace::Floor, BlockDirection::North);
+    world.piston_state_mut().events.push_back(mchprs_world::PistonEvent {
+        pos, sticky: false, facing: BlockFace::East, action: mchprs_world::PistonAction::Extend,
+    });
+    let compile = |world: &PlotWorld| Compiler::default().compile(world, bounds,
+        CompilerOptions { llvm: true, ..Default::default() }, Vec::new(), Default::default());
+    let Err(CompileError::Unsupported(error)) = compile(&world) else { panic!("pending piston was accepted") };
+    assert_eq!(error.position, Some(pos));
+    world.piston_state_mut().events.clear();
+    world.piston_state_mut().phase = AdvancePhase::ScheduledTicks;
+    let Err(CompileError::Unsupported(error)) = compile(&world) else { panic!("partial tick was accepted") };
+    assert_eq!(error.position, None);
+    assert!(error.reason.contains("scheduled ticks"));
+}
+
+#[test]
+#[cfg(any(windows, target_os = "linux"))]
+fn llvm_accepts_completed_interpreter_tick_with_scheduler_advanced() {
+    let (mut world, _, _, bounds) = button_world(ButtonFace::Floor, BlockDirection::North);
+    world.tick_interpreted();
+    assert_eq!(world.piston_state().phase, AdvancePhase::BetweenTicks);
+    assert!(world.piston_state().scheduled_advanced);
+    Compiler::default().compile(&world, bounds, CompilerOptions { llvm: true, ..Default::default() },
+        world.scheduler().iter_entries().collect(), Default::default()).unwrap();
 }
 
 #[test]

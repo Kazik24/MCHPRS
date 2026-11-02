@@ -106,7 +106,7 @@ pub(in super::super) fn run(
     context: &Context<'_, impl World>,
     program: &mut Program,
     probe_indexes: &ProbeIndexes<'_>,
-    phases: &mut CompilePhases,
+    phases: &mut CompilePhases<'_>,
 ) -> Result<(), ScratchError> {
     let world = context.world;
     let bounds = context.bounds;

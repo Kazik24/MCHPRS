@@ -1,7 +1,7 @@
 //! Capture and validate the world inventory before electrical discovery.
 use super::*;
 
-pub(in super::super) fn run(context: &Context<'_, impl World>, phases: &mut CompilePhases) -> Result<(ScratchWorld, Inventory), ScratchError> {
+pub(in super::super) fn run(context: &Context<'_, impl World>, phases: &mut CompilePhases<'_>) -> Result<(ScratchWorld, Inventory), ScratchError> {
     let world = context.world;
     let bounds = context.bounds;
     let entry = context.entry;
@@ -32,6 +32,11 @@ pub(in super::super) fn run(context: &Context<'_, impl World>, phases: &mut Comp
     let mut copper_bulbs = Vec::new();
 
     let error = |pos, reason| ScratchError { position: Some(pos), reason };
+    let width = (i64::from(bounds.1.x) - i64::from(bounds.0.x) + 1).max(0) as usize;
+    let depth = (i64::from(bounds.1.z) - i64::from(bounds.0.z) + 1).max(0) as usize;
+    let height = (i64::from(bounds.1.y) - i64::from(bounds.0.y) + 1).max(0) as usize;
+    let layer_size = width.saturating_mul(depth);
+    let total_blocks = layer_size.saturating_mul(height);
     for y in bounds.0.y..=bounds.1.y {
         if monitor.is_some_and(TaskMonitor::cancelled) {
             return Err(ScratchError {
@@ -97,6 +102,9 @@ pub(in super::super) fn run(context: &Context<'_, impl World>, phases: &mut Comp
                 }
             }
         }
+        if let Some(monitor) = monitor {
+            monitor.set_progress(layer_size.saturating_mul((i64::from(y) - i64::from(bounds.0.y) + 1) as usize), total_blocks);
+        }
     }
 
     // Existing saves need not satisfy placement rules; native redstone callbacks retain them too.
@@ -120,6 +128,7 @@ pub(in super::super) fn run(context: &Context<'_, impl World>, phases: &mut Comp
         .copied()
         .filter(|&pos| matches!(scratch.world().get_block(pos), Block::NoteBlock { .. }))
         .collect();
+    if let Some(monitor) = monitor { monitor.set_counts(positions.len(), wire_positions.len(), pistons.len()); }
     if phases.enabled {
         eprintln!(
             "Redpiler inventory: sampled_components={} wires={} lamps={} repeaters={} copper_bulbs={}",

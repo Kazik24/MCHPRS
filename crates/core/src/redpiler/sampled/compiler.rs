@@ -10,7 +10,8 @@ use std::time::Instant;
 #[path = "passes/mod.rs"]
 mod passes;
 
-struct CompilePhases {
+struct CompilePhases<'a> {
+    monitor: Option<&'a TaskMonitor>,
     /// enables phase timing and progress diagnostics.
     enabled: bool,
     /// start time for the entire compilation.
@@ -23,10 +24,12 @@ struct CompilePhases {
     detail: Option<(&'static str, usize)>,
 }
 
-impl CompilePhases {
-    fn new() -> Self {
+impl<'a> CompilePhases<'a> {
+    fn new(monitor: Option<&'a TaskMonitor>) -> Self {
+        if let Some(monitor) = monitor { monitor.set_phase("scratch snapshot"); }
         let now = Instant::now();
         Self {
+            monitor,
             enabled: std::env::var_os("MCHPRS_REDPILER_PHASE_TIMINGS").is_some(),
             total: now,
             started: now,
@@ -36,6 +39,7 @@ impl CompilePhases {
     }
 
     fn next(&mut self, phase: &'static str) {
+        if let Some(monitor) = self.monitor { monitor.set_phase(phase); }
         if self.enabled {
             eprintln!("Redpiler compile phase {}: {} ms", self.phase, self.started.elapsed().as_millis());
         }
@@ -45,11 +49,12 @@ impl CompilePhases {
     }
 
     fn detail(&mut self, detail: &'static str, item: usize) {
+        if let Some(monitor) = self.monitor { monitor.set_detail(detail, item); }
         self.detail = Some((detail, item));
     }
 }
 
-impl Drop for CompilePhases {
+impl Drop for CompilePhases<'_> {
     fn drop(&mut self) {
         if self.enabled {
             let detail = self
@@ -229,7 +234,7 @@ pub(crate) fn compile_monitored(
     entry: ScratchEntry,
     monitor: Option<&TaskMonitor>,
 ) -> Result<Program, ScratchError> {
-    let mut phases = CompilePhases::new();
+    let mut phases = CompilePhases::new(monitor);
     let context = passes::Context {
         world,
         bounds,
