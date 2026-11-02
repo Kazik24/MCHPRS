@@ -18,6 +18,10 @@ struct Slot {
     next: Option<NonZeroUsize>,
 }
 
+/// A bounded ring of FIFO queues, ordered by delay and then tick priority.
+///
+/// Slots are linked by one-based indices so removed ticks can be reused without
+/// allocating. Delay zero represents the current half-tick.
 pub(super) struct Scheduler {
     /// fixed-capacity tick slots, reused through the free list.
     slots: Vec<Slot>,
@@ -51,10 +55,12 @@ impl Scheduler {
         self.limit = limit;
     }
 
+    /// Append a tick to its delay and priority queue, or return an error without scheduling it.
     pub(super) fn schedule_half_tick(&mut self, tick: ScheduledComponentTick, delay: usize, priority: TickPriority) -> Result<(), &'static str> {
         if delay >= NUM_QUEUES || (delay == 0 && priority != TickPriority::NanoTick) {
             return Err("invalid runtime scheduled delay or priority");
         }
+
         let slot = if let Some(slot) = self.free {
             self.free = self.slots[slot.get() - 1].next;
             self.slots[slot.get() - 1] = Slot { tick, next: None };
@@ -76,6 +82,7 @@ impl Scheduler {
         Ok(())
     }
 
+    /// Remove the next tick in the current half-tick, respecting priority and FIFO order.
     pub(super) fn pop_first(&mut self) -> Option<ScheduledComponentTick> {
         for queue in &mut self.queues[self.pos] {
             if let Some(slot) = queue.first {
@@ -92,6 +99,7 @@ impl Scheduler {
         None
     }
 
+    /// Advance the ring after all ticks in the current half-tick have been drained.
     pub(super) fn end_last_tick_move_next(&mut self) {
         debug_assert!(self.queues[self.pos].iter().all(|queue| queue.first.is_none()));
         self.pos = (self.pos + 1) % NUM_QUEUES;

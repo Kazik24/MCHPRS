@@ -76,6 +76,8 @@ fn check_cancelled(monitor: Option<&TaskMonitor>) -> Result<(), ScratchError> {
         Ok(())
     }
 }
+
+/// Return keys whose values were added, removed, or changed, in sorted order.
 pub(super) fn find_changed_links<K: Ord + Copy, V: PartialEq>(
     before: &std::collections::BTreeMap<K, V>,
     after: &std::collections::BTreeMap<K, V>,
@@ -89,6 +91,7 @@ pub(super) fn find_changed_links<K: Ord + Copy, V: PartialEq>(
         .filter(|source| before.get(source) != after.get(source))
         .collect()
 }
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) struct PistonActor {
     /// stable actor index assigned during piston discovery.
@@ -132,6 +135,7 @@ pub(super) fn is_passive_geometry(block: Block) -> bool {
             || plate_power == Some(false))
 }
 
+/// Capture movable blocks and their legal cells, rejecting groups the runtime cannot model.
 pub(super) fn discover_piston_tokens(world: &impl World, actors: &[PistonActor]) -> Result<Vec<PistonToken>, ScratchError> {
     let mut tokens = Vec::new();
     for group in 0..actors.iter().map(|p| p.group + 1).max().unwrap_or(0) {
@@ -213,10 +217,12 @@ pub(super) fn discover_piston_tokens(world: &impl World, actors: &[PistonActor])
     }
     Ok(tokens)
 }
+
 pub(crate) fn compile(world: &impl World, bounds: (BlockPos, BlockPos), entry: ScratchEntry) -> Result<Program, ScratchError> {
     compile_monitored(world, bounds, entry, None)
 }
 
+/// Build a sampled program from a world snapshot, checking for cancellation between stages.
 pub(crate) fn compile_monitored(
     world: &impl World,
     bounds: (BlockPos, BlockPos),
@@ -261,9 +267,16 @@ fn update_order() -> [mchprs_blocks::BlockFace; 6] {
     [West, East, Bottom, Top, North, South]
 }
 
+/// Return notification targets in the order used by the native redstone updates.
 fn update_footprint(pos: BlockPos, block: Block) -> Vec<BlockPos> {
     use mchprs_blocks::BlockFace;
     let neighbours = |pos: BlockPos| update_order().map(|face| pos.offset(face));
+    let directional_targets = |rear: BlockFace| {
+        let front = pos.offset(rear.opposite());
+        std::iter::once(front)
+            .chain(update_order().into_iter().filter(|&face| face != rear).map(|face| front.offset(face)))
+            .collect()
+    };
     match block {
         Block::RedstoneRepeater { .. } | Block::RedstoneComparator { .. } => {
             let rear = match block {
@@ -271,18 +284,9 @@ fn update_footprint(pos: BlockPos, block: Block) -> Vec<BlockPos> {
                 Block::RedstoneComparator { comparator } => comparator.facing.block_face(),
                 _ => unreachable!(),
             };
-            let front = pos.offset(rear.opposite());
-            std::iter::once(front)
-                .chain(update_order().into_iter().filter(|&face| face != rear).map(|face| front.offset(face)))
-                .collect()
+            directional_targets(rear)
         }
-        Block::Observer { observer } => {
-            let rear: BlockFace = observer.facing.into();
-            let front = pos.offset(rear.opposite());
-            std::iter::once(front)
-                .chain(update_order().into_iter().filter(|&face| face != rear).map(|face| front.offset(face)))
-                .collect()
-        }
+        Block::Observer { observer } => directional_targets(observer.facing.into()),
         Block::Lever { lever } => {
             let support = match lever.face {
                 LeverFace::Floor => BlockFace::Bottom,
@@ -386,6 +390,7 @@ fn discover_piston_actors_monitored(
     Ok(actors)
 }
 
+/// Group pistons whose contact cells overlap, including indirect overlaps.
 pub(super) fn assign_piston_groups(actors: &mut [PistonActor]) {
     let mut parents: Vec<_> = (0..actors.len()).collect();
     let mut owner_by_cell = std::collections::HashMap::new();

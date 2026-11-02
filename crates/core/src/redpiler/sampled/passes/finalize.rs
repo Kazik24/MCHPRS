@@ -18,17 +18,12 @@ pub(in super::super) fn run(program: &mut Program, monitor: Option<&TaskMonitor>
             .iter()
             .filter(|block| matches!(block, Block::RedstoneComparator { .. }))
             .count();
-        let identical = program
+        let identical_outputs = program
             .output_programs
             .iter()
-            .filter(|ranges| !ranges[0].is_empty() && program.operations[ranges[0].clone()] == program.operations[ranges[1].clone()])
-            .count();
-        let shared_operations: usize = program
-            .output_programs
-            .iter()
-            .filter(|ranges| !ranges[0].is_empty() && program.operations[ranges[0].clone()] == program.operations[ranges[1].clone()])
-            .map(|ranges| ranges[0].len())
-            .sum();
+            .filter(|ranges| !ranges[0].is_empty() && program.operations[ranges[0].clone()] == program.operations[ranges[1].clone()]);
+        let identical = identical_outputs.clone().count();
+        let shared_operations: usize = identical_outputs.map(|ranges| ranges[0].len()).sum();
         eprintln!(
             "Redpiler census: components={} analog_readers={} comparator_readers={} arrangement_links={} avoided_nonanalog_global_link_visits={} reactive={} operations={} identical_nonempty_edges={} shareable_operations={} operation_bytes={} input_state_bytes={} histogram_bytes={} flip_records={} flip_bytes={}",
             program.initial.len(),

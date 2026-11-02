@@ -46,28 +46,20 @@ pub(in super::super) fn run(context: &Context<'_, impl World>, phases: &mut Comp
                     Block::Air | Block::Stone {} | Block::Wool { .. } | Block::Glowstone | Block::Target => {}
                     block if block.slab_type().is_some() => {}
                     block if block.is_sign() => {}
-                    Block::Lever { .. } => {
-                        sources.push(positions.len());
-                        positions.push(pos);
-                    }
-                    Block::StoneButton { .. } => {
+                    Block::Lever { .. } | Block::StoneButton { .. } => {
                         sources.push(positions.len());
                         positions.push(pos);
                     }
                     // Player contact resets Redpiler before changing a pressure plate.
                     block if block.pressure_plate_powered().is_some() => positions.push(pos),
                     block if block.is_command_block() => positions.push(pos),
-                    Block::RedstoneWire { .. } => {
-                        positions.push(pos);
-                    }
-                    Block::RedstoneLamp { .. } => {
-                        positions.push(pos);
-                    }
-                    Block::Hopper { .. } => positions.push(pos),
-                    Block::IronTrapdoor { .. } => positions.push(pos),
-                    Block::NoteBlock { .. } => positions.push(pos),
-                    Block::RedstoneBlock => positions.push(pos),
-                    Block::RedstoneComparator { .. } => positions.push(pos),
+                    Block::RedstoneWire { .. }
+                    | Block::RedstoneLamp { .. }
+                    | Block::Hopper { .. }
+                    | Block::IronTrapdoor { .. }
+                    | Block::NoteBlock { .. }
+                    | Block::RedstoneBlock
+                    | Block::RedstoneComparator { .. } => positions.push(pos),
                     block if block.is_copper_bulb() => {
                         copper_bulbs.push(pos);
                         positions.push(pos);

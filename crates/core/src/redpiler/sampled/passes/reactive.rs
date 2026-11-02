@@ -8,6 +8,7 @@ pub(in super::super) fn run(
     components: &std::collections::HashMap<BlockPos, usize>,
     monitor: Option<&TaskMonitor>,
 ) -> Result<(), ScratchError> {
+    // Comparator inputs must come from the initial runtime state before marking reactions.
     let inputs = {
         let runtime = program.start();
         (0..program.initial.len())
@@ -52,15 +53,12 @@ pub(in super::super) fn run(
                         }
                     }
                 };
-                let mut rear = inputs[node].0;
+                let (mut rear, side) = inputs[node];
                 if let Some(input) = record.rear_override {
                     rear = override_level(input);
-                } else if rear < 15 {
-                    if let Some(input) = record.far_override {
-                        rear = override_level(input);
-                    }
+                } else if rear < 15 && let Some(input) = record.far_override {
+                    rear = override_level(input);
                 }
-                let side = inputs[node].1;
                 let (level, powered) = crate::redpiler::sampled::executor::compare(rear, side, comparator.mode);
                 !pending && (record.stored != level || comparator.powered != powered)
             }
@@ -75,6 +73,7 @@ pub(in super::super) fn run(
         };
     }
 
+    // Find wires that can affect components needing an initial update.
     for node in 0..program.initial.len() {
         check_cancelled(monitor)?;
         if !program.reactive[node] {
@@ -109,6 +108,7 @@ pub(in super::super) fn run(
         }
     }
 
+    // Index those wires by source so later source changes can find them directly.
     for (wire, record) in program.reactive_wires.iter().enumerate() {
         for &(source, _) in &record.sources {
             if !program.reactive_by_source[source].contains(&wire) {
@@ -117,6 +117,7 @@ pub(in super::super) fn run(
         }
     }
 
+    // Record components notified by each source's native update footprint.
     for node in 0..program.initial.len() {
         let pos = program.positions[node];
         let adjacent = |p: BlockPos| update_order().map(|face| p.offset(face));
@@ -145,6 +146,7 @@ pub(in super::super) fn run(
     Ok(())
 }
 
+/// Collect unique cells reached by one or two neighbor updates, in update order.
 fn within_two(pos: BlockPos) -> Vec<BlockPos> {
     let adjacent = |p: BlockPos| update_order().map(|face| p.offset(face));
     let mut cells = Vec::new();
