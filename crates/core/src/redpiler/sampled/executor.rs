@@ -972,8 +972,9 @@ impl Runtime {
             let step = &self.program.movement_steps[index];
             let node = step.node;
             let wire = step.wire;
+            let watcher = step.watcher;
             let deliver = self.switched[node]
-                || step.watcher
+                || watcher
                 || self.program.movement_wires[step.wires.clone()]
                     .iter()
                     .any(|&wire| self.changed_wires[wire]);
@@ -990,7 +991,11 @@ impl Runtime {
                 }
             } else if deliver {
                 self.switched[node] = false;
-                self.update_once(node);
+                if matches!(self.blocks[node], Block::Observer { .. }) && !watcher {
+                    self.update_wire_watcher(node);
+                } else {
+                    self.update_once(node);
+                }
             }
             self.operations += 1;
         }

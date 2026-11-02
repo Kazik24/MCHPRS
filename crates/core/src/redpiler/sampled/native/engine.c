@@ -7,7 +7,7 @@
 #define NE_OPERATION_LIMIT 4u
 #define NE_MAX_TICK_OPERATIONS 1000000u
 #define NE_MAX_STATE_BYTES (256u * 1024u * 1024u)
-#define NE_TABLES 33u
+#define NE_TABLES 43u
 #define NONE UINT32_MAX
 
 typedef struct {
@@ -32,6 +32,8 @@ typedef struct {
     uint32_t *pending_count;
     uint32_t *side_count;
     uint32_t *histograms;
+    uint32_t *side_histograms;
+    uint8_t *comparator_outputs;
     uint32_t *watched_by_component;
     uint8_t *watched_strengths;
     uint64_t *updated;
@@ -54,6 +56,8 @@ typedef struct {
     NEMotion *motions;
     uint32_t motion_first, motion_last, motion_free, landing_cursor;
     uint8_t motion_phase;
+    uint8_t *route_attenuation, *route_next, *route_distance;
+    uint32_t *route_queue;
 } NEEngine;
 
 static const MchprsNativeComponent *components(const NEEngine *engine) {
@@ -97,6 +101,7 @@ static uint8_t output(const NEEngine *engine, uint32_t component) {
     const MchprsNativeComponent *record = &components(engine)[component];
     if (record->kind == 3u) return table(engine, 30u)[component] ? 0u : 15u;
     if (record->kind == 5u) return engine->component_state[component];
+    if (record->kind == 9u) return engine->component_state[component] ? engine->comparator_outputs[component] : 0u;
     if ((record->kind == 0u || record->kind == 1u || record->kind == 4u || record->kind == 6u || record->kind == 7u)
         && (engine->component_state[component] & 1u)) return 15u;
     return 0u;
@@ -145,17 +150,21 @@ static uint32_t notify(NEEngine *e, uint32_t source, uint8_t shape, uint8_t upda
     return NE_OK;
 }
 
-static void set_component(NEEngine *e, uint32_t node, uint8_t state) {
-    uint8_t old = output(e, node);
-    e->component_state[node] = state;
-    uint8_t value = output(e, node);
+static void change_side_outputs(NEEngine *e, uint32_t node, uint8_t old, uint8_t value) {
     if (old == value) return;
     const uint32_t *row = table(e, 0u) + (size_t)node * 2u, *data = table(e, 1u);
     for (uint32_t i = 0; i < row[1]; ++i) {
         uint32_t target = data[(row[0] + i) * 2u], attenuation = data[(row[0] + i) * 2u + 1u];
-        if (old > attenuation) e->side_count[target]--;
-        if (value > attenuation) e->side_count[target]++;
+        uint8_t before=old>attenuation?(uint8_t)(old-attenuation):0u;
+        uint8_t after=value>attenuation?(uint8_t)(value-attenuation):0u;
+        if (before) { e->side_count[target]--; e->side_histograms[(size_t)target*16u+before]--; }
+        if (after) { e->side_count[target]++; e->side_histograms[(size_t)target*16u+after]++; }
     }
+}
+static void set_component(NEEngine *e, uint32_t node, uint8_t state) {
+    uint8_t old = output(e, node);
+    e->component_state[node] = state;
+    change_side_outputs(e,node,old,output(e,node));
 }
 
 static void set_contribution(NEEngine *e, uint32_t index, uint8_t value) {
@@ -167,12 +176,29 @@ static void set_contribution(NEEngine *e, uint32_t index, uint8_t value) {
         if (old) { e->input_count[target]--; e->histograms[(size_t)target * 16u + old]--; }
         if (value) { e->input_count[target]++; e->histograms[(size_t)target * 16u + value]++; }
     }
-    if ((old != 0u) != (value != 0u) || (old != value && e->watched_by_component[target] != UINT32_MAX)) e->updated[target] = 0u;
+    if ((old != 0u) != (value != 0u) || (old != value && (components(e)[target].kind==9u || e->watched_by_component[target] != UINT32_MAX))) e->updated[target] = 0u;
 }
 
 static uint8_t input_strength(const NEEngine *e, uint32_t node) {
     for (uint32_t level = 15u; level; --level) if (e->histograms[(size_t)node * 16u + level]) return (uint8_t)level;
     return 0u;
+}
+
+static void comparator_result(const NEEngine *e, uint32_t node, uint8_t *level, uint8_t *powered) {
+    const uint32_t *r=table(e,42u)+node*4u;
+    uint8_t rear=input_strength(e,node), side=0u;
+    for (uint32_t i=15u;i;--i) if (e->side_histograms[(size_t)node*16u+i]) { side=(uint8_t)i; break; }
+    if (r[1]) rear=(uint8_t)(r[1]-1u);
+    else if (rear<15u && r[2]) rear=(uint8_t)(r[2]-1u);
+    uint8_t subtract=(uint8_t)((r[0]>>1u)&1u);
+    *powered=(uint8_t)(rear>0u && (rear>side || (rear==side && !subtract)));
+    *level=side>rear?0u:subtract?(uint8_t)(rear-side):rear;
+}
+
+static uint32_t update_comparator(NEEngine *e, uint32_t node) {
+    uint8_t level, powered; comparator_result(e,node,&level,&powered);
+    if (level==e->comparator_outputs[node] && powered==e->component_state[node]) return NE_OK;
+    return schedule(e,node,2u,(table(e,42u)[node*4u]&4u)?2u:3u);
 }
 
 static void refresh_wire(NEEngine *e, uint32_t wire) {
@@ -220,6 +246,7 @@ static uint32_t update_component(NEEngine *e, uint32_t node) {
     if (kind == 2u) return dispatch_lamp(e, node);
     if (kind == 8u) return update_piston(e, node);
     if (kind == 4u) return update_repeater(e, node);
+    if (kind == 9u) return update_comparator(e,node);
     if (kind == 6u && e->component_state[node] == (e->input_count[node] != 0u)) return schedule(e, node, 2u, 3u);
     if (kind == 7u && !e->component_state[node]) return schedule(e, node, 2u, 3u);
     return NE_OK;
@@ -230,12 +257,17 @@ static uint32_t update_once(NEEngine *e, uint32_t node) {
     return update_component(e, node);
 }
 
+static uint32_t update_wire_watcher(NEEngine *e, uint32_t node) {
+    if (components(e)[node].kind == 7u) return e->component_state[node] ? schedule(e, node, 2u, 3u) : NE_OK;
+    return update_once(e, node);
+}
+
 static uint32_t check_watched(NEEngine *e, uint32_t record) {
     const uint32_t *row = table(e, 3u) + (size_t)record * 3u, *ids = table(e, 4u);
     uint8_t strength = input_strength(e, row[0]);
     if (strength == e->watched_strengths[record]) return NE_OK;
     e->watched_strengths[record] = strength;
-    for (uint32_t i = 0; i < row[2]; ++i) { uint32_t result = update_once(e, ids[row[1] + i]); if (result) return result; }
+    for (uint32_t i = 0; i < row[2]; ++i) { uint32_t result = update_wire_watcher(e, ids[row[1] + i]); if (result) return result; }
     return NE_OK;
 }
 
@@ -260,6 +292,7 @@ static uint32_t execute_operation(NEEngine *engine, const uint8_t *operation) {
     if (operation[0] == 3u) return check_watched(engine, operand);
     if (operation[0] == 12u) return update_component(engine, operand);
     if (operation[0] == 11u) return update_piston(engine, operand);
+    if (operation[0] == 13u) return update_comparator(engine,operand);
     return engine->error = NE_UNSUPPORTED;
 }
 
@@ -315,6 +348,17 @@ static uint32_t drain(NEEngine *engine) {
             uint32_t status = execute_output(engine, event.component, (uint8_t)!powered);
             if (status != NE_OK) return status;
             if ((status = notify(engine, event.component, 1u, 1u))) return status;
+        } else if (component->kind == 9u) {
+            uint32_t node=event.component; uint8_t from=output(engine,node), level, powered;
+            uint8_t previous=engine->comparator_outputs[node], old_powered=engine->component_state[node];
+            comparator_result(engine,node,&level,&powered);
+            engine->comparator_outputs[node]=level;
+            change_side_outputs(engine,node,from,output(engine,node));
+            if (previous==level && (table(engine,42u)[node*4u]&2u)) continue;
+            set_component(engine,node,powered);
+            uint8_t value=output(engine,node); uint32_t status=NE_OK;
+            if (from!=value) status=execute_output(engine,node,(uint8_t)(value>from));
+            if (status || (status=notify(engine,node,(uint8_t)(old_powered!=powered),1u))) return status;
         } else if (component->kind == 6u && engine->component_state[event.component] == (engine->input_count[event.component] != 0u)) {
             uint8_t lit = (uint8_t)!engine->component_state[event.component];
             set_component(engine, event.component, lit);
@@ -343,7 +387,7 @@ static uint32_t valid_aux(const MchprsNativeProgramDescriptor *p, const uint8_t 
         t[i] = (const uint32_t *)(blob + directory[i * 2u]);
         cursor += (uint64_t)n[i] * 4u;
     }
-    if (cursor != p->total_bytes || (uint64_t)n[0] != (uint64_t)p->component_count * 2u
+    if (cursor != p->total_bytes || (uint64_t)n[42] != (uint64_t)p->component_count*4u || (uint64_t)n[0] != (uint64_t)p->component_count * 2u
         || n[2] != n[0] || n[5] != n[0] || n[1] % 2u || (uint64_t)n[3] != (uint64_t)p->watched_wire_count * 3u) return 0u;
     for (uint32_t node = 0; node < p->component_count; ++node) {
         if ((uint64_t)t[0][node * 2u] + t[0][node * 2u + 1u] > n[1] / 2u
@@ -372,12 +416,16 @@ static uint32_t valid_program(const MchprsNativeProgramDescriptor *program, cons
     if (!valid_aux(program, blob)) return 0u;
     const MchprsNativeComponent *component = (const MchprsNativeComponent *)(blob + program->component_offset);
     for (uint32_t i = 0; i < program->component_count; ++i) {
-        if (component[i].kind > 8u || component[i].initial_state > (component[i].kind == 5u ? 15u : component[i].kind == 4u ? 3u : 1u)
+        if (component[i].kind > 9u || component[i].initial_state > (component[i].kind == 5u ? 15u : component[i].kind == 4u ? 3u : 1u)
             || (component[i].kind == 4u ? (component[i].reserved[0] < 1u || component[i].reserved[0] > 4u || component[i].reserved[1] > 6u || (component[i].reserved[1] & 1u))
                 : (component[i].reserved[0] || component[i].reserved[1]))
             || (uint64_t)component[i].on_offset + component[i].on_count > program->operation_count
             || (uint64_t)component[i].off_offset + component[i].off_count > program->operation_count) return 0u;
         if (component[i].kind == 2u && (component[i].on_count || component[i].off_count)) return 0u;
+        const uint32_t *c=(const uint32_t *)(blob + ((const uint32_t *)(blob+program->source_offset+(size_t)program->source_count*4u))[42u*2u])+i*4u;
+        if (component[i].kind==9u) {
+            if (!(c[0]&1u) || c[0]>7u || c[1]>16u || c[2]>16u || c[3]>15u) return 0u;
+        } else if (c[0] || c[1] || c[2] || c[3]) return 0u;
     }
     const uint8_t *link = blob + program->link_offset;
     for (uint32_t i = 0; i < program->link_count; ++i, link += 12u) {
@@ -395,8 +443,8 @@ static uint32_t valid_program(const MchprsNativeProgramDescriptor *program, cons
             if (operand >= program->component_count || component[operand].kind != 2u) return 0u;
         } else if (op[0] == 10u) {
             if (operand >= program->component_count || component[operand].kind != 4u) return 0u;
-        } else if (op[0] == 2u || op[0] == 12u || op[0] == 11u) {
-            if (operand >= program->component_count || component[operand].kind != (op[0] == 2u ? 5u : op[0] == 11u ? 8u : 6u)) return 0u;
+        } else if (op[0] == 2u || op[0] == 12u || op[0] == 11u || op[0] == 13u) {
+            if (operand >= program->component_count || component[operand].kind != (op[0] == 2u ? 5u : op[0] == 11u ? 8u : op[0] == 13u ? 9u : 6u)) return 0u;
         } else if (op[0] == 1u) {
             if (operand >= program->arrangement_link_count) return 0u;
         } else if (op[0] == 3u) {
@@ -412,7 +460,7 @@ static uint32_t valid_program(const MchprsNativeProgramDescriptor *program, cons
 static size_t align8(size_t value) { return (value + 7u) & ~(size_t)7u; }
 
 MchprsNativeApiDescriptor ne_api_descriptor(void) {
-    MchprsNativeApiDescriptor value = {3u, 16u, 8u};
+    MchprsNativeApiDescriptor value = {3u, 16u, 10u};
     return value;
 }
 
@@ -429,6 +477,8 @@ size_t ne_state_size(const MchprsNativeProgramDescriptor *program, const uint8_t
     bytes = align8(bytes) + count * sizeof(uint32_t);
     bytes = align8(bytes) + count * sizeof(uint32_t);
     bytes = align8(bytes) + count * 16u * sizeof(uint32_t);
+    bytes = align8(bytes) + count * 16u * sizeof(uint32_t);
+    bytes = align8(bytes) + count;
     bytes = align8(bytes) + count * sizeof(uint32_t);
     bytes = align8(bytes) + program->watched_wire_count;
     bytes = align8(bytes) + count * sizeof(uint64_t);
@@ -459,6 +509,10 @@ uint32_t ne_create(const MchprsNativeProgramDescriptor *program, const uint8_t *
     offset = align8(offset + (size_t)program->component_count * sizeof(uint32_t));
     engine->histograms = (uint32_t *)(base + offset);
     offset = align8(offset + (size_t)program->component_count * 16u * sizeof(uint32_t));
+    engine->side_histograms = (uint32_t *)(base + offset);
+    offset = align8(offset + (size_t)program->component_count * 16u * sizeof(uint32_t));
+    engine->comparator_outputs = base + offset;
+    offset = align8(offset + program->component_count);
     engine->watched_by_component = (uint32_t *)(base + offset);
     offset = align8(offset + (size_t)program->component_count * sizeof(uint32_t));
     engine->watched_strengths = base + offset;
@@ -476,12 +530,16 @@ uint32_t ne_create(const MchprsNativeProgramDescriptor *program, const uint8_t *
     engine->error = NE_OK;
     for (uint32_t i = 0; i < program->component_count; ++i) {
         engine->component_state[i] = components(engine)[i].initial_state;
+        engine->comparator_outputs[i] = (uint8_t)table(engine,42u)[i*4u+3u];
         engine->input_count[i] = 0u;
         engine->pending_count[i] = 0u;
         engine->side_count[i] = 0u;
         engine->watched_by_component[i] = UINT32_MAX;
         engine->updated[i] = 0u;
-        for (uint32_t level = 0; level < 16u; ++level) engine->histograms[(size_t)i * 16u + level] = 0u;
+        for (uint32_t level = 0; level < 16u; ++level) {
+            engine->histograms[(size_t)i * 16u + level] = 0u;
+            engine->side_histograms[(size_t)i * 16u + level] = 0u;
+        }
     }
     for (uint32_t i = 0; i < program->watched_wire_count; ++i) {
         uint32_t wire = table(engine, 3u)[i * 3u];
@@ -508,7 +566,11 @@ uint32_t ne_create(const MchprsNativeProgramDescriptor *program, const uint8_t *
         const uint32_t *row = table(engine, 0u) + source * 2u;
         for (uint32_t i = 0; i < row[1]; ++i) {
             uint32_t index = (row[0] + i) * 2u;
-            if (output(engine, source) > side_data[index + 1u]) engine->side_count[side_data[index]]++;
+            uint8_t strength=output(engine,source);
+            if (strength > side_data[index + 1u]) {
+                uint32_t target=side_data[index]; uint8_t level=(uint8_t)(strength-side_data[index+1u]);
+                engine->side_count[target]++; engine->side_histograms[(size_t)target*16u+level]++;
+            }
         }
     }
     return NE_OK;
@@ -521,7 +583,7 @@ uint32_t ne_import_tick(void *memory, uint32_t component, uint32_t delay, uint8_
     if (!engine || engine->error || component >= engine->program->component_count || delay >= 32u
         || priority > 3u || (delay == 0u && priority != 3u)
         || (components(engine)[component].kind != 1u && components(engine)[component].kind != 2u && components(engine)[component].kind != 4u
-            && components(engine)[component].kind != 6u && components(engine)[component].kind != 7u)) return NE_INVALID;
+            && components(engine)[component].kind != 6u && components(engine)[component].kind != 7u && components(engine)[component].kind != 9u)) return NE_INVALID;
     return enqueue(engine, component, delay, priority);
 }
 

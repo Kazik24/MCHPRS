@@ -17,32 +17,32 @@ impl Axis {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-struct Ports {
-    wires: Vec<usize>,
-    sources: Vec<BlockPos>,
+pub(super) struct Ports {
+    pub(super) wires: Vec<usize>,
+    pub(super) sources: Vec<BlockPos>,
 }
 
 #[derive(Clone, Debug)]
-struct Local<T> {
-    axes: Vec<Axis>,
-    ports: Vec<Option<T>>,
+pub(super) struct Local<T> {
+    pub(super) axes: Vec<Axis>,
+    pub(super) ports: Vec<Option<T>>,
 }
 
 type Node = Local<Ports>;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-struct ReaderPorts {
-    roots: Vec<(usize, bool)>,
-    direct: Vec<(ArrangementSource, bool)>,
+pub(super) struct ReaderPorts {
+    pub(super) roots: Vec<(usize, bool)>,
+    pub(super) direct: Vec<(ArrangementSource, bool)>,
 }
 
 #[derive(Clone, Debug)]
-struct Reader {
-    component: usize,
+pub(super) struct Reader {
+    pub(super) component: usize,
     position: BlockPos,
-    table: Local<ReaderPorts>,
+    pub(super) table: Local<ReaderPorts>,
     dependencies: Vec<usize>,
-    links: Vec<usize>,
+    pub(super) links: Vec<usize>,
 }
 
 impl<T> Local<T> {
@@ -96,11 +96,11 @@ fn compile_local<T: PartialEq>(scratch: &mut ScratchWorld, tokens: &[PistonToken
 pub(super) struct WireGraph {
     positions: Vec<BlockPos>,
     index: HashMap<BlockPos, usize>,
-    nodes: Vec<Node>,
-    source_ids: HashMap<BlockPos, ArrangementSource>,
-    readers: Vec<Reader>,
+    pub(super) nodes: Vec<Node>,
+    pub(super) source_ids: HashMap<BlockPos, ArrangementSource>,
+    pub(super) readers: Vec<Reader>,
     by_component: Vec<Option<usize>>,
-    by_token: Vec<Vec<usize>>,
+    pub(super) by_token: Vec<Vec<usize>>,
 }
 
 #[derive(Default)]

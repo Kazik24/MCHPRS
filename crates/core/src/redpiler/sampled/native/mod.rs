@@ -11,11 +11,12 @@ use mchprs_blocks::blocks::Block;
 use mchprs_world::{TickEntry, TickPriority};
 use std::ffi::{c_char, c_void};
 mod movement;
+mod routing;
 mod cache;
 use movement::encode_movement;
 
 pub(super) const ABI_VERSION: u32 = 3;
-const AUX_TABLES: usize = 33;
+const AUX_TABLES: usize = 43;
 const MAGIC: [u8; 4] = *b"MCHN";
 const HEADER_BYTES: usize = 16;
 const OP_BYTES: usize = 8;
@@ -110,6 +111,7 @@ impl NativeRuntime {
                 Block::StoneButton { .. }
                     | Block::RedstoneLamp { .. }
                     | Block::RedstoneRepeater { .. }
+                    | Block::RedstoneComparator { .. }
                     | Block::Observer { .. }
                     | Block::RedstoneTorch { .. }
                     | Block::RedstoneWallTorch { .. }
@@ -141,7 +143,7 @@ impl NativeRuntime {
         }
         let library = Library::load()?;
         let api = unsafe { (library.api_descriptor)() };
-        if api.abi_version != ABI_VERSION || api.descriptor_bytes != 16 || api.semantic_version != 8 {
+        if api.abi_version != ABI_VERSION || api.descriptor_bytes != 16 || api.semantic_version != 10 {
             return Err(ScratchError {
                 position: None,
                 reason: "LLVM DLL ABI/version mismatch",
@@ -354,8 +356,8 @@ impl NativeRuntime {
 }
 
 fn supported(program: &Program) -> bool {
-    program.routing.is_none()
-        && !program.has_reactive
+    !program.has_reactive
+        && program.comparators.iter().all(|record| [record.rear_override, record.far_override].into_iter().flatten().all(|input| matches!(input, super::program::ComparatorInput::Static(_))))
         && program.command_blocks.is_empty()
         && program.command_output_state.is_none()
         && program.initial.iter().all(|block| {
@@ -371,6 +373,7 @@ fn supported(program: &Program) -> bool {
                     | Block::RedstoneTorch { .. }
                     | Block::RedstoneWallTorch { .. }
                     | Block::Piston { .. }
+                    | Block::RedstoneComparator { .. }
             )
         })
         && program.links.iter().all(|link| {
@@ -385,6 +388,7 @@ fn supported(program: &Program) -> bool {
                     | Block::RedstoneTorch { .. }
                     | Block::RedstoneWallTorch { .. }
                     | Block::Piston { .. }
+                    | Block::RedstoneComparator { .. }
             ) && matches!(
                 program.initial[link.target],
                 Block::RedstoneLamp { .. }
@@ -394,6 +398,7 @@ fn supported(program: &Program) -> bool {
                     | Block::RedstoneTorch { .. }
                     | Block::RedstoneWallTorch { .. }
                     | Block::Piston { .. }
+                    | Block::RedstoneComparator { .. }
             )
         })
         && program.operations.iter().all(|op| {
@@ -407,6 +412,7 @@ fn supported(program: &Program) -> bool {
                     | Operation::UpdateTorch(_)
                     | Operation::ArrangementContribution(_)
                     | Operation::UpdatePiston(_)
+                    | Operation::UpdateComparator(_)
             )
         })
 }
@@ -655,6 +661,25 @@ impl NativeProgram {
     }
 }
 
+fn encode_comparators(program: &Program, table: &mut Vec<u32>) -> Result<(), ScratchError> {
+    use super::program::ComparatorInput;
+    let level = |input| match input {
+        None => Ok(0),
+        Some(ComparatorInput::Static(level)) => Ok(u32::from(level) + 1),
+        _ => Err(ScratchError { position: None, reason: "LLVM does not support dynamic comparator overrides" }),
+    };
+    table.resize(program.initial.len().checked_mul(4).ok_or_else(overflow)?, 0);
+    for record in &program.comparators {
+        let Block::RedstoneComparator { comparator } = program.initial[record.component] else { return Err(overflow()); };
+        table[record.component * 4..record.component * 4 + 4].copy_from_slice(&[
+            1 | (u32::from(comparator.mode == mchprs_blocks::blocks::ComparatorMode::Subtract) << 1)
+                | (u32::from(record.output_is_diode) << 2),
+            level(record.rear_override)?, level(record.far_override)?, u32::from(record.stored),
+        ]);
+    }
+    Ok(())
+}
+
 fn encode_aux(program: &Program, blob: &mut Vec<u8>) -> Result<(), ScratchError> {
     let mut tables: [Vec<u32>; AUX_TABLES] = std::array::from_fn(|_| Vec::new());
     let id = |n: usize| u32::try_from(n).map_err(|_| overflow());
@@ -687,6 +712,8 @@ fn encode_aux(program: &Program, blob: &mut Vec<u8>) -> Result<(), ScratchError>
         }
     }
     encode_movement(program, &mut tables)?;
+    routing::encode(program, &mut tables)?;
+    encode_comparators(program, &mut tables[42])?;
     let directory = blob.len();
     blob.resize(directory.checked_add(AUX_TABLES * 8).ok_or_else(overflow)?, 0);
     for (index, table) in tables.iter().enumerate() {
@@ -767,7 +794,7 @@ pub(super) fn validate_blob(descriptor: &NativeProgramDescriptor, blob: &[u8]) -
         let on_count = u32::from_le_bytes(component[20..24].try_into().unwrap()) as usize;
         let off_start = u32::from_le_bytes(component[24..28].try_into().unwrap()) as usize;
         let off_count = u32::from_le_bytes(component[28..32].try_into().unwrap()) as usize;
-        if (kind > 8 && kind != u8::MAX)
+        if (kind > 9 && kind != u8::MAX)
             || component[13]
                 > (if kind == 5 {
                     15
@@ -875,6 +902,7 @@ fn component_state(block: Block) -> (u8, u8) {
         Block::RedstoneTorch { lit } | Block::RedstoneWallTorch { lit, .. } => (6, u8::from(lit)),
         Block::Observer { observer } => (7, u8::from(observer.powered)),
         Block::Piston { piston } => (8, u8::from(piston.extended)),
+        Block::RedstoneComparator { comparator } => (9, u8::from(comparator.powered)),
         _ => (u8::MAX, 0),
     }
 }
@@ -938,6 +966,8 @@ mod tests {
                 "arrangement contributions tick {tick}"
             );
             assert_eq!(projection.group_arrangements, rust.group_arrangements, "arrangements tick {tick}");
+            assert_eq!(projection.routing_attenuations, rust.routing_attenuations, "routing tick {tick}");
+            assert_eq!(projection.comparator_outputs, rust.comparator_outputs, "comparators tick {tick}");
             assert_eq!(projection.watched_strengths, rust.watched_strengths, "watched wires tick {tick}");
             for (node, (a, b)) in projection.input_levels.iter().zip(&rust.input_levels).enumerate() {
                 assert_eq!(
@@ -1305,6 +1335,59 @@ mod tests {
                             assert_eq!(states.as_slice(), expected, "delay={delay} locked={locked} diode={diode} tick={tick}");
                             assert_eq!(native.pending_entries().unwrap(), rust.pending_entries(), "pending at tick {tick}");
                         }
+                    }
+                }
+            }
+        }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn llvm_comparator_analog_levels_and_scheduling_match_rust() {
+        use super::super::program::{ComparatorRecord, ElectricalLink};
+        use mchprs_blocks::blocks::ComparatorMode;
+        for mode in [ComparatorMode::Compare, ComparatorMode::Subtract] {
+            for stored in [0, 5, 15] {
+                let Block::RedstoneComparator { mut comparator } = Block::from_name("comparator").unwrap() else { unreachable!() };
+                comparator.mode = mode;
+                comparator.powered = stored != 0;
+                let rear = vec![Operation::Contribution(0), Operation::UpdateComparator(2)];
+                let side = vec![Operation::UpdateComparator(2)];
+                let out = vec![Operation::Contribution(1), Operation::UpdateLamp(3)];
+                let mut program = Program::new((0..4).map(|x| BlockPos::new(x, 15, 15)).collect(),
+                    vec![Block::from_name("lever").unwrap(), Block::from_name("lever").unwrap(),
+                        Block::RedstoneComparator { comparator }, Block::RedstoneLamp { lit: stored != 0 }],
+                    vec![0, 1], vec![[rear.clone(), rear], [side.clone(), side], [out.clone(), out], [vec![], vec![]]],
+                    vec![ElectricalLink { source: 0, target: 2, attenuation: 5 }, ElectricalLink { source: 2, target: 3, attenuation: 0 }], vec![], vec![]).unwrap();
+                program.comparators.push(ComparatorRecord { component: 2, stored, rear_override: None, far_override: None, output_is_diode: false });
+                program.side_links.push(ElectricalLink { source: 1, target: 2, attenuation: 8 });
+                program.prepare_projection();
+                let mut rust = program.clone().into_runtime_prepared();
+                let mut native = NativeRuntime::new(program.clone(), &[]).unwrap();
+                let mut handoff: Option<super::super::Runtime> = None;
+                for tick in 0..32 {
+                    for &(_, source) in [(0, 0), (4, 1), (8, 0), (12, 0), (16, 1), (20, 0)].iter().filter(|&&(at, _)| at == tick) {
+                        let pos = program.positions[source];
+                        rust.use_control(pos).unwrap();
+                        native.use_control(pos).unwrap();
+                        if let Some(runtime) = &mut handoff { runtime.use_control(pos).unwrap(); }
+                    }
+                    rust.tick().unwrap();
+                    native.tick().unwrap();
+                    if let Some(runtime) = &mut handoff { runtime.tick().unwrap(); }
+                    if tick == 1 {
+                        let mut runtime = program.clone().into_runtime_prepared();
+                        native.sync_projection(&mut runtime).unwrap();
+                        handoff = Some(runtime);
+                    }
+                    let mut projection = program.clone().into_runtime_prepared();
+                    native.sync_projection(&mut projection).unwrap();
+                    for runtime in std::iter::once(&projection).chain(handoff.iter()) {
+                        assert_eq!(runtime.projected_blocks(), rust.projected_blocks(), "tick {tick}");
+                        assert_eq!(runtime.input_strength(2), rust.input_strength(2), "rear tick {tick}");
+                        assert_eq!(runtime.input_levels[2][1].maximum(&runtime.input_histograms), rust.input_levels[2][1].maximum(&rust.input_histograms), "side tick {tick}");
+                        assert_eq!(runtime.comparator_outputs, rust.comparator_outputs, "output tick {tick}");
+                        assert_eq!(runtime.pending_entries(), rust.pending_entries(), "pending tick {tick}");
                     }
                 }
             }

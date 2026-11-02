@@ -242,6 +242,18 @@ pub(super) fn run(
     indexes: &ProbeIndexes<'_>,
     monitor: Option<&TaskMonitor>,
 ) -> Result<Discovery, ScratchError> {
+    run_with_dense_budget(world, bounds, entry, program, indexes, monitor, 64 * 1024 * 1024)
+}
+
+fn run_with_dense_budget(
+    world: &impl World,
+    bounds: (BlockPos, BlockPos),
+    entry: &ScratchEntry,
+    program: &Program,
+    indexes: &ProbeIndexes<'_>,
+    monitor: Option<&TaskMonitor>,
+    max_dense_bytes: usize,
+) -> Result<Discovery, ScratchError> {
     use super::routing::{Axis, Search, WireGraph};
     if program.tokens.is_empty() { return Ok(Discovery { groups: Vec::new(), routing: None }); }
     let started = std::time::Instant::now();
@@ -252,7 +264,6 @@ pub(super) fn run(
     graph.compile_readers(&mut scratch, program, &targets, indexes, monitor)?;
     let initial: Vec<_> = program.tokens.iter().map(|record| record.position.and_then(|pos| record.cells.iter().position(|&cell| cell == pos)).map_or(0, |cell| cell + 1)).collect();
     const MAX_TEMP_SLOTS: usize = 65_536;
-    const MAX_DENSE_BYTES: usize = 64 * 1024 * 1024;
     let mut jobs = Vec::new();
     let mut fallback = BTreeSet::new();
     for reader in 0..graph.reader_count() {
@@ -315,7 +326,7 @@ pub(super) fn run(
                 let mask_bytes = conditions.len().saturating_mul(group.inputs.len() + std::mem::size_of::<super::program::ArrangementLink>());
                 total.saturating_add(row_bytes).saturating_add(value_bytes).saturating_add(plan_bytes).saturating_add(mask_bytes)
             });
-            if dense_bytes.saturating_add(estimate) <= MAX_DENSE_BYTES { dense_bytes += estimate; groups.extend(lowered); }
+            if dense_bytes.saturating_add(estimate) <= max_dense_bytes { dense_bytes += estimate; groups.extend(lowered); }
             else { fallback.insert(reader); }
         }
         start = end;
@@ -342,6 +353,132 @@ pub(super) fn run(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn dense_and_routed_inputs_match_during_movement_and_source_changes() {
+        use mchprs_blocks::{BlockDirection, blocks::{Lever, LeverFace}};
+        let cell = BlockPos::new(15, 15, 15);
+        let source = cell.offset(BlockFace::West);
+        let lamp = cell.offset(BlockFace::East);
+        let lever = Block::Lever { lever: Lever::new(LeverFace::Wall, BlockDirection::West, true) };
+        let mut world = super::super::tests::host();
+        world.set_block(cell, Block::Stone {});
+        world.set_block(source, lever);
+        world.set_block(lamp, Block::RedstoneLamp { lit: true });
+        let mut program = Program::new(vec![source, lamp], vec![lever, Block::RedstoneLamp { lit: true }],
+            vec![0], vec![[vec![], vec![]]; 2], vec![], vec![], vec![]).unwrap();
+        program.tokens.push(super::super::compiler::PistonToken { block: Block::Stone {}, position: Some(cell), cells: vec![cell] });
+        let components = program.positions.iter().enumerate().map(|(index, &pos)| (pos, index)).collect();
+        let indexes = ProbeIndexes::new(&components, &program.positions, &program.initial, &program.tokens, None).unwrap();
+        let entry = super::super::ScratchEntry { scheduled: vec![], piston: world.piston_state().clone() };
+        let bounds = (BlockPos::new(10, 10, 10), BlockPos::new(22, 21, 22));
+        let runtime = |budget| {
+            let mut discovery = run_with_dense_budget(&world, bounds, &entry, &program, &indexes, None, budget).unwrap();
+            assert_eq!(discovery.routing.is_some(), budget == 0);
+            let mut program = program.clone();
+            program.input_arrangements = discovery.groups;
+            program.compile_movement_flips().unwrap();
+            if let Some(graph) = &mut discovery.routing { graph.bind_links(&program.arrangement_links); }
+            program.routing = discovery.routing.map(std::sync::Arc::new);
+            let links: Vec<_> = program.arrangement_links.iter().enumerate()
+                .filter_map(|(index, link)| (link.source == ArrangementSource::Component(0)).then_some(super::super::program::Operation::ArrangementContribution(index))).collect();
+            for powered in [false, true] { program.set_output_program(0, powered, links.clone()); }
+            program.start()
+        };
+        let mut dense = runtime(usize::MAX);
+        let mut routed = runtime(0);
+        for (position, powered) in [(Some(cell), true), (None, true), (None, false), (Some(cell), false), (Some(cell), true)] {
+            dense.set_token_pos(0, position);
+            routed.set_token_pos(0, position);
+            dense.set_input(0, powered).unwrap();
+            routed.set_input(0, powered).unwrap();
+            assert_eq!(dense.input_strength(1), if position.is_some() && powered { 15 } else { 0 });
+            assert_eq!(routed.input_strength(1), dense.input_strength(1));
+            assert_eq!(routed.pending_entries(), dense.pending_entries());
+        }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn llvm_routed_movement_and_handoff_match_rust() {
+        if std::env::var_os("MCHPRS_LLVM_DLL").is_none()
+            && !std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/native_engine.dll").exists() { return; }
+        use mchprs_blocks::{BlockFacing, blocks::RedstonePiston};
+        use super::super::program::Operation;
+        let mut world = super::super::tests::host();
+        let lever = BlockPos::new(15, 15, 15);
+        let base = lever.offset(BlockFace::East);
+        let home = base.offset(BlockFace::East);
+        let wire = home.offset(BlockFace::East).offset(BlockFace::East);
+        let lamp = wire.offset(BlockFace::East);
+        world.set_block(lever, Block::from_name("lever").unwrap());
+        world.set_block(lever.offset(BlockFace::Bottom), Block::Stone {});
+        world.set_block(base, Block::Piston { piston: RedstonePiston { facing: BlockFacing::East, sticky: true, extended: false } });
+        world.set_block(home, Block::RedstoneBlock);
+        world.set_block(wire.offset(BlockFace::Bottom), Block::Stone {});
+        world.set_block(wire, Block::from_name("redstone_wire").unwrap());
+        world.set_block(wire, Block::RedstoneWire { wire: crate::redstone::wire::get_state_for_placement(&world, wire) });
+        world.set_block(lamp, Block::RedstoneLamp { lit: false });
+        let entry = super::super::ScratchEntry { scheduled: vec![], piston: world.piston_state().clone() };
+        let bounds = (BlockPos::new(10, 10, 10), BlockPos::new(23, 20, 20));
+        let mut program = super::super::compile_program(&world, bounds, entry.clone(), None).unwrap();
+        let components = program.positions.iter().enumerate().map(|(index, &pos)| (pos, index)).collect();
+        let indexes = ProbeIndexes::new(&components, &program.positions, &program.initial, &program.tokens, None).unwrap();
+        let mut discovery = run_with_dense_budget(&world, bounds, &entry, &program, &indexes, None, 0).unwrap();
+        assert!(discovery.routing.is_some());
+        let old_operations: Vec<_> = (0..program.initial.len()).map(|source| [false, true].map(|powered|
+            program.output_program(source, powered).iter().copied().filter(|op| !matches!(op, Operation::ArrangementContribution(_))).collect::<Vec<_>>())).collect();
+        program.input_arrangements = discovery.groups;
+        program.compile_movement_flips().unwrap();
+        discovery.routing.as_mut().unwrap().bind_links(&program.arrangement_links);
+        program.routing = discovery.routing.map(std::sync::Arc::new);
+        for (source, pair) in old_operations.into_iter().enumerate() {
+            let links: Vec<_> = program.arrangement_links.iter().enumerate().filter_map(|(index, link)|
+                (link.source == ArrangementSource::Component(source)).then_some(Operation::ArrangementContribution(index))).collect();
+            for (powered, old) in pair.into_iter().enumerate() {
+                program.set_output_program(source, powered != 0, links.iter().copied().chain(old).collect());
+            }
+        }
+        program.prepare_projection();
+        let wire_id = program.positions.iter().position(|&pos| pos == wire).unwrap();
+        let mut rust = program.clone().into_runtime_prepared();
+        let mut projection = program.clone().into_runtime_prepared();
+        let mut native = super::super::native::NativeRuntime::new(program, &[]).unwrap();
+        let mut handoff: Option<super::super::Runtime> = None;
+        let mut moved = false;
+        for tick in 0..40 {
+            if [0, 7, 15, 23, 32].contains(&tick) {
+                rust.use_control(lever).unwrap();
+                native.use_control(lever).unwrap();
+                if let Some(runtime) = &mut handoff { runtime.use_control(lever).unwrap(); }
+            }
+            rust.tick().unwrap();
+            native.tick().unwrap();
+            if let Some(runtime) = &mut handoff { runtime.tick().unwrap(); }
+            native.sync_projection(&mut projection).unwrap();
+            moved |= rust.token_positions[0] != Some(home);
+            assert_eq!(projection.projected_blocks(), rust.projected_blocks(), "tick {tick}");
+            assert_eq!(projection.token_positions, rust.token_positions, "tick {tick}");
+            assert_eq!(projection.arrangement_contributions, rust.arrangement_contributions, "tick {tick}");
+            assert_eq!(projection.routing_attenuations, rust.routing_attenuations, "tick {tick}");
+            assert_eq!(projection.input_strength(wire_id), rust.input_strength(wire_id), "wire input tick {tick}");
+            assert_eq!(projection.pending_entries(), rust.pending_entries(), "tick {tick}");
+            if handoff.is_none() && rust.input_strength(wire_id) > 0 {
+                let mut runtime = rust.program.clone().as_ref().clone().into_runtime_prepared();
+                native.sync_projection(&mut runtime).unwrap();
+                handoff = Some(runtime);
+            }
+            if let Some(runtime) = &handoff {
+                assert_eq!(runtime.projected_blocks(), rust.projected_blocks(), "handoff tick {tick}");
+                assert_eq!(runtime.arrangement_contributions, rust.arrangement_contributions, "handoff tick {tick}");
+                assert_eq!(runtime.routing_attenuations, rust.routing_attenuations, "handoff tick {tick}");
+                assert_eq!(runtime.input_strength(wire_id), rust.input_strength(wire_id), "handoff wire input tick {tick}");
+                assert_eq!(runtime.pending_entries(), rust.pending_entries(), "handoff tick {tick}");
+            }
+        }
+        assert!(moved, "fixture must exercise piston movement");
+        assert!(handoff.is_some(), "fixture must hand off while the routed wire is powered");
+    }
 
     #[test]
     fn concrete_wire_axes_fold_only_cells_without_wire_contacts() {

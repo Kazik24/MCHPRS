@@ -232,6 +232,29 @@ fn token_move_notifies_wire_watchers_only_when_strength_changes() {
 }
 
 #[test]
+fn token_move_distinguishes_dust_power_from_direct_observer_updates() {
+    use super::program::MoveStepSpec as MoveStep;
+    let cell = BlockPos::new(10, 10, 10);
+    for direct in [false, true] {
+        let mut program = test_program(
+            vec![BlockPos::new(12, 10, 10), BlockPos::new(13, 10, 10)],
+            vec![Block::RedstoneWire { wire: RedstoneWire { power: 15, ..Default::default() } }, Block::from_name("observer").unwrap()],
+            vec![], vec![], vec![], vec![WatchedWire { wire: 0, watchers: vec![1] }],
+        ).unwrap();
+        program.tokens.push(super::compiler::PistonToken { block: Block::RedstoneBlock, position: Some(cell), cells: vec![cell] });
+        program.token_sources.push(vec![vec![(0, 0)]]);
+        program.set_move_steps(vec![vec![[vec![
+            MoveStep { node: 0, watcher: false, wire: true, wires: vec![] },
+            MoveStep { node: 1, watcher: direct, wire: false, wires: vec![0] },
+        ], vec![]]]]);
+        program.compile_movement_flips().unwrap();
+        let mut runtime = program.start();
+        runtime.set_token_pos(0, None);
+        assert_eq!(runtime.pending_entries().len(), usize::from(direct));
+    }
+}
+
+#[test]
 fn moving_token_invalidates_every_bound_piston_update_mark() {
     let bases = [BlockPos::new(10, 10, 10), BlockPos::new(20, 10, 10)];
     let homes = [BlockPos::new(11, 10, 10), BlockPos::new(21, 10, 10)];

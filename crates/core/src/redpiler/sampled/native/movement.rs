@@ -9,7 +9,7 @@ fn id(value: usize) -> Result<u32, ScratchError> {
 fn optional(value: Option<usize>) -> Result<u32, ScratchError> {
     value.map(id).transpose().map(|n| n.unwrap_or(u32::MAX))
 }
-fn source(value: ArrangementSource) -> Result<u32, ScratchError> {
+pub(super) fn source(value: ArrangementSource) -> Result<u32, ScratchError> {
     let (value, tag) = match value {
         ArrangementSource::Component(n) => (n, 0),
         ArrangementSource::Token(n) => (n, 0x8000_0000),
@@ -182,7 +182,7 @@ impl super::NativeRuntime {
         let words = unsafe { (self.library.snapshot_words)(self.state.as_ptr().cast()) } as usize;
         let p = &runtime.program;
         let capacity = p.pistons.len() * 2 + p.tokens.len();
-        let electrical = p.links.len() + p.arrangement_links.len() + p.movement_groups.len() + p.watched_wires.len() + p.initial.len() * 2;
+        let electrical = p.links.len() + p.arrangement_links.len() + p.movement_groups.len() + p.watched_wires.len() + p.initial.len() * 3;
         let limit = 8 + p.initial.len() + p.tokens.len() + p.pistons.len() + capacity * 9 + p.pistons.len() * 6 + electrical;
         if words < 8 || words > limit {
             return Err(invalid());
@@ -201,7 +201,7 @@ impl super::NativeRuntime {
             || pistons != p.pistons.len()
             || motions > capacity
             || events > pistons * 3
-            || s[7] != 2
+            || s[7] != 3
             || 8 + n + tokens + pistons + motions * 9 + events * 2 + electrical != words
         {
             return Err(invalid());
@@ -255,6 +255,10 @@ impl super::NativeRuntime {
                     Block::StoneButton { button }
                 }
                 Block::RedstoneLamp { .. } => Block::RedstoneLamp { lit: state != 0 },
+                Block::RedstoneComparator { mut comparator } => {
+                    comparator.powered = state != 0;
+                    Block::RedstoneComparator { comparator }
+                },
                 Block::RedstoneRepeater { mut repeater } => {
                     repeater.powered = state & 1 != 0;
                     repeater.locked = state & 2 != 0;
@@ -286,6 +290,8 @@ impl super::NativeRuntime {
             runtime.piston_head_moving[piston] = flags & 4 != 0;
             runtime.piston_base_moving[piston] = flags & 8 != 0;
         }
+        runtime.initialize_routing();
+        if let Some(error) = runtime.failure.clone() { return Err(error); }
         runtime.motion_time = clock;
         runtime.motions.clear();
         runtime.active_motions.clear();
@@ -345,6 +351,27 @@ impl super::NativeRuntime {
             levels[1].active = s[cursor + 1];
             cursor += 2;
         }
+        for value in &mut runtime.comparator_outputs {
+            *value = u8::try_from(s[cursor]).ok().filter(|&n| n <= 15).ok_or_else(invalid)?;
+            cursor += 1;
+        }
+        let mut levels = runtime.input_levels.clone();
+        for channels in &mut levels { channels[0].active = 0; channels[1].active = 0; }
+        let mut histograms = vec![crate::redpiler::sampled::input::Histogram::default(); runtime.input_histograms.len()];
+        for (index, link) in p.links.iter().enumerate() {
+            if p.effective_links[index] { levels[link.target][0].change(0, runtime.contributions[index], &mut histograms); }
+        }
+        for (index, link) in p.arrangement_links.iter().enumerate() {
+            levels[link.target][usize::from(link.side)].change(0, runtime.arrangement_contributions[index], &mut histograms);
+        }
+        for (source, links) in p.side_outputs.iter().enumerate() {
+            let strength = runtime.output(source);
+            for &(target, attenuation) in links { levels[target][1].change(0, strength.saturating_sub(attenuation), &mut histograms); }
+        }
+        if levels.iter().zip(&runtime.input_levels).any(|(actual, saved)|
+            actual[0].active != saved[0].active || actual[1].active != saved[1].active) { return Err(invalid()); }
+        runtime.input_levels = levels;
+        runtime.input_histograms = histograms;
         runtime.dirty_cells.clear();
         runtime.dirty_cells.extend(0..runtime.dirty.len());
         runtime.dirty.fill(true);
