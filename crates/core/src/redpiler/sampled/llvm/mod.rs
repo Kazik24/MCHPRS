@@ -323,9 +323,10 @@ impl LlvmRuntime {
         if status == 0 {
             Ok(())
         } else {
+            tracing::warn!(status, "LLVM operation failed");
             Err(ScratchError {
                 position: None,
-                reason: "LLVM executor rejected operation or exceeded its operation limit",
+                reason: native_status_reason(status),
             })
         }
     }
@@ -986,9 +987,28 @@ fn overflow() -> ScratchError {
     }
 }
 
+fn native_status_reason(status: u32) -> &'static str {
+    match status {
+        1 => "LLVM rejected invalid runtime state or input",
+        2 => "LLVM encountered an unsupported runtime operation",
+        3 => "LLVM runtime capacity exceeded",
+        4 => "LLVM exceeded the per-tick operation limit; check for feedback loops or reduce the circuit",
+        _ => "LLVM returned an unknown error; see server log",
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn llvm_errors_distinguish_invalid_state_capacity_and_work_limits() {
+        assert!(native_status_reason(1).contains("invalid runtime state"));
+        assert!(native_status_reason(2).contains("unsupported runtime operation"));
+        assert!(native_status_reason(3).contains("capacity exceeded"));
+        assert!(native_status_reason(4).contains("per-tick operation limit"));
+        assert!(native_status_reason(99).contains("unknown error"));
+    }
 
     #[test]
     fn unsupported_command_block_reports_its_position() {

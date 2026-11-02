@@ -103,7 +103,7 @@ pub(in super::super) fn run(context: &Context<'_, impl World>, phases: &mut Comp
             }
         }
         if let Some(monitor) = monitor {
-            monitor.set_progress(layer_size.saturating_mul((i64::from(y) - i64::from(bounds.0.y) + 1) as usize), total_blocks);
+            monitor.set_progress(layer_size.saturating_mul((i64::from(y) - i64::from(bounds.0.y) + 1) as usize), total_blocks, "blocks scanned");
         }
     }
 

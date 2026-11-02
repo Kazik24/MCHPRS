@@ -21,6 +21,7 @@ fn install_job(plot: &mut Plot, work: impl FnOnce(PlotWorld, Arc<TaskMonitor>) -
     plot.compilation = Some(CompilationJob {
         started: Instant::now(),
         last_progress: Instant::now(),
+        last_phase: 0,
         entry: EntryVersion::capture(&plot.world),
         monitor,
         worker: thread::spawn(move || work(world, worker_monitor)),
@@ -41,26 +42,48 @@ fn blocked_compile(plot: &mut Plot) -> mpsc::Sender<()> {
 
 #[test]
 fn blocked_compiler_reports_phase_counts_and_elapsed_time_without_blocking_poll() {
-    let (mut plot, mut peer) = fixture(false);
-    let release = blocked_compile(&mut plot);
-    let job = plot.compilation.as_mut().unwrap();
-    job.started = Instant::now() - Duration::from_secs(10);
-    job.last_progress = Instant::now() - Duration::from_secs(4);
-    job.monitor.set_phase("source transition sampling");
-    job.monitor.set_counts(120, 80, 4);
-    job.monitor.set_progress(2, 10);
-    plot.poll_redpiler_compilation();
-    assert!(!plot.redpiler.is_active());
-    assert!(plot.compilation.is_some());
-    let (id, packet) = mchprs_network::test_support::read_frame(&mut peer, false).unwrap();
-    plot.cancel_redpiler_compilation();
-    release.send(()).unwrap();
-    plot.wait_for_redpiler();
-    assert_eq!(id, 0x72);
-    let text = String::from_utf8_lossy(packet.get_ref());
-    assert!(text.contains("source transition sampling"));
-    assert!(text.contains("2/10 completed"));
-    assert!(text.contains("120 nodes, 80 wires, 4 pistons"));
+    for phase_changed in [true, false] {
+        let (mut plot, mut peer) = fixture(false);
+        let release = blocked_compile(&mut plot);
+        let job = plot.compilation.as_mut().unwrap();
+        job.started = Instant::now() - Duration::from_secs(10);
+        job.last_progress = Instant::now() - Duration::from_secs(if phase_changed { 1 } else { 4 });
+        job.monitor.set_phase("source transition sampling");
+        job.monitor.set_counts(120, 80, 4);
+        job.monitor.set_progress(2, 10, "probes");
+        if !phase_changed { job.last_phase = job.monitor.phase_number(); }
+        plot.poll_redpiler_compilation();
+        assert!(!plot.redpiler.is_active());
+        assert!(plot.compilation.is_some());
+        let (id, packet) = mchprs_network::test_support::read_frame(&mut peer, false).unwrap();
+        plot.cancel_redpiler_compilation();
+        release.send(()).unwrap();
+        plot.wait_for_redpiler();
+        assert_eq!(id, 0x72);
+        let text = String::from_utf8_lossy(packet.get_ref());
+        assert!(text.contains("source transition sampling"));
+        assert!(text.contains("phase 1:"));
+        assert!(text.contains("2/10 probes"));
+        assert!(text.contains("120 nodes, 80 wires, 4 pistons"));
+    }
+}
+
+#[test]
+fn compilation_errors_report_phase_block_coordinates_and_specific_recovery() {
+    let (mut plot, _peer) = fixture(false);
+    let position = BlockPos::new(34, 20, 34);
+    plot.world.set_block(position, Block::from_name("piston").unwrap());
+    plot.world.piston_state.events.push_back(mchprs_world::PistonEvent {
+        pos: position, sticky: false, facing: mchprs_blocks::BlockFace::East, action: mchprs_world::PistonAction::Extend,
+    });
+    let monitor = Arc::new(TaskMonitor::default());
+    let error = Compiler::default().compile(&plot.world, plot.world.get_corners(),
+        CompilerOptions { llvm: true, ..Default::default() }, vec![], monitor.clone()).unwrap_err();
+    let text = compilation_error(&plot.world, &error, &monitor);
+    assert!(text.contains("phase 1: entry validation"));
+    assert!(text.contains("piston at (34, 20, 34)"));
+    assert!(text.contains("settle"));
+    assert!(crate::player::diagnostic_component(&text).to_string().contains("/hl 34 20 34"));
 }
 
 #[test]

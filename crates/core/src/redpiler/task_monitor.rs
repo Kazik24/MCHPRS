@@ -1,11 +1,14 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
+use std::time::Instant;
 
 #[derive(Default)]
 struct CompileStatus {
     phase: &'static str,
+    phase_number: usize,
+    phase_started: Option<Instant>,
     detail: Option<(&'static str, usize)>,
-    progress: Option<(usize, usize)>,
+    progress: Option<(usize, usize, &'static str)>,
     counts: Option<(usize, usize, usize)>,
 }
 
@@ -20,6 +23,8 @@ impl TaskMonitor {
     pub(crate) fn set_phase(&self, phase: &'static str) {
         let mut status = self.status.lock().unwrap();
         status.phase = phase;
+        status.phase_number += 1;
+        status.phase_started = Some(Instant::now());
         status.detail = None;
         status.progress = None;
     }
@@ -28,12 +33,12 @@ impl TaskMonitor {
         self.status.lock().unwrap().detail = Some((step, item));
     }
 
-    pub(crate) fn set_progress(&self, completed: usize, total: usize) {
-        self.status.lock().unwrap().progress = Some((completed, total));
+    pub(crate) fn set_progress(&self, completed: usize, total: usize, unit: &'static str) {
+        self.status.lock().unwrap().progress = Some((completed, total, unit));
     }
 
     pub(crate) fn advance_progress(&self) {
-        if let Some((completed, _)) = &mut self.status.lock().unwrap().progress {
+        if let Some((completed, _, _)) = &mut self.status.lock().unwrap().progress {
             *completed += 1;
         }
     }
@@ -44,11 +49,18 @@ impl TaskMonitor {
 
     pub(crate) fn status(&self) -> String {
         let status = self.status.lock().unwrap();
-        let mut text = if status.phase.is_empty() { "preparing snapshot" } else { status.phase }.to_owned();
-        if let Some((step, item)) = status.detail { text.push_str(&format!("; {step} (component {item})")); }
-        if let Some((completed, total)) = status.progress { text.push_str(&format!("; {completed}/{total} completed")); }
+        let mut text = match status.phase_started {
+            Some(started) => format!("phase {}: {} ({:.1}s in this phase)", status.phase_number, status.phase, started.elapsed().as_secs_f64()),
+            None => "preparing snapshot".to_owned(),
+        };
+        if let Some((step, _)) = status.detail { text.push_str(&format!("; {step}")); }
+        if let Some((completed, total, unit)) = status.progress { text.push_str(&format!("; {completed}/{total} {unit}")); }
         if let Some((nodes, wires, pistons)) = status.counts { text.push_str(&format!("; {nodes} nodes, {wires} wires, {pistons} pistons")); }
         text
+    }
+
+    pub(crate) fn phase_number(&self) -> usize {
+        self.status.lock().unwrap().phase_number
     }
 
     pub fn cancel(&self) {
@@ -69,13 +81,16 @@ mod tests {
         let monitor = TaskMonitor::default();
         monitor.set_counts(12, 5, 2);
         monitor.set_phase("sampling");
-        monitor.set_progress(0, 8);
+        monitor.set_progress(0, 8, "probes");
         std::thread::scope(|scope| {
             for _ in 0..8 { scope.spawn(|| monitor.advance_progress()); }
         });
-        assert_eq!(monitor.status(), "sampling; 8/8 completed; 12 nodes, 5 wires, 2 pistons");
+        assert!(monitor.status().starts_with("phase 1: sampling ("));
+        assert!(monitor.status().contains("8/8 probes; 12 nodes, 5 wires, 2 pistons"));
         monitor.set_phase("finalizing");
-        assert_eq!(monitor.status(), "finalizing; 12 nodes, 5 wires, 2 pistons");
+        assert!(monitor.status().starts_with("phase 2: finalizing ("));
+        assert!(monitor.status().contains("12 nodes, 5 wires, 2 pistons"));
+        assert!(!monitor.status().contains("probes"));
         monitor.cancel();
         assert!(monitor.cancelled());
     }

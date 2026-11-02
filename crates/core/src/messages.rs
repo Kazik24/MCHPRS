@@ -361,6 +361,12 @@ catalog! {
         PLOT_YOU_WERE_PREVIOUSLY_CRASHED = "The plot you were previously in has crashed!";
         REDPILER_COMPILATION_BUSY = "A compiler worker is still finishing. Use /rp reset to cancel, then wait before compiling again.";
         REDPILER_COMPILATION_CHANGED = "The plot changed during compilation. Compile again to use the new state.";
+        REDPILER_RETRY_RUST = "Try /rp compile without --llvm to use the Rust backend.";
+        REDPILER_RETRY_SETTLED = "Finish the current tick and let piston movement settle, then retry /rp compile.";
+        REDPILER_REBUILD_LLVM = "Ask the server administrator to check or rebuild the LLVM module. Try /rp compile without --llvm meanwhile.";
+        REDPILER_CAPTURE_WHOLE_CIRCUIT = "Keep the entire connected circuit, including piston travel, inside the compilation region, then retry.";
+        REDPILER_INTERNAL_FAILURE_HELP = "Share this error and its compilation phase with the server administrator; the server log may contain more details.";
+        REDPILER_WORKER_FAILED = "The compiler worker failed unexpectedly. Check the server log for the cause before retrying.";
         REDPILER_COMPILATION_PAUSED = "Simulation is paused during compilation. Use /rp reset to cancel it before advancing ticks.";
         REDPILER_AUTO_DISABLED = "Automatic Redpiler compilation disabled. Give /rp compile a boop when you're ready.";
         REDPILER_AUTO_ENABLED = "Automatic Redpiler compilation enabled—I'll handle that trick for you.";
@@ -545,6 +551,11 @@ catalog! {
         ascended(levels: impl Display) = "Hopped up {levels} levels!";
         clipboard_flipped(elapsed: Duration) = "Rolled your clipboard copy over ({elapsed:.00?}).";
         clipboard_pasted(elapsed: Duration) = "Unpacked your clipboard onto the plot ({elapsed:.00?}).";
+        redpiler_progress(elapsed: impl Display, status: &str) = "Redpiler compiling ({elapsed}s): {status}";
+        redpiler_rejected(elapsed: Duration, reason: &str) = "Redpiler could not start ({elapsed:.1?}):\n{reason}";
+        redpiler_failed_phase(status: &str, reason: impl Display) = "Stopped during {status}.\n{reason}";
+        redpiler_block_failure(block: &str, position: impl Display, reason: &str) = "{block} at {position}: {reason}";
+        redpiler_unsupported_block(block: &str, position: impl Display) = "Unsupported block: {block} at {position}.";
         clipboard_dimensions(x: u32, y: u32, z: u32) = "Clipboard: {x} × {y} × {z} blocks (X × Y × Z).";
         clipboard_paste_bounds(first: impl Display, last: impl Display) = "Paste bounds from here: {first} to {last}.";
         clipboard_stand_at(position: impl Display) = "Stand at {position}. ";

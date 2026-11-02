@@ -7,6 +7,23 @@ use mchprs_blocks::{BlockDirection, BlockFace, BlockFacing, BlockPos, block_enti
 use mchprs_world::{AdvancePhase, TickEntry, TickPriority};
 use std::sync::Arc;
 
+#[test]
+fn compile_error_recovery_matches_the_failure_type() {
+    for (reason, hint) in [
+        ("LLVM does not support command blocks", Some("without --llvm")),
+        ("scratch entry has piston motion", Some("settle")),
+        ("LLVM DLL ABI/version mismatch", Some("rebuild")),
+        ("scratch probe read outside captured boundary", Some("entire connected circuit")),
+        ("unsupported piston input source", None),
+    ] {
+        let error = CompileError::Unsupported(ScratchError { position: None, reason });
+        match hint {
+            Some(hint) => assert!(error.recovery_hint().unwrap().contains(hint)),
+            None => assert!(error.recovery_hint().is_none()),
+        }
+    }
+}
+
 fn button_world(face: ButtonFace, facing: BlockDirection) -> (PlotWorld, BlockPos, BlockPos, (BlockPos, BlockPos)) {
     let chunks = (0..PLOT_WIDTH).flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x, z))).collect();
     let mut world = PlotWorld::from_chunks(0, 0, chunks, TickScheduler::default());

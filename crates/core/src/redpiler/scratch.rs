@@ -231,7 +231,8 @@ fn discover_wire_sources_inner(
     // Dust attenuation follows the shortest represented wire path; dynamic source
     // states are included even when currently off (e.g. an unpowered lever).
     let mut sources = HashMap::new();
-    for &wire in wires {
+    if let Some(monitor) = monitor { monitor.set_progress(0, wires.len(), "wires checked"); }
+    for (index, &wire) in wires.iter().enumerate() {
         if monitor.is_some_and(super::TaskMonitor::cancelled) {
             return Err(ScratchError {
                 position: None,
@@ -265,6 +266,7 @@ fn discover_wire_sources_inner(
                 }
             }
         }
+        if let Some(monitor) = monitor { monitor.set_progress(index + 1, wires.len(), "wires checked"); }
     }
     let mut sources: Vec<_> = sources
         .into_iter()
@@ -1304,7 +1306,7 @@ impl ScratchWorld {
         probe: impl Fn(&mut Self, &J) -> Result<R, ScratchError> + Sync,
     ) -> Result<Vec<R>, ScratchError> {
         use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-        if let Some(monitor) = monitor { monitor.set_progress(0, jobs.len()); }
+        if let Some(monitor) = monitor { monitor.set_progress(0, jobs.len(), "probes"); }
         let workers = std::thread::available_parallelism().map_or(1, usize::from).min((jobs.len() / 128).max(1));
         if workers == 1 {
             return jobs

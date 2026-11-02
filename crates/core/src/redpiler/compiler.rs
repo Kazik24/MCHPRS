@@ -21,7 +21,7 @@ impl std::fmt::Display for CompileError {
             Self::AlreadyActive => f.write_str("reset the active compiler before recompiling"),
             Self::Unsupported(error) => {
                 if let Some(position) = error.position {
-                    write!(f, "unsupported circuit at {position:?}: {}", error.reason)
+                    write!(f, "Cannot compile at {position}: {}", error.reason)
                 } else {
                     f.write_str(error.reason)
                 }
@@ -45,6 +45,36 @@ impl std::fmt::Display for CompileError {
 
 impl std::error::Error for CompileError {}
 
+impl CompileError {
+    pub(crate) fn recovery_hint(&self) -> Option<&'static str> {
+        use crate::messages;
+        let reason = match self {
+            Self::UnsupportedComponents { .. } => return Some(messages::REDPILER_RETRY_RUST),
+            Self::Unsupported(error) => error.reason,
+            _ => return None,
+        };
+        if reason.starts_with("LLVM does not support") {
+            Some(messages::REDPILER_RETRY_RUST)
+        } else if reason.starts_with("LLVM cannot compile during")
+            || reason == "LLVM cannot import pending piston work; let it settle before compiling"
+            || matches!(reason, "scratch entry is mid-tick" | "scratch entry has queued piston work"
+                | "scratch entry has piston motion" | "scratch entry has pending movement work") {
+            Some(messages::REDPILER_RETRY_SETTLED)
+        } else if matches!(reason, "LLVM DLL ABI/version mismatch" | "LLVM DLL is missing a required export"
+            | "LLVM module is missing a required export" | "could not load LLVM DLL (set MCHPRS_LLVM_DLL)"
+            | "could not load LLVM module") {
+            Some(messages::REDPILER_REBUILD_LLVM)
+        } else if reason.contains("outside compiled region") || reason.contains("outside captured boundary") {
+            Some(messages::REDPILER_CAPTURE_WHOLE_CIRCUIT)
+        } else if matches!(reason, "invalid native Program descriptor" | "LLVM rejected the sampled Program"
+            | "LLVM state size rejected") {
+            Some(messages::REDPILER_INTERNAL_FAILURE_HELP)
+        } else {
+            None
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct ExecutionError(
     /// underlying runtime failure, including its optional world position and reason.
@@ -53,7 +83,11 @@ pub struct ExecutionError(
 
 impl std::fmt::Display for ExecutionError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "compiled runtime at {:?}: {}", self.0.position, self.0.reason)
+        if let Some(position) = self.0.position {
+            write!(f, "Compiled execution failed at {position}: {}", self.0.reason)
+        } else {
+            write!(f, "Compiled execution failed: {}", self.0.reason)
+        }
     }
 }
 
@@ -134,6 +168,7 @@ impl Compiler {
             return Err(CompileError::AlreadyActive);
         }
         let start = Instant::now();
+        monitor.set_phase("entry validation");
         if monitor.cancelled() {
             return Err(CompileError::Cancelled);
         }

@@ -12,6 +12,7 @@ pub(super) struct CompilationJob {
     /// Time the request started, including snapshot preparation.
     started: Instant,
     last_progress: Instant,
+    last_phase: usize,
     /// Cooperative cancellation shared with the compiler worker.
     monitor: Arc<TaskMonitor>,
     /// Live entry state that must still match before activation.
@@ -60,6 +61,27 @@ fn rejected_position(error: &CompileError) -> Option<BlockPos> {
         CompileError::UnsupportedComponents { first, .. } => first.iter().find_map(|error| error.position),
         _ => None,
     }
+}
+
+fn compilation_error(world: &PlotWorld, error: &CompileError, monitor: &TaskMonitor) -> String {
+    let detail = if let CompileError::Unsupported(issue) = error
+        && let Some(position) = issue.position
+    {
+        let block = world.get_block(position).get_name();
+        if issue.reason == block {
+            messages::redpiler_unsupported_block(block, position)
+        } else {
+            messages::redpiler_block_failure(block, position, issue.reason)
+        }
+    } else {
+        error.to_string()
+    };
+    let mut text = messages::redpiler_failed_phase(&monitor.status(), detail);
+    if let Some(hint) = error.recovery_hint() {
+        text.push('\n');
+        text.push_str(hint);
+    }
+    text
 }
 
 impl Plot {
@@ -127,6 +149,7 @@ impl Plot {
                 self.compilation = Some(CompilationJob {
                     started,
                     last_progress: Instant::now(),
+                    last_phase: 0,
                     monitor,
                     entry,
                     worker,
@@ -140,11 +163,13 @@ impl Plot {
     pub(super) fn poll_redpiler_compilation(&mut self) {
         if let Some(job) = &mut self.compilation
             && !job.worker.is_finished() && !job.monitor.cancelled()
-            && job.last_progress.elapsed() >= Duration::from_secs(3)
+            && (job.last_progress.elapsed() >= Duration::from_secs(3)
+                || (job.monitor.phase_number() != job.last_phase && job.last_progress.elapsed() >= Duration::from_millis(250)))
         {
             job.last_progress = Instant::now();
+            job.last_phase = job.monitor.phase_number();
             let status = job.monitor.status();
-            let text = format!("Redpiler compiling ({}s): {status}", job.started.elapsed().as_secs());
+            let text = messages::redpiler_progress(job.started.elapsed().as_secs(), &status);
             info!(elapsed_secs = job.started.elapsed().as_secs(), %status, "Redpiler compilation progress");
             for player in &self.players {
                 player.send_raw_system_message(crate::player::diagnostic_component(&text).to_string());
@@ -163,7 +188,7 @@ impl Plot {
         let output = match completed {
             Ok(output) => output,
             Err(_) => {
-                self.reject_redpiler(job.started, "compiler worker failed");
+                self.reject_redpiler(job.started, &messages::redpiler_failed_phase(&job.monitor.status(), messages::REDPILER_WORKER_FAILED));
                 return;
             }
         };
@@ -174,7 +199,7 @@ impl Plot {
                     self.show_block_highlight(player, position, false);
                 }
             }
-            self.reject_redpiler(job.started, &error.to_string());
+            self.reject_redpiler(job.started, &compilation_error(&output.world, &error, &job.monitor));
         } else if !job.entry.matches(&self.world) || self.git_checkout_locked() {
             self.reject_redpiler(job.started, messages::REDPILER_COMPILATION_CHANGED);
         } else {
@@ -213,7 +238,7 @@ impl Plot {
         warn!(plot_x = self.world.x, plot_z = self.world.z,
             elapsed_ms = started.elapsed().as_millis(), %reason, "Redpiler rejected");
         for player in &self.players {
-            player.send_error_message(&format!("Redpiler: {reason}."));
+            player.send_error_message(&messages::redpiler_rejected(started.elapsed(), reason));
         }
         self.scoreboard.set_redpiler_state(&self.players, RedpilerState::Stopped);
         self.scoreboard.set_redpiler_options(&self.players, &Default::default());
