@@ -269,10 +269,8 @@ fn failed_runtime_reset_keeps_compiler_active_and_host_unchanged() {
         position: Some(pos),
         reason: "test runtime failure",
     });
-    let mut compiler = super::super::Compiler {
-        runtime: Some(runtime),
-        ..Default::default()
-    };
+    let mut compiler = super::super::Compiler::default();
+    compiler.runtime = Some(runtime);
     let before_block = world.get_block(pos);
     let before_entity = format!("{:?}", world.get_block_entity(pos));
     let before_ticks = world.scheduler().iter_entries().collect::<Vec<_>>();

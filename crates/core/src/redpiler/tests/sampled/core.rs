@@ -13,7 +13,7 @@ use mchprs_world::TickPriority;
 #[test]
 #[ignore = "large saved-plot regression; run explicitly"]
 fn chungus_block_trace_matches_native() {
-    #[path = "../../../test_support/chungus.rs"]
+    #[path = "../../../../test_support/chungus.rs"]
     mod chungus;
     let mut native = chungus::init_world();
     let mut compiled = chungus::init_world();
@@ -1757,6 +1757,34 @@ fn watched_wire_observes_raw_strength_changes_only() {
     assert_eq!(runtime.watched_strengths[0], 13);
     assert_eq!(runtime.blocks[1], wire, "watch checks do not write physical wire state");
     assert_eq!(runtime.deliveries, 1, "15 to 13 is still a raw strength change");
+}
+
+#[test]
+fn wire_power_callbacks_do_not_start_observer_pulses() {
+    let mut world = host();
+    let lever = BlockPos::new(10, 10, 10);
+    let wire = BlockPos::new(11, 10, 10);
+    let observer_pos = BlockPos::new(11, 10, 9);
+    world.set_block(lever, Block::Lever { lever: Lever::new(LeverFace::Floor, BlockDirection::North, false) });
+    world.set_block(lever.offset(BlockFace::Bottom), Block::Stone {});
+    world.set_block(wire.offset(BlockFace::Bottom), Block::Stone {});
+    let Block::Observer { mut observer } = Block::from_name("observer").unwrap() else { unreachable!() };
+    observer.facing = mchprs_blocks::BlockFacing::South;
+    world.set_block(observer_pos, Block::Observer { observer });
+    world.set_block(wire, Block::RedstoneWire { wire: RedstoneWire::default() });
+    let placed = crate::redstone::wire::get_state_for_placement(&world, wire);
+    world.set_block(wire, Block::RedstoneWire { wire: placed });
+    let program = compile(&world, (BlockPos::new(5, 5, 5), BlockPos::new(16, 15, 15)), entry(&world)).unwrap();
+    let mut runtime = program.start();
+    for tick in 0..16 {
+        if [0, 4, 8].contains(&tick) {
+            crate::interaction::use_redstone(world.get_block(lever), &mut world, lever, None);
+            runtime.use_control(lever).unwrap();
+        }
+        world.tick_interpreted(); runtime.tick().unwrap();
+        assert!(matches!(world.get_block(observer_pos), Block::Observer { observer } if !observer.powered));
+        assert_eq!(runtime.project(observer_pos), Some(world.get_block(observer_pos)), "tick {tick}");
+    }
 }
 #[test]
 fn watched_wire_notification_is_separate_from_lamp_power() {

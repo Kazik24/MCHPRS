@@ -29,6 +29,7 @@ mod reviewed_fixes_tests;
 mod runtime_index_tests;
 mod scheduler;
 #[cfg(test)]
+#[path = "../tests/sampled/core.rs"]
 mod tests;
 
 use super::scratch::ScratchWorld;

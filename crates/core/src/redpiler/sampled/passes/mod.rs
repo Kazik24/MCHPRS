@@ -56,4 +56,5 @@ pub(super) struct Inventory {
 }
 
 #[cfg(test)]
+#[path = "../../tests/sampled/passes.rs"]
 mod tests;

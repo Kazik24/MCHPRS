@@ -435,6 +435,8 @@ pub(super) fn run(
     let lowered = scratch.probe_jobs(&jobs, monitor, |_, &reader| {
         let target = graph.reader_component(reader);
         let tokens = graph.reader_dependencies(reader);
+        let mut search = Search::default();
+        let basis = graph.reader_sources(reader, |Axis::Token(token, _)| initial[token], &mut search)?;
         let axes = electrical_states(program, indexes, tokens, target);
         let states = axes.iter().try_fold(1usize, |count, axis| count.checked_mul(axis.iter().copied().max().unwrap_or(0) + 1));
         let mut occupied = HashSet::new();
@@ -444,8 +446,6 @@ pub(super) fn run(
         };
         let mut axis_index = vec![usize::MAX; program.tokens.len()];
         for (axis, &token) in tokens.iter().enumerate() { axis_index[token] = axis; }
-        let mut search = Search::default();
-        let basis = graph.reader_sources(reader, |Axis::Token(token, _)| initial[token], &mut search)?;
         let mut maps = Vec::with_capacity(states);
         let mut conditional = BTreeSet::new();
         for state in 0..states {
@@ -549,7 +549,7 @@ mod tests {
         for axes_count in (2..=max_axes).step_by(2) {
             let tokens: Vec<_> = (0..axes_count).collect();
             let axes = electrical_states(&program, &indexes, &tokens, target);
-            let states = count(&program, &tokens, &axes, program.positions[target]).unwrap();
+            let states: usize = axes.iter().map(|axis| axis.iter().copied().max().unwrap_or(0) + 1).product();
             let mut metrics = ProbeMetrics::default();
             let mut changed = 0;
             let started = std::time::Instant::now();

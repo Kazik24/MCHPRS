@@ -803,11 +803,19 @@ impl Runtime {
         let program = std::sync::Arc::clone(&self.program);
         let Some(graph) = &program.routing else { return Ok(Vec::new()); };
         let readers: Vec<_> = changed.map_or_else(|| (0..graph.reader_count()).collect(), |token| graph.readers_for_token(token).to_vec());
+        self.route_search.remaining = changed.map(|_| 1_000_000usize.saturating_sub(self.tick_operations));
+        self.route_search.spent = 0;
         let mut updates = Vec::new();
         for reader in readers {
             let values = graph.reader_sources(reader, |super::routing::Axis::Token(token, _)| {
                 self.token_positions[token].and_then(|pos| program.tokens[token].cells.iter().position(|&cell| cell == pos)).map_or(0, |cell| cell + 1)
-            }, &mut self.route_search)?;
+            }, &mut self.route_search);
+            if changed.is_some() {
+                self.tick_operations += self.route_search.spent;
+                self.operations += self.route_search.spent;
+            }
+            self.route_search.spent = 0;
+            let values = values?;
             for &index in graph.links(reader) {
                 let link = &program.arrangement_links[index];
                 updates.push((index, values.get(&(link.source, link.side)).copied().unwrap_or(u8::MAX)));
@@ -1012,7 +1020,7 @@ impl Runtime {
                     if !self.consume_component_operation(watcher) {
                         return;
                     }
-                    self.update_once(watcher);
+                    self.update_wire_watcher(watcher);
                 }
             }
         }
@@ -1342,8 +1350,18 @@ impl Runtime {
         let watcher_count = self.program.watched_wires[record_index].watchers.len();
         for index in 0..watcher_count {
             let watcher = self.program.watched_wires[record_index].watchers[index];
-            self.update_once(watcher);
+            self.update_wire_watcher(watcher);
         }
+    }
+
+    fn update_wire_watcher(&mut self, receiver: usize) {
+        if let Block::Observer { observer } = self.blocks[receiver] {
+            // Dust power callbacks have no direction; only a powered observer may release.
+            if observer.powered {
+                let tick = ScheduledComponentTick { component: receiver, block_type: Some(self.blocks[receiver].registry_id()) };
+                if !self.has_pending(tick) { self.schedule_tick(tick, 1, TickPriority::Normal); }
+            }
+        } else { self.update_once(receiver); }
     }
 
     pub(super) fn execute_output_program(&mut self, component: usize, powered: bool) {

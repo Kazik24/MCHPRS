@@ -230,7 +230,7 @@ pub(super) struct PistonBinding {
 
 #[derive(Clone)]
 pub(crate) struct Program {
-    pub(super) routing: Option<super::routing::WireGraph>,
+    pub(super) routing: Option<std::sync::Arc<super::routing::WireGraph>>,
     // Components and output instructions
     /// component-indexed world positions; index is the canonical component ID throughout the program.
     pub(super) positions: Vec<BlockPos>,

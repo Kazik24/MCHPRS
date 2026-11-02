@@ -108,6 +108,8 @@ pub(super) struct Search {
     distances: Vec<u8>,
     visited: Vec<usize>,
     queue: VecDeque<usize>,
+    pub(super) remaining: Option<usize>,
+    pub(super) spent: usize,
 }
 
 fn touches(a: BlockPos, b: BlockPos) -> bool {
@@ -186,6 +188,7 @@ impl WireGraph {
             return Err(ScratchError { position: None, reason: "movable payload overlaps a fixed wire" });
         }
         let mut nodes = Vec::with_capacity(positions.len());
+        let mut rows = 0usize;
         for &pos in &positions {
             if monitor.is_some_and(TaskMonitor::cancelled) {
                 return Err(ScratchError { position: None, reason: "compilation cancelled" });
@@ -200,6 +203,8 @@ impl WireGraph {
                 })).collect::<Result<_, _>>()?;
                 Ok(Ports { wires, sources: found.sources })
             })?;
+            rows += node.ports.len();
+            if rows > 1_048_576 { return Err(ScratchError { position: Some(pos), reason: "local routing data exceeds size bound" }); }
             nodes.push(node);
         }
         scratch.revert();
@@ -207,6 +212,7 @@ impl WireGraph {
     }
 
     pub(super) fn compile_readers(&mut self, scratch: &mut ScratchWorld, program: &Program, targets: &[usize], indexes: &ProbeIndexes<'_>, monitor: Option<&TaskMonitor>) -> Result<(), ScratchError> {
+        let mut rows: usize = self.nodes.iter().map(|node| node.ports.len()).sum();
         for node in &self.nodes {
             for ports in node.ports.iter().flatten() {
                 for &pos in &ports.sources { self.source_ids.insert(pos, indexes.source_at(pos)?); }
@@ -237,6 +243,8 @@ impl WireGraph {
                 }
                 Ok(ports)
             })?;
+            rows += table.ports.len();
+            if rows > 1_048_576 { return Err(ScratchError { position: Some(position), reason: "local routing data exceeds size bound" }); }
             let mut dependencies: BTreeMap<usize, ()> = table.axes.iter().map(|&Axis::Token(token, _)| (token, ())).collect();
             let mut reached = HashSet::new();
             let mut queue = VecDeque::new();
@@ -289,6 +297,11 @@ impl WireGraph {
         search.queue.push_back(root);
         let mut found = BTreeMap::new();
         while let Some(wire) = search.queue.pop_front() {
+            if let Some(remaining) = &mut search.remaining {
+                if *remaining == 0 { return Err(ScratchError { position: Some(self.positions[wire]), reason: "runtime semantic operation limit exceeded" }); }
+                *remaining -= 1;
+            }
+            search.spent += 1;
             let node = &self.nodes[wire];
             let mut state = 0;
             let mut stride = 1;

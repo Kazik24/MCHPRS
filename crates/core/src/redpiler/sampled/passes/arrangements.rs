@@ -16,7 +16,7 @@ pub(in super::super) fn run(
     check_cancelled(monitor)?;
     let discovery = crate::redpiler::sampled::group_probe::run(world, bounds, &entry, &program, &probe_indexes, monitor)?;
     program.input_arrangements = discovery.groups;
-    program.routing = discovery.routing;
+    let mut routing = discovery.routing;
 
     if phases.enabled {
         eprintln!("Redpiler inventory: piston_arrangement_groups={}", program.input_arrangements.len());
@@ -25,6 +25,7 @@ pub(in super::super) fn run(
     phases.next("movement program validation");
     check_cancelled(monitor)?;
     program.compile_movement_flips()?;
-    if let Some(graph) = &mut program.routing { graph.bind_links(&program.arrangement_links); }
+    if let Some(graph) = &mut routing { graph.bind_links(&program.arrangement_links); }
+    program.routing = routing.map(std::sync::Arc::new);
     Ok(())
 }
