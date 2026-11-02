@@ -243,13 +243,13 @@ pub(crate) fn compile_monitored(
 
     passes::movement::run(&context, &mut program, &probe_indexes, &mut phases)?;
     passes::arrangements::run(&context, &mut program, &probe_indexes, &mut phases)?;
-    passes::source_order::run(&context, &mut program, &probe_indexes, &mut phases)?;
 
     phases.next("reactive dependency tracking");
 
     check_cancelled(monitor)?;
 
     passes::reactive::run(world, &entry, &mut program, probe_indexes.components, monitor)?;
+    passes::source_order::run(&context, &mut program, &probe_indexes, &mut phases)?;
     passes::finalize::run(&mut program, monitor, &mut phases)?;
     passes::share_output_programs::run(&mut program, monitor, &mut phases)?;
 

@@ -355,7 +355,7 @@ static uint32_t execute_output(NEEngine *engine, uint32_t component, uint8_t pow
     for (uint32_t i = 0; i < count; ++i) {
         const uint8_t *op=operations(engine)+(size_t)(start+i)*8u;
         uint32_t operand=read_u32(op+4);
-        if (engine->has_reactive && (op[0]<2u || ((op[0]==4u || op[0]==5u || (op[0]>=6u && op[0]<=10u) || op[0]==12u || op[0]==13u)
+        if (engine->has_reactive && (op[0]<2u || ((op[0]==4u || op[0]==5u || (op[0]>=6u && op[0]<=10u) || op[0]==13u)
             && table(engine,43u)[operand*5u]))) continue;
         uint32_t status = execute_operation(engine, op);
         if (status != NE_OK) return status;
@@ -549,7 +549,7 @@ static uint32_t valid_program(const MchprsNativeProgramDescriptor *program, cons
 static size_t align8(size_t value) { return (value + 7u) & ~(size_t)7u; }
 
 MchprsNativeApiDescriptor ne_api_descriptor(void) {
-    MchprsNativeApiDescriptor value = {3u, 16u, 18u};
+    MchprsNativeApiDescriptor value = {3u, 16u, 19u};
     return value;
 }
 

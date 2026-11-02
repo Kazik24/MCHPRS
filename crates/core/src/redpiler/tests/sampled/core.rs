@@ -968,6 +968,59 @@ fn torch_piston_watchers_follow_interpreter_notification_order() {
 }
 
 #[test]
+fn reactive_torch_callbacks_preserve_source_fifo() {
+    check_reactive_torch_source_fifo(false);
+}
+
+#[cfg(any(windows, target_os = "linux"))]
+#[test]
+fn llvm_reactive_torch_callbacks_preserve_source_fifo() {
+    check_reactive_torch_source_fifo(true);
+}
+
+fn check_reactive_torch_source_fifo(llvm: bool) {
+    let support = BlockPos::new(15, 15, 15);
+    let lever = support.offset(BlockFace::West);
+    let lower = support.offset(BlockFace::East);
+    let upper = support.offset(BlockFace::Top);
+    let mut world = host();
+    for pos in [support, lower.offset(BlockFace::Top)] {
+        world.set_block(pos, Block::Stone {});
+    }
+    world.set_block(lever, Block::Lever { lever: Lever::new(LeverFace::Wall, BlockDirection::West, false) });
+    world.set_block(lower, Block::RedstoneWallTorch { lit: true, facing: BlockDirection::East });
+    world.set_block(upper, Block::RedstoneWallTorch { lit: true, facing: BlockDirection::West });
+    let program = compile(&world, (BlockPos::new(10, 10, 10), BlockPos::new(22, 22, 22)), entry(&world)).unwrap();
+    assert!(program.reactive[program.component_indices[&upper]]);
+    assert!(!program.reactive[program.component_indices[&lower]]);
+    let mut native = llvm.then(|| super::llvm::LlvmRuntime::new(program.clone(), &[]).unwrap());
+    let mut runtime = program.start();
+    for phase in 0..4 {
+        crate::interaction::use_redstone(world.get_block(lever), &mut world, lever, None);
+        if let Some(native) = &mut native {
+            native.use_control(lever).unwrap();
+            native.sync_projection(&mut runtime).unwrap();
+        } else {
+            runtime.use_control(lever).unwrap();
+        }
+        assert_eq!(runtime.pending_entries(), world.scheduler().iter_entries().collect::<Vec<_>>(), "phase {phase} after input");
+        for tick in 0..8 {
+            world.tick_interpreted();
+            if let Some(native) = &mut native {
+                native.tick().unwrap();
+                native.sync_projection(&mut runtime).unwrap();
+            } else {
+                runtime.tick().unwrap();
+            }
+            for pos in [lower, upper] {
+                assert_eq!(runtime.project(pos), Some(world.get_block(pos)), "phase {phase} tick {tick} at {pos:?}");
+            }
+            assert_eq!(runtime.pending_entries(), world.scheduler().iter_entries().collect::<Vec<_>>(), "phase {phase} tick {tick}");
+        }
+    }
+}
+
+#[test]
 fn empty_piston_shape_observers_follow_interpreter_fifo() {
     use mchprs_blocks::blocks::RedstoneObserver;
     let mut world = host();

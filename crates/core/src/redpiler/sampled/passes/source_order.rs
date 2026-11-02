@@ -411,6 +411,8 @@ pub(in super::super) fn run(
                     continue;
                 }
                 if matches!(delivery.block, Block::Observer { .. })
+                    // Notification-only torches have no source input contribution to match.
+                    || matches!(record.operations.as_slice(), [Operation::UpdateTorch(_)])
                     || delivery
                         .input_on
                         .is_some_and(|(main, side)| (if record.rear { main } else { side }) == powered)
@@ -557,6 +559,11 @@ impl SourceIndex {
                 index.target(source, record.component);
             }
         }
+        for source in 0..program.initial.len() {
+            for target in reactive_torch_neighbours(program, source) {
+                index.target(source, target);
+            }
+        }
         let mut watched = vec![None; program.initial.len()];
         for (id, wire) in program.watched_wires.iter().enumerate() {
             watched[wire.wire].get_or_insert(id);
@@ -623,6 +630,12 @@ impl SourceIndex {
     }
 }
 
+fn reactive_torch_neighbours(program: &Program, source: usize) -> impl Iterator<Item = usize> + '_ {
+    program.reactive_neighbours[source].iter().copied().filter(|&target| {
+        matches!(program.initial[target], Block::RedstoneTorch { .. } | Block::RedstoneWallTorch { .. })
+    })
+}
+
 #[cfg(test)]
 fn feeds_two_racers(program: &Program, source: usize) -> bool {
     let mut targets = Vec::new();
@@ -648,6 +661,11 @@ fn feeds_two_racers(program: &Program, source: usize) -> bool {
     for record in &program.repeaters {
         if record.side_sources.as_ref().is_some_and(|side| side.contains(&source)) && !targets.contains(&record.component) {
             targets.push(record.component);
+        }
+    }
+    for target in reactive_torch_neighbours(program, source) {
+        if !targets.contains(&target) {
+            targets.push(target);
         }
     }
     targets
@@ -695,6 +713,11 @@ fn source_operations(program: &Program, source: usize) -> Vec<Operation> {
     for record in &program.repeaters {
         if record.side_sources.as_ref().is_some_and(|side| side.contains(&source)) && !targets.contains(&record.component) {
             targets.push(record.component);
+        }
+    }
+    for target in reactive_torch_neighbours(program, source) {
+        if !targets.contains(&target) {
+            targets.push(target);
         }
     }
     let mut operations = Vec::new();

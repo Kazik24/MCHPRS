@@ -90,6 +90,67 @@ fn anpu_ordered_pending_ticks_match_interpreter() {
 }
 
 #[test]
+#[ignore = "218-tick ANPU piston/repeater FIFO regression"]
+fn anpu_piston_repeater_fifo_order_in_schematic_crop() {
+    let cpu = cpus::CPUS[1];
+    // This frozen interpreter crop is the state immediately before the tick-218 divergence.
+    let crop_bytes = include_bytes!("../../../../../../test_data/piston-research/anpu-piston-fifo-repro.schem");
+    let crop = load_schematic(std::io::Cursor::new(crop_bytes)).unwrap();
+    assert_eq!((crop.size_x, crop.size_y, crop.size_z), (25, 10, 12));
+    let min = BlockPos::new(88, 49, 118);
+    let max = min + BlockPos::new(crop.size_x as i32 - 1, crop.size_y as i32 - 1, crop.size_z as i32 - 1);
+    let in_crop = |pos: BlockPos| {
+        (min.x..=max.x).contains(&pos.x) && (min.y..=max.y).contains(&pos.y) && (min.z..=max.z).contains(&pos.z)
+    };
+    let mut interpreter = cpus::load_cpu(cpu);
+    let (_, mut compiler, _) = cpus::compile_cpu(cpus::load_cpu(cpu), cpu);
+    cpus::click_cpu(&mut interpreter, cpu, cpu.start);
+    compiler.try_on_use_block(cpu.origin + cpu.start).unwrap();
+
+    for tick in 0..=218 {
+        if tick == 217 {
+            for y in 0..crop.size_y {
+                for z in 0..crop.size_z {
+                    for x in 0..crop.size_x {
+                        let pos = min + BlockPos::new(x as i32, y as i32, z as i32);
+                        let index = ((y * crop.size_z + z) * crop.size_x + x) as usize;
+                        assert_eq!(
+                            interpreter.get_block(pos),
+                            Block::from_id(crop.data.get_entry(index)),
+                            "saved ANPU pre-divergence crop differs at {pos:?}"
+                        );
+                    }
+                }
+            }
+        }
+        let actual: Vec<_> = compiler
+            .runtime
+            .as_ref()
+            .unwrap()
+            .pending_entries()
+            .into_iter()
+            .filter(|entry| in_crop(entry.pos))
+            .collect();
+        let expected: Vec<_> = interpreter
+            .scheduler()
+            .iter_entries()
+            .filter(|entry| in_crop(entry.pos))
+            .collect();
+        if actual != expected {
+            let first = actual.iter().zip(&expected).position(|(a, b)| a != b);
+            panic!(
+                "ANPU crop pending ticks differ at tick {tick}: actual={} expected={} first={first:?} actual_first={:?} expected_first={:?}",
+                actual.len(), expected.len(), first.and_then(|index| actual.get(index)), first.and_then(|index| expected.get(index)),
+            );
+        }
+        if tick < 218 {
+            interpreter.tick_interpreted();
+            compiler.tick().unwrap();
+        }
+    }
+}
+
+#[test]
 #[ignore = "ANPU interpreter/sampled first-divergence diagnostic"]
 fn anpu_first_native_compiled_divergence() {
     let cpu=cpus::CPUS[1];

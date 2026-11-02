@@ -152,7 +152,7 @@ impl LlvmRuntime {
         }
         let library = Library::load()?;
         let api = unsafe { (library.api_descriptor)() };
-        if api.abi_version != ABI_VERSION || api.descriptor_bytes != 16 || api.semantic_version != 18 {
+        if api.abi_version != ABI_VERSION || api.descriptor_bytes != 16 || api.semantic_version != 19 {
             return Err(ScratchError {
                 position: None,
                 reason: "LLVM DLL ABI/version mismatch",

@@ -95,6 +95,50 @@
 
     #[cfg(any(windows, target_os = "linux"))]
     #[test]
+    fn llvm_redstonedb_ram_matches_rust_and_interpreter() {
+        use crate::world::World;
+        use crate::plot::worldedit::{load_schematic, paste_clipboard};
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../test_data/redstonedb/schematics/7abf58b22e8e91c72ca27f70c1fd10b1-8_bit_Ram.schem");
+        let mut clip = load_schematic(std::fs::File::open(path).unwrap()).unwrap();
+        clip.offset_x = 0;
+        clip.offset_y = 0;
+        clip.offset_z = 0;
+        let origin = BlockPos::new(8, 8, 8);
+        let end = origin + BlockPos::new(clip.size_x as i32 - 1, clip.size_y as i32 - 1, clip.size_z as i32 - 1);
+        let mut world = super::super::tests::host();
+        paste_clipboard(&mut world, &clip, origin, false);
+        let program = super::super::compile_program(&world, (origin, end),
+            super::super::ScratchEntry { scheduled: vec![], piston: world.piston_state().clone() }, None).unwrap();
+        let levers: Vec<_> = (origin.y..=end.y).flat_map(|y| (origin.z..=end.z)
+            .flat_map(move |z| (origin.x..=end.x).map(move |x| BlockPos::new(x, y, z))))
+            .filter(|&pos| matches!(world.get_block(pos), Block::Lever { .. })).collect();
+        assert!(levers.len() > 3);
+        let positions = program.projection_positions.clone();
+        let mut rust = program.start();
+        let mut projection = program.clone().into_runtime_prepared();
+        let mut native = LlvmRuntime::new(program, &[]).unwrap();
+        for index in (0..levers.len()).chain((0..levers.len()).rev()) {
+            let lever = levers[index];
+            crate::interaction::use_redstone(world.get_block(lever), &mut world, lever, None);
+            rust.use_control(lever).unwrap();
+            native.use_control(lever).unwrap();
+            for tick in 1..=20 {
+                world.tick_interpreted();
+                rust.tick().unwrap();
+                native.tick().unwrap();
+                native.sync_projection(&mut projection).unwrap();
+                for &pos in &positions {
+                    assert_eq!(rust.project(pos), Some(world.get_block(pos)), "RAM interpreter at {pos:?}, lever {lever:?}, tick {tick}");
+                    assert_eq!(projection.project(pos), rust.project(pos), "RAM LLVM at {pos:?}, lever {lever:?}, tick {tick}");
+                }
+                assert_eq!(projection.pending_entries(), rust.pending_entries(), "RAM LLVM pending, lever {lever:?}, tick {tick}");
+            }
+        }
+    }
+
+    #[cfg(any(windows, target_os = "linux"))]
+    #[test]
     #[ignore = "full ANPU Rust/LLVM reset and interpreted continuation comparison"]
     fn llvm_anpu_reset_and_continuation_match_rust() {
         use super::super::cpu_trace::cpus;

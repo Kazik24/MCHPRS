@@ -1427,7 +1427,6 @@ impl Runtime {
                     | Operation::UpdateCopperBulb(node)
                     | Operation::UpdateRepeater(node)
                     | Operation::UpdateComparator(node)
-                    | Operation::UpdateTorch(node)
                         if self.program.reactive[node] =>
                     {
                         continue;
