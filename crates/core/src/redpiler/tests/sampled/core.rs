@@ -1084,8 +1084,18 @@ fn piston_payload_landing_updates_wire_shape_in_interpreter_order() {
             world.tick_interpreted();
             runtime.tick().unwrap();
             assert_eq!(runtime.project(wire_pos), Some(world.get_block(wire_pos)), "wire shape after phase {phase} tick {tick}");
+            // Official Java 1.21.5: the solid cap brakes the climb at landing,
+            // then removing it restores Up without changing the wire's power.
+            use mchprs_blocks::blocks::RedstoneWireSide;
+            assert!(matches!(runtime.project(wire_pos), Some(Block::RedstoneWire { wire })
+                if wire.power == 0 && wire.north == if phase == 0 && tick >= 2 { RedstoneWireSide::Side } else { RedstoneWireSide::Up }));
             assert_eq!(runtime.project(observer), Some(world.get_block(observer)), "observer state after phase {phase} tick {tick}");
             assert_eq!(runtime.project(cap_observer), Some(world.get_block(cap_observer)), "cap observer state after phase {phase} tick {tick}");
+            for (pos, powered) in [(observer, if phase == 0 { (4..6).contains(&tick) } else { (2..4).contains(&tick) }),
+                (cap_observer, (2..4).contains(&tick))] {
+                assert!(matches!(runtime.project(pos), Some(Block::Observer { observer }) if observer.powered == powered),
+                    "Java observer at {pos:?} after phase {phase} tick {tick}");
+            }
             assert_eq!(runtime.pending_entries(), world.scheduler().iter_entries().collect::<Vec<_>>(), "pending ticks after phase {phase} tick {tick}");
         }
     }

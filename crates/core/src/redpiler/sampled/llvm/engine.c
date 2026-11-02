@@ -7,7 +7,7 @@
 #define NE_OPERATION_LIMIT 4u
 #define NE_MAX_TICK_OPERATIONS 1000000u
 #define NE_MAX_STATE_BYTES (256u * 1024u * 1024u)
-#define NE_TABLES 53u
+#define NE_TABLES 59u
 #define NONE UINT32_MAX
 
 typedef struct {
@@ -549,7 +549,7 @@ static uint32_t valid_program(const MchprsNativeProgramDescriptor *program, cons
 static size_t align8(size_t value) { return (value + 7u) & ~(size_t)7u; }
 
 MchprsNativeApiDescriptor ne_api_descriptor(void) {
-    MchprsNativeApiDescriptor value = {3u, 16u, 19u};
+    MchprsNativeApiDescriptor value = {3u, 16u, 20u};
     return value;
 }
 

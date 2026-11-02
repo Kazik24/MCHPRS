@@ -321,6 +321,36 @@ impl Runtime {
     }
     fn notify_shape(&mut self, cell: usize) {
         let position = self.program.projection_positions[cell];
+        if let Some(steps) = self.program.shape_steps.get(&position) {
+            for offset in 0..steps.len() {
+                let node = self.program.shape_steps[&position][offset].node;
+                if !self.consume_component_operation(node) { return; }
+                let step = &self.program.shape_steps[&position][offset];
+                if let Block::RedstoneWire { wire } = self.blocks[node] {
+                    let map = step.states.select(|super::routing::Axis::Token(token, _)| {
+                        self.token_positions[token].and_then(|pos| self.program.tokens[token].cells.iter().position(|&p| p == pos))
+                            .map_or(0, |cell| cell + 1)
+                    });
+                    let Some(map) = map else {
+                        self.failure = Some(ScratchError { position: Some(position), reason: "invalid wire shape arrangement" });
+                        return;
+                    };
+                    let next = super::shapes::unpack(map[usize::from(super::shapes::pack(wire))], wire.power);
+                    if next != wire {
+                        self.set_component(node, Block::RedstoneWire { wire: next });
+                        for callback in 0..self.program.shape_steps[&position][offset].callbacks.len() {
+                            let target = self.program.shape_steps[&position][offset].callbacks[callback];
+                            if !self.consume_component_operation(target) { return; }
+                            // Shape callbacks may revisit a component after another callback changed it.
+                            self.update(target);
+                        }
+                    }
+                } else {
+                    self.update(node);
+                }
+            }
+            return;
+        }
         for offset in 0..self.program.cell_observers[cell].len() {
             let index = self.program.cell_observers[cell][offset];
             let block = self.blocks[index];
@@ -972,6 +1002,8 @@ impl Runtime {
             .get(token)
             .and_then(|cells| cells.get(cell))
             .map_or(0..0, |edges| edges[usize::from(arriving)].clone());
+        // Landing delivers shape changes before ordinary neighbor power callbacks.
+        self.notify_shape(self.program.token_cells[token][cell]);
         // Movement callbacks read the new wire level even when that wire is not a piston watcher.
         for &node in switched.iter() {
             if matches!(self.blocks[node], Block::RedstoneWire { .. }) {

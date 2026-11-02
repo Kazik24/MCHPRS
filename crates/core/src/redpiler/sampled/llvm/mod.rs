@@ -15,6 +15,7 @@ use std::ffi::c_char;
 mod movement;
 mod routing;
 mod effects;
+mod shapes;
 #[cfg(test)]
 mod command;
 mod cache;
@@ -22,7 +23,7 @@ pub(in crate::redpiler) use cache::initialize as initialize_cache;
 use movement::encode_movement;
 
 pub(super) const ABI_VERSION: u32 = 3;
-const AUX_TABLES: usize = 53;
+const AUX_TABLES: usize = 59;
 const MAGIC: [u8; 4] = *b"MCHN";
 const HEADER_BYTES: usize = 16;
 const OP_BYTES: usize = 8;
@@ -149,7 +150,7 @@ impl LlvmRuntime {
         }
         let library = Library::load()?;
         let api = unsafe { (library.api_descriptor)() };
-        if api.abi_version != ABI_VERSION || api.descriptor_bytes != 16 || api.semantic_version != 19 {
+        if api.abi_version != ABI_VERSION || api.descriptor_bytes != 16 || api.semantic_version != 20 {
             return Err(ScratchError {
                 position: None,
                 reason: "LLVM DLL ABI/version mismatch",
@@ -741,6 +742,7 @@ fn encode_aux(program: &Program, blob: &mut Vec<u8>) -> Result<(), ScratchError>
     routing::encode(program, &mut tables)?;
     encode_comparators(program, &mut tables[42])?;
     effects::encode(program, &mut tables)?;
+    shapes::encode(program, &mut tables)?;
     tables[52] = program.initial.iter().map(|block| match block {
         Block::RedstoneWire { wire } => wire.north.get_id() | (wire.south.get_id() << 2)
             | (wire.east.get_id() << 4) | (wire.west.get_id() << 6),

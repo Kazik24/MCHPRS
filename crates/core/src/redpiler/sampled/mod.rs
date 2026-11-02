@@ -21,6 +21,7 @@ mod group_probe;
 mod incremental_input_tests;
 mod input;
 mod routing;
+mod shapes;
 mod llvm;
 pub(in crate::redpiler) use llvm::{LlvmRuntime, unsupported_components};
 pub(super) use llvm::initialize_cache;

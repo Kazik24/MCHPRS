@@ -67,11 +67,7 @@ mod tests {
         tables[40] = vec![0, 0];
         tables[50] = vec![1];
         tables[51] = vec![0];
-        if AUX_TABLES > 58 {
-            *tables.get_mut(53).unwrap() = vec![u32::MAX; 6];
-            *tables.get_mut(57).unwrap() = vec![0];
-            *tables.get_mut(58).unwrap() = vec![0];
-        }
+        tables[53] = vec![0, 0];
 
         let accepts = |tables: &[Vec<u32>; AUX_TABLES], offset: usize, bad_magic: bool| {
             let mut blob = vec![0u8; HEADER_BYTES + AUX_TABLES * 8];
@@ -130,12 +126,11 @@ mod tests {
             malformed[table][word] = value;
             assert!(!accepts(&malformed, 0, false), "malformed table {table}, word {word}");
         }
-        if AUX_TABLES > 58 {
-            for (table, word, value) in [(53, 0, 0), (57, 0, 64), (58, 0, 64)] {
-                let mut malformed = tables.clone();
-                malformed[table][word] = value;
-                assert!(!accepts(&malformed, 0, false), "malformed shape table {table}, word {word}");
-            }
+        for (table, data) in [(53, vec![0, 1]), (54, vec![0; 7]), (56, vec![0]),
+            (57, vec![256; 256]), (58, vec![0])] {
+            let mut malformed = tables.clone();
+            malformed[table] = data;
+            assert!(!accepts(&malformed, 0, false), "malformed shape table {table}");
         }
     }
 }

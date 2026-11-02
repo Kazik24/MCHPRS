@@ -1,0 +1,41 @@
+{
+  "baseline_commit": "30c87fcd5bb25b65c1794056cfc3eca842628eb0",
+  "rustc": "rustc 1.98.1 (48a229cea 2026-09-01)\nbinary: rustc\ncommit-hash: 48a229ceaefd4985c50990b14116b6d856af0985\ncommit-date: 2026-09-01\nhost: x86_64-pc-windows-msvc\nrelease: 1.98.1\nLLVM version: 22.1.8\n",
+  "profile": "dev opt-level=1, dependency opt-level=3, debuginfo enabled",
+  "timing_affinity_mask": "0xff",
+  "rayon_threads": 4,
+  "current_changed_source_sha256": {
+    "crates/core/src/redpiler/sampled/executor.rs": "3862e3188c67bda540a05a0a36e14b13dfb1fb604b09a47936462247a649248c",
+    "crates/core/src/redpiler/sampled/llvm/engine.c": "4ecb4d04227ac9a4117f0b4ee651b43113fbdabfd548353aad45e8ab48607d35",
+    "crates/core/src/redpiler/sampled/llvm/llvm_movement.c": "1428854f923d35f1b20766b9c51c208df4dd4e5a3236d27697b7f09641bfa4a7",
+    "crates/core/src/redpiler/sampled/llvm/mod.rs": "40b46cb7582d058e5369683638b177050c61fe87e8db8c64c56a0f31fed79cec",
+    "crates/core/src/redpiler/sampled/llvm/routing.rs": "46f5e691003c926c6253e23e772a431d87725ca1236a1784b89cbd0fee4897a0",
+    "crates/core/src/redpiler/sampled/mod.rs": "330756f1cc7031268deaea3a167a6bc6047c7cf3584e55f6017753d8254cc619",
+    "crates/core/src/redpiler/sampled/passes/movement.rs": "6eea7b80d877bb2440b1e668cf791ad6f84b3168007a82873c585af3b2230c4b",
+    "crates/core/src/redpiler/sampled/program.rs": "2ef8423fc7800cf6891a216234d41dc2f29ef366e12f12972013bace84cd63af",
+    "crates/core/src/redpiler/sampled/routing.rs": "a930ffe80847519a82c792dceba242a6dedf61f6cefb3cd08dc9e109ac78e2bf",
+    "crates/core/src/redpiler/tests/publication.rs": "e55ed57c8a371e458e9b17c3b53809f5f37143a90280f80fee7566b88c17b21f",
+    "crates/core/src/redpiler/tests/sampled/core.rs": "a40cab76030bc7ad1f9ca8e52eba2459dd457c4009a515e8b7daf763b2e42f09",
+    "crates/core/src/redpiler/sampled/llvm/shapes.rs": "46a4f52f1730722cbc629f134083e693cbe69d2673deb603493b192f7fbc8605",
+    "crates/core/src/redpiler/sampled/shapes.rs": "1e420c24a01b48042b2f9be9463c8ac466069f542740a2ce2c59f80b06df9a8f"
+  },
+  "binaries": {
+    "current-bin\\bench_arithmetic.exe": "fe59c9b4c15aed26c14d9dd6b24d8d83d106e8bbed1cb20684ba8876c72e94fd",
+    "current-bin\\bench_arithmetic_full.exe": "3afccb7eae025c2fc724406212186de19676d9e467dce20e1735c36b7cd339ae",
+    "current-bin\\bench_llvm_small.exe": "30aa8e698c640fa4af45b6e13eb1a324481d623752401c0ad99b31eae7e6dd6b",
+    "current-bin\\bench_llvm_zcore.exe": "5f738b00d92dbcde3019d1728b05b868ff405c8c984a6ce7cc84a21e7eddb768",
+    "baseline-bin\\bench_arithmetic.exe": "74bd0265dc75a959244f95ffc3c18e5074c51e7df37a6a6c98d1baeee835d5f8",
+    "baseline-bin\\bench_arithmetic_full.exe": "da716590b8ca6c95e4420f727ce2e855b8da90b33630c2fef40eac674b632f16",
+    "baseline-bin\\bench_llvm_small.exe": "54b0f23dcfe740de9127b8eaacaa1feeba7974ba0706d6c7faf3c43a287316a5",
+    "baseline-bin\\bench_llvm_zcore.exe": "47d9af791508de24d72faa5cb55e3b0899a65fd6043cf07f5021aea44af7456d"
+  },
+  "native_engines": {
+    "baseline-semantic19": "f5026dde03a033c8326cdb4e1a3cca3847351c9f90ed56a5215412d1fa3f9fbd",
+    "current-semantic20": "82068710cf555c3dcf689a77db94ca87cdc8177db737105c389838e158cdbd1f"
+  },
+  "arithmetic_features": [
+    "redpiler-full-publication"
+  ],
+  "cpu": "AMD Ryzen 9 5950X, 16 cores, 32 logical processors",
+  "completed_process_runs": 64
+}

@@ -47,7 +47,7 @@ pub(super) struct Reader {
 }
 
 impl<T> Local<T> {
-    fn select(&self, digit: impl Fn(Axis) -> usize) -> Option<&T> {
+    pub(super) fn select(&self, digit: impl Fn(Axis) -> usize) -> Option<&T> {
         let mut state = 0;
         let mut stride = 1;
         for &axis in &self.axes {
@@ -60,7 +60,7 @@ impl<T> Local<T> {
     }
 }
 
-fn compile_local<T: PartialEq>(scratch: &mut ScratchWorld, tokens: &[PistonToken], mut axes: Vec<Axis>, position: BlockPos,
+pub(super) fn compile_local<T: PartialEq>(scratch: &mut ScratchWorld, tokens: &[PistonToken], mut axes: Vec<Axis>, position: BlockPos,
     monitor: Option<&TaskMonitor>, evaluate: impl Fn(&crate::plot::PlotWorld) -> Result<T, ScratchError>) -> Result<Local<T>, ScratchError> {
     let states = axes.iter().try_fold(1usize, |count, axis| count.checked_mul(axis.radix()));
     let Some(states) = states.filter(|&count| count <= 4096) else {

@@ -1,5 +1,7 @@
 # LLVM status — semantic 19, 2026-11-02
 
+Historical snapshot below. The later [piston wire-shape repair](piston-wire-shape.md) resolves the shared movement-side regressions and advances the native semantic version to 20; it includes new Java 1.21.5 evidence and validation results.
+
 LLVM matches the sampled Rust backend in the tested scenarios below and is faster in the separate kernel trials. It is **not a generally interpreter-correct or release-ready backend**: the shared compiler/runtime still has the four documented fixture failures and deferred movement-side limitations.
 
 ## Implementation

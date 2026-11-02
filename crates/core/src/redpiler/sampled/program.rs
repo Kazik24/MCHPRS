@@ -337,6 +337,7 @@ pub(crate) struct Program {
     pub(super) movement_ranges: Vec<std::ops::Range<usize>>,
 
     // Geometry and projection indexes
+    pub(super) shape_steps: HashMap<BlockPos, Vec<super::shapes::ShapeStep>>,
     /// captured non-air blocks outside the component list.
     pub(super) geometry: Vec<(BlockPos, Block)>,
     /// world-position to captured scenery block lookup matching `geometry`.
@@ -1126,6 +1127,7 @@ impl Program {
             token_watchers: Vec::new(),
             move_steps: Vec::new(),
             movement_steps: Vec::new(),
+            shape_steps: HashMap::new(),
             movement_wires: Vec::new(),
             input_arrangements: Vec::new(),
             movement_groups: Vec::new(),

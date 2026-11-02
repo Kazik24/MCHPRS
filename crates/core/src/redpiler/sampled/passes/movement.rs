@@ -209,5 +209,6 @@ pub(in super::super) fn run(
         move_steps.push(programs);
     }
     program.set_move_steps(move_steps);
+    crate::redpiler::sampled::shapes::sample(program, &mut movement_probe, monitor)?;
     Ok(())
 }

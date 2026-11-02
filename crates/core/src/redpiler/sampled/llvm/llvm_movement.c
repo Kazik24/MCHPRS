@@ -96,6 +96,41 @@ static uint32_t valid_movement(const MchprsNativeProgramDescriptor *p, const uin
     for (uint32_t i = 0; i < n[29]; ++i)
         if (t[29][i] >= p->arrangement_link_count)
             return 0u;
+    if ((uint64_t)n[53] != (uint64_t)cells * 2u || n[54] % 7u || n[55] % 2u || n[57] % 256u)
+        return 0u;
+    for (uint32_t i = 0; i < n[53]; i += 2u)
+        if (!bounded(t[53][i], t[53][i + 1u], n[54] / 7u)) return 0u;
+    for (uint32_t i = 0; i < n[54]; i += 7u) {
+        const uint32_t *r = t[54] + i;
+        if (r[0] >= nodes || !bounded(r[1], r[2], n[55] / 2u) || !bounded(r[3], r[4], n[56])
+            || !bounded(r[5], r[6], n[58])) return 0u;
+        uint32_t kind = blob[p->component_offset + (size_t)r[0] * 32u + 12u];
+        if (kind == 7u) {
+            if (r[2] || r[4] || r[6]) return 0u;
+        } else {
+            if (kind != 5u) return 0u;
+            uint64_t states = 1u;
+            for (uint32_t j = 0; j < r[2]; ++j) {
+                const uint32_t *a = t[55] + (r[1] + j) * 2u;
+                if (a[0] >= tokens || (j && a[0] <= a[-2]) || a[1] != t[12][a[0] * 2u + 1u] + 1u
+                    || states > 4096u / a[1]) return 0u;
+                states *= a[1];
+            }
+            if (states != r[4]) return 0u;
+        }
+    }
+    for (uint32_t i = 0; i < n[56]; ++i)
+        if (t[56][i] != NONE && t[56][i] >= n[57] / 256u) return 0u;
+    for (uint32_t i = 0; i < n[57]; ++i) {
+        uint32_t value = t[57][i];
+        if (value > 255u) return 0u;
+        uint32_t input = i % 256u, valid = 1u;
+        for (uint32_t side = 0; side < 4u; ++side)
+            if (((input >> (side * 2u)) & 3u) == 3u) valid = 0u;
+        if (valid) for (uint32_t side = 0; side < 4u; ++side)
+            if (((value >> (side * 2u)) & 3u) == 3u) return 0u;
+    }
+    for (uint32_t i = 0; i < n[58]; ++i) if (t[58][i] >= nodes) return 0u;
     if (!n[33]) {
         for (uint32_t i = 34u; i < 42u; ++i)
             if (n[i])
@@ -472,6 +507,42 @@ static uint32_t update_note(NEEngine *e, uint32_t node) {
     return NE_OK;
 }
 static uint32_t notify_shape(NEEngine *e, uint32_t cell) {
+    const uint32_t *steps = table(e, 53u) + cell * 2u;
+    for (uint32_t i = 0; i < steps[1]; ++i) {
+        const uint32_t *s = table(e, 54u) + (steps[0] + i) * 7u;
+        uint32_t node = s[0];
+        if (consume(e)) return e->error;
+        if (components(e)[node].kind == 7u) {
+            uint32_t status = update_component(e, node);
+            if (status) return status;
+            continue;
+        }
+        uint32_t state = 0u, stride = 1u;
+        for (uint32_t j = 0; j < s[2]; ++j) {
+            const uint32_t *a = table(e, 55u) + (s[1] + j) * 2u;
+            const uint32_t *cells = table(e, 12u) + a[0] * 2u;
+            uint32_t digit = 0u;
+            if (e->token_cell[a[0]] != NONE) {
+                for (uint32_t k = 0; k < cells[1]; ++k)
+                    if (table(e, 13u)[cells[0] + k] == e->token_cell[a[0]]) { digit = k + 1u; break; }
+                if (!digit) return e->error = NE_INVALID;
+            }
+            state += digit * stride;
+            stride *= a[1];
+        }
+        uint32_t map = table(e, 56u)[s[3] + state];
+        if (map == NONE) return e->error = NE_INVALID;
+        uint8_t next = (uint8_t)table(e, 57u)[map * 256u + e->wire_sides[node]];
+        if (next != e->wire_sides[node]) {
+            e->wire_sides[node] = next;
+            for (uint32_t j = 0; j < s[6]; ++j) {
+                if (consume(e)) return e->error;
+                uint32_t status = update_component(e, table(e, 58u)[s[5] + j]);
+                if (status) return status;
+            }
+        }
+    }
+    if (steps[1]) return NE_OK;
     const uint32_t *r = table(e, 16u) + cell * 7u;
     for (uint32_t i = 0; i < r[6]; ++i) {
         uint32_t node = table(e, 17u)[r[5] + i];
@@ -562,6 +633,7 @@ static uint32_t set_token_pos(NEEngine *e, uint32_t token, uint32_t position) {
             }
         }
     }
+    if (notify_shape(e, table(e, 13u)[cells[0] + local])) return e->error;
     for (uint32_t i = 0; i < switched_count; ++i) {
         uint32_t node = e->switched_nodes[i];
         if (components(e)[node].kind == 5u)
