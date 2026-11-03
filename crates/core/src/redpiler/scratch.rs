@@ -4,6 +4,7 @@ use crate::world::scheduler::{ScheduledBlockTick, TickScheduler};
 use crate::world::{World, storage::Chunk};
 use mchprs_blocks::{BlockFace, BlockPos, blocks::Block};
 use mchprs_world::{AdvancePhase, PistonState, TickEntry};
+use rayon::prelude::*;
 use std::collections::{HashMap, HashSet, VecDeque};
 
 #[derive(Clone)]
@@ -595,41 +596,52 @@ mod tests {
 
     #[test]
     fn probe_workers_preserve_quiet_basis_results_order_and_cancellation() {
-        let host = fixture();
-        let host_before = sample(&host);
-        let mut scratch = ScratchWorld::from_world(&host, BOUNDS, entry(&host)).unwrap();
-        scratch.world_mut().set_block(LEVER, Block::Air);
-        scratch.checkpoint().unwrap();
-        let quiet = sample(scratch.world());
-        drive(scratch.world_mut());
-        scratch.world_mut().tick_interpreted();
-        let driven = sample(scratch.world());
-        scratch.revert();
-        let jobs: Vec<_> = (0..512).collect();
-        let results = scratch
-            .probe_jobs(&jobs, None, |probe, &index| {
-                assert_eq!(sample(probe.world()), quiet);
-                if index % 2 == 0 {
-                    drive(probe.world_mut());
-                    probe.world_mut().tick_interpreted();
+        for threads in [1, 4] {
+            rayon::ThreadPoolBuilder::new().num_threads(threads).build().unwrap().install(|| {
+                let host = fixture();
+                let host_before = sample(&host);
+                let mut scratch = ScratchWorld::from_world(&host, BOUNDS, entry(&host)).unwrap();
+                scratch.world_mut().set_block(LEVER, Block::Air);
+                scratch.checkpoint().unwrap();
+                let quiet = sample(scratch.world());
+                drive(scratch.world_mut());
+                scratch.world_mut().tick_interpreted();
+                let driven = sample(scratch.world());
+                scratch.revert();
+                let jobs: Vec<_> = (0..512).collect();
+                let results = scratch
+                    .probe_jobs(&jobs, None, |probe, &index| {
+                        assert!(rayon::current_thread_index().is_some());
+                        assert_eq!(sample(probe.world()), quiet);
+                        if index % 2 == 0 {
+                            drive(probe.world_mut());
+                            probe.world_mut().tick_interpreted();
+                        }
+                        probe.finish_probe()?;
+                        Ok((index, sample(probe.world())))
+                    })
+                    .unwrap();
+                for (expected_index, (index, state)) in results.into_iter().enumerate() {
+                    assert_eq!(index, expected_index);
+                    assert_eq!(state, if index % 2 == 0 { driven.clone() } else { quiet.clone() });
                 }
-                probe.finish_probe()?;
-                Ok((index, sample(probe.world())))
-            })
-            .unwrap();
-        for (expected_index, (index, state)) in results.into_iter().enumerate() {
-            assert_eq!(index, expected_index);
-            assert_eq!(state, if index % 2 == 0 { driven.clone() } else { quiet.clone() });
+                let error = scratch.probe_jobs(&jobs, None, |_, &index| {
+                    if index == 7 {
+                        Err(ScratchError { position: Some(LEVER), reason: "probe failed" })
+                    } else { Ok(index) }
+                }).unwrap_err();
+                assert_eq!(error.reason, "probe failed");
+                let monitor = super::super::TaskMonitor::default();
+                monitor.cancel();
+                let error = scratch
+                    .probe_jobs(&jobs, Some(&monitor), |_, _| -> Result<(), ScratchError> {
+                        panic!("cancelled probe must not run")
+                    })
+                    .unwrap_err();
+                assert_eq!(error.reason, "compilation cancelled");
+                assert_eq!(sample(&host), host_before);
+            });
         }
-        let monitor = super::super::TaskMonitor::default();
-        monitor.cancel();
-        let error = scratch
-            .probe_jobs(&jobs, Some(&monitor), |_, _| -> Result<(), ScratchError> {
-                panic!("cancelled probe must not run")
-            })
-            .unwrap_err();
-        assert_eq!(error.reason, "compilation cancelled");
-        assert_eq!(sample(&host), host_before);
     }
 
     #[test]
@@ -1307,7 +1319,7 @@ impl ScratchWorld {
     ) -> Result<Vec<R>, ScratchError> {
         use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
         if let Some(monitor) = monitor { monitor.set_progress(0, jobs.len(), "probes"); }
-        let workers = std::thread::available_parallelism().map_or(1, usize::from).min((jobs.len() / 128).max(1));
+        let workers = rayon::current_num_threads().min((jobs.len() / 128).max(1));
         if workers == 1 {
             return jobs
                 .iter()
@@ -1339,41 +1351,36 @@ impl ScratchWorld {
                 }
             })
             .collect::<Result<Vec<_>, _>>()?;
-        let mut results = std::thread::scope(|scope| {
-            let handles: Vec<_> = scratches
-                .into_iter()
-                .map(|mut scratch| {
-                    let (next, stopped, probe) = (&next, &stopped, &probe);
-                    scope.spawn(move || {
-                        let mut results = Vec::new();
-                        while !stopped.load(Ordering::Relaxed) {
-                            let index = next.fetch_add(1, Ordering::Relaxed);
-                            let Some(job) = jobs.get(index) else { break };
-                            scratch.revert();
-                            let result = if monitor.is_some_and(super::TaskMonitor::cancelled) {
-                                Err(ScratchError {
-                                    position: None,
-                                    reason: "compilation cancelled",
-                                })
-                            } else {
-                                probe(&mut scratch, job)
-                            };
-                            if result.is_err() {
-                                stopped.store(true, Ordering::Relaxed);
-                            } else if let Some(monitor) = monitor {
-                                monitor.advance_progress();
-                            }
-                            results.push((index, result));
-                        }
-                        results
-                    })
-                })
-                .collect();
-            handles
-                .into_iter()
-                .flat_map(|handle| handle.join().expect("scratch probe worker panicked"))
-                .collect::<Vec<_>>()
-        });
+        // Reuse one isolated snapshot per worker instead of copying the world for every probe.
+        let mut results = scratches
+            .into_par_iter()
+            .map(|mut scratch| {
+                let mut results = Vec::new();
+                while !stopped.load(Ordering::Relaxed) {
+                    let index = next.fetch_add(1, Ordering::Relaxed);
+                    let Some(job) = jobs.get(index) else { break };
+                    scratch.revert();
+                    let result = if monitor.is_some_and(super::TaskMonitor::cancelled) {
+                        Err(ScratchError {
+                            position: None,
+                            reason: "compilation cancelled",
+                        })
+                    } else {
+                        probe(&mut scratch, job)
+                    };
+                    if result.is_err() {
+                        stopped.store(true, Ordering::Relaxed);
+                    } else if let Some(monitor) = monitor {
+                        monitor.advance_progress();
+                    }
+                    results.push((index, result));
+                }
+                results
+            })
+            .collect::<Vec<_>>()
+            .into_iter()
+            .flatten()
+            .collect::<Vec<_>>();
         results.sort_unstable_by_key(|(index, _)| *index);
         results.into_iter().map(|(_, result)| result).collect()
     }

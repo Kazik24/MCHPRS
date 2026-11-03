@@ -4,6 +4,7 @@ use crate::redpiler::{TaskMonitor, scratch::discover_wire_ports};
 use crate::world::World;
 use mchprs_blocks::{BlockPos, blocks::Block};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum Axis {
@@ -282,12 +283,8 @@ impl WireGraph {
             return Err(ScratchError { position: None, reason: "movable payload overlaps a fixed wire" });
         }
         let token_cells = index_token_cells(tokens);
-        let mut nodes = Vec::with_capacity(positions.len());
-        let mut rows = 0usize;
-        for &pos in &positions {
-            if monitor.is_some_and(TaskMonitor::cancelled) {
-                return Err(ScratchError { position: None, reason: "compilation cancelled" });
-            }
+        let rows = AtomicUsize::new(0);
+        let nodes = scratch.probe_jobs(&positions, monitor, |scratch, &pos| {
             // Non-wire payloads cannot alter a distance-two strong-source read.
             let axes = wire_token_axes(pos, tokens, &token_cells);
             let node = compile_local(scratch, tokens, axes, pos, monitor, |world| {
@@ -297,24 +294,23 @@ impl WireGraph {
                 })).collect::<Result<_, _>>()?;
                 Ok(Ports { wires, sources: found.sources })
             })?;
-            rows += node.ports.len();
+            let rows = rows.fetch_add(node.ports.len(), Ordering::Relaxed) + node.ports.len();
             if rows > 1_048_576 { return Err(ScratchError { position: Some(pos), reason: "local routing data exceeds size bound" }); }
-            nodes.push(node);
-        }
+            Ok(node)
+        })?;
         scratch.revert();
         Ok(Self { positions, index, token_cells, nodes, source_ids: HashMap::new(), readers: Vec::new(), by_component: Vec::new(), by_token: Vec::new() })
     }
 
     pub(super) fn compile_readers(&mut self, scratch: &mut ScratchWorld, program: &Program, targets: &[usize], indexes: &ProbeIndexes<'_>, monitor: Option<&TaskMonitor>) -> Result<(), ScratchError> {
         let token_cells = std::mem::take(&mut self.token_cells);
-        let mut rows: usize = self.nodes.iter().map(|node| node.ports.len()).sum();
+        let rows = AtomicUsize::new(self.nodes.iter().map(|node| node.ports.len()).sum());
         for node in &self.nodes {
             for ports in node.ports.iter().flatten() {
                 for &pos in &ports.sources { self.source_ids.insert(pos, indexes.source_at(pos)?); }
             }
         }
-        for &component in targets {
-            if monitor.is_some_and(TaskMonitor::cancelled) { return Err(ScratchError { position: None, reason: "compilation cancelled" }); }
+        let readers = scratch.probe_jobs(targets, monitor, |scratch, &component| {
             let position = program.positions[component];
             let piston_contacts = piston_contact_cells(position, program.initial[component]);
             let contacts = reader_contact_positions(position, piston_contacts.as_ref(), &self.index);
@@ -334,7 +330,7 @@ impl WireGraph {
                 }
                 Ok(ports)
             })?;
-            rows += table.ports.len();
+            let rows = rows.fetch_add(table.ports.len(), Ordering::Relaxed) + table.ports.len();
             if rows > 1_048_576 { return Err(ScratchError { position: Some(position), reason: "local routing data exceeds size bound" }); }
             let mut dependencies: BTreeMap<usize, ()> = table.axes.iter().map(|&Axis::Token(token, _)| (token, ())).collect();
             let mut reached = HashSet::new();
@@ -349,8 +345,9 @@ impl WireGraph {
                     if reached.insert(next) { queue.push_back((next, distance + 1)); }
                 }
             }
-            self.readers.push(Reader { component, position, table, dependencies: dependencies.into_keys().collect(), links: Vec::new() });
-        }
+            Ok(Reader { component, position, table, dependencies: dependencies.into_keys().collect(), links: Vec::new() })
+        })?;
+        self.readers.extend(readers);
         self.by_component = vec![None; program.initial.len()];
         self.by_token = vec![Vec::new(); program.tokens.len()];
         self.reindex();
@@ -428,6 +425,39 @@ mod tests {
     use super::*;
     use crate::redpiler::scratch::{ScratchEntry, discover_wire_sources};
     use mchprs_blocks::{BlockFace, blocks::RedstoneWire};
+
+    #[test]
+    fn parallel_topology_and_arrangements_match_serial_discovery() {
+        let discover = |threads| rayon::ThreadPoolBuilder::new().num_threads(threads).build().unwrap().install(|| {
+            let mut world = super::super::tests::host();
+            let mut wires = Vec::new();
+            let mut tokens = Vec::new();
+            for index in 0..512 {
+                let wire = BlockPos::new(12 + (index % 16) * 4, 15, 12 + (index / 16) * 4);
+                world.set_block(wire.offset(BlockFace::Bottom), Block::Stone {});
+                world.set_block(wire, Block::RedstoneWire { wire: RedstoneWire::default() });
+                let cell = wire.offset(BlockFace::West);
+                world.set_block(cell, Block::RedstoneBlock);
+                tokens.push(PistonToken { block: Block::RedstoneBlock, position: Some(cell), cells: vec![cell] });
+                wires.push(wire);
+            }
+            let mut program = Program::new(wires.clone(), wires.iter().map(|&pos| world.get_block(pos)).collect(),
+                vec![], vec![[vec![], vec![]]; wires.len()], vec![], vec![], vec![]).unwrap();
+            program.tokens = tokens;
+            let components = wires.iter().enumerate().map(|(id, &pos)| (pos, id)).collect();
+            let indexes = ProbeIndexes::new(&components, &program.positions, &program.initial, &program.tokens, None).unwrap();
+            let entry = ScratchEntry { scheduled: vec![], piston: world.piston_state().clone() };
+            let bounds = (BlockPos::new(8, 10, 8), BlockPos::new(80, 20, 144));
+            let discovery = super::super::group_probe::run(&world, bounds, &entry, &program, &indexes, None).unwrap();
+            assert_eq!(discovery.groups.len(), wires.len());
+            discovery.groups.into_iter().map(|group| {
+                assert_eq!(group.tokens, vec![group.target]);
+                assert_eq!(group.conditional_sources, vec![ArrangementSource::Token(group.target)]);
+                (group.target, group.side, group.tokens, group.inputs)
+            }).collect::<Vec<_>>()
+        });
+        assert_eq!(discover(1), discover(4));
+    }
 
     #[test]
     fn routed_search_enforces_wire_visit_limit_and_can_restart() {

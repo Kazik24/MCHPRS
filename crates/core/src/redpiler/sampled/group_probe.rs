@@ -4,6 +4,7 @@ use super::{Program, ScratchEntry, ScratchError, ScratchWorld};
 use crate::redpiler::TaskMonitor;
 use crate::world::World;
 use mchprs_blocks::{BlockFace, BlockPos, blocks::Block};
+use rayon::prelude::*;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 type InputKey = (ArrangementSource, bool);
@@ -341,37 +342,39 @@ fn run_with_dense_budget(
     let mut routed = BTreeSet::new();
     let mut dense_bytes = 0usize;
     let mut start = 0;
+    if let Some(monitor) = monitor { monitor.set_progress(0, jobs.len(), "arrangements"); }
     while start < jobs.len() {
         let mut end = start;
         let mut slots = 0usize;
         while end < jobs.len() && slots + jobs[end].3 <= MAX_TEMP_SLOTS { slots += jobs[end].3; end += 1; }
-        let lowered = scratch.probe_jobs(&jobs[start..end], monitor, |_, &(reader, ref axes, states, _)| {
+        let lowered = jobs[start..end].par_iter().map(|&(reader, ref axes, states, _)| {
             let target = graph.reader_component(reader);
             let tokens = graph.reader_dependencies(reader);
             let mut search = Search::default();
             let basis = graph.reader_sources(reader, |Axis::Token(token, _)| initial[token], &mut search)?;
-        let mut maps = Vec::with_capacity(states);
-        let mut conditional = BTreeSet::new();
-        for state in 0..states {
-            if monitor.is_some_and(TaskMonitor::cancelled) { return Err(ScratchError { position: None, reason: "compilation cancelled" }); }
-            let positions = placements(tokens, &axes, state);
-            let inputs = graph.reader_sources(reader, |Axis::Token(token, _)| {
-                tokens.binary_search(&token).map_or(initial[token], |axis| positions[axis].1)
-            }, &mut search)?;
-            conditional.extend(find_changed_links(&basis, &inputs));
-            maps.push(inputs);
-        }
-        let mut groups = Vec::new();
-        for side in [false, true] {
-            let sources: Vec<_> = conditional.iter().filter_map(|&(source, port)| (port == side).then_some(source)).collect();
-            if sources.is_empty() { continue; }
-            let inputs = maps.iter().map(|map| map.iter().filter_map(|(&(source, port), &attenuation)|
-                (port == side && conditional.contains(&(source, port))).then_some((source, attenuation))).collect()).collect();
-            groups.push(InputArrangement { target, side, silent: matches!(program.initial[target], Block::Piston { .. }),
-                tokens: tokens.to_vec(), token_states: axes.clone(), conditional_sources: sources, inputs });
-        }
+            let mut maps = Vec::with_capacity(states);
+            let mut conditional = BTreeSet::new();
+            for state in 0..states {
+                if monitor.is_some_and(TaskMonitor::cancelled) { return Err(ScratchError { position: None, reason: "compilation cancelled" }); }
+                let positions = placements(tokens, &axes, state);
+                let inputs = graph.reader_sources(reader, |Axis::Token(token, _)| {
+                    tokens.binary_search(&token).map_or(initial[token], |axis| positions[axis].1)
+                }, &mut search)?;
+                conditional.extend(find_changed_links(&basis, &inputs));
+                maps.push(inputs);
+            }
+            let mut groups = Vec::new();
+            for side in [false, true] {
+                let sources: Vec<_> = conditional.iter().filter_map(|&(source, port)| (port == side).then_some(source)).collect();
+                if sources.is_empty() { continue; }
+                let inputs = maps.iter().map(|map| map.iter().filter_map(|(&(source, port), &attenuation)|
+                    (port == side && conditional.contains(&(source, port))).then_some((source, attenuation))).collect()).collect();
+                groups.push(InputArrangement { target, side, silent: matches!(program.initial[target], Block::Piston { .. }),
+                    tokens: tokens.to_vec(), token_states: axes.clone(), conditional_sources: sources, inputs });
+            }
+            if let Some(monitor) = monitor { monitor.advance_progress(); }
             Ok((reader, groups))
-        })?;
+        }).collect::<Result<Vec<_>, ScratchError>>()?;
         for (reader, lowered) in lowered {
             let estimate = lowered.iter().fold(0usize, |total, group| total.saturating_add(dense_table_bytes(group)));
             if dense_bytes.saturating_add(estimate) <= max_dense_bytes { dense_bytes += estimate; groups.extend(lowered); }
