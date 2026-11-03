@@ -24,6 +24,7 @@ pub struct Cpu {
     pub name: &'static str,
     pub schematic: &'static str,
     pub sha256: &'static str,
+    #[allow(dead_code)]
     pub start: BlockPos,
     #[allow(dead_code)]
     pub stop: Option<BlockPos>,
@@ -331,6 +332,7 @@ pub fn collect_chat(world: &PlotWorld, tick: u32, trace: &mut Vec<(u32, String)>
     trace.extend(new);
 }
 
+#[allow(dead_code)]
 pub fn reference(cpu: Cpu) -> Reference {
     let path = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../test_data/cpu-references")
