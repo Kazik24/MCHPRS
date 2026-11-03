@@ -318,6 +318,7 @@ impl super::LlvmRuntime {
                     Block::StoneButton { button }
                 }
                 Block::RedstoneLamp { .. } => Block::RedstoneLamp { lit: state != 0 },
+                Block::IronTrapdoor { facing, half, .. } => Block::IronTrapdoor { facing, half, powered: state != 0 },
                 block if block.is_copper_bulb() => block.with_copper_bulb_state(state & 1 != 0, state & 2 != 0).ok_or_else(invalid)?,
                 Block::RedstoneComparator { mut comparator } => {
                     comparator.powered = state != 0;
@@ -506,7 +507,8 @@ impl super::LlvmRuntime {
                 }
             }
         }
-        runtime.set_pending(self.pending_entries()?)?;
+        runtime.set_pending_with_capacity(self.pending_entries()?, self.pending_capacity as usize)?;
+        self.sync_commands(runtime)?;
         Ok(())
     }
 }

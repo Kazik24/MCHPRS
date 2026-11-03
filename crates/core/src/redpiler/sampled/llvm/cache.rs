@@ -126,9 +126,10 @@ pub(super) fn module_path(monitor: Option<&TaskMonitor>) -> Result<PathBuf, Stri
         if adjacent.is_file() { adjacent } else { executable("lld-link.exe", "MCHPRS_LLVM_LINKER")? }
     };
     #[cfg(not(windows))] let linker = executable("ld.lld", "MCHPRS_LLVM_LINKER")?;
-    let sources: [(&str, &[u8]); 3] = [
+    let sources: [(&str, &[u8]); 4] = [
         ("engine.c", include_bytes!("engine.c")),
         ("llvm_movement.c", include_bytes!("llvm_movement.c")),
+        ("command_engine.c", include_bytes!("command_engine.c")),
         ("abi.h", include_bytes!("abi.h")),
     ];
     let flags = ["-std=c11", "-O3", "-ffreestanding", "-fno-builtin", "-Werror"];

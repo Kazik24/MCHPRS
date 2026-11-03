@@ -112,3 +112,116 @@ Retained [raw trial results and binary hashes](redpiler-regressions/2026-11-03/z
 Retained versus baseline paired throughput increases are approximately 27.5%, 40.5%, and 32.2% (median paired improvement 32.2%). Median kernel time falls from 4.062 s to 2.890 s; the paired percentage and ratio of medians are different statistics. All final screen hashes matched the historical 5,000-tick hash. Variability is substantial, so these measurements do not establish sustained production TPS or recover the 2,500–2,600 target. Initial unpinned samples were even noisier and are excluded from this comparison.
 
 Before removing the selector prototype, 11 focused shape/publication tests passed, and the Redpiler suite produced 194 passed, 18 ignored, and the same existing Four In A Row failure at the same wire/action/tick. The prototype's dedicated test was removed with that prototype. On retained source, the Redpiler suite produced **193 passed, 18 ignored, and that same one existing failure**. The separately rebuilt `bench_cpus zcore 5000 1 integrated`, with `MCHPRS_BENCH_PUBLISH_ALL=1`, passed all 5,000 per-tick interpreter screen comparisons after 413 preparation ticks. This checks observed screens, not every internal queue or state. Logs, JSON and saved executables are under `target/zcore-recovery-trials/`; the replay result is `retained-per-tick.json`.
+
+## Follow-up: graph passes and activity-guided locality
+
+Graph layout passes and heuristic/stochastic search are authorized. Use them to change data placement and remove provably invariant table dimensions; retain exact simulation behavior.
+
+The next locality experiment should pack whole immutable movement/shape/instruction blocks by connectivity and observed co-access. Existing `Program::compact_output_programs` relocates overlapping/shared operation ranges and can supply the first relocation mechanism. Preserve the ordered instruction slice of each program exactly. Output programs may be a small ZCore target; its movement/shape tables deserve priority based on the existing profile. Reordering `ShapeStep` headers alone leaves their separately allocated axes, maps and callback payloads elsewhere; pack payloads as well if testing their locality.
+
+Use existing movement/source probe dependencies as the static graph. Add allocation-free hit counters or short preallocated typed-record traces in a separate diagnostic build for actual ZCore execution, then existing ANPU/arithmetic traces and seeded legal control toggles in scratch state. Random internal wire-power perturbations provide extra stress coverage; their activity distribution can differ from production. Keep held-out input traces and seeds so layout selection is not scored only on its training run. Reset/discard scratch state before starting the real simulation.
+
+Start with a weighted traversal placing frequently co-accessed blocks together, then a small fixed number of seeded block-swap passes. A weighted address/cache-line distance is a search objective, not proof of fewer cache misses. Record seed, pass/compile-time limit, cancellation behavior and layout checksum. Compare the original order, the traversal order and the bounded-search order in uninstrumented paired benchmarks. Keep the layout only for repeatable TPS gains; report compile time and memory separately. Counters and runtime hash maps must stay out of timed kernels.
+
+Keep semantic component IDs for the first arena-layout experiment. Rewrite storage ranges directly during compilation, preserving callback duplicates, scheduler insertion FIFO, motion order and instruction order. No extra per-access logical-to-physical lookup should be added to the hot loop. Validate all relocated ranges and prove old/new ordered instruction expansion is identical, including overlapping and empty ranges; compare complete runtime state per tick.
+
+A later full component permutation must translate every component reference in place, distinguishing component IDs from token, piston, link, watcher and projection-cell IDs. Audit all component-indexed arrays, operation variants, electrical/reactive/watch links, movement and shape records, routing readers/sources, projection maps, LLVM serialization/snapshots and diagnostic consumers. Compile-time iteration can have observable order, so assigning different IDs before discovery is not automatically safe. Compare by world position and inverse-map pending references without sorting queues. No general component remapper currently exists; this is a separate, larger experiment.
+
+A fresh sampled profile is still useful after the retained optimizations. The prepared `target/zcore-recovery-trials/zcore-cpu-only.wprp` records sampled CPU stacks and loader/process metadata, excluding context-switch/ready-thread stacks and unrelated event providers. WPR successfully validated this profile; recording still requires an elevated shell. It is intended to avoid the excessive event volume of the earlier capture, but loss-free recording is not yet established.
+
+## Recheck and two further trials — 2026-11-03
+
+The retained engine is now commit `43ea0c16`; the saved older baseline is `431b236b`. A fresh build and three more alternating 5,000-tick comparisons used the same affinity/thread settings and excluded setup/reset. Old baseline TPS was 1,472.9 / 1,463.6 / 1,448.1; retained current TPS was 1,854.7 / 1,715.7 / 1,992.0. Paired improvements were +25.9%, +17.2%, +37.6% (median +25.9%). This confirms a repeatable improvement over the older engine in this session, without establishing the historical 2,500–2,600 target. Subsequent controls varied more, so compare within pairs.
+
+Two further isolated candidates were built and measured against that retained current executable:
+
+| Experiment | Current TPS | Candidate TPS | Paired change | Decision |
+| --- | --- | --- | --- | --- |
+| Packed-side comparison before decoding a wire | 2,113.7 / 1,949.6 / 2,107.5 | 2,120.6 / 2,160.0 / 1,931.1 | +0.3% / +10.8% / -8.4% | Reverted; median +0.3% does not establish a gain |
+| Remove individually irrelevant local-table axes | 1,896.6 / 1,906.3 / 1,794.4 | 1,914.6 / 1,898.0 / 1,911.4 | +1.0% / -0.4% / +6.5% | Reverted; median below 1% does not establish a gain |
+
+The packed-side guard mirrors the native engine's existing comparison and passed all 10 focused shape/publication tests. The axis pass preserved every `Option` row including invalid arrangements and kept the existing 4,096-state sampling bound. An exhaustive selector-equivalence test covered 16 table variants and all 12 assignments per variant. The Redpiler suite with that pass had 194 passed, 18 ignored and the same one existing Four In A Row failure. Both prototype code changes and the prototype-only axis test were removed; no new engine change is retained from this follow-up.
+
+All timed final screen hashes matched. [Raw recheck/trial records and executable hashes](redpiler-regressions/2026-11-03/zcore-recheck-trials.json) are retained; logs, binaries and candidate patches are under `target/zcore-recovery-trials/`. The whole workspace test suite was not repeated. The next candidate is activity-guided packing of movement/shape table storage as scoped above; its benefit remains unmeasured.
+
+## Clean profile of the retained engine — 2026-11-03
+
+The sampled-only WPR capture `target/zcore-cpu-current.etl` is 162,529,280 bytes, with **zero lost events and buffers**. PID 6360 ran the retained engine (binary SHA-256 `BA22CB717F1C334C5454DC06AB9A0C67BBFB39F5ECBC90F40FA904FF5DF7B113`) from trace time 46.783503 to 95.674628 seconds. The 75–94 second window excludes admission and reset and contains 18,993 sampled stacks. ZCore executed 30,000 ticks in 22.842 s under recording; this is not an uninstrumented comparison with earlier captures.
+
+| Current execution path | Inclusive share | Self share |
+| --- | ---: | ---: |
+| Token movement, including inlined movement steps | 75.50% | 36.27% |
+| Shape notification | 15.28% | 13.11% |
+| Wire-power refresh | 9.98% | 3.00% |
+| Arrangement contribution update | 9.09% | 9.09% |
+| Routed input values | 6.04% | 4.01% |
+| Output-program execution | 3.95% | 2.19% |
+
+Inclusive figures overlap. Source and instruction inspection place concentrated samples in movement-range/flip/step lookup blocks and contribution updates. CPU samples locate work; they do not prove cache misses or memory bandwidth saturation. Static output-operation arena packing has limited reach in this workload, so it should be a control rather than the main locality experiment.
+
+The first bounded mutable-data locality trial allocates analog histogram slots by movement first-touch affinity instead of component scan order. `InputState::analog` already supplies an explicit slot reference, so component IDs, callback order and runtime hot-path code can stay unchanged. Candidate slot order comes from movement flip targets/step nodes, followed by remaining components; comparator primary/side channels stay adjacent. Native snapshot reconstruction must preserve/rebuild the slots through their references. A later trial can permute arrangement-contribution slots, translating link IDs in instructions, flips, outgoing lists and routing readers without changing those lists' sequence. Both are experiments; neither has a demonstrated TPS benefit yet.
+
+[Profile summary](redpiler-regressions/2026-11-03/zcore-current-profile.json) retains the capture hash and function shares. Detailed samples, an HTML stack report, readable stacks and movement disassembly are under `target/zcore-recovery-trials/current-steady-*` and `current-movement-assembly.txt`. The matching executable and PDB are preserved under `target/zcore-recovery-trials/current-profile/`.
+
+## First locality trials after the clean profile
+
+Two independent histogram layout variants were implemented, checked and timed against the same retained engine. Each passed 194 Redpiler tests with 18 ignored and the same existing Four In A Row failure. The first variant scanned movement flip/step targets to allocate histogram slots in first-touch order, leaving component IDs and runtime instructions unchanged. Its regression checked noncanonical slot placement and independent wire/comparator channel strengths, including competing maxima and removals. The second retained canonical slot order but replaced the unused zero-strength counter with 15 nonzero-strength `u32` counters and aligned each histogram to 64 bytes. Its tests checked every old/new strength combination, exact size/alignment and 70,000 simultaneous contributions; strength bits and native ABI semantics were unchanged.
+
+| Main round | Retained baseline TPS | First-touch slots TPS | Aligned 64-byte records TPS |
+| --- | ---: | ---: | ---: |
+| 15 | 1,110.2 | 1,180.4 | 1,070.4 |
+| 16, reverse variant order | 1,242.3 | 1,272.9 | 1,309.5 |
+| 17 | 1,289.9 | 1,242.0 | 1,172.3 |
+
+First-touch placement changed paired throughput by +6.3%, +2.5%, -3.7%; aligned records by -3.6%, +5.4%, -9.1%. An earlier screening pair for first-touch placement was essentially flat (1,323.8 versus 1,331.1 TPS). All final screen hashes matched. Absolute TPS varied substantially during the session; neither trial demonstrates a repeatable gain above that variability. **Both variants and their prototype-only tests were removed.** The engine remains `43ea0c16`; these results do not disprove a broader profile-guided layout pass.
+
+[Raw layout trial data and binary hashes](redpiler-regressions/2026-11-03/zcore-histogram-layout-trials.json) are retained. Candidate patches, test logs and saved executables are under `target/zcore-recovery-trials/histogram*`. Memory/cache-miss rates were not measured, so no hardware-cache explanation is established for the results.
+
+The next higher-reach layout experiment should collect movement-range hit counts in a separate diagnostic replay, use each range's existing ordered flip list to weight the contribution/input graph, then permute contribution slots and lower the new slot IDs into instructions and routing references. This changes storage placement with no extra runtime translation and no event reorder. Compare existing order, weighted traversal and bounded seeded swaps on held-out input traces. Output-program packing is a lower-reach control. Separately, callback-free movement-flip ranges permit an experiment batching repeated operation-budget/accounting checks when the complete range fits; retain the exact original per-flip fallback near the cap, first failing target and applied prefix. Neither follow-up has been implemented or measured.
+
+## Retained follow-up: shared static shape-map pool
+
+Rust shape steps now retain `Local<usize>` map IDs into a shared immutable `Program::shape_maps` pool. Full 256-byte transformations are interned at compilation only; axes, invalid `None` arrangements, stored-side semantics, per-node power and ordered callbacks are unchanged. Map references are checked in Program validation and native export. LLVM uses the same map-ID/table format it already supported; its redundant exporter-only interner is removed. Repeated sampling clears and regenerates the pool. Runtime selection adds one indexed pool read and no hash search.
+
+The ZCore census found **745,336 valid transformation rows but only 65 unique maps**: logical duplicate map payload 190,806,016 bytes, unique map payload 16,640 bytes, and retained map-ID port buffers 11,925,376 bytes. Thus this table representation is roughly 191 MB → 12 MB. These are table payload/capacity figures, excluding other Program fields, allocator overhead and process peak working set.
+
+| Paired round | Retained baseline TPS | Shared map pool TPS | Change |
+| --- | ---: | ---: | ---: |
+| 18 | 1,283.2 | 1,292.3 | +0.7% |
+| 19 | 1,206.6 | 1,289.1 | +6.8% |
+| 20 | 1,277.2 | 1,321.2 | +3.4% |
+| 21 | 1,069.9 | 1,197.1 | +11.9% |
+| 22 | 1,242.9 | 1,199.0 | -3.5% |
+
+Median paired throughput change is approximately **+3.4%**, with substantial variability. No reliable large TPS gain or recovery to 2,500–2,600 is established. The representation is retained for its substantial table-footprint improvement and the absence of a consistent observed throughput regression; this is not a claim that cache misses were measured or solved. Admission times remained broadly similar in the initial three pairs.
+
+The actual-sampler regression covers duplicate-map sharing, distinct maps, invalid overlapping-token rows, malformed ID rejection and pool replacement on resampling. Redpiler tests: **194 passed, 18 ignored, one unchanged Four In A Row failure**. A rebuilt full-publication ZCore replay matched the interpreter screen on every one of 5,000 ticks after 413 preparation ticks. The workspace/all-target check passed with `-j 1`; the initial parallel attempt exhausted memory and produced secondary crate-metadata errors. No cache cleanup or dependency change was needed. The full workspace test suite and long ignored state-parity tests were not repeated.
+
+[Raw pooled-map trials and validation](redpiler-regressions/2026-11-03/zcore-pooled-shape-trials.json) are retained. Detailed test/check/build/replay logs, the candidate patch and census are under `target/zcore-recovery-trials/pooled-shapes-*`.
+
+The machine reports hardware profile sources including `DcacheMisses`, `CacheMisses`, `InstructionRetired`, `TotalCycles`, and `BranchMispredictions`, with up to six selectable sources. These counters have not yet been captured. They would help evaluate whether a weighted/stochastic graph layout actually changes cache behavior, while the existing CPU-stack capture only identifies where time is spent.
+
+## LLVM support and direct Rust parity, 2026-11-03
+
+**The required LLVM oracle is Rust compiled Redpiler execution, not the interpreter.** Rust's existing scheduling behavior is preserved, including unconditional rescheduling in the button, observer and forced repeater paths. LLVM now matches those paths when duplicate ticks were imported. Interpreter disagreements remain separate correctness investigations.
+
+LLVM now caches physical token digits for shape and routing selectors and distinguishes missing shape programs from compiled-empty programs. Native export retains pooled shape-map IDs, invalid arrangements and ordered callbacks. Command blocks now execute in the native C engine, including impulse/repeating/chain lifecycle, conditional chains, comparator success-count inputs, entity state, output limits, logical clock offsets, queued messages and reset/recompile. Effect storage grows before execution and preserves unflushed messages. Component-to-command and previous/next command indices are prepared once; runtime command selection and chain traversal use arrays. Notifications retain the Rust callback order and live solidity guards for distant comparators. No command execution callback enters Rust during the native tick.
+
+Iron trapdoors and every binary pressure-plate variant admitted by Rust are supported. Imported stale/untyped/passive ticks retain their original metadata and order; native queue capacity matches Rust and survives projection synchronization. Non-control use is a no-op in both backends. The unused incomplete native publication method was removed in favor of shared projection/publication. Native semantic version is **22**; automatic compiler staging/hashing and the manual build manifest include `command_engine.c`.
+
+Final focused Redpiler validation: **204 passed, 18 ignored, one existing Rust/interpreter Four In A Row failure**. All selected LLVM/Rust comparisons passed. Explicit long checks passed for ANPU (5,000 ticks), ANPU reset after 2,000 ticks plus 128 ticks of continuation, and ZCore (413 preparation + 5,000 run ticks). These compare component state, projection, pending ticks, token positions/digits, motion and piston state, contributions, routing, wire sides, comparator values and effects. The automatic native compiler also passed command parity with a nonzero logical clock and 1,200 ticks of unflushed output, forcing effect-buffer growth. Standalone native command checks passed; `cargo check --workspace --all-targets -j 1` was warning-free.
+
+The full workspace run additionally exposed an absent `test_data/cpu-references/zcore12b_sierpinski.json`. It was not regenerated. Two stale test assumptions were corrected without weakening assertions: client completion now expects `--llvm`, and the physical piston reset comparison explicitly requests full publication (its five tests passed). The remaining interpreter mismatch and missing reference do not define LLVM/Rust parity. Other ignored/manual tests and non-Windows platforms were not verified.
+
+Rough kernel measurements used the optimized `profiling` profile (release + fat LTO + symbols), affinity `0xff`, four Rayon threads, 5,000 ticks per run and serialized execution. Admission, reset and snapshots are outside timing. ZCore alternated backend order across three pairs; ANPU has one pair. Every backend run matched its Rust screen output.
+
+| Fixture / pair | Rust TPS | LLVM TPS |
+| --- | ---: | ---: |
+| ZCore 1 | 1,988.0 | 3,206.2 |
+| ZCore 2, reversed order | 1,808.0 | 3,125.6 |
+| ZCore 3 | 1,810.0 | 1,748.0 |
+| ANPU 1 | 16,500.6 | 26,525.4 |
+
+ZCore medians are **1,810 Rust TPS and 3,126 LLVM TPS**; ratio of medians is 1.73, while the median paired ratio is 1.61. The third LLVM sample is slower than its paired Rust sample. This substantial variation is retained in the results and is not attributed to a measured cause. These are rough backend comparisons, not proof of a stable recovered production rate or of the speedup caused by any individual port.
+
+[Raw results, binary/source hashes, build provenance and validation summary](redpiler-regressions/2026-11-03/llvm-rust-parity-performance.json) are retained. Detailed logs are under `target/zcore-recovery-trials/llvm-rust-oracle-*` and `llvm-final-*`.

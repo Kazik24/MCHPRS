@@ -54,8 +54,8 @@ typedef struct {
 #endif
 
 MCHPRS_NATIVE_EXPORT MchprsNativeApiDescriptor ne_api_descriptor(void);
-MCHPRS_NATIVE_EXPORT size_t ne_state_size(const MchprsNativeProgramDescriptor *program, const uint8_t *blob, uint32_t blob_bytes);
-MCHPRS_NATIVE_EXPORT uint32_t ne_create(const MchprsNativeProgramDescriptor *program, const uint8_t *blob, uint32_t blob_bytes, void *memory, size_t memory_bytes);
+MCHPRS_NATIVE_EXPORT size_t ne_state_size(const MchprsNativeProgramDescriptor *program, const uint8_t *blob, uint32_t blob_bytes, uint32_t initial_ticks);
+MCHPRS_NATIVE_EXPORT uint32_t ne_create(const MchprsNativeProgramDescriptor *program, const uint8_t *blob, uint32_t blob_bytes, void *memory, size_t memory_bytes, uint32_t initial_ticks);
 MCHPRS_NATIVE_EXPORT uint32_t ne_import_tick(void *memory, uint32_t component, uint32_t delay, uint8_t priority);
 MCHPRS_NATIVE_EXPORT void ne_destroy(void *memory);
 MCHPRS_NATIVE_EXPORT uint32_t ne_tick(void *memory);
@@ -68,6 +68,9 @@ MCHPRS_NATIVE_EXPORT uint64_t ne_tick_count(const void *memory);
 MCHPRS_NATIVE_EXPORT uint32_t ne_snapshot_words(const void *memory);
 MCHPRS_NATIVE_EXPORT uint32_t ne_read_snapshot(const void *memory, uint32_t *out, uint32_t words);
 MCHPRS_NATIVE_EXPORT void ne_ack_effects(void *memory);
+MCHPRS_NATIVE_EXPORT uint32_t ne_bind_commands(void *memory, void *commands, const uint32_t *notify_rows, const uint32_t *notify_targets, uint32_t target_count);
+MCHPRS_NATIVE_EXPORT void ne_set_command_clock(void *memory, uint64_t now_ns, uint64_t logical_base);
+MCHPRS_NATIVE_EXPORT uint64_t ne_command_effect_bound(const void *memory);
 
 #if defined(__cplusplus)
 static_assert(sizeof(MchprsNativeApiDescriptor) == 16, "native API descriptor ABI drift");

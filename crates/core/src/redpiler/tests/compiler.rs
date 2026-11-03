@@ -132,6 +132,28 @@ fn compiled_button_matches_native_pulse_repeat_and_rearm() {
 }
 
 #[test]
+#[cfg(any(windows, target_os = "linux"))]
+fn compiled_non_control_use_is_noop_for_both_backends() {
+    for llvm in [false, true] {
+        let (mut world, button, lamp, bounds) = button_world(ButtonFace::Floor, BlockDirection::North);
+        let mut compiler = Compiler::default();
+        compiler.compile(&world, bounds, CompilerOptions { llvm, ..Default::default() },
+            vec![], Default::default()).unwrap();
+        for pos in [lamp, bounds.1 + BlockPos::new(1, 1, 1)] {
+            assert!(!compiler.accepts_control(pos));
+            compiler.try_on_use_block(pos).unwrap();
+        }
+        compiler.try_flush(&mut world).unwrap();
+        assert!(compiler.is_active());
+        assert!(compiler.runtime.as_ref().unwrap().pending_entries().is_empty());
+        assert_eq!(world.get_block(lamp), Block::RedstoneLamp { lit: false });
+        compiler.try_on_use_block(button).unwrap();
+        compiler.try_flush(&mut world).unwrap();
+        assert_eq!(world.get_block(lamp), Block::RedstoneLamp { lit: true });
+    }
+}
+
+#[test]
 fn llvm_dll_executes_button_lamp_and_hands_off_reset_tick() {
     if std::env::var_os("MCHPRS_LLVM_DLL").is_none() && !std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/native_engine.dll").exists() {
         return;
@@ -222,8 +244,74 @@ fn llvm_imported_ticks_preserve_priority_and_duplicates() {
     assert_eq!(expected, world.scheduler().iter_entries().collect::<Vec<_>>());
     let mut stale = expected[0].clone();
     stale.block_type = None;
-    assert!(compiler.compile(&world, bounds, CompilerOptions { llvm: true, ..Default::default() }, vec![stale], Arc::new(TaskMonitor::default())).is_err());
-    assert!(!compiler.is_active());
+    compiler.compile(&world, bounds, CompilerOptions { llvm: true, ..Default::default() }, vec![stale.clone()], Arc::new(TaskMonitor::default())).unwrap();
+    world.clear_scheduled_ticks();
+    compiler.try_reset(&mut world, bounds).unwrap();
+    assert_eq!(world.scheduler().iter_entries().collect::<Vec<_>>(), vec![stale]);
+}
+
+#[test]
+#[cfg(any(windows, target_os = "linux"))]
+fn compiled_pending_ticks_preserve_stale_passive_and_large_initial_queues() {
+    let (mut reference, button, lamp, bounds) = button_world(ButtonFace::Floor, BlockDirection::North);
+    let (mut candidate, _, _, _) = button_world(ButtonFace::Floor, BlockDirection::North);
+    let plate = button + BlockPos::new(2, 0, 0);
+    for world in [&mut reference, &mut candidate] {
+        world.set_block(plate, Block::StonePressurePlate { powered: false });
+        for _ in 0..128 {
+            world.restore_scheduled_tick(TickEntry { pos: button, block_type: Some(world.get_block(button).registry_id()),
+                ticks_left: 30, tick_priority: TickPriority::High });
+        }
+        for (pos, block_type, ticks_left) in [
+            (button, None, 2),
+            (button, Some(world.get_block(lamp).registry_id()), 3),
+            (bounds.0, Some(Block::Stone {}.registry_id()), 7),
+            (button.offset(BlockFace::Bottom), Some(Block::Stone {}.registry_id()), 8),
+            (plate, Some(world.get_block(plate).registry_id()), 9),
+        ] {
+            world.restore_scheduled_tick(TickEntry { pos, block_type, ticks_left, tick_priority: TickPriority::Normal });
+        }
+    }
+    let initial_count = reference.scheduler().iter_entries().count();
+    let mut rust = Compiler::default();
+    let mut native = Compiler::default();
+    for (compiler, world, llvm) in [(&mut rust, &mut reference, false), (&mut native, &mut candidate, true)] {
+        compiler.compile(world, bounds, CompilerOptions { llvm, ..Default::default() },
+            world.scheduler().iter_entries().collect(), Default::default()).unwrap();
+        world.clear_scheduled_ticks();
+        compiler.try_on_use_block(button).unwrap();
+    }
+    for tick in 0..=18 {
+        if tick != 0 {
+            if rust.is_active() {
+                rust.tick().unwrap();
+                native.tick().unwrap();
+            } else {
+                reference.tick_interpreted();
+                candidate.tick_interpreted();
+            }
+        }
+        if rust.is_active() {
+            rust.try_flush(&mut reference).unwrap();
+            native.try_flush(&mut candidate).unwrap();
+            let expected = rust.runtime.as_ref().unwrap();
+            let actual = native.runtime.as_ref().unwrap();
+            assert_eq!(actual.pending_entries(), expected.pending_entries(), "pending tick {tick}");
+            assert_eq!(actual.projected_blocks(), expected.projected_blocks(), "snapshot tick {tick}");
+            if tick == 0 { assert_eq!(expected.pending_entries().len(), initial_count + 1); }
+        }
+        for pos in [button, lamp, plate] {
+            assert_eq!(reference.get_block(pos), candidate.get_block(pos), "block {pos:?} tick {tick}");
+        }
+        if tick == 5 {
+            rust.try_reset(&mut reference, bounds).unwrap();
+            native.try_reset(&mut candidate, bounds).unwrap();
+        }
+        if !rust.is_active() {
+            assert_eq!(reference.scheduler().iter_entries().collect::<Vec<_>>(), candidate.scheduler().iter_entries().collect::<Vec<_>>(),
+                "handoff tick {tick}");
+        }
+    }
 }
 
 #[test]

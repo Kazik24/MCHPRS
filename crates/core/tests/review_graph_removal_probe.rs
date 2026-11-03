@@ -4,7 +4,7 @@ use mchprs_blocks::{
 };
 use mchprs_core::{
     plot::{PLOT_BLOCK_WIDTH, PLOT_WIDTH, PlotWorld},
-    redpiler::{Compiler, CompilerOptions, TaskMonitor, TickScheduler},
+    redpiler::{Compiler, CompilerOptions, PublicationMode, TaskMonitor, TickScheduler},
     world::{World, storage::Chunk},
 };
 use mchprs_world::{TickEntry, TickPriority};
@@ -21,7 +21,7 @@ fn compile(world: &PlotWorld, bounds: (BlockPos, BlockPos)) -> Compiler {
     c.compile(
         world,
         bounds,
-        CompilerOptions::default(),
+        CompilerOptions { publication: Some(PublicationMode::All), ..Default::default() },
         world.scheduler().iter_entries().collect(),
         Arc::new(TaskMonitor::default()),
     )

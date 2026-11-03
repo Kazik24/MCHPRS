@@ -16,8 +16,8 @@ mod movement;
 mod routing;
 mod effects;
 mod shapes;
-#[cfg(test)]
 mod command;
+mod command_notifications;
 mod cache;
 pub(in crate::redpiler) use cache::initialize as initialize_cache;
 use movement::encode_movement;
@@ -29,6 +29,7 @@ const HEADER_BYTES: usize = 16;
 const OP_BYTES: usize = 8;
 const LINK_BYTES: usize = 12;
 const COMPONENT_BYTES: usize = 32;
+const PASSIVE_TICK: u32 = 0x8000_0000;
 
 #[repr(C)]
 #[derive(Clone, Copy, Default)]
@@ -79,12 +80,19 @@ pub(in crate::redpiler) struct LlvmRuntime {
     positions: Vec<BlockPos>,
     initial: Vec<Block>,
     sources: Vec<(BlockPos, u32)>,
+    commands: Option<command::State>,
+    imported_pending: Vec<TickEntry>,
+    pending_capacity: u32,
 }
 
 #[cfg(any(windows, target_os = "linux"))]
 impl LlvmRuntime {
-    pub(in crate::redpiler) fn acknowledge_effects(&mut self) {
+    pub(in crate::redpiler) fn acknowledge_effects(&mut self, host_queued: usize) {
         unsafe { (self.library.ack_effects)(self.state.as_mut_ptr().cast()) }
+        if let Some(commands) = &mut self.commands { commands.acknowledge(&self.library.commands, host_queued); }
+    }
+    pub(in crate::redpiler) fn initialize_tick(&mut self, tick: u64) {
+        if let Some(commands) = &mut self.commands { commands.logical_base = tick; }
     }
     pub(in crate::redpiler) fn new(program: Program, ticks: &[TickEntry]) -> Result<Self, ScratchError> {
         if std::env::var_os("MCHPRS_LLVM_DIAGNOSTICS").is_some() {
@@ -98,32 +106,13 @@ impl LlvmRuntime {
         if let Some(error) = unsupported_reason(&program) {
             return Err(error);
         }
-        if ticks.len() > program.component_count().checked_add(64).ok_or_else(overflow)? {
-            return Err(ScratchError {
-                position: None,
-                reason: "LLVM initial scheduled tick capacity exceeded",
-            });
-        }
+        let initial_tick_count = u32::try_from(ticks.len()).map_err(|_| overflow())?;
+        if initial_tick_count >= PASSIVE_TICK || program.component_count() >= PASSIVE_TICK as usize { return Err(overflow()); }
+        let pending_capacity = u32::try_from(program.component_count().checked_mul(2)
+            .and_then(|count| count.checked_add(ticks.len())).ok_or_else(overflow)?.max(64)).map_err(|_| overflow())?;
         let mut initial_ticks = Vec::with_capacity(ticks.len());
-        for tick in ticks {
-            let Some(&component) = program.component_indices.get(&tick.pos) else {
-                return Err(ScratchError {
-                    position: Some(tick.pos),
-                    reason: "LLVM cannot import a tick outside its components",
-                });
-            };
-            let block = program.initial[component];
-            if !matches!(
-                block,
-                Block::StoneButton { .. }
-                    | Block::RedstoneLamp { .. }
-                    | Block::RedstoneRepeater { .. }
-                    | Block::RedstoneComparator { .. }
-                    | Block::Observer { .. }
-                    | Block::RedstoneTorch { .. }
-                    | Block::RedstoneWallTorch { .. }
-            ) || tick.block_type != Some(block.registry_id())
-                || tick.ticks_left >= 32
+        for (index, tick) in ticks.iter().enumerate() {
+            if tick.ticks_left >= 32
                 || (tick.ticks_left == 0 && tick.tick_priority != TickPriority::NanoTick)
             {
                 return Err(ScratchError {
@@ -131,8 +120,11 @@ impl LlvmRuntime {
                     reason: "LLVM cannot import this scheduled tick",
                 });
             }
+            let component = program.component_indices.get(&tick.pos)
+                .filter(|&&node| tick.block_type == Some(program.initial[node].registry_id()))
+                .map_or(PASSIVE_TICK | index as u32, |&node| node as u32);
             initial_ticks.push((
-                u32::try_from(component).map_err(|_| overflow())?,
+                component,
                 tick.ticks_left,
                 tick.tick_priority as u8,
             ));
@@ -150,7 +142,7 @@ impl LlvmRuntime {
         }
         let library = Library::load()?;
         let api = unsafe { (library.api_descriptor)() };
-        if api.abi_version != ABI_VERSION || api.descriptor_bytes != 16 || api.semantic_version != 21 {
+        if api.abi_version != ABI_VERSION || api.descriptor_bytes != 16 || api.semantic_version != 22 {
             return Err(ScratchError {
                 position: None,
                 reason: "LLVM DLL ABI/version mismatch",
@@ -165,7 +157,7 @@ impl LlvmRuntime {
         let descriptor = encoded.descriptor;
         let blob_bytes = descriptor.total_bytes;
         drop(encoded.blob);
-        let bytes = unsafe { (library.state_size)(&descriptor, blob.as_ptr().cast(), blob_bytes) };
+        let bytes = unsafe { (library.state_size)(&descriptor, blob.as_ptr().cast(), blob_bytes, initial_tick_count) };
         if bytes == 0 || bytes > 256 * 1024 * 1024 {
             return Err(ScratchError {
                 position: None,
@@ -180,6 +172,7 @@ impl LlvmRuntime {
                 blob_bytes,
                 state.as_mut_ptr().cast(),
                 state.len() * 8,
+                initial_tick_count,
             )
         };
         if status != 0 {
@@ -188,6 +181,7 @@ impl LlvmRuntime {
                 reason: "LLVM rejected the sampled Program",
             });
         }
+        let commands = command::State::new(&program, &library.commands, state.as_mut_ptr().cast(), blob.as_ptr().cast::<u8>().wrapping_add(descriptor.component_offset as usize).cast())?;
         for (component, delay, priority) in initial_ticks {
             if unsafe { (library.import_tick)(state.as_mut_ptr().cast(), component, delay, priority) } != 0 {
                 unsafe {
@@ -213,20 +207,23 @@ impl LlvmRuntime {
             positions: program.positions,
             initial: program.initial,
             sources,
+            commands,
+            imported_pending: ticks.to_vec(),
+            pending_capacity,
         })
     }
 
     pub(in crate::redpiler) fn tick(&mut self) -> Result<(), ScratchError> {
+        if let Some(commands) = &mut self.commands {
+            commands.prepare_tick(&self.library.commands, self.state.as_mut_ptr().cast())?;
+        }
         let status = unsafe { (self.library.tick)(self.state.as_mut_ptr().cast()) };
         self.call_status(status)
     }
 
     pub(in crate::redpiler) fn use_control(&mut self, pos: BlockPos) -> Result<(), ScratchError> {
         let Some((_, source)) = self.sources.iter().find(|(source_pos, _)| *source_pos == pos) else {
-            return Err(ScratchError {
-                position: Some(pos),
-                reason: "LLVM control is not a supported input",
-            });
+            return Ok(());
         };
         let status = unsafe { (self.library.use_control)(self.state.as_mut_ptr().cast(), *source) };
         self.call_status(status)
@@ -236,52 +233,14 @@ impl LlvmRuntime {
         self.sources.iter().any(|(source, _)| *source == pos)
     }
 
-    pub(in crate::redpiler) fn publish<W: crate::world::World>(&mut self, world: &mut W, io_only: bool) -> Result<(), ScratchError> {
-        let mut states = vec![0u8; self.positions.len()];
-        let status = unsafe { (self.library.read_state)(self.state.as_ptr().cast(), states.as_mut_ptr(), states.len() as u32) };
-        self.call_status(status)?;
-        for ((&pos, &initial), state) in self.positions.iter().zip(&self.initial).zip(states) {
-            if io_only && !matches!(initial, Block::Lever { .. } | Block::StoneButton { .. } | Block::RedstoneLamp { .. }) && !initial.is_copper_bulb() {
-                continue;
-            }
-            let block = match initial {
-                Block::Lever { mut lever } => {
-                    lever.powered = state != 0;
-                    Block::Lever { lever }
-                }
-                Block::StoneButton { mut button } => {
-                    button.powered = state != 0;
-                    Block::StoneButton { button }
-                }
-                Block::RedstoneLamp { .. } => Block::RedstoneLamp { lit: state != 0 },
-                block if block.is_copper_bulb() => block.with_copper_bulb_state(state & 1 != 0, state & 2 != 0).unwrap(),
-                Block::RedstoneRepeater { mut repeater } => {
-                    repeater.powered = state & 1 != 0;
-                    repeater.locked = state & 2 != 0;
-                    Block::RedstoneRepeater { repeater }
-                }
-                Block::RedstoneWire { mut wire } => {
-                    wire.power = state;
-                    Block::RedstoneWire { wire }
-                }
-                Block::Observer { mut observer } => {
-                    observer.powered = state != 0;
-                    Block::Observer { observer }
-                }
-                Block::RedstoneTorch { .. } => Block::RedstoneTorch { lit: state != 0 },
-                Block::RedstoneWallTorch { facing, .. } => Block::RedstoneWallTorch { facing, lit: state != 0 },
-                other => other,
-            };
-            if world.get_block(pos) != block {
-                world.set_block(pos, block);
-            }
-        }
+    pub(super) fn sync_commands(&self, runtime: &mut super::Runtime) -> Result<(), ScratchError> {
+        if let Some(commands) = &self.commands { commands.sync(&self.library.commands, runtime)?; }
         Ok(())
     }
 
     pub(in crate::redpiler) fn pending_entries(&self) -> Result<Vec<TickEntry>, ScratchError> {
         let count = unsafe { (self.library.pending_count)(self.state.as_ptr().cast()) };
-        if count > self.descriptor.component_count.saturating_mul(2).saturating_add(64) {
+        if count > self.pending_capacity {
             return Err(ScratchError {
                 position: None,
                 reason: "LLVM pending tick count is invalid",
@@ -293,10 +252,15 @@ impl LlvmRuntime {
         pending
             .into_iter()
             .map(|entry| {
-                let pos = *self.positions.get(entry.component as usize).ok_or(ScratchError {
-                    position: None,
-                    reason: "LLVM pending tick component is invalid",
-                })?;
+                let invalid = || ScratchError { position: None, reason: "LLVM pending tick component is invalid" };
+                let (pos, block_type) = if entry.component & PASSIVE_TICK != 0 {
+                    let original = self.imported_pending.get((entry.component & !PASSIVE_TICK) as usize).ok_or_else(invalid)?;
+                    (original.pos, original.block_type)
+                } else {
+                    let pos = *self.positions.get(entry.component as usize).ok_or_else(invalid)?;
+                    (pos, Some(self.initial[entry.component as usize].registry_id()))
+                };
+                if entry.ticks_left >= 32 { return Err(invalid()); }
                 let tick_priority = match entry.priority {
                     0 => TickPriority::Highest,
                     1 => TickPriority::Higher,
@@ -313,7 +277,7 @@ impl LlvmRuntime {
                     ticks_left: entry.ticks_left,
                     tick_priority,
                     pos,
-                    block_type: Some(self.initial[entry.component as usize].registry_id()),
+                    block_type,
                 })
             })
             .collect()
@@ -350,7 +314,8 @@ pub(in crate::redpiler) struct LlvmRuntime;
 
 #[cfg(not(any(windows, target_os = "linux")))]
 impl LlvmRuntime {
-    pub(in crate::redpiler) fn acknowledge_effects(&mut self) { unreachable!() }
+    pub(in crate::redpiler) fn acknowledge_effects(&mut self, _: usize) { unreachable!() }
+    pub(in crate::redpiler) fn initialize_tick(&mut self, _: u64) { unreachable!() }
     pub(in crate::redpiler) fn new(_: Program, _: &[TickEntry]) -> Result<Self, ScratchError> {
         Library::load().map(|_| Self)
     }
@@ -369,9 +334,6 @@ impl LlvmRuntime {
     pub(in crate::redpiler) fn accepts_control(&self, _: BlockPos) -> bool {
         false
     }
-    pub(in crate::redpiler) fn publish<W: crate::world::World>(&mut self, _: &mut W, _: bool) -> Result<(), ScratchError> {
-        unreachable!()
-    }
     pub(in crate::redpiler) fn pending_entries(&self) -> Result<Vec<TickEntry>, ScratchError> {
         unreachable!()
     }
@@ -384,14 +346,11 @@ pub(in crate::redpiler) fn unsupported_components(program: &Program) -> (Vec<Scr
         if !matches!(block, Block::Lever { .. } | Block::StoneButton { .. } | Block::RedstoneLamp { .. } | Block::RedstoneBlock
             | Block::RedstoneRepeater { .. } | Block::RedstoneWire { .. } | Block::Observer { .. } | Block::RedstoneTorch { .. }
             | Block::RedstoneWallTorch { .. } | Block::Piston { .. } | Block::RedstoneComparator { .. } | Block::Hopper { .. }
-            | Block::NoteBlock { .. } | Block::StonePressurePlate { .. }) && !block.is_copper_bulb() {
+            | Block::NoteBlock { .. } | Block::StonePressurePlate { .. } | Block::IronTrapdoor { .. }) && !block.is_copper_bulb()
+            && !block.pressure_plate_powered().is_some() && !block.is_command_block() {
             count += 1;
             if first.len() < 3 {
-                let reason = match block {
-                    block if block.is_command_block() => "LLVM does not support command blocks",
-                    Block::IronTrapdoor { .. } => "LLVM does not support iron trapdoors",
-                    _ => block.get_name(),
-                };
+                let reason = block.get_name();
                 first.push(ScratchError { position: Some(program.positions[node]), reason });
             }
         }
@@ -404,33 +363,10 @@ fn unsupported_reason(program: &Program) -> Option<ScratchError> {
     if let Some(issue) = unsupported_components(program).0.into_iter().next() {
         return Some(issue);
     }
-    if let Some(&pos) = program.command_blocks.keys().min_by_key(|pos| (pos.x, pos.y, pos.z)) {
-        return error(Some(pos), "LLVM does not support command block entities");
-    }
-    if program.command_output_state.is_some() {
-        return error(None, "LLVM does not support command block output state");
-    }
-    for record in &program.comparators {
-        for input in [record.rear_override, record.far_override].into_iter().flatten() {
-            let reason = match input {
-                super::program::ComparatorInput::Static(_) | super::program::ComparatorInput::CopperBulb(_) => continue,
-                super::program::ComparatorInput::CommandBlock(_) => "LLVM does not support comparator input from a command block",
-            };
-            return error(Some(program.positions[record.component]), reason);
-        }
-    }
     for link in &program.links {
         if matches!(program.initial[link.target], Block::Lever { .. } | Block::StoneButton { .. } | Block::RedstoneBlock) {
             return error(Some(program.positions[link.target]), "LLVM does not support this electrical link target");
         }
-    }
-    for op in &program.operations {
-        let (node, reason) = match *op {
-            Operation::UpdateTrapdoor(node) => (node, "LLVM does not support trapdoor updates"),
-            Operation::UpdateCommandBlock(node) => (node, "LLVM does not support command block updates"),
-            _ => continue,
-        };
-        return error(program.positions.get(node).copied(), reason);
     }
     None
 }
@@ -439,8 +375,8 @@ fn unsupported_reason(program: &Program) -> Option<ScratchError> {
 struct Library {
     handle: *mut c_void,
     api_descriptor: unsafe extern "C" fn() -> NativeApiDescriptor,
-    state_size: unsafe extern "C" fn(*const NativeProgramDescriptor, *const u8, u32) -> usize,
-    create: unsafe extern "C" fn(*const NativeProgramDescriptor, *const u8, u32, *mut c_void, usize) -> u32,
+    state_size: unsafe extern "C" fn(*const NativeProgramDescriptor, *const u8, u32, u32) -> usize,
+    create: unsafe extern "C" fn(*const NativeProgramDescriptor, *const u8, u32, *mut c_void, usize, u32) -> u32,
     import_tick: unsafe extern "C" fn(*mut c_void, u32, u32, u8) -> u32,
     destroy: unsafe extern "C" fn(*mut c_void),
     tick: unsafe extern "C" fn(*mut c_void) -> u32,
@@ -452,6 +388,7 @@ struct Library {
     snapshot_words: unsafe extern "C" fn(*const c_void) -> u32,
     read_snapshot: unsafe extern "C" fn(*const c_void, *mut u32, u32) -> u32,
     ack_effects: unsafe extern "C" fn(*mut c_void),
+    commands: command::Api,
 }
 
 // The compiler moves its exclusive LLVM runtime between the compile and tick workers.
@@ -500,6 +437,7 @@ impl Library {
                 snapshot_words: symbol(handle, b"ne_snapshot_words\0")?,
                 read_snapshot: symbol(handle, b"ne_read_snapshot\0")?,
                 ack_effects: symbol(handle, b"ne_ack_effects\0")?,
+                commands: command::Api::load(handle)?,
             })
         })();
         if result.is_err() {
@@ -524,8 +462,8 @@ impl Drop for Library {
 struct Library {
     handle: *mut c_void,
     api_descriptor: unsafe extern "C" fn() -> NativeApiDescriptor,
-    state_size: unsafe extern "C" fn(*const NativeProgramDescriptor, *const u8, u32) -> usize,
-    create: unsafe extern "C" fn(*const NativeProgramDescriptor, *const u8, u32, *mut c_void, usize) -> u32,
+    state_size: unsafe extern "C" fn(*const NativeProgramDescriptor, *const u8, u32, u32) -> usize,
+    create: unsafe extern "C" fn(*const NativeProgramDescriptor, *const u8, u32, *mut c_void, usize, u32) -> u32,
     import_tick: unsafe extern "C" fn(*mut c_void, u32, u32, u8) -> u32,
     destroy: unsafe extern "C" fn(*mut c_void),
     tick: unsafe extern "C" fn(*mut c_void) -> u32,
@@ -537,6 +475,7 @@ struct Library {
     snapshot_words: unsafe extern "C" fn(*const c_void) -> u32,
     read_snapshot: unsafe extern "C" fn(*const c_void, *mut u32, u32) -> u32,
     ack_effects: unsafe extern "C" fn(*mut c_void),
+    commands: command::Api,
 }
 
 #[cfg(target_os = "linux")]
@@ -568,6 +507,7 @@ impl Library {
                 work_count: symbol(handle, b"ne_work_count\0")?, snapshot_words: symbol(handle, b"ne_snapshot_words\0")?,
                 read_snapshot: symbol(handle, b"ne_read_snapshot\0")?,
                 ack_effects: symbol(handle, b"ne_ack_effects\0")?,
+                commands: command::Api::load(handle)?,
             })
         })();
         if result.is_err() { unsafe { dlclose(handle); } }
@@ -698,7 +638,11 @@ fn encode_comparators(program: &Program, table: &mut Vec<u32>) -> Result<(), Scr
             if source >= 0x8000_0000 { return Err(overflow()); }
             Ok(0x8000_0000 | source)
         }
-        _ => Err(ScratchError { position: None, reason: "LLVM does not support dynamic comparator overrides" }),
+        Some(ComparatorInput::CommandBlock(source)) => {
+            let source = u32::try_from(source).map_err(|_| overflow())?;
+            if source >= 0x4000_0000 { return Err(overflow()); }
+            Ok(0x4000_0000 | source)
+        }
     };
     table.resize(program.initial.len().checked_mul(4).ok_or_else(overflow)?, 0);
     for record in &program.comparators {
@@ -838,7 +782,7 @@ pub(super) fn validate_blob(descriptor: &NativeProgramDescriptor, blob: &[u8]) -
         let on_count = u32::from_le_bytes(component[20..24].try_into().unwrap()) as usize;
         let off_start = u32::from_le_bytes(component[24..28].try_into().unwrap()) as usize;
         let off_count = u32::from_le_bytes(component[28..32].try_into().unwrap()) as usize;
-        if (kind > 13 && kind != u8::MAX)
+        if (kind > 15 && kind != u8::MAX)
             || component[13]
                 > (if kind == 5 {
                     15
@@ -963,6 +907,8 @@ fn component_state(block: Block) -> (u8, u8) {
         Block::Hopper { enabled, .. } => (10, u8::from(enabled)),
         block if block.pressure_plate_powered().is_some() => (11, u8::from(block.pressure_plate_powered() == Some(true))),
         Block::NoteBlock { powered, .. } => (12, u8::from(powered)),
+        Block::IronTrapdoor { powered, .. } => (14, u8::from(powered)),
+        block if block.is_command_block() => (15, 0),
         block if block.is_copper_bulb() => {
             let (lit, powered) = block.copper_bulb_state().unwrap();
             (13, u8::from(lit) | (u8::from(powered) << 1))
@@ -1011,21 +957,23 @@ mod tests {
     }
 
     #[test]
-    fn unsupported_command_block_reports_its_position() {
+    fn unsupported_component_reports_its_position() {
         let pos = BlockPos::new(-199, 66, -175);
-        let block = Block::from_name("command_block").unwrap();
-        let program = Program::new(vec![pos], vec![block], vec![], vec![[vec![], vec![]]], vec![], vec![], vec![]).unwrap();
+        let block = Block::RedstoneLamp { lit: false };
+        let mut program = Program::new(vec![pos], vec![block], vec![], vec![[vec![], vec![]]], vec![], vec![], vec![]).unwrap();
+        program.initial[0] = Block::Stone {};
         let error = unsupported_reason(&program).unwrap();
         assert_eq!(error.position, Some(pos));
-        assert_eq!(error.reason, "LLVM does not support command blocks");
+        assert_eq!(error.reason, "stone");
         assert!(crate::redpiler::CompileError::Unsupported(error).to_string().contains("-199"));
     }
 
     #[test]
     fn unsupported_components_count_all_and_keep_first_three() {
         let positions: Vec<_> = (0..5).map(|x| BlockPos::new(x, 66, 0)).collect();
-        let blocks = vec![Block::from_name("command_block").unwrap(); positions.len()];
-        let program = Program::new(positions.clone(), blocks, vec![], vec![[vec![], vec![]]; 5], vec![], vec![], vec![]).unwrap();
+        let blocks = vec![Block::RedstoneLamp { lit: false }; positions.len()];
+        let mut program = Program::new(positions.clone(), blocks, vec![], vec![[vec![], vec![]]; 5], vec![], vec![], vec![]).unwrap();
+        program.initial.fill(Block::Stone {});
         let (first, total) = unsupported_components(&program);
         assert_eq!(total, 5);
         assert_eq!(first.iter().map(|e| e.position.unwrap()).collect::<Vec<_>>(), positions[..3]);
@@ -1099,6 +1047,12 @@ mod tests {
             assert_eq!(projection.comparator_outputs, rust.comparator_outputs, "comparators tick {tick}");
             assert_eq!(projection.reactive_wire_strengths, rust.reactive_wire_strengths, "reactive wires tick {tick}");
             assert_eq!(projection.notes, rust.notes, "note effects tick {tick}");
+            assert_eq!(projection.command_blocks, rust.command_blocks, "command entities tick {tick}");
+            let emissions = |r: &super::super::Runtime| r.command_emissions.iter()
+                .map(|event| (event.pos, event.tick, event.message.recipient.clone(), event.message.message.clone())).collect::<Vec<_>>();
+            assert_eq!(emissions(&projection), emissions(&rust), "command emissions tick {tick}");
+            let output = |r: &super::super::Runtime| r.command_output_state.as_ref().map(|state| (state.count, state.bytes, state.queued, state.limited));
+            assert_eq!(output(&projection), output(&rust), "command output state tick {tick}");
             assert_eq!(projection.note_queued, rust.note_queued, "queued effects tick {tick}");
             assert_eq!(projection.watched_strengths, rust.watched_strengths, "watched wires tick {tick}");
             for (node, (a, b)) in projection.input_levels.iter().zip(&rust.input_levels).enumerate() {

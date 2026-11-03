@@ -99,12 +99,19 @@ fn captured_pressure_plate_power_and_trapdoor_updates_match_interpreter() {
 }
 
 #[test]
-fn command_lifecycle_output_and_comparators_match_interpreter() {
+fn command_lifecycle_output_and_comparators_match_reference() {
     use mchprs_blocks::block_entities::{BlockEntity, CommandBlockEntity};
     use std::collections::HashMap;
-    for name in ["command_block", "repeating_command_block"] {
+    for (name, llvm) in ["command_block", "repeating_command_block"]
+        .into_iter()
+        .flat_map(|name| [false, true].map(move |llvm| (name, llvm)))
+    {
+        if llvm && !cfg!(any(windows, target_os = "linux")) {
+            continue;
+        }
         for valid in [false, true] {
             let mut native = world();
+            native.piston_state_mut().logical_tick = 1234;
             native.disable_command_output_limits_for_replay();
             let command = BlockPos::new(40, 30, 40);
             let lever = command.offset(BlockFace::West);
@@ -148,19 +155,40 @@ fn command_lifecycle_output_and_comparators_match_interpreter() {
                 .compile(
                     &native,
                     bounds,
-                    CompilerOptions::default(),
+                    CompilerOptions { llvm, ..Default::default() },
                     native.scheduler().iter_entries().collect(),
                     Arc::new(TaskMonitor::default()),
                 )
                 .unwrap();
+            let mut rust_reference = llvm.then(|| {
+                let mut reference = Compiler::default();
+                reference.compile(
+                    &native, bounds, CompilerOptions::default(), native.scheduler().iter_entries().collect(), Arc::new(TaskMonitor::default()),
+                ).unwrap();
+                native.clear_scheduled_ticks();
+                reference
+            });
             for tick in 0..16 {
                 if [0, 3, 6, 12].contains(&tick) {
-                    crate::interaction::use_redstone(native.get_block(lever), &mut native, lever, None);
+                    if let Some(reference) = &mut rust_reference {
+                        reference.try_on_use_block(lever).unwrap();
+                    } else {
+                        crate::interaction::use_redstone(native.get_block(lever), &mut native, lever, None);
+                    }
                     compiler.try_on_use_block(lever).unwrap();
                 }
-                native.tick_interpreted();
+                if let Some(reference) = &mut rust_reference {
+                    reference.tick().unwrap();
+                    reference.try_flush_complete(&mut native).unwrap();
+                } else {
+                    native.tick_interpreted();
+                }
                 compiler.tick().unwrap();
                 compiler.try_flush_complete(&mut published).unwrap();
+                if let Some(reference) = &rust_reference {
+                    assert_eq!(compiler.runtime.as_ref().unwrap().pending_entries(), reference.runtime.as_ref().unwrap().pending_entries(),
+                        "LLVM/Rust pending ticks: {name} valid={valid} tick={tick}");
+                }
                 for pos in [command, chain, comparator] {
                     let expected = serde_json::to_value(native.get_block_entity(pos)).unwrap();
                     let actual = serde_json::to_value(published.get_block_entity(pos)).unwrap();
@@ -174,6 +202,7 @@ fn command_lifecycle_output_and_comparators_match_interpreter() {
                 );
                 if tick == 7 {
                     compiler.try_reset(&mut published, bounds).unwrap();
+                    if let Some(reference) = &mut rust_reference { reference.try_reset(&mut native, bounds).unwrap(); }
                     assert_eq!(
                         published.scheduler().iter_entries().collect::<Vec<_>>(),
                         native.scheduler().iter_entries().collect::<Vec<_>>()
@@ -182,15 +211,22 @@ fn command_lifecycle_output_and_comparators_match_interpreter() {
                         .compile(
                             &published,
                             bounds,
-                            CompilerOptions::default(),
+                            CompilerOptions { llvm, ..Default::default() },
                             published.scheduler().iter_entries().collect(),
                             Arc::new(TaskMonitor::default()),
                         )
                         .unwrap();
                     published.clear_scheduled_ticks();
+                    if let Some(reference) = &mut rust_reference {
+                        reference.compile(
+                            &native, bounds, CompilerOptions::default(), native.scheduler().iter_entries().collect(), Arc::new(TaskMonitor::default()),
+                        ).unwrap();
+                        native.clear_scheduled_ticks();
+                    }
                 }
             }
             compiler.try_reset(&mut published, bounds).unwrap();
+            if let Some(reference) = &mut rust_reference { reference.try_reset(&mut native, bounds).unwrap(); }
             assert_eq!(
                 published.scheduler().iter_entries().collect::<Vec<_>>(),
                 native.scheduler().iter_entries().collect::<Vec<_>>()
@@ -200,46 +236,67 @@ fn command_lifecycle_output_and_comparators_match_interpreter() {
 }
 
 #[test]
-fn compiled_command_output_limits_match_interpreter() {
+fn compiled_command_output_limits_match_reference() {
     use mchprs_blocks::block_entities::{BlockEntity, CommandBlockEntity};
-    let mut native = world();
-    let pos = BlockPos::new(40, 30, 40);
-    native.set_block(pos, Block::from_name("repeating_command_block").unwrap());
-    native.set_block_entity(
-        pos,
-        BlockEntity::CommandBlock(Box::new(CommandBlockEntity {
-            command: "say limited".into(),
-            automatic: true,
-            ..Default::default()
-        })),
-    );
-    crate::redstone::command_block::update(&mut native, pos);
-    let mut published = native.activation_snapshot();
-    let bounds = (pos - BlockPos::new(3, 3, 3), pos + BlockPos::new(3, 3, 3));
-    let mut compiler = Compiler::default();
-    compiler
-        .compile(
-            &native,
-            bounds,
-            CompilerOptions::default(),
-            native.scheduler().iter_entries().collect(),
-            Arc::new(TaskMonitor::default()),
-        )
-        .unwrap();
-    for _ in 0..80 {
-        native.tick_interpreted();
-        compiler.tick().unwrap();
-        compiler.try_flush_complete(&mut published).unwrap();
-        assert_eq!(
-            serde_json::to_value(published.get_block_entity(pos)).unwrap(),
-            serde_json::to_value(native.get_block_entity(pos)).unwrap()
+    for llvm in [false, true] {
+        if llvm && !cfg!(any(windows, target_os = "linux")) {
+            continue;
+        }
+        let mut native = world();
+        let pos = BlockPos::new(40, 30, 40);
+        native.set_block(pos, Block::from_name("repeating_command_block").unwrap());
+        native.set_block_entity(
+            pos,
+            BlockEntity::CommandBlock(Box::new(CommandBlockEntity {
+                command: "say limited".into(),
+                automatic: true,
+                ..Default::default()
+            })),
         );
-        assert_eq!(
-            published.command_output().collect::<Vec<_>>(),
-            native.command_output().collect::<Vec<_>>()
-        );
+        crate::redstone::command_block::update(&mut native, pos);
+        let mut published = native.activation_snapshot();
+        let bounds = (pos - BlockPos::new(3, 3, 3), pos + BlockPos::new(3, 3, 3));
+        let mut compiler = Compiler::default();
+        compiler
+            .compile(
+                &native,
+                bounds,
+                CompilerOptions { llvm, ..Default::default() },
+                native.scheduler().iter_entries().collect(),
+                Arc::new(TaskMonitor::default()),
+            )
+            .unwrap();
+        let mut rust_reference = llvm.then(|| {
+            let mut reference = Compiler::default();
+            reference.compile(
+                &native, bounds, CompilerOptions::default(), native.scheduler().iter_entries().collect(), Arc::new(TaskMonitor::default()),
+            ).unwrap();
+            native.clear_scheduled_ticks();
+            reference
+        });
+        for _ in 0..80 {
+            if let Some(reference) = &mut rust_reference {
+                reference.tick().unwrap();
+                reference.try_flush_complete(&mut native).unwrap();
+            } else {
+                native.tick_interpreted();
+            }
+            compiler.tick().unwrap();
+            compiler.try_flush_complete(&mut published).unwrap();
+            if let Some(reference) = &rust_reference {
+                assert_eq!(compiler.runtime.as_ref().unwrap().pending_entries(), reference.runtime.as_ref().unwrap().pending_entries(), "LLVM/Rust pending ticks");
+            }
+            assert_eq!(
+                serde_json::to_value(published.get_block_entity(pos)).unwrap(),
+                serde_json::to_value(native.get_block_entity(pos)).unwrap()
+            );
+            assert_eq!(
+                published.command_output().collect::<Vec<_>>(),
+                native.command_output().collect::<Vec<_>>()
+            );
+        }
+        assert_eq!(published.command_output().count(), 64);
     }
-    assert_eq!(published.command_output().count(), 64);
 }
 
 #[test]
@@ -249,7 +306,10 @@ fn command_dependencies_must_stay_inside_capture_bounds() {
     world.set_block(pos, Block::from_name("command_block").unwrap());
     let next = pos.offset(BlockFace::North);
     world.set_block(next, Block::from_name("chain_command_block").unwrap());
-    let entry = || ScratchEntry { scheduled: vec![], piston: Default::default() };
+    let entry = || ScratchEntry {
+        scheduled: vec![],
+        piston: Default::default(),
+    };
     let error = compile(&world, (pos, pos), entry()).err().expect("chain outside selection was admitted");
     assert_eq!(error.position, Some(next));
     assert_eq!(error.reason, "command block chain leaves capture bounds");
@@ -260,7 +320,9 @@ fn command_dependencies_must_stay_inside_capture_bounds() {
     let mut conditional = Block::from_name("command_block").unwrap();
     conditional.set_properties(std::collections::HashMap::from([("conditional", "true")]));
     world.set_block(pos, conditional);
-    let error = compile(&world, (pos, pos), entry()).err().expect("condition outside selection was admitted");
+    let error = compile(&world, (pos, pos), entry())
+        .err()
+        .expect("condition outside selection was admitted");
     assert_eq!(error.position, Some(previous));
     assert_eq!(error.reason, "command block condition leaves capture bounds");
 }

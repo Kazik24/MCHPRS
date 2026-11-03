@@ -99,7 +99,7 @@ static uint32_t valid_movement(const MchprsNativeProgramDescriptor *p, const uin
     if ((uint64_t)n[53] != (uint64_t)cells * 2u || n[54] % 7u || n[55] % 2u || n[57] % 256u)
         return 0u;
     for (uint32_t i = 0; i < n[53]; i += 2u)
-        if (!bounded(t[53][i], t[53][i + 1u], n[54] / 7u)) return 0u;
+        if (t[53][i] == NONE ? t[53][i + 1u] != 0u : !bounded(t[53][i], t[53][i + 1u], n[54] / 7u)) return 0u;
     for (uint32_t i = 0; i < n[54]; i += 7u) {
         const uint32_t *r = t[54] + i;
         if (r[0] >= nodes || !bounded(r[1], r[2], n[55] / 2u) || !bounded(r[3], r[4], n[56])
@@ -205,7 +205,7 @@ static size_t movement_storage_bytes(const NEEngine *e) {
            c = table_words(e, 16u) / 7u;
     size_t m = p * 2u + t;
     size_t wires = table_words(e, 33u) ? table(e, 33u)[0] : 0u;
-    return 320u + (t + table_words(e, 27u) + n + p + c + n + n + wires) * 4u + p * 2u +
+    return 320u + (t * 2u + table_words(e, 27u) + n + p + c + n + n + wires) * 4u + p * 2u +
            e->program->arrangement_link_count * 3u + n * 2u + wires + p * 3u * 2u * 4u + m * sizeof(NEMotion);
 }
 
@@ -263,19 +263,7 @@ static const uint32_t *route_ports(NEEngine *e, uint32_t local) {
     uint32_t state = 0u, stride = 1u;
     for (uint32_t i = 0; i < r[1]; ++i) {
         const uint32_t *a = table(e, 34u) + (r[0] + i) * 2u;
-        uint32_t token = a[0], digit = 0u, cell = e->token_cell[token];
-        if (cell != NONE) {
-            const uint32_t *row = table(e, 12u) + token * 2u;
-            for (uint32_t j = 0; j < row[1]; ++j)
-                if (table(e, 13u)[row[0] + j] == cell) {
-                    digit = j + 1u;
-                    break;
-                }
-            if (!digit) {
-                e->error = NE_INVALID;
-                return NULL;
-            }
-        }
+        uint32_t digit = e->token_digit[a[0]];
         state += digit * stride;
         stride *= a[1];
     }
@@ -391,6 +379,7 @@ static uint32_t init_movement(NEEngine *e, uint8_t *base, size_t bytes) {
     e->cell_count = table_words(e, 16u) / 7u;
     e->motion_capacity = e->piston_count * 2u + e->token_count;
     e->token_cell = (uint32_t *)take_bytes(&at, (size_t)e->token_count * 4u);
+    e->token_digit = (uint32_t *)take_bytes(&at, (size_t)e->token_count * 4u);
     e->groups = (uint32_t *)take_bytes(&at, (size_t)table_words(e, 27u) * 4u);
     e->piston_by_component = (uint32_t *)take_bytes(&at, (size_t)n * 4u);
     e->piston_motion = (uint32_t *)take_bytes(&at, (size_t)e->piston_count * 4u);
@@ -428,8 +417,18 @@ static uint32_t init_movement(NEEngine *e, uint8_t *base, size_t bytes) {
     }
     for (uint32_t i = 0; i < e->cell_count; ++i)
         e->cell_motion[i] = NONE;
-    for (uint32_t i = 0; i < e->token_count; ++i)
+    for (uint32_t i = 0; i < e->token_count; ++i) {
         e->token_cell[i] = table(e, 11u)[i * 3u];
+        if (e->token_cell[i] != NONE) {
+            const uint32_t *cells = table(e, 12u) + i * 2u;
+            for (uint32_t j = 0; j < cells[1]; ++j)
+                if (table(e, 13u)[cells[0] + j] == e->token_cell[i]) {
+                    e->token_digit[i] = j + 1u;
+                    break;
+                }
+            if (!e->token_digit[i]) return NE_INVALID;
+        }
+    }
     for (uint32_t i = 0; i < table_words(e, 27u); ++i)
         e->groups[i] = table(e, 27u)[i];
     for (uint32_t i = 0; i < e->motion_capacity; ++i)
@@ -492,7 +491,7 @@ static uint32_t update_note(NEEngine *e, uint32_t node) {
     if (e->component_state[node] == powered)
         return NE_OK;
     const uint32_t *r = table(e, 49u) + node * 6u;
-    uint8_t instrument = (uint8_t)(note_meta(e, r[2], r[3]) >> 1u);
+    uint8_t instrument = (uint8_t)((note_meta(e, r[2], r[3]) >> 1u) & 0x7fu);
     e->note_instruments[node] = instrument;
     if (powered && !e->note_queued[node] && (note_meta(e, r[0], r[1]) & 1u)) {
         if (e->note_count >= e->program->component_count)
@@ -520,13 +519,7 @@ static uint32_t notify_shape(NEEngine *e, uint32_t cell) {
         uint32_t state = 0u, stride = 1u;
         for (uint32_t j = 0; j < s[2]; ++j) {
             const uint32_t *a = table(e, 55u) + (s[1] + j) * 2u;
-            const uint32_t *cells = table(e, 12u) + a[0] * 2u;
-            uint32_t digit = 0u;
-            if (e->token_cell[a[0]] != NONE) {
-                for (uint32_t k = 0; k < cells[1]; ++k)
-                    if (table(e, 13u)[cells[0] + k] == e->token_cell[a[0]]) { digit = k + 1u; break; }
-                if (!digit) return e->error = NE_INVALID;
-            }
+            uint32_t digit = e->token_digit[a[0]];
             state += digit * stride;
             stride *= a[1];
         }
@@ -542,7 +535,7 @@ static uint32_t notify_shape(NEEngine *e, uint32_t cell) {
             }
         }
     }
-    if (steps[1]) return NE_OK;
+    if (steps[0] != NONE) return NE_OK;
     const uint32_t *r = table(e, 16u) + cell * 7u;
     for (uint32_t i = 0; i < r[6]; ++i) {
         uint32_t node = table(e, 17u)[r[5] + i];
@@ -594,6 +587,7 @@ static uint32_t set_token_pos(NEEngine *e, uint32_t token, uint32_t position) {
     if (local == NONE)
         return e->error = NE_INVALID;
     e->token_cell[token] = position;
+    e->token_digit[token] = position == NONE ? 0u : local + 1u;
     uint32_t switched_count = 0u, changed_count = 0u;
     if (route_refresh(e, token, &switched_count))
         return e->error;

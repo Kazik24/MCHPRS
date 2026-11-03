@@ -99,6 +99,10 @@ impl CommandBlockHost for Runtime {
 }
 
 impl Runtime {
+    pub(in crate::redpiler) fn queued_command_outputs(&self) -> usize {
+        self.command_output_state.as_ref().map_or(0, |state| state.queued)
+    }
+
     pub(crate) fn publish_commands(&mut self, world: &mut impl crate::world::World, io_only: bool) {
         if !io_only {
             for (&pos, entity) in &self.command_blocks {

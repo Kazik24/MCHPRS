@@ -158,6 +158,7 @@ impl Runtime {
             movement_transitions,
             movement_ranges,
             shape_steps,
+            shape_maps,
             cell_shape_steps,
             effective_links
         );
@@ -175,6 +176,17 @@ impl Runtime {
             token_piston_components,
             token_movement_groups,
             movement_cells
+        );
+        let shape_ports: usize = self.program.shape_steps.iter().map(|step| step.states.ports.len()).sum();
+        let shape_valid_ports: usize = self.program.shape_steps.iter().map(|step| step.states.ports.iter().flatten().count()).sum();
+        let shape_port_capacity: usize = self.program.shape_steps.iter().map(|step| step.states.ports.capacity()).sum();
+        eprintln!(
+            "Redpiler shape maps: unique_maps={} valid_ports={shape_valid_ports} invalid_ports={} unpooled_map_bytes={} unique_map_bytes={} port_buffer_bytes={}",
+            self.program.shape_maps.len(),
+            shape_ports - shape_valid_ports,
+            shape_valid_ports * 256,
+            self.program.shape_maps.len() * 256,
+            shape_port_capacity * std::mem::size_of::<Option<usize>>()
         );
         let arrangement_payload: usize = self.program.input_arrangements.iter().map(|group| {
             group.tokens.capacity() * std::mem::size_of::<usize>()
@@ -255,6 +267,10 @@ impl Runtime {
                 reason: "runtime scheduled tick capacity overflow",
             })?
             .max(64);
+        self.set_pending_with_capacity(ticks, limit)
+    }
+
+    pub(super) fn set_pending_with_capacity(&mut self, ticks: Vec<mchprs_world::TickEntry>, limit: usize) -> Result<(), ScratchError> {
         self.pending.reset(limit);
         self.pending_counts.fill(0);
         self.pending_passive_positions.clear();

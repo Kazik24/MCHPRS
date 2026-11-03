@@ -3,7 +3,7 @@ use super::{AUX_TABLES, Program, ScratchError, overflow};
 use mchprs_blocks::{BlockFace, blocks::{Block, Instrument}};
 
 fn id(n: usize) -> Result<u32, ScratchError> { u32::try_from(n).map_err(|_| overflow()) }
-fn metadata(block: Block) -> u32 { (Instrument::from_block_below(block).get_id() << 1) | u32::from(block == Block::Air) }
+fn metadata(block: Block) -> u32 { (Instrument::from_block_below(block).get_id() << 1) | u32::from(block == Block::Air) | (u32::from(block.is_solid()) << 8) }
 
 pub(super) fn encode(p: &Program, t: &mut [Vec<u32>; AUX_TABLES]) -> Result<(), ScratchError> {
     for node in 0..p.initial.len() {

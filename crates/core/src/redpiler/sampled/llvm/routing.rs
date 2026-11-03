@@ -103,11 +103,11 @@ mod tests {
             unsafe {
                 let data = aligned.as_mut_ptr().cast::<u8>().add(offset);
                 std::ptr::copy_nonoverlapping(blob.as_ptr(), data, blob.len());
-                let state_bytes = (library.state_size)(&descriptor, data, size);
+                let state_bytes = (library.state_size)(&descriptor, data, size, 0);
                 if state_bytes != 0 {
                     let mut memory = vec![0u64; (state_bytes + 8).div_ceil(8)];
                     let unaligned = memory.as_mut_ptr().cast::<u8>().add(1);
-                    assert_ne!((library.create)(&descriptor, data, size, unaligned.cast(), state_bytes), 0);
+                    assert_ne!((library.create)(&descriptor, data, size, unaligned.cast(), state_bytes, 0), 0);
                 }
                 state_bytes != 0
             }

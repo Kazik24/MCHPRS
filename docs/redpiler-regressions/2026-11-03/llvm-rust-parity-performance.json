@@ -1,0 +1,343 @@
+{
+  "schema": 1,
+  "oracle": "Rust compiled Redpiler execution, not interpreter",
+  "native_semantic_version": 22,
+  "benchmark": {
+    "recorded_utc": "2026-11-03T18:51:58.6228664Z",
+    "profile": "profiling: release, fat LTO, debug symbols",
+    "affinity": "0xff",
+    "rayon_threads": 4,
+    "exe_sha256": "7760405163E1D48E198D7A58D4AF19A08E42DECFA6421F45E000CE15A0536DA2",
+    "dll_sha256": "7E6E2DE6C8F3A6DFDA88A744022F9046269E9854504EE1845AD7ADF0FA111654",
+    "runs": [
+      {
+        "alternating_order": true,
+        "fixture": "ZCore12B_FIX.schem",
+        "fixture_sha256": "7f074b967a043f36915f5980cbd4da54f62e45832cc385c1ce53fb21dbe9bac8",
+        "mode": "kernel-only; snapshots outside timing",
+        "requested_pairs": 3,
+        "results": [
+          {
+            "admission_ms": 22794.032600000002,
+            "backend": "rust",
+            "kernel_ms": 2515.0524,
+            "pair": 1,
+            "preparation_ticks": 413,
+            "reset_ms": 198.9647,
+            "screen_sha256": "563a79fbd276a5b3601a404c3b7f278fe302f171960d5a6ed294c34219c7175b",
+            "setup_ms": 22782.9225,
+            "ticks": 5000,
+            "tps": 1988.0301499881275
+          },
+          {
+            "admission_ms": 26469.5935,
+            "backend": "llvm",
+            "kernel_ms": 1559.4594000000002,
+            "pair": 1,
+            "preparation_ticks": 413,
+            "reset_ms": 224.3703,
+            "screen_sha256": "563a79fbd276a5b3601a404c3b7f278fe302f171960d5a6ed294c34219c7175b",
+            "setup_ms": 26453.9836,
+            "ticks": 5000,
+            "tps": 3206.23929035921
+          },
+          {
+            "admission_ms": 28001.240800000003,
+            "backend": "llvm",
+            "kernel_ms": 1599.7086,
+            "pair": 2,
+            "preparation_ticks": 413,
+            "reset_ms": 229.3945,
+            "screen_sha256": "563a79fbd276a5b3601a404c3b7f278fe302f171960d5a6ed294c34219c7175b",
+            "setup_ms": 27965.0266,
+            "ticks": 5000,
+            "tps": 3125.569244298618
+          },
+          {
+            "admission_ms": 28660.2787,
+            "backend": "rust",
+            "kernel_ms": 2765.4277,
+            "pair": 2,
+            "preparation_ticks": 413,
+            "reset_ms": 261.5378,
+            "screen_sha256": "563a79fbd276a5b3601a404c3b7f278fe302f171960d5a6ed294c34219c7175b",
+            "setup_ms": 28623.2258,
+            "ticks": 5000,
+            "tps": 1808.0385901970967
+          },
+          {
+            "admission_ms": 28759.6854,
+            "backend": "rust",
+            "kernel_ms": 2762.456,
+            "pair": 3,
+            "preparation_ticks": 413,
+            "reset_ms": 225.80149999999998,
+            "screen_sha256": "563a79fbd276a5b3601a404c3b7f278fe302f171960d5a6ed294c34219c7175b",
+            "setup_ms": 28755.578700000002,
+            "ticks": 5000,
+            "tps": 1809.9835798289637
+          },
+          {
+            "admission_ms": 31464.6628,
+            "backend": "llvm",
+            "kernel_ms": 2860.4587,
+            "pair": 3,
+            "preparation_ticks": 413,
+            "reset_ms": 322.2581,
+            "screen_sha256": "563a79fbd276a5b3601a404c3b7f278fe302f171960d5a6ed294c34219c7175b",
+            "setup_ms": 31426.7678,
+            "ticks": 5000,
+            "tps": 1747.9714005309706
+          }
+        ],
+        "ticks": 5000
+      },
+      {
+        "alternating_order": true,
+        "fixture": "Q2CK@Q2CK_Anpu1_Pong_KBTV.schem",
+        "fixture_sha256": "f4068257797399531ce31d56c972af32d0f73f7d8d496ce1b7b8cd1c178decec",
+        "mode": "kernel-only; snapshots outside timing",
+        "requested_pairs": 1,
+        "results": [
+          {
+            "admission_ms": 16614.4396,
+            "backend": "rust",
+            "kernel_ms": 303.02000000000004,
+            "pair": 1,
+            "preparation_ticks": 0,
+            "reset_ms": 29.9542,
+            "screen_sha256": "f0a6cab3b43c6986b0af8431bf0f74e03c40465c414f4d80e6b55e078baf9a83",
+            "setup_ms": 16574.0667,
+            "ticks": 5000,
+            "tps": 16500.56101907465
+          },
+          {
+            "admission_ms": 16843.917699999998,
+            "backend": "llvm",
+            "kernel_ms": 188.4984,
+            "pair": 1,
+            "preparation_ticks": 0,
+            "reset_ms": 50.288399999999996,
+            "screen_sha256": "f0a6cab3b43c6986b0af8431bf0f74e03c40465c414f4d80e6b55e078baf9a83",
+            "setup_ms": 16805.7789,
+            "ticks": 5000,
+            "tps": 26525.424088480326
+          }
+        ],
+        "ticks": 5000
+      }
+    ]
+  },
+  "summary": [
+    {
+      "fixture": "ZCore12B_FIX.schem",
+      "pairs": 3,
+      "ticks_per_run": 5000,
+      "rust_median_tps": 1809.9835798289637,
+      "llvm_median_tps": 3125.569244298618,
+      "llvm_min_tps": 1747.9714005309706,
+      "llvm_max_tps": 3206.23929035921,
+      "median_paired_ratio": 1.6127719644384455,
+      "ratio_of_medians": 1.7268495024656367
+    },
+    {
+      "fixture": "Q2CK@Q2CK_Anpu1_Pong_KBTV.schem",
+      "pairs": 1,
+      "ticks_per_run": 5000,
+      "rust_median_tps": 16500.56101907465,
+      "llvm_median_tps": 26525.424088480326,
+      "llvm_min_tps": 26525.424088480326,
+      "llvm_max_tps": 26525.424088480326,
+      "median_paired_ratio": 1.6075468014582617,
+      "ratio_of_medians": 1.6075468014582617
+    }
+  ],
+  "native_build": {
+    "built_utc": "2026-11-03T18:30:03.76349Z",
+    "clang": "F:\\rustrepos\\MCHPRS\\target\\llvm-23.1.4\\bin\\clang.exe",
+    "clang_version": "clang version 23.1.4 (https://github.com/llvm/llvm-project 7a941dfb2877a0b8cf30323fefa85ad019e0b0f5)",
+    "clang_sha256": "2FCD72A41BBC6BCF8E89C63555C4DB7451DA53BF47082FB91D6B1C1E990636AD",
+    "linker": "F:\\rustrepos\\MCHPRS\\target\\llvm-23.1.4\\bin\\lld-link.exe",
+    "linker_version": "LLD 23.1.4 (https://github.com/llvm/llvm-project 7a941dfb2877a0b8cf30323fefa85ad019e0b0f5)",
+    "linker_sha256": "92052A2D6DBD722FE31EF1991F1522F3C8200CC78917BF65920F3790148C4C36",
+    "compile_args": [
+      "--target=x86_64-pc-windows-msvc",
+      "-std=c11",
+      "-O3",
+      "-ffreestanding",
+      "-fno-builtin",
+      "-Werror",
+      "-I",
+      "F:\\rustrepos\\MCHPRS\\crates\\core\\src\\redpiler\\sampled\\llvm",
+      "-c",
+      "F:\\rustrepos\\MCHPRS\\crates\\core\\src\\redpiler\\sampled\\llvm\\engine.c",
+      "-o",
+      "F:\\rustrepos\\MCHPRS\\target\\native_engine.obj"
+    ],
+    "link_args": [
+      "/dll",
+      "/noentry",
+      "/nodefaultlib",
+      "/machine:x64",
+      "/out:F:\\rustrepos\\MCHPRS\\target\\native_engine.dll",
+      "F:\\rustrepos\\MCHPRS\\target\\native_engine.obj"
+    ],
+    "sources": [
+      {
+        "name": "engine.c",
+        "bytes": 49293,
+        "sha256": "34A5D9C73B85DD7834C4D8E7A9700C74ADC5C5C0611AD0BF287273BD0CE18EDC"
+      },
+      {
+        "name": "llvm_movement.c",
+        "bytes": 43766,
+        "sha256": "3DA407751A94002171BC9D68E783B433E96E98A2FCE0CB6BF91EB91CF3B8E3B8"
+      },
+      {
+        "name": "command_engine.c",
+        "bytes": 25725,
+        "sha256": "A1BE343FE9F3394A18AAC978AC3D10DBF133C8DEADD9FB924D5E5D45E049D918"
+      },
+      {
+        "name": "abi.h",
+        "bytes": 4929,
+        "sha256": "1BF3402576339EE34A08C99DD482014180017BE88E0750BD6E7F0F66CA31D74C"
+      }
+    ],
+    "build_ms": 711.6834,
+    "object_bytes": 57308,
+    "dll": "F:\\rustrepos\\MCHPRS\\target\\native_engine.dll",
+    "dll_bytes": 51712,
+    "dll_sha256": "7E6E2DE6C8F3A6DFDA88A744022F9046269E9854504EE1845AD7ADF0FA111654"
+  },
+  "source_files": [
+    {
+      "path": "crates/core/src/plot/tests/client_sync.rs",
+      "sha256": "53CE6A5EAC7E6DE6B999F669CB80861F7D0768844261E51F5E853F987591CC51"
+    },
+    {
+      "path": "crates/core/src/redpiler/compiler.rs",
+      "sha256": "041EF5FCC06EF3A0EFEFE71905179EE3A1628309B6809345ACCCEC8B84FE533F"
+    },
+    {
+      "path": "crates/core/src/redpiler/sampled/commands.rs",
+      "sha256": "7FB7286E5F2038EBE577CA98B2F58355543C15DDDF92156422AD10E1F884C734"
+    },
+    {
+      "path": "crates/core/src/redpiler/sampled/executor.rs",
+      "sha256": "1B9618EC631E9293664A62944ACCB3A25CE956527C8BC3A1DC695FD75BE853F3"
+    },
+    {
+      "path": "crates/core/src/redpiler/sampled/llvm/abi.h",
+      "sha256": "1BF3402576339EE34A08C99DD482014180017BE88E0750BD6E7F0F66CA31D74C"
+    },
+    {
+      "path": "crates/core/src/redpiler/sampled/llvm/cache.rs",
+      "sha256": "20BDF75B2CA9B42C55C1E232F012CFBB31FA2F61DE9BA01EBA33631AE87623B9"
+    },
+    {
+      "path": "crates/core/src/redpiler/sampled/llvm/command_engine_test.c",
+      "sha256": "F4644E7B45C75403CEBF105E72ABB621295FD396CE32D0BE2F80AC3FA16CCD4C"
+    },
+    {
+      "path": "crates/core/src/redpiler/sampled/llvm/command_engine.c",
+      "sha256": "A1BE343FE9F3394A18AAC978AC3D10DBF133C8DEADD9FB924D5E5D45E049D918"
+    },
+    {
+      "path": "crates/core/src/redpiler/sampled/llvm/command_notifications.rs",
+      "sha256": "37A43CBD2EC85B3F2F88FFA01B984ECD5834D1FB20363780D35501821F8CD547"
+    },
+    {
+      "path": "crates/core/src/redpiler/sampled/llvm/command.rs",
+      "sha256": "E966FF31202C70E01045DBCEA4FA1DC81EF3006395122B9C0D02E8DC2963BD2B"
+    },
+    {
+      "path": "crates/core/src/redpiler/sampled/llvm/effects.rs",
+      "sha256": "E2DBDDC390FF4E67047FD40592655BA7B8104B20C9D0B6AB70C9ABE280ACBC1B"
+    },
+    {
+      "path": "crates/core/src/redpiler/sampled/llvm/engine.c",
+      "sha256": "34A5D9C73B85DD7834C4D8E7A9700C74ADC5C5C0611AD0BF287273BD0CE18EDC"
+    },
+    {
+      "path": "crates/core/src/redpiler/sampled/llvm/llvm_movement.c",
+      "sha256": "3DA407751A94002171BC9D68E783B433E96E98A2FCE0CB6BF91EB91CF3B8E3B8"
+    },
+    {
+      "path": "crates/core/src/redpiler/sampled/llvm/mod.rs",
+      "sha256": "7E795270031BF28DA79A74E37FD8EC757C007358EAFDD35D2044B16C1B8389C2"
+    },
+    {
+      "path": "crates/core/src/redpiler/sampled/llvm/movement.rs",
+      "sha256": "5C2B327A4C3F54AEC799069312A66281A7C9F30FB0B721369916B4F1C979C878"
+    },
+    {
+      "path": "crates/core/src/redpiler/sampled/llvm/routing.rs",
+      "sha256": "6DD9C6C55E6FCD277B32F1FE9F88F9BC08A22CB69F4F7151366615A7B33F07D7"
+    },
+    {
+      "path": "crates/core/src/redpiler/sampled/llvm/shapes.rs",
+      "sha256": "17C779F63B050B6B4982F7DC3A94602E7C9A9E8123BF00770834BC58C6043F6A"
+    },
+    {
+      "path": "crates/core/src/redpiler/sampled/mod.rs",
+      "sha256": "86B15A11C2CCE1398DBE235463B14585222D3FC7209836D37F5CC252835BFF05"
+    },
+    {
+      "path": "crates/core/src/redpiler/sampled/program.rs",
+      "sha256": "5B0A897029F55FAE4CB233376AFEDED0CA3F55AED6A8DBC1CACA868528F99D8E"
+    },
+    {
+      "path": "crates/core/src/redpiler/sampled/shapes.rs",
+      "sha256": "63681CA33AC0D19849B4B5864526BA49BF974AE3F04DA66F829041EE9501B39C"
+    },
+    {
+      "path": "crates/core/src/redpiler/tests/compiler.rs",
+      "sha256": "44937D157C80F4D0870326F4E2BD9238997E2E1235092F502CC5B472252350AD"
+    },
+    {
+      "path": "crates/core/src/redpiler/tests/sampled/admission.rs",
+      "sha256": "27FD65298F1DFD756A61268B5879F0B2964569983FCDEB000F15475ACBE2CB26"
+    },
+    {
+      "path": "crates/core/src/redpiler/tests/sampled/llvm_regressions.rs",
+      "sha256": "168176E4436C9CEE24A51F54940717EE2D6D400F4FFA6A8685ADF47CB55C2CB3"
+    },
+    {
+      "path": "crates/core/tests/review_graph_removal_probe.rs",
+      "sha256": "1E077835C6B8650D8EAE9E155C55FA534122BB522C494F843C4A931B926B9356"
+    },
+    {
+      "path": "scripts/build-llvm-native.ps1",
+      "sha256": "406511ACA32E5B07E142EBC873F70E8E1A5D57600FC7E8AA947A5F3201206679"
+    }
+  ],
+  "validation": {
+    "llvm_rust_long_parity": {
+      "passed": 3,
+      "zcore_run_ticks": 5000,
+      "zcore_preparation_ticks": 413,
+      "anpu_ticks": 5000,
+      "anpu_reset_ticks": 2000,
+      "continuation_ticks": 128,
+      "log": "target/zcore-recovery-trials/llvm-rust-oracle-long-parity.log"
+    },
+    "redpiler_suite": {
+      "passed": 204,
+      "failed": 1,
+      "ignored": 18,
+      "failure": "existing Rust/interpreter Four In A Row mismatch; not LLVM/Rust parity",
+      "log": "target/zcore-recovery-trials/llvm-rust-oracle-redpiler-tests.log"
+    },
+    "auto_compiled_native_command_parity": "passed; 1200 ticks, output buffer growth, nonzero logical base",
+    "native_command_c_selftest": "passed, exit 0",
+    "workspace_all_targets_check": "passed without warnings",
+    "reset_integration": "5 passed after explicit full publication",
+    "workspace_full_run": "completed; remaining unrelated checks fail for Four In A Row and missing frozen ZCore JSON reference"
+  },
+  "limitations": [
+    "Three ZCore pairs show substantial variability; one LLVM run is slower than its paired Rust run.",
+    "ANPU is a single rough pair.",
+    "Other ignored/manual tests and non-Windows platforms were not verified."
+  ]
+}

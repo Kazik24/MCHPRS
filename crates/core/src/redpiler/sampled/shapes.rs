@@ -11,7 +11,7 @@ use std::collections::HashMap;
 pub(super) struct ShapeStep {
     pub(super) node: usize,
     /// Empty for an observer; otherwise maps stored sides to their next state.
-    pub(super) states: Local<[u8; 256]>,
+    pub(super) states: Local<usize>,
     pub(super) callbacks: Vec<usize>,
 }
 
@@ -32,6 +32,8 @@ pub(super) fn unpack(sides: u8, power: u8) -> RedstoneWire {
 pub(super) fn sample(program: &mut Program, scratch: &mut ScratchWorld, monitor: Option<&TaskMonitor>) -> Result<(), ScratchError> {
     program.shape_programs.clear();
     program.shape_steps.clear();
+    program.shape_maps.clear();
+    let mut maps = HashMap::new();
     let components: HashMap<_, _> = program.positions.iter().enumerate().map(|(i, &p)| (p, i)).collect();
     let mut cells: Vec<_> = program
         .tokens
@@ -80,6 +82,16 @@ pub(super) fn sample(program: &mut Program, scratch: &mut ScratchWorld, monitor:
                             pack(crate::redstone::wire::on_neighbor_changed_from(unpack(sides, 0), raw, side))
                         }))
                     })?;
+                    let states = Local {
+                        axes: states.axes,
+                        ports: states.ports.into_iter().map(|state| state.map(|map| {
+                            *maps.entry(map).or_insert_with(|| {
+                                let index = program.shape_maps.len();
+                                program.shape_maps.push(map);
+                                index
+                            })
+                        })).collect(),
+                    };
                     let mut callbacks = Vec::new();
                     crate::redstone::wire_update_notifications(pos, |at, direction, indirect| {
                         if let Some(&target) = components.get(&at) {
@@ -101,4 +113,54 @@ pub(super) fn sample(program: &mut Program, scratch: &mut ScratchWorld, monitor:
         program.shape_programs.insert(cell, start..program.shape_steps.len());
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::world::World;
+    use mchprs_blocks::{BlockFace, BlockPos};
+
+    #[test]
+    fn sampled_maps_share_equal_arrangements_and_preserve_invalid_overlap() {
+        let mut world = super::super::tests::host();
+        let wire = BlockPos::new(15, 15, 15);
+        let north = wire.offset(BlockFace::North);
+        let upper_wire = north.offset(BlockFace::Top);
+        let cap = wire.offset(BlockFace::Top);
+        for pos in [wire.offset(BlockFace::Bottom), north] {
+            world.set_block(pos, Block::Stone {});
+        }
+        for pos in [wire, upper_wire] {
+            world.set_block(pos, Block::RedstoneWire { wire: RedstoneWire::default() });
+        }
+        let mut program = Program::new(
+            vec![wire, upper_wire],
+            vec![world.get_block(wire), world.get_block(upper_wire)],
+            vec![], vec![[vec![], vec![]]; 2], vec![], vec![], vec![],
+        ).unwrap();
+        program.tokens = vec![super::super::compiler::PistonToken {
+            block: Block::Stone {}, position: None, cells: vec![cap],
+        }; 2];
+        let mut scratch = ScratchWorld::from_world(
+            &world,
+            (BlockPos::new(9, 9, 9), BlockPos::new(22, 22, 22)),
+            super::super::ScratchEntry { scheduled: vec![], piston: world.piston_state().clone() },
+        ).unwrap();
+        sample(&mut program, &mut scratch, None).unwrap();
+        let step = program.shape_programs[&cap].clone().find(|&index| program.shape_steps[index].node == 0).unwrap();
+        let states = &program.shape_steps[step].states;
+        assert_eq!(states.axes, vec![Axis::Token(0, 1), Axis::Token(1, 1)]);
+        assert_ne!(states.ports[0], states.ports[1]);
+        assert_eq!(states.ports[1], states.ports[2]);
+        assert_eq!(states.ports[3], None);
+        let maps = program.shape_maps.clone();
+        assert_eq!(maps.iter().collect::<std::collections::HashSet<_>>().len(), maps.len());
+        let mut malformed = program.clone();
+        malformed.shape_steps[step].states.ports[0] = Some(maps.len());
+        assert_eq!(malformed.validate().unwrap_err().reason, "invalid shape map reference");
+        program.shape_maps.push([255; 256]);
+        sample(&mut program, &mut scratch, None).unwrap();
+        assert_eq!(program.shape_maps, maps);
+    }
 }

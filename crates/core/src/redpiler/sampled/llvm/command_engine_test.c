@@ -25,6 +25,7 @@ uint32_t ne_command_init(void *memory, size_t memory_bytes, uint32_t component_c
     const MchprsNativeComponent *components, const uint32_t *block_rows, uint32_t block_count,
     const uint32_t *spec_rows, uint32_t spec_count, const uint8_t *strings, uint32_t string_bytes,
     const uint32_t output_state[6], uint64_t now_ns, uint32_t effect_capacity);
+uint32_t ne_command_prepare_indices(void *memory, uint32_t *components, uint32_t component_count, uint32_t *previous_next, uint32_t words);
 uint32_t ne_command_update(void *memory, uint32_t component, const NECommandHooks *hooks);
 uint32_t ne_command_tick(void *memory, uint32_t component, uint64_t logical_tick, uint64_t now_ns,
     const NECommandHooks *hooks);
@@ -82,8 +83,10 @@ static void mock_reset(Mock *mock) {
 static int initialize(void *memory, size_t memory_bytes, const MchprsNativeComponent *components,
     const uint32_t *blocks, uint32_t block_count, const uint32_t *specs, uint32_t spec_count,
     const uint8_t *strings, uint32_t string_bytes, const uint32_t output[6], uint32_t effects) {
+    static uint32_t component_commands[3], previous_next[6];
     return ne_command_init(memory, memory_bytes, 3u, components, blocks, block_count, specs, spec_count,
-        strings, string_bytes, output, 0u, effects) == 0u;
+        strings, string_bytes, output, 0u, effects) == 0u
+        && ne_command_prepare_indices(memory, component_commands, 3u, previous_next, block_count * 2u) == 0u;
 }
 
 static int lifecycle_test(void) {
@@ -157,6 +160,25 @@ static int lifecycle_test(void) {
     if (ne_command_tick(memory.bytes, 1u, 2u, 2u, &hooks) != 0u
         || ne_command_effect_words(memory.bytes) != effects_before_duplicate
         || mock.notify_count != notifications_before_duplicate) return 19;
+
+    /* Prepared links follow coordinates, including inactive and conditional chains. */
+    blocks[24] = TEST_ENTITY | TEST_TRACK_OUTPUT | TEST_UPDATE_LAST_EXECUTION | 1u;
+    if (!initialize(memory.bytes, sizeof(memory.bytes), components, blocks, 3u, specs, 3u, strings, 2u, output, 16u)) return 20;
+    mock_reset(&mock);
+    if (ne_command_tick(memory.bytes, 0u, 1u, 1u, &hooks) != 0u
+        || ne_command_effect_words(memory.bytes) != TEST_EFFECT_WORDS || mock.notify_count != 1u) return 21;
+    blocks[24] |= TEST_POWERED;
+    if (!initialize(memory.bytes, sizeof(memory.bytes), components, blocks, 3u, specs, 3u, strings, 2u, output, 16u)) return 22;
+    mock_reset(&mock);
+    if (ne_command_tick(memory.bytes, 0u, 1u, 1u, &hooks) != 0u
+        || ne_command_effect_words(memory.bytes) != 2u * TEST_EFFECT_WORDS || mock.notify_count != 2u) return 23;
+    specs[0] = 0u; specs[2] = 0u; specs[3] = 0u; specs[6] = TEST_NONE; specs[7] = 0u;
+    if (!initialize(memory.bytes, sizeof(memory.bytes), components, blocks, 3u, specs, 3u, strings, 2u, output, 16u)) return 24;
+    mock_reset(&mock);
+    if (ne_command_tick(memory.bytes, 0u, 1u, 1u, &hooks) != 0u
+        || ne_command_effect_words(memory.bytes) != 0u || mock.notify_count != 2u) return 25;
+    if (ne_command_read_state(memory.bytes, state, 3u * TEST_STATE_WORDS) != 0u
+        || state[2 * TEST_STATE_WORDS + 2] != 0u || (state[2 * TEST_STATE_WORDS + 1] & TEST_CONDITION_MET)) return 26;
     return 0;
 }
 

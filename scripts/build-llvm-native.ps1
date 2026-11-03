@@ -32,7 +32,7 @@ if ($LASTEXITCODE -ne 0) { throw 'Clang failed; see diagnostics above.' }
 & $Linker @linkArgs
 if ($LASTEXITCODE -ne 0) { throw 'lld-link failed; stop any process using the output DLL and check diagnostics above.' }
 $timer.Stop()
-$sourceInfo = @('engine.c', 'llvm_movement.c', 'abi.h') | ForEach-Object {
+$sourceInfo = @('engine.c', 'llvm_movement.c', 'command_engine.c', 'abi.h') | ForEach-Object {
     $path = Join-Path $include $_
     [ordered]@{ name = $_; bytes = (Get-Item -LiteralPath $path).Length; sha256 = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash }
 }

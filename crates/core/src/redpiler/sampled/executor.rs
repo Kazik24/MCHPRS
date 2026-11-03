@@ -334,6 +334,7 @@ impl Runtime {
                         self.failure = Some(ScratchError { position: Some(position), reason: "invalid wire shape arrangement" });
                         return;
                     };
+                    let map = &self.program.shape_maps[*map];
                     let next = super::shapes::unpack(map[usize::from(super::shapes::pack(wire))], wire.power);
                     if next != wire {
                         self.set_component(node, Block::RedstoneWire { wire: next });

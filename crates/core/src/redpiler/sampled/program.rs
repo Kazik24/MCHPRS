@@ -339,6 +339,7 @@ pub(crate) struct Program {
     // Geometry and projection indexes
     pub(super) shape_programs: HashMap<BlockPos, std::ops::Range<usize>>,
     pub(super) shape_steps: Vec<super::shapes::ShapeStep>,
+    pub(super) shape_maps: Vec<[u8; 256]>,
     pub(super) cell_shape_steps: Vec<Option<std::ops::Range<usize>>>,
     /// captured non-air blocks outside the component list.
     pub(super) geometry: Vec<(BlockPos, Block)>,
@@ -1136,6 +1137,7 @@ impl Program {
             movement_steps: Vec::new(),
             shape_programs: HashMap::new(),
             shape_steps: Vec::new(),
+            shape_maps: Vec::new(),
             cell_shape_steps: Vec::new(),
             movement_wires: Vec::new(),
             input_arrangements: Vec::new(),
@@ -1208,6 +1210,9 @@ impl Program {
             if token.position.is_some_and(|pos| !token.cells.contains(&pos)) {
                 return Err(invalid("invalid captured token position"));
             }
+        }
+        if self.shape_steps.iter().flat_map(|step| &step.states.ports).flatten().any(|&map| map >= self.shape_maps.len()) {
+            return Err(invalid("invalid shape map reference"));
         }
         let valid_source = |source| match source {
             ArrangementSource::Component(node) => node < nodes,

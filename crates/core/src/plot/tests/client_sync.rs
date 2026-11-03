@@ -523,8 +523,8 @@ fn redpiler_flag_suggestions_reach_the_chat_client() {
         assert_eq!(frame.read_varint().unwrap(), 42);
         assert_eq!(frame.read_varint().unwrap(), text.rfind(' ').unwrap() as i32 + 1);
         assert_eq!(frame.read_varint().unwrap(), 2);
-        assert_eq!(frame.read_varint().unwrap(), 4);
-        for expected in ["--publish-all", "--publish-redstone", "--io-only", "--update"] {
+        assert_eq!(frame.read_varint().unwrap(), 5);
+        for expected in ["--publish-all", "--publish-redstone", "--io-only", "--update", "--llvm"] {
             assert_eq!(frame.read_string().unwrap(), expected);
             assert!(!frame.read_bool().unwrap());
         }

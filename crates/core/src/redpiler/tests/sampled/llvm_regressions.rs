@@ -1,3 +1,58 @@
+    #[cfg(any(windows, target_os = "linux"))]
+    #[test]
+    fn llvm_projection_preserves_admitted_pending_capacity_after_imported_ticks_expire() {
+        let pos = BlockPos::new(15, 15, 15);
+        let block = Block::StonePressurePlate { powered: false };
+        let mut program = Program::new(vec![pos], vec![block], vec![], vec![[vec![], vec![]]], vec![], vec![], vec![]).unwrap();
+        program.prepare_projection();
+        let imported = vec![TickEntry { pos, block_type: None, ticks_left: 1, tick_priority: TickPriority::Normal }; 128];
+        let mut native = LlvmRuntime::new(program.clone(), &imported).unwrap();
+        native.tick().unwrap();
+        let mut projection = program.into_runtime();
+        native.sync_projection(&mut projection).unwrap();
+        assert!(projection.pending_entries().is_empty());
+        let capacity = projection.blocks.len() * 2 + imported.len();
+        let tick = crate::redpiler::sampled::executor::ScheduledComponentTick { component: 0, block_type: Some(block.registry_id()) };
+        for _ in 0..capacity {
+            projection.schedule_half_tick(tick, 31, TickPriority::Normal);
+            assert!(projection.failure.is_none());
+        }
+        projection.schedule_half_tick(tick, 31, TickPriority::Normal);
+        assert_eq!(projection.pending_entries().len(), capacity);
+        assert_eq!(projection.failure.as_ref().unwrap().reason, "runtime scheduled tick capacity exceeded");
+    }
+
+    #[cfg(any(windows, target_os = "linux"))]
+    #[test]
+    fn llvm_matches_rust_rescheduling_with_imported_observer_and_repeater_duplicates() {
+        use crate::world::World;
+        let pos = BlockPos::new(15, 15, 15);
+        for block in [Block::from_name("observer").unwrap(), Block::from_name("repeater").unwrap()] {
+            let mut world = super::super::tests::host();
+            world.set_block(pos, block);
+            world.set_block(pos.offset(mchprs_blocks::BlockFace::Bottom), Block::Stone {});
+            let imported = vec![TickEntry { pos, block_type: Some(block.registry_id()), ticks_left: 1, tick_priority: TickPriority::Normal }; 2];
+            let mut program = super::super::compile_program(&world,
+                (pos - BlockPos::new(3, 3, 3), pos + BlockPos::new(3, 3, 3)),
+                super::super::ScratchEntry { scheduled: imported.clone(), piston: world.piston_state().clone() }, None).unwrap();
+            program.prepare_projection();
+            let mut native = LlvmRuntime::new(program.clone(), &imported).unwrap();
+            let mut rust = program.clone().into_runtime_prepared();
+            rust.set_pending(imported).unwrap();
+            let mut projection = program.into_runtime_prepared();
+            for tick in 1..=4 {
+                rust.tick().unwrap();
+                native.tick().unwrap();
+                native.sync_projection(&mut projection).unwrap();
+                assert_eq!(projection.projected_blocks(), rust.projected_blocks(), "blocks at tick {tick}: {block:?}");
+                let pending = rust.pending_entries();
+                assert_eq!(projection.pending_entries(), pending, "LLVM pending at tick {tick}: {block:?}");
+                assert_eq!(pending.len(), 1, "Rust retains the unconditional reset at tick {tick}: {block:?}");
+                assert_eq!(pending[0].ticks_left, if tick % 2 == 1 { 2 } else { 1 });
+                if tick == 1 { assert_eq!(rust.project(pos), Some(block)); }
+            }
+        }
+    }
 
     #[cfg(any(windows, target_os = "linux"))]
     #[test]
@@ -30,7 +85,7 @@
             u64::from_ne_bytes(bytes)
         }).collect();
         assert_eq!(unsafe { (native.library.state_size)(
-            &encoded.descriptor, aligned.as_ptr().cast(), invalid.len() as u32,
+            &encoded.descriptor, aligned.as_ptr().cast(), invalid.len() as u32, 0,
         ) }, 0);
         native.sync_projection(&mut projection).unwrap();
         assert_eq!(projection.project(pos), Some(Block::RedstoneWire { wire }));
@@ -45,7 +100,7 @@
                 u64::from_ne_bytes(bytes)
             }).collect();
             assert_eq!(unsafe { (native.library.state_size)(
-                &encoded.descriptor, aligned.as_ptr().cast(), invalid.len() as u32,
+                &encoded.descriptor, aligned.as_ptr().cast(), invalid.len() as u32, 0,
             ) }, 0);
         }
     }
@@ -265,6 +320,66 @@
                 super::super::ScratchEntry { scheduled: vec![], piston: world.piston_state().clone() }, None).unwrap();
             let source = program.positions.iter().position(|&pos| pos == lever).unwrap();
             compare_execution(program, &[(0, source), (8, source), (16, source), (17, source)], 28);
+        }
+    }
+
+    #[cfg(any(windows, target_os = "linux"))]
+    #[test]
+    fn llvm_compiled_empty_shape_plan_suppresses_observer_fallback() {
+        use crate::world::World;
+        use mchprs_blocks::{BlockDirection, BlockFace, BlockFacing,
+            blocks::{Lever, LeverFace, RedstoneObserver, RedstonePiston}};
+        let mut world = super::super::tests::host();
+        let base = BlockPos::new(15, 15, 15);
+        let home = base.offset(BlockFace::East);
+        let lever = base.offset(BlockFace::West);
+        world.set_block(base, Block::Piston { piston: RedstonePiston {
+            facing: BlockFacing::East, sticky: true, extended: false,
+        } });
+        world.set_block(lever.offset(BlockFace::Bottom), Block::Stone {});
+        world.set_block(lever, Block::Lever { lever: Lever::new(LeverFace::Floor, BlockDirection::North, false) });
+        world.set_block(home.offset(BlockFace::North), Block::Observer { observer: RedstoneObserver {
+            facing: BlockFacing::South, powered: false,
+        } });
+        let mut program = super::super::compile_program(&world,
+            (base - BlockPos::new(4, 4, 4), base + BlockPos::new(4, 4, 4)),
+            super::super::ScratchEntry { scheduled: vec![], piston: world.piston_state().clone() }, None).unwrap();
+        program.shape_programs.insert(home, 0..0);
+        program.prepare_projection();
+        let source = program.component_indices[&lever];
+        compare_execution(program, &[(0, source), (4, source)], 10);
+    }
+
+    #[cfg(any(windows, target_os = "linux"))]
+    #[test]
+    fn llvm_all_pressure_plates_and_trapdoors_match_rust() {
+        use crate::world::World;
+        use mchprs_blocks::{BlockDirection, BlockFace,
+            blocks::{Lever, LeverFace, TrapdoorHalf}};
+        for id in 0..mchprs_blocks::generated::STATE_TO_BLOCK_INDEX.len() as u32 {
+            let plate = Block::from_id(id);
+            if plate.pressure_plate_powered().is_none() { continue; }
+            let mut world = super::super::tests::host();
+            let base = BlockPos::new(15, 15, 15);
+            let lever = base.offset(BlockFace::East);
+            world.set_block(base.offset(BlockFace::West), plate);
+            world.set_block(base, Block::IronTrapdoor {
+                facing: BlockDirection::North, half: TrapdoorHalf::Bottom, powered: false,
+            });
+            let mut observer = Block::from_name("observer").unwrap();
+            observer.set_properties(std::collections::HashMap::from([("facing", "south")]));
+            world.set_block(base.offset(BlockFace::North), observer);
+            world.set_block(lever, Block::Lever {
+                lever: Lever::new(LeverFace::Floor, BlockDirection::North, false),
+            });
+            for pos in [base.offset(BlockFace::West), lever] {
+                world.set_block(pos.offset(BlockFace::Bottom), Block::Stone {});
+            }
+            let program = super::super::compile_program(&world,
+                (base - BlockPos::new(3, 3, 3), base + BlockPos::new(3, 3, 3)),
+                super::super::ScratchEntry { scheduled: vec![], piston: world.piston_state().clone() }, None).unwrap();
+            let source = program.component_indices[&lever];
+            compare_execution(program, &[(0, source), (3, source), (5, source)], 9);
         }
     }
 

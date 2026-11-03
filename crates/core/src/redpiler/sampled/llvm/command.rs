@@ -1,7 +1,181 @@
 //! Pointer-free command-block bytecode inputs for the native executor.
 use super::{Program, ScratchError};
 use crate::chat_commands::{ChatCommand, Recipient};
-use mchprs_blocks::{BlockFace, BlockPos, block_entities::CommandBlockEntity, blocks::Block};
+use mchprs_blocks::{BlockFace, block_entities::CommandBlockEntity, blocks::Block};
+#[cfg(test)]
+use mchprs_blocks::BlockPos;
+#[cfg(any(windows, target_os = "linux"))]
+use std::ffi::c_void;
+
+#[cfg(any(windows, target_os = "linux"))]
+pub(super) struct Api {
+    state_size: unsafe extern "C" fn(u32, u32) -> usize,
+    init: unsafe extern "C" fn(*mut c_void, usize, u32, *const c_void, *const u32, u32, *const u32, u32, *const u8, u32, *const u32, u64, u32) -> u32,
+    prepare_indices: unsafe extern "C" fn(*mut c_void, *mut u32, u32, *mut u32, u32) -> u32,
+    bind: unsafe extern "C" fn(*mut c_void, *mut c_void, *const u32, *const u32, u32) -> u32,
+    clock: unsafe extern "C" fn(*mut c_void, u64, u64),
+    effect_bound: unsafe extern "C" fn(*const c_void) -> u64,
+    effect_buffer: unsafe extern "C" fn(*mut c_void, *mut u32, u32) -> u32,
+    read_state: unsafe extern "C" fn(*const c_void, *mut u32, u32) -> u32,
+    effect_words: unsafe extern "C" fn(*const c_void) -> u32,
+    read_effects: unsafe extern "C" fn(*const c_void, *mut u32, u32) -> u32,
+    read_output: unsafe extern "C" fn(*const c_void, u64, *mut u32) -> u32,
+    ack: unsafe extern "C" fn(*mut c_void, u32, u64),
+}
+
+#[cfg(any(windows, target_os = "linux"))]
+impl Api {
+    pub(super) unsafe fn load(handle: *mut c_void) -> Result<Self, ScratchError> {
+        unsafe fn symbol<T: Copy>(handle: *mut c_void, name: &'static [u8]) -> Result<T, ScratchError> {
+            #[cfg(windows)] let address = unsafe { super::GetProcAddress(handle, name.as_ptr().cast()) };
+            #[cfg(target_os = "linux")] let address = unsafe { super::dlsym(handle, name.as_ptr().cast()) };
+            if address.is_null() { return Err(ScratchError { position: None, reason: "LLVM module is missing a command export" }); }
+            Ok(unsafe { std::mem::transmute_copy(&address) })
+        }
+        unsafe { Ok(Self {
+            state_size: symbol(handle, b"ne_command_state_size\0")?, init: symbol(handle, b"ne_command_init\0")?,
+            prepare_indices: symbol(handle, b"ne_command_prepare_indices\0")?,
+            bind: symbol(handle, b"ne_bind_commands\0")?, clock: symbol(handle, b"ne_set_command_clock\0")?,
+            effect_bound: symbol(handle, b"ne_command_effect_bound\0")?, effect_buffer: symbol(handle, b"ne_command_set_effect_buffer\0")?,
+            read_state: symbol(handle, b"ne_command_read_state\0")?, effect_words: symbol(handle, b"ne_command_effect_words\0")?,
+            read_effects: symbol(handle, b"ne_command_read_effects\0")?, read_output: symbol(handle, b"ne_command_read_output_state\0")?,
+            ack: symbol(handle, b"ne_command_ack_effects\0")?,
+        }) }
+    }
+}
+
+#[cfg(any(windows, target_os = "linux"))]
+pub(super) struct State {
+    memory: Vec<u64>,
+    tables: CommandTables,
+    blocks: Vec<CommandBlockRecord>,
+    effects: Vec<u32>,
+    _notification_rows: Vec<u32>,
+    _notification_targets: Vec<u32>,
+    _component_commands: Vec<u32>,
+    _previous_next: Vec<u32>,
+    started: std::time::Instant,
+    pub(super) logical_base: u64,
+}
+
+#[cfg(any(windows, target_os = "linux"))]
+impl State {
+    pub(super) fn new(program: &Program, api: &Api, engine: *mut c_void, components: *const c_void) -> Result<Option<Self>, ScratchError> {
+        let encoded = encode(program)?;
+        if encoded.blocks.is_empty() { return Ok(None); }
+        let now = std::time::Instant::now();
+        let tables = encoded.serialize_at(now)?;
+        let count = id(encoded.blocks.len())?;
+        let bytes = unsafe { (api.state_size)(count, 0) };
+        if bytes == 0 || bytes > 256 * 1024 * 1024 { return Err(invalid()); }
+        let mut memory = vec![0u64; bytes.div_ceil(8)];
+        let status = unsafe { (api.init)(memory.as_mut_ptr().cast(), memory.len() * 8, id(program.initial.len())?, components,
+            tables.blocks.as_ptr(), count, tables.specs.as_ptr(), count, tables.strings.as_ptr(), id(tables.strings.len())?, tables.output_state.as_ptr(), 0, 0) };
+        if status != 0 { return Err(invalid()); }
+        let mut component_commands = vec![u32::MAX; program.initial.len()];
+        let mut previous_next = vec![u32::MAX; encoded.blocks.len().checked_mul(2).ok_or_else(invalid)?];
+        let status = unsafe { (api.prepare_indices)(memory.as_mut_ptr().cast(), component_commands.as_mut_ptr(), id(component_commands.len())?, previous_next.as_mut_ptr(), id(previous_next.len())?) };
+        if status != 0 { return Err(invalid()); }
+        let (rows, targets) = super::command_notifications::encode(program)?;
+        let status = unsafe { (api.bind)(engine, memory.as_mut_ptr().cast(), rows.as_ptr(), targets.as_ptr(), id(targets.len() / 3)?) };
+        if status != 0 { return Err(invalid()); }
+        Ok(Some(Self { memory, tables, blocks: encoded.blocks, effects: Vec::new(), _notification_rows: rows,
+            _notification_targets: targets, _component_commands: component_commands, _previous_next: previous_next, started: now, logical_base: 0 }))
+    }
+
+    pub(super) fn prepare_tick(&mut self, api: &Api, engine: *mut c_void) -> Result<(), ScratchError> {
+        let current = unsafe { (api.effect_words)(self.memory.as_ptr().cast()) } as usize;
+        let additional = usize::try_from(unsafe { (api.effect_bound)(engine) }).map_err(|_| invalid())?;
+        let needed = current.checked_add(additional.checked_mul(8).ok_or_else(invalid)?).ok_or_else(invalid)?;
+        if needed > self.effects.len() {
+            let length = needed.checked_next_power_of_two().ok_or_else(invalid)?;
+            let capacity = id(length / 8)?;
+            self.effects.try_reserve(length - self.effects.len()).map_err(|_| invalid())?;
+            self.effects.resize(length, 0);
+            if unsafe { (api.effect_buffer)(self.memory.as_mut_ptr().cast(), self.effects.as_mut_ptr(), capacity) } != 0 { return Err(invalid()); }
+        }
+        unsafe { (api.clock)(engine, self.started.elapsed().as_nanos().min(u64::MAX as u128) as u64, self.logical_base); }
+        Ok(())
+    }
+
+    fn text(&self, offset: u32, len: u32) -> Result<String, ScratchError> {
+        let end = (offset as usize).checked_add(len as usize).ok_or_else(invalid)?;
+        let bytes = self.tables.strings.get(offset as usize..end).ok_or_else(invalid)?;
+        std::str::from_utf8(bytes).map(str::to_owned).map_err(|_| invalid())
+    }
+
+    pub(super) fn sync(&self, api: &Api, runtime: &mut crate::redpiler::sampled::Runtime) -> Result<(), ScratchError> {
+        let mut words = vec![0; self.blocks.len().checked_mul(11).ok_or_else(invalid)?];
+        if unsafe { (api.read_state)(self.memory.as_ptr().cast(), words.as_mut_ptr(), id(words.len())?) } != 0 { return Err(invalid()); }
+        let mut entities = Vec::with_capacity(self.blocks.len());
+        for (record, row) in self.blocks.iter().zip(words.chunks_exact(11)) {
+            if row[0] != record.component || row[1] & !127 != 0 { return Err(invalid()); }
+            let pos = *runtime.program.positions.get(row[0] as usize).ok_or_else(invalid)?;
+            if row[1] & 2 == 0 { entities.push((pos, None)); continue; }
+            let mut entity = runtime.command_blocks.get(&pos).cloned().unwrap_or_default();
+            entity.powered = row[1] & 4 != 0;
+            entity.automatic = row[1] & 8 != 0;
+            entity.condition_met = row[1] & 16 != 0;
+            entity.track_output = row[1] & 32 != 0;
+            entity.update_last_execution = row[1] & 64 != 0;
+            entity.success_count = row[2] as i32;
+            entity.last_execution = (u64::from(row[3]) | (u64::from(row[4]) << 32)) as i64;
+            entity.last_output = match row[5] {
+                0 if row[6] == u32::MAX && row[7] == 0 => None,
+                0 => Some(self.text(row[6], row[7])?),
+                1 => Some(serde_json::json!({"text": crate::messages::COMMAND_BLOCK_EXECUTED}).to_string()),
+                2 => {
+                    let error = match row[8] {
+                        1 => crate::messages::COMMAND_BLOCK_EXECUTION_UNAVAILABLE.to_owned(),
+                        2 => crate::messages::COMMAND_BLOCK_OUTPUT_LIMIT.to_owned(),
+                        3 => crate::messages::COMMAND_BLOCK_OUTPUT_BYTE_LIMIT.to_owned(),
+                        4 => self.text(row[9], row[10])?,
+                        _ => return Err(invalid()),
+                    };
+                    Some(serde_json::json!({"text": error, "color": "red"}).to_string())
+                }
+                _ => return Err(invalid()),
+            };
+            entities.push((pos, Some(entity)));
+        }
+        let count = unsafe { (api.effect_words)(self.memory.as_ptr().cast()) } as usize;
+        if count % 8 != 0 || count > self.effects.len() { return Err(invalid()); }
+        let mut effect_words = vec![0; count];
+        if unsafe { (api.read_effects)(self.memory.as_ptr().cast(), effect_words.as_mut_ptr(), id(count)?) } != 0 { return Err(invalid()); }
+        let mut emissions = Vec::with_capacity(count / 8);
+        for row in effect_words.chunks_exact(8) {
+            let pos = *runtime.program.positions.get(row[0] as usize).ok_or_else(invalid)?;
+            if !runtime.program.initial[row[0] as usize].is_command_block() { return Err(invalid()); }
+            let recipient = match row[3] {
+                1 => Recipient::All, 2 => Recipient::Name(self.text(row[4], row[5])?), 3 => Recipient::Nobody,
+                _ => return Err(invalid()),
+            };
+            emissions.push(crate::world::CommandBlockEmission { pos, tick: u64::from(row[1]) | (u64::from(row[2]) << 32),
+                message: ChatCommand { recipient, message: self.text(row[6], row[7])? } });
+        }
+        let mut output = [0; 6];
+        if unsafe { (api.read_output)(self.memory.as_ptr().cast(), self.started.elapsed().as_nanos().min(u64::MAX as u128) as u64, output.as_mut_ptr()) } != 0
+            || output[0] > 1 || output[1] > 1 || output[5] > 1_000_000_000 { return Err(invalid()); }
+        let output = if output[0] == 0 { None } else {
+            let now = std::time::Instant::now();
+            Some(crate::chat_commands::CommandBlockOutputState {
+                window: now.checked_sub(std::time::Duration::from_nanos(u64::from(output[5]))).unwrap_or(now),
+                limited: output[1] != 0, count: output[2] as usize, bytes: output[3] as usize, queued: output[4] as usize,
+            })
+        };
+        for (pos, entity) in entities {
+            if let Some(entity) = entity { runtime.command_blocks.insert(pos, entity); } else { runtime.command_blocks.remove(&pos); }
+        }
+        runtime.command_emissions = emissions;
+        runtime.command_output_state = output;
+        Ok(())
+    }
+
+    pub(super) fn acknowledge(&mut self, api: &Api, queued: usize) {
+        unsafe { (api.ack)(self.memory.as_mut_ptr().cast(), queued.min(u32::MAX as usize) as u32,
+            self.started.elapsed().as_nanos().min(u64::MAX as u128) as u64); }
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) struct StringRef {
@@ -354,6 +528,56 @@ pub(super) fn encode(program: &Program) -> Result<EncodedCommands, ScratchError>
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(any(windows, target_os = "linux"))]
+    #[test]
+    fn llvm_commands_preserve_logical_clock_entities_and_unflushed_output() {
+        use mchprs_world::{TickEntry, TickPriority};
+        for update_last_execution in [true, false] {
+            let mut program = program(&[("repeating_command_block", "say retained", "\"@\"")]);
+            let pos = program.positions[0];
+            let entity = program.command_blocks.get_mut(&pos).unwrap();
+            entity.automatic = true;
+            entity.condition_met = true;
+            entity.update_last_execution = update_last_execution;
+            program.command_output_state = Some(crate::chat_commands::CommandBlockOutputState {
+                window: std::time::Instant::now(), count: 0, bytes: 0, queued: 0, limited: false,
+            });
+            program.prepare_projection();
+            let ticks = vec![TickEntry { pos, block_type: Some(program.initial[0].registry_id()), ticks_left: 1, tick_priority: TickPriority::Normal }];
+            let mut rust = program.clone().into_runtime_prepared();
+            rust.set_pending(ticks.clone()).unwrap();
+            rust.piston_state.logical_tick = 1234;
+            let mut projection = program.clone().into_runtime_prepared();
+            projection.piston_state.logical_tick = 1234;
+            let mut native = super::super::LlvmRuntime::new(program, &ticks).unwrap();
+            native.initialize_tick(1234);
+            let emissions = |runtime: &crate::redpiler::sampled::Runtime| runtime.command_emissions.iter()
+                .map(|event| (event.pos, event.tick, event.message.recipient.clone(), event.message.message.clone())).collect::<Vec<_>>();
+            let mut initial_buffer = 0;
+            for tick in 1..=1200 {
+                rust.tick().unwrap();
+                native.tick().unwrap();
+                if tick == 1 { initial_buffer = native.commands.as_ref().unwrap().effects.len(); }
+                native.sync_projection(&mut projection).unwrap();
+                assert_eq!(projection.command_blocks, rust.command_blocks, "last-execution {update_last_execution} tick {tick}");
+                assert_eq!(emissions(&projection), emissions(&rust), "last-execution {update_last_execution} tick {tick}");
+                assert_eq!(projection.pending_entries(), rust.pending_entries());
+            }
+            assert_eq!(projection.command_emissions.first().unwrap().tick, 1235);
+            if !update_last_execution {
+                assert!(projection.command_emissions.len() > 64);
+                assert!(native.commands.as_ref().unwrap().effects.len() > initial_buffer);
+            }
+            let before = emissions(&projection);
+            native.sync_publication(&mut projection).unwrap();
+            assert_eq!(emissions(&projection), before, "repeated synchronization duplicated effects");
+            native.acknowledge_effects(0);
+            native.sync_publication(&mut projection).unwrap();
+            assert!(projection.command_emissions.is_empty());
+            assert_eq!(projection.command_output_state.as_ref().unwrap().queued, 0);
+        }
+    }
 
     fn program(blocks: &[(&str, &str, &str)]) -> Program {
         let positions: Vec<_> = (0..blocks.len()).map(|index| BlockPos::new(index as i32, 20, 30)).collect();

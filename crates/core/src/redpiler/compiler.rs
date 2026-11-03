@@ -211,7 +211,9 @@ impl Compiler {
             if total > 1 {
                 return Err(CompileError::UnsupportedComponents { first, total });
             }
-            Some(LlvmRuntime::new(program.clone(), &ticks).map_err(CompileError::Unsupported)?)
+            let mut llvm = LlvmRuntime::new(program.clone(), &ticks).map_err(CompileError::Unsupported)?;
+            llvm.initialize_tick(world.piston_state().logical_tick);
+            Some(llvm)
         } else { None };
         monitor.set_phase("initializing runtime");
         let runtime = sampled::start_runtime(program, ticks, world.piston_state().clone()).map_err(CompileError::Unsupported)?;
@@ -328,7 +330,9 @@ impl Compiler {
             redstone::noteblock::play_note(world, pos, instrument, note);
             runtime.note_queued[component] = false;
         }
-        if let Some(llvm) = self.llvm_runtime.as_mut() { llvm.acknowledge_effects(); }
+        if let Some(llvm) = self.llvm_runtime.as_mut() {
+            llvm.acknowledge_effects(runtime.queued_command_outputs());
+        }
     }
 
     pub(crate) fn try_flush_complete<W: World>(&mut self, world: &mut W) -> Result<(), ExecutionError> {
@@ -467,7 +471,9 @@ impl Compiler {
             runtime.note_queued[component] = false;
         }
         runtime.mark_published(io_only || !full);
-        if let Some(llvm) = self.llvm_runtime.as_mut() { llvm.acknowledge_effects(); }
+        if let Some(llvm) = self.llvm_runtime.as_mut() {
+            llvm.acknowledge_effects(runtime.queued_command_outputs());
+        }
         Ok(())
     }
 }
