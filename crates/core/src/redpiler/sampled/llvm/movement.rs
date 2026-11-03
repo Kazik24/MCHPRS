@@ -242,10 +242,16 @@ impl super::LlvmRuntime {
                 return Err(invalid());
             }
         }
-        for &cell in &s[token_start..piston_start] {
+        let mut token_digits = Vec::with_capacity(tokens);
+        for (token, &cell) in s[token_start..piston_start].iter().enumerate() {
             if cell != u32::MAX && cell as usize >= p.projection_positions.len() {
                 return Err(invalid());
             }
+            token_digits.push(if cell == u32::MAX {
+                0
+            } else {
+                p.token_cells[token].iter().position(|&candidate| candidate == cell as usize).ok_or_else(invalid)? + 1
+            });
         }
         if s[piston_start..motion_start].iter().any(|&flags| flags > 15) {
             return Err(invalid());
@@ -359,6 +365,7 @@ impl super::LlvmRuntime {
         for (token, &cell) in s[token_start..piston_start].iter().enumerate() {
             runtime.token_positions[token] = (cell != u32::MAX).then(|| p.projection_positions[cell as usize]);
         }
+        runtime.token_digits.copy_from_slice(&token_digits);
         for (piston, &flags) in s[piston_start..motion_start].iter().enumerate() {
             runtime.piston_extended[piston] = flags & 1 != 0;
             runtime.piston_head_present[piston] = flags & 2 != 0;

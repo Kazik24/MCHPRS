@@ -337,7 +337,9 @@ pub(crate) struct Program {
     pub(super) movement_ranges: Vec<std::ops::Range<usize>>,
 
     // Geometry and projection indexes
-    pub(super) shape_steps: HashMap<BlockPos, Vec<super::shapes::ShapeStep>>,
+    pub(super) shape_programs: HashMap<BlockPos, std::ops::Range<usize>>,
+    pub(super) shape_steps: Vec<super::shapes::ShapeStep>,
+    pub(super) cell_shape_steps: Vec<Option<std::ops::Range<usize>>>,
     /// captured non-air blocks outside the component list.
     pub(super) geometry: Vec<(BlockPos, Block)>,
     /// world-position to captured scenery block lookup matching `geometry`.
@@ -664,6 +666,11 @@ impl Program {
         self.projection_indices = positions.iter().enumerate().map(|(index, &pos)| (pos, index)).collect();
         self.projection_positions = positions;
         let cells = self.projection_positions.len();
+        self.cell_shape_steps = self
+            .projection_positions
+            .iter()
+            .map(|pos| self.shape_programs.get(pos).cloned())
+            .collect();
         self.component_cells = self.positions.iter().map(|pos| self.projection_indices[pos]).collect();
         self.cell_components = vec![None; cells];
         for (component, &cell) in self.component_cells.iter().enumerate() {
@@ -1127,7 +1134,9 @@ impl Program {
             token_watchers: Vec::new(),
             move_steps: Vec::new(),
             movement_steps: Vec::new(),
-            shape_steps: HashMap::new(),
+            shape_programs: HashMap::new(),
+            shape_steps: Vec::new(),
+            cell_shape_steps: Vec::new(),
             movement_wires: Vec::new(),
             input_arrangements: Vec::new(),
             movement_groups: Vec::new(),
@@ -1504,6 +1513,9 @@ impl Program {
             piston_head_moving: vec![false; self.pistons.len()],
             piston_base_moving: vec![false; self.pistons.len()],
             token_positions: self.tokens.iter().map(|t| t.position).collect(),
+            token_digits: self.tokens.iter().map(|token| {
+                token.position.and_then(|pos| token.cells.iter().position(|&cell| cell == pos)).map_or(0, |cell| cell + 1)
+            }).collect(),
             group_arrangements: self
                 .movement_groups
                 .iter()

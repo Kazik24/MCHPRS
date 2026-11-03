@@ -30,6 +30,8 @@ pub(super) fn unpack(sides: u8, power: u8) -> RedstoneWire {
 }
 
 pub(super) fn sample(program: &mut Program, scratch: &mut ScratchWorld, monitor: Option<&TaskMonitor>) -> Result<(), ScratchError> {
+    program.shape_programs.clear();
+    program.shape_steps.clear();
     let components: HashMap<_, _> = program.positions.iter().enumerate().map(|(i, &p)| (p, i)).collect();
     let mut cells: Vec<_> = program
         .tokens
@@ -94,7 +96,9 @@ pub(super) fn sample(program: &mut Program, scratch: &mut ScratchWorld, monitor:
                 _ => {}
             }
         }
-        program.shape_steps.insert(cell, steps);
+        let start = program.shape_steps.len();
+        program.shape_steps.extend(steps);
+        program.shape_programs.insert(cell, start..program.shape_steps.len());
     }
     Ok(())
 }

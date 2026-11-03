@@ -1,5 +1,7 @@
 # Redpiler kernel optimization implementation plan
 
+Current follow-up: [ZCore throughput recovery experiments, 2026-11-03](REDPILER_ZCORE_RECOVERY_EXPERIMENTS.md) relates the recent wire-shape changes to sampled CPU costs and scopes precomputed runtime tables. The experiments and measurements below are historical; check the follow-up before repeating them.
+
 ## Goal and evidence
 
 Reduce time inside `Compiler::tick()` while preserving ordered redstone behavior. The supplied ZCore12 profile attributes 53.6% of kernel samples to piston events, 39.2% to motion completion, and 7.3% to scheduled ticks. `set_token_pos -> run_move_steps` accounts for 65.1% inclusively. Arrangement processing accounts for 24.9% of the kernel, pre-callback wire refresh for 12.4%, and `token_at` has 5.4% self samples. These percentages overlap where stated in the profile and are not additive speedup estimates.

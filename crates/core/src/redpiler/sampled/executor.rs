@@ -117,6 +117,8 @@ pub(crate) struct Runtime {
     pub(super) piston_base_moving: Vec<bool>,
     /// token-indexed current world position; `None` means currently carried/in transit.
     pub(super) token_positions: Vec<Option<mchprs_blocks::BlockPos>>,
+    /// physical token-cell index plus one; zero means currently carried/in transit.
+    pub(super) token_digits: Vec<usize>,
     /// arrangement-group-indexed encoded active token-position state.
     pub(super) group_arrangements: Vec<usize>,
     /// pending piston index/event pairs in processing order.
@@ -321,16 +323,13 @@ impl Runtime {
     }
     fn notify_shape(&mut self, cell: usize) {
         let position = self.program.projection_positions[cell];
-        if let Some(steps) = self.program.shape_steps.get(&position) {
-            for offset in 0..steps.len() {
-                let node = self.program.shape_steps[&position][offset].node;
+        if let Some(steps) = self.program.cell_shape_steps[cell].clone() {
+            for index in steps {
+                let node = self.program.shape_steps[index].node;
                 if !self.consume_component_operation(node) { return; }
-                let step = &self.program.shape_steps[&position][offset];
+                let step = &self.program.shape_steps[index];
                 if let Block::RedstoneWire { wire } = self.blocks[node] {
-                    let map = step.states.select(|super::routing::Axis::Token(token, _)| {
-                        self.token_positions[token].and_then(|pos| self.program.tokens[token].cells.iter().position(|&p| p == pos))
-                            .map_or(0, |cell| cell + 1)
-                    });
+                    let map = step.states.select(|super::routing::Axis::Token(token, _)| self.token_digits[token]);
                     let Some(map) = map else {
                         self.failure = Some(ScratchError { position: Some(position), reason: "invalid wire shape arrangement" });
                         return;
@@ -338,8 +337,8 @@ impl Runtime {
                     let next = super::shapes::unpack(map[usize::from(super::shapes::pack(wire))], wire.power);
                     if next != wire {
                         self.set_component(node, Block::RedstoneWire { wire: next });
-                        for callback in 0..self.program.shape_steps[&position][offset].callbacks.len() {
-                            let target = self.program.shape_steps[&position][offset].callbacks[callback];
+                        for callback in 0..self.program.shape_steps[index].callbacks.len() {
+                            let target = self.program.shape_steps[index].callbacks[callback];
                             if !self.consume_component_operation(target) { return; }
                             // Shape callbacks may revisit a component after another callback changed it.
                             self.update(target);
@@ -845,9 +844,7 @@ impl Runtime {
         self.route_search.spent = 0;
         let mut updates = Vec::new();
         for reader in readers {
-            let values = graph.reader_sources(reader, |super::routing::Axis::Token(token, _)| {
-                self.token_positions[token].and_then(|pos| program.tokens[token].cells.iter().position(|&cell| cell == pos)).map_or(0, |cell| cell + 1)
-            }, &mut self.route_search);
+            let values = graph.reader_sources(reader, |super::routing::Axis::Token(token, _)| self.token_digits[token], &mut self.route_search);
             if changed.is_some() {
                 #[cfg(feature = "redpiler-trace")]
                 { self.routing_metrics[2] += self.route_search.spent as u64; }
@@ -938,6 +935,7 @@ impl Runtime {
             return;
         }
         self.token_positions[token] = position;
+        self.token_digits[token] = if position.is_some() { cell + 1 } else { 0 };
         self.mark_dirty(self.program.token_cells[token][cell]);
         let mut switched = std::mem::take(&mut self.movement_switched);
         let mut changed_wires = std::mem::take(&mut self.movement_changed_wires);

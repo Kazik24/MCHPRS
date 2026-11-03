@@ -1021,6 +1021,33 @@ fn check_reactive_torch_source_fifo(llvm: bool) {
 }
 
 #[test]
+fn empty_shape_program_suppresses_manual_observer_fallback_after_reindexing() {
+    use mchprs_blocks::blocks::RedstoneObserver;
+    let cell = BlockPos::new(15, 15, 15);
+    let observer = cell.offset(BlockFace::North);
+    let mut program = test_program(
+        vec![observer],
+        vec![Block::Observer { observer: RedstoneObserver { facing: BlockFacing::South, powered: false } }],
+        vec![],
+        vec![],
+        vec![],
+        vec![],
+    ).unwrap();
+    program.tokens.push(super::compiler::PistonToken { block: Block::Stone {}, position: Some(cell), cells: vec![cell] });
+    program.compile_movement_flips().unwrap();
+    program.prepare_projection();
+    let mut fallback = program.start();
+    fallback.set_token_pos(0, None);
+    assert_eq!(fallback.pending_entries().into_iter().map(|entry| entry.pos).collect::<Vec<_>>(), vec![observer]);
+
+    program.shape_programs.insert(cell, 0..0);
+    program.prepare_projection();
+    let mut compiled = program.start();
+    compiled.set_token_pos(0, None);
+    assert!(compiled.pending_entries().is_empty());
+}
+
+#[test]
 fn empty_piston_shape_observers_follow_interpreter_fifo() {
     use mchprs_blocks::blocks::RedstoneObserver;
     let mut world = host();
@@ -3053,10 +3080,12 @@ fn compressed_electrical_axes_preserve_physical_token_positions() {
     program.compile_movement_flips().unwrap();
     let mut runtime = program.start();
     assert_eq!(runtime.project(upper), Some(concrete));
+    assert_eq!(runtime.token_digits, vec![1]);
     assert_eq!(runtime.group_arrangements, vec![0]);
-    for (position, state, strength) in [(None, 0, 0), (Some(lower), 1, 15), (None, 0, 0), (Some(upper), 0, 0)] {
+    for (position, digit, state, strength) in [(None, 0, 0, 0), (Some(lower), 2, 1, 15), (None, 0, 0, 0), (Some(upper), 1, 0, 0)] {
         runtime.set_token_pos(0, position);
         assert_eq!(runtime.token_positions[0], position);
+        assert_eq!(runtime.token_digits[0], digit);
         assert_eq!(runtime.group_arrangements, vec![state]);
         assert!(matches!(runtime.project(wire), Some(Block::RedstoneWire { wire }) if wire.power == strength));
         if let Some(pos) = position { assert_eq!(runtime.project(pos), Some(concrete)); }

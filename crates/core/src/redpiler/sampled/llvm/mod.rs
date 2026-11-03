@@ -1083,6 +1083,7 @@ mod tests {
             native.sync_projection(&mut projection).unwrap();
             assert_eq!(projection.projected_blocks(), rust.projected_blocks(), "projection tick {tick}");
             assert_eq!(projection.token_positions, rust.token_positions, "tokens tick {tick}");
+            assert_eq!(projection.token_digits, rust.token_digits, "token digits tick {tick}");
             assert_eq!(projection.piston_extended, rust.piston_extended, "pistons tick {tick}");
             assert_eq!(projection.piston_head_present, rust.piston_head_present, "heads tick {tick}");
             assert_eq!(projection.piston_head_moving, rust.piston_head_moving, "moving heads tick {tick}");

@@ -9,8 +9,8 @@ fn id(n: usize) -> Result<u32, ScratchError> {
 
 pub(super) fn encode(p: &Program, t: &mut [Vec<u32>; AUX_TABLES]) -> Result<(), ScratchError> {
     let mut maps = HashMap::new();
-    for pos in &p.projection_positions {
-        let steps = p.shape_steps.get(pos).map_or(&[][..], Vec::as_slice);
+    for range in &p.cell_shape_steps {
+        let steps = range.as_ref().map_or(&[][..], |range| &p.shape_steps[range.clone()]);
         t[53].extend([id(t[54].len() / 7)?, id(steps.len())?]);
         for step in steps {
             t[54].extend([

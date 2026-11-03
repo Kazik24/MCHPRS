@@ -157,6 +157,8 @@ impl Runtime {
             movement_wires,
             movement_transitions,
             movement_ranges,
+            shape_steps,
+            cell_shape_steps,
             effective_links
         );
         rows!(
@@ -217,6 +219,7 @@ impl Runtime {
             watched_strengths,
             reactive_wire_strengths,
             token_positions,
+            token_digits,
             piston_extended,
             piston_head_present,
             piston_head_moving,
