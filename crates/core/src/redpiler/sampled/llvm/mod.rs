@@ -1004,7 +1004,7 @@ mod tests {
     }
 
     #[cfg(any(windows, target_os = "linux"))]
-    fn compare_execution(mut program: Program, controls: &[(usize, usize)], ticks: usize) {
+    fn compare_execution(mut program: Program, controls: &[(usize, usize)], ticks: usize) -> (super::super::Runtime, super::super::Runtime, LlvmRuntime) {
         if program.projection_positions.is_empty() || program.effective_links.len() != program.links.len() {
             program.prepare_projection();
         }
@@ -1018,8 +1018,9 @@ mod tests {
                 rust.use_control(positions[source]).unwrap();
                 native.use_control(positions[source]).unwrap();
             }
-            rust.tick().unwrap();
-            native.tick().unwrap();
+            let rust_result = rust.tick();
+            let native_result = native.tick();
+            assert!(rust_result.is_ok() && native_result.is_ok(), "execution tick {tick}: Rust={rust_result:?}, LLVM={native_result:?}");
             let mut states = vec![0u8; positions.len()];
             assert_eq!(
                 unsafe { (native.library.read_state)(native.state.as_ptr().cast(), states.as_mut_ptr(), states.len() as u32) },
@@ -1051,7 +1052,9 @@ mod tests {
             let emissions = |r: &super::super::Runtime| r.command_emissions.iter()
                 .map(|event| (event.pos, event.tick, event.message.recipient.clone(), event.message.message.clone())).collect::<Vec<_>>();
             assert_eq!(emissions(&projection), emissions(&rust), "command emissions tick {tick}");
-            let output = |r: &super::super::Runtime| r.command_output_state.as_ref().map(|state| (state.count, state.bytes, state.queued, state.limited));
+            // Unlimited replay still has wall-clock accounting windows, which can reset between backend calls.
+            let output = |r: &super::super::Runtime| r.command_output_state.as_ref().map(|state|
+                (state.limited.then_some((state.count, state.bytes)), state.queued, state.limited));
             assert_eq!(output(&projection), output(&rust), "command output state tick {tick}");
             assert_eq!(projection.note_queued, rust.note_queued, "queued effects tick {tick}");
             assert_eq!(projection.watched_strengths, rust.watched_strengths, "watched wires tick {tick}");
@@ -1086,6 +1089,50 @@ mod tests {
                 eprintln!("LLVM shadow matched tick {tick}");
             }
         }
+        (rust, projection, native)
+    }
+
+    #[cfg(any(windows, target_os = "linux"))]
+    #[test]
+    #[ignore = "full fixed PM1 execution and Rust/LLVM snapshot comparison"]
+    fn llvm_fixed_pm1_execution_matches_rust() {
+        use super::super::cpu_trace::cpus;
+        use crate::{plot::worldedit::load_schematic, redpiler::Compiler, world::World};
+        let cpu = cpus::Cpu {
+            schematic: "PM1_SORT_FIXED.schem",
+            sha256: "ad68a0160990c72612c0105802fade337758de127dcdbd4cc1a195059ad2d893",
+            ..cpus::CPUS[0]
+        };
+        let mut rust_world = cpus::load_cpu(cpu);
+        let mut native_world = rust_world.activation_snapshot();
+        assert!(rust_world.scheduler().iter_entries().next().is_none());
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../test_data").join(cpu.schematic);
+        let clip = load_schematic(std::fs::File::open(path).unwrap()).unwrap();
+        let bounds = (cpu.origin, cpu.origin + BlockPos::new(clip.size_x as i32 - 1, clip.size_y as i32 - 1, clip.size_z as i32 - 1));
+        let started = std::time::Instant::now();
+        let program = super::super::compile_program(&rust_world, bounds,
+            super::super::ScratchEntry { scheduled: vec![], piston: rust_world.piston_state().clone() }, None).unwrap();
+        eprintln!("PM1 sampled compile_ms={}", started.elapsed().as_millis());
+        let start = program.component_indices[&(cpu.origin + cpu.start)];
+        let stop = program.component_indices[&(cpu.origin + cpu.stop.unwrap())];
+        let ticks = std::env::var("MCHPRS_LLVM_VERIFY_TICKS").ok().map_or(cpu.active_ticks as usize + 100, |s| s.parse().unwrap());
+        let mut controls = vec![(0, start)];
+        if ticks > cpu.active_ticks as usize { controls.push((cpu.active_ticks as usize, stop)); }
+        let (rust, projection, native) = compare_execution(program, &controls, ticks);
+        let chat: Vec<_> = rust.command_emissions.iter().map(|event| (event.tick as u32, event.message.message.clone())).collect();
+        assert!(!chat.is_empty(), "PM1 start produced no command output");
+        eprintln!("PM1 matched_ticks={ticks} messages={} halt_observed={} last_message={:?}",
+            chat.len(), chat.iter().any(|(_, text)| text.contains("shut")), chat.last());
+        let mut rust_compiler = Compiler::default();
+        rust_compiler.runtime = Some(rust);
+        let mut native_compiler = Compiler::default();
+        native_compiler.runtime = Some(projection);
+        native_compiler.llvm_runtime = Some(native);
+        rust_compiler.try_reset(&mut rust_world, bounds).unwrap();
+        native_compiler.try_reset(&mut native_world, bounds).unwrap();
+        assert_eq!(native_world.command_output().collect::<Vec<_>>(), rust_world.command_output().collect::<Vec<_>>(), "PM1 published messages after reset");
+        assert_eq!(cpus::checkpoint(&native_world, ticks as u32, &chat), cpus::checkpoint(&rust_world, ticks as u32, &chat), "PM1 full reset checkpoint");
+        eprintln!("PM1 full reset checkpoint matched");
     }
 
     #[cfg(any(windows, target_os = "linux"))]
