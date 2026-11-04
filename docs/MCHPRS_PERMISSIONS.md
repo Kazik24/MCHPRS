@@ -199,9 +199,35 @@ from default through admin; database prefixes may override fallback colors.
 Configure inheritance and action grants through the deployment's LuckPerms
 installation and preserve the selected server/world contexts when changing them.
 
-The intended Redpiler access policy starts at Z (`advanced`). G (`default`) and
-B (`builder`) should not receive Redpiler access. Enforce command access in
-LuckPerms using `mchprs.commands.redpiler.*` (and
-`mchprs.commands.toggleautorp` for automatic compilation), preserving the
-deployment's contexts and higher-rank grants. The budget table does not grant
-or revoke command access; deployment changes are required separately.
+Redpiler access is intended for every rank above B: Z, E, I, M and A. G
+(`default`) and B (`builder`) should not receive access. Compilation has these
+wall-clock budgets, including snapshot preparation and cached/backend admission:
+
+| Rank / existing group | Compilation time |
+| --- | ---: |
+| Z / `advanced` | 30 seconds |
+| E / `expert` | 120 seconds |
+| I / `engineer`, M / `moderator`, A / `admin` | No additional time limit |
+
+These are cooperative cancellation deadlines: an in-progress compiler phase or
+external native compiler may take longer to return, but an expired result never
+activates or enters the plot cache. Existing structural/allocation limits still
+apply to I and higher. Unknown or stale rank metadata denies new compilation;
+standalone servers without a permission provider retain their existing behavior.
+Automatic compilation uses the greatest allowance among current authorized plot
+editors with both compile and automatic-compilation permissions; an unauthorized
+visitor cannot raise the budget.
+
+Budgets do not grant command access or override explicit denials. Enforce access
+through LuckPerms, preserving the deployment's contexts and higher-rank grants.
+For the existing inheritance chain (`expert` inherits `advanced`, and higher
+ranks inherit these grants), run these commands in the LuckPerms console after
+deploying the budget enforcement:
+
+```text
+lp group advanced permission set mchprs.commands.redpiler.* true server=mchprs
+lp group advanced permission set mchprs.commands.toggleautorp true server=mchprs
+```
+
+The existing engineer grants remain unchanged. This code change does not modify
+the live LuckPerms database; the two deployment grants are required separately.
