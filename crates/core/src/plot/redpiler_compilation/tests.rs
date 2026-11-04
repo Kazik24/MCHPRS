@@ -26,6 +26,8 @@ fn install_job(plot: &mut Plot, work: impl FnOnce(PlotWorld, Arc<TaskMonitor>) -
         options: Default::default(),
         cacheable: false,
         monitor,
+        budget: None,
+        budget_reported: false,
         worker: thread::spawn(move || work(world, worker_monitor)),
     });
 }
@@ -40,6 +42,57 @@ fn blocked_compile(plot: &mut Plot) -> mpsc::Sender<()> {
         CompilationResult { world, compiler, result }
     });
     release
+}
+
+#[test]
+fn automatic_compilation_requires_an_authorized_editor() {
+    let (mut plot, _peer) = fixture(false);
+    plot.players[0].set_test_permissions(&["commands.toggleautorp"]);
+    plot.start_redpiler(Default::default());
+    assert!(plot.compilation.is_none());
+    plot.players[0].set_test_permissions(&["commands.redpiler.compile"]);
+    plot.start_redpiler(Default::default());
+    assert!(plot.compilation.is_none());
+    plot.players[0].set_test_permissions(&["commands.redpiler.compile", "commands.toggleautorp"]);
+    plot.start_redpiler(Default::default());
+    assert!(plot.compilation.is_some());
+    plot.wait_for_redpiler();
+    assert!(plot.redpiler.is_active());
+    plot.reset_redpiler().unwrap();
+}
+
+#[test]
+fn expired_compilation_budget_cancels_worker_and_preserves_live_input() {
+    let (mut plot, _peer) = fixture(false);
+    let position = BlockPos::new(34, 20, 34);
+    plot.world.set_block(position, Block::RedstoneLamp { lit: true });
+    plot.world.schedule_tick(position, 4, TickPriority::High);
+    let before = EntryVersion::capture(&plot.world);
+    plot.start_redpiler_with_budget(Default::default(), Some(Duration::ZERO));
+    assert!(plot.compilation.as_ref().unwrap().monitor.cancelled());
+    plot.poll_redpiler_compilation();
+    assert!(!plot.compiling_redpiler());
+    assert!(!plot.redpiler.is_active());
+    assert!(before.matches(&plot.world));
+    plot.wait_for_redpiler();
+    assert!(!plot.redpiler.is_active());
+    assert!(before.matches(&plot.world));
+}
+
+#[test]
+fn successful_late_completion_cannot_activate_after_budget_expiry() {
+    let (mut plot, _peer) = fixture(false);
+    install_job(&mut plot, |world, _| {
+        let mut compiler = Compiler::default();
+        let result = compiler.compile(&world, world.get_corners(), Default::default(), vec![], Arc::new(TaskMonitor::default()));
+        CompilationResult { world, compiler, result }
+    });
+    let job = plot.compilation.as_mut().unwrap();
+    job.monitor = Arc::new(TaskMonitor::with_deadline(Some(Instant::now())));
+    job.budget = Some(Duration::from_secs(30));
+    plot.wait_for_redpiler();
+    assert!(!plot.redpiler.is_active());
+    assert!(plot.redpiler_cache.is_none());
 }
 
 #[test]

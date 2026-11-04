@@ -15,6 +15,8 @@ pub(super) struct CompilationJob {
     last_phase: usize,
     /// Cooperative cancellation shared with the compiler worker.
     monitor: Arc<TaskMonitor>,
+    budget: Option<Duration>,
+    budget_reported: bool,
     /// Live entry state that must still match before activation.
     entry: EntryVersion,
     options: CompilerOptions,
@@ -107,6 +109,18 @@ impl Plot {
     }
 
     pub(super) fn start_redpiler(&mut self, options: CompilerOptions) {
+        let budget = self.players.iter()
+            .filter(|player| player.has_permission("commands.redpiler.compile")
+                && player.has_permission("commands.toggleautorp")
+                && player.can_edit_plot(self.owner, (self.world.x, self.world.z)))
+            .filter_map(|player| player.redpiler_compile_budget().ok())
+            .max_by_key(|budget| budget.unwrap_or(Duration::MAX));
+        if let Some(budget) = budget {
+            self.start_redpiler_with_budget(options, budget);
+        }
+    }
+
+    pub(super) fn start_redpiler_with_budget(&mut self, options: CompilerOptions, budget: Option<Duration>) {
         if self.world.waveform.enabled() {
             for player in &self.players {
                 player.send_error_message("Disable waveform capture before compiling Redpiler");
@@ -140,7 +154,7 @@ impl Plot {
         }
         let job_options = options.clone();
         let snapshot_ms = started.elapsed().as_millis();
-        let monitor = Arc::new(TaskMonitor::default());
+        let monitor = Arc::new(TaskMonitor::with_deadline(budget.map(|budget| started + budget)));
         let worker_monitor = monitor.clone();
         let span = tracing::Span::current();
         info!(plot_x = self.world.x, plot_z = self.world.z, snapshot_ms, ?options, "Redpiler started");
@@ -172,6 +186,8 @@ impl Plot {
                     last_progress: Instant::now(),
                     last_phase: 0,
                     monitor,
+                    budget,
+                    budget_reported: false,
                     entry,
                     options: job_options,
                     cacheable,
@@ -184,6 +200,14 @@ impl Plot {
     }
 
     pub(super) fn poll_redpiler_compilation(&mut self) {
+        if let Some(job) = &mut self.compilation
+            && job.monitor.budget_expired() && !job.budget_reported
+        {
+            job.budget_reported = true;
+            let started = job.started;
+            let reason = format!("Compilation exceeded your {} second budget. Try a smaller circuit.", job.budget.unwrap().as_secs());
+            self.reject_redpiler(started, &reason);
+        }
         if let Some(job) = &mut self.compilation
             && !job.worker.is_finished() && !job.monitor.cancelled()
             && (job.last_progress.elapsed() >= Duration::from_secs(3)

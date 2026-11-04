@@ -17,9 +17,18 @@ pub struct TaskMonitor {
     /// shared cancellation flag observed by compilation workers.
     cancelled: AtomicBool,
     status: Mutex<CompileStatus>,
+    deadline: Option<Instant>,
 }
 
 impl TaskMonitor {
+    pub(crate) fn with_deadline(deadline: Option<Instant>) -> Self {
+        Self { deadline, ..Self::default() }
+    }
+
+    pub(crate) fn budget_expired(&self) -> bool {
+        !self.cancelled.load(Ordering::Relaxed) && self.deadline.is_some_and(|deadline| Instant::now() >= deadline)
+    }
+
     pub(crate) fn set_phase(&self, phase: &'static str) {
         let mut status = self.status.lock().unwrap();
         status.phase = phase;
@@ -68,13 +77,26 @@ impl TaskMonitor {
     }
 
     pub fn cancelled(&self) -> bool {
-        self.cancelled.load(Ordering::Relaxed)
+        self.cancelled.load(Ordering::Relaxed) || self.budget_expired()
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn deadline_cancels_work_without_confusing_manual_cancellation() {
+        let monitor = TaskMonitor::with_deadline(Some(Instant::now()));
+        assert!(monitor.budget_expired());
+        assert!(monitor.cancelled());
+        monitor.cancel();
+        assert!(!monitor.budget_expired());
+        assert!(monitor.cancelled());
+        let monitor = TaskMonitor::with_deadline(None);
+        assert!(!monitor.budget_expired());
+        assert!(!monitor.cancelled());
+    }
 
     #[test]
     fn progress_changes_phases_retains_counts_and_tracks_parallel_jobs() {

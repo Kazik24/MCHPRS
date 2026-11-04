@@ -1045,6 +1045,15 @@ impl Player {
         self.permissions_cache.as_ref().and_then(|cache| cache.numeric_limit(prefix))
     }
 
+    pub(crate) fn redpiler_compile_budget(&self) -> Result<Option<std::time::Duration>, String> {
+        if CONFIG.luckperms.is_none() && CONFIG.velocity.is_none() {
+            return Ok(None);
+        }
+        self.permissions_cache.as_ref()
+            .ok_or("Permissions unavailable; rejoin and try again.")?
+            .redpiler_compile_budget()
+    }
+
     pub(crate) fn waveform_limits(&self) -> Result<(usize, usize), String> {
         let c = &*CONFIG;
         if c.luckperms.is_none() {

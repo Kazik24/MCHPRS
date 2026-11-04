@@ -52,7 +52,7 @@ mod tests {
         plot.handle_command(0, "/rp", vec!["publish", "io"]);
         assert!(matches!(plot.world.get_block(lever), Block::Lever { lever } if !lever.powered));
 
-        plot.players[0].set_test_permissions(&["commands.redpiler.publish"]);
+        plot.players[0].set_test_permissions(&["commands.redpiler.compile"]);
         for mode in ["io", "redstone", "all"] {
             plot.handle_command(0, "/rp", vec!["publish", mode]);
             assert_eq!(plot.redpiler.current_flags().unwrap().publication, PublicationMode::parse(mode));
@@ -84,11 +84,18 @@ impl Plot {
                         return;
                     }
                 };
+                let budget = match self.players[player].redpiler_compile_budget() {
+                    Ok(budget) => budget,
+                    Err(error) => {
+                        self.players[player].send_error_message(&error);
+                        return;
+                    }
+                };
                 if let Err(error) = self.reset_redpiler() {
                     self.players[player].send_error_message(&error.to_string());
                     return;
                 }
-                self.start_redpiler(options);
+                self.start_redpiler_with_budget(options, budget);
             }
             "reset" | "r" => {
                 if let Err(error) = self.reset_redpiler() {

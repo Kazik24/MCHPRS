@@ -785,7 +785,7 @@ fn native_command_permission(command: &str, args: &[&str]) -> Option<String> {
             match args.first().copied() {
                 Some("c" | "compile") => "compile",
                 Some("r" | "reset") => "reset",
-                Some("publish") => "publish",
+                Some("publish") => "compile",
                 _ => "help",
             }
         ),
@@ -1362,6 +1362,6 @@ mod security_tests {
         assert!(complete_redpiler(0, "/rp reset ").is_none());
         let publish = redpiler.children.iter().map(|&id| &nodes[id as usize]).find(|node| node.name == Some("publish")).unwrap();
         assert_eq!(publish.children.iter().map(|&id| nodes[id as usize].name.unwrap()).collect::<Vec<_>>(), ["all", "redstone", "io"]);
-        assert_eq!(native_command_permission("/rp", &["publish", "all"]).as_deref(), Some("commands.redpiler.publish"));
+        assert_eq!(native_command_permission("/rp", &["publish", "all"]).as_deref(), Some("commands.redpiler.compile"));
     }
 }

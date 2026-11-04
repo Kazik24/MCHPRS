@@ -248,6 +248,9 @@ impl Compiler {
         } else { None };
         monitor.set_phase("initializing runtime");
         let runtime = sampled::start_shared_runtime(program, ticks, world.piston_state().clone()).map_err(CompileError::Unsupported)?;
+        if monitor.cancelled() {
+            return Err(CompileError::Cancelled);
+        }
         let capacity = runtime.motion_part_capacity();
         self.publication_parts.clear();
         self.publication_parts.reserve(capacity);
