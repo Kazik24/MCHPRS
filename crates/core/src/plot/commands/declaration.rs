@@ -135,7 +135,8 @@ pub(super) fn declared_command_nodes() -> Vec<Node<'static>> {
         // //load
         Node::literal("/load", &[59]),
         // //load [filename]
-        Node::argument("filename", Parser::String(0), &[])
+        // Nested schematic paths include `/`, so parse the remainder as one argument.
+        Node::argument("filename", Parser::String(2), &[])
             .executable()
             .suggestions("minecraft:ask_server"),
         // /toggleautorp
@@ -404,3 +405,19 @@ pub static DECLARE_COMMANDS: Lazy<PacketEncoder> = Lazy::new(|| {
     }
     .encode()
 });
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn load_filename_uses_greedy_string_for_nested_paths() {
+        let nodes = declared_command_nodes();
+        let load = nodes.iter().find(|node| node.name == Some("/load")).unwrap();
+        let filename = &nodes[load.children[0] as usize];
+
+        assert_eq!(filename.name, Some("filename"));
+        assert!(matches!(filename.parser, Some(Parser::String(2))));
+        assert_eq!(filename.suggestions_type, Some("minecraft:ask_server"));
+    }
+}

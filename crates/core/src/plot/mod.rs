@@ -109,6 +109,7 @@ pub struct Plot {
     pub redpiler: Compiler,
     /// In-flight compilation owns a snapshot; the live plot stays on this thread.
     compilation: Option<redpiler_compilation::CompilationJob>,
+    redpiler_cache: Option<redpiler_compilation::CompilationCache>,
 
     // Thread communication
     message_receiver: BusReader<BroadcastMessage>,
@@ -1243,6 +1244,7 @@ impl Plot {
             always_running,
             redpiler: Default::default(),
             compilation: None,
+            redpiler_cache: None,
             timings: TimingsMonitor::new(tps),
             owner,
             async_rt: Plot::create_async_rt(),

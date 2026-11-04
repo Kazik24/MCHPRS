@@ -1,6 +1,6 @@
 //! Compile an isolated snapshot while the plot continues handling players and commands.
 use super::*;
-use crate::redpiler::{CompileError, TaskMonitor};
+use crate::redpiler::{CachedProgram, CompileError, TaskMonitor};
 use std::sync::Arc;
 use std::thread::JoinHandle;
 
@@ -17,8 +17,16 @@ pub(super) struct CompilationJob {
     monitor: Arc<TaskMonitor>,
     /// Live entry state that must still match before activation.
     entry: EntryVersion,
+    options: CompilerOptions,
+    cacheable: bool,
     /// Worker owning all temporary compilation data and no live plot references.
     worker: JoinHandle<CompilationResult>,
+}
+
+pub(super) struct CompilationCache {
+    entry: EntryVersion,
+    options: CompilerOptions,
+    program: Arc<CachedProgram>,
 }
 
 struct CompilationResult {
@@ -31,6 +39,7 @@ struct CompilationResult {
 }
 
 struct EntryVersion {
+    bounds: (BlockPos, BlockPos),
     /// All plot chunks also cover the compiler's read-only probe context.
     chunks: Vec<(u64, u64)>,
     /// Ordered pending work detects scheduling changes without block edits.
@@ -42,6 +51,7 @@ struct EntryVersion {
 impl EntryVersion {
     fn capture(world: &PlotWorld) -> Self {
         Self {
+            bounds: world.get_corners(),
             chunks: world.chunks.iter().map(Chunk::circuit_snapshot_version).collect(),
             ticks: world.to_be_ticked.iter_entries().collect(),
             pistons: bincode::serialize(&world.piston_state).expect("piston state serializes to memory"),
@@ -49,7 +59,8 @@ impl EntryVersion {
     }
 
     fn matches(&self, world: &PlotWorld) -> bool {
-        self.chunks.iter().copied().eq(world.chunks.iter().map(Chunk::circuit_snapshot_version))
+        self.bounds == world.get_corners()
+            && self.chunks.iter().copied().eq(world.chunks.iter().map(Chunk::circuit_snapshot_version))
             && self.ticks.iter().cloned().eq(world.to_be_ticked.iter_entries())
             && self.pistons == bincode::serialize(&world.piston_state).expect("piston state serializes to memory")
     }
@@ -120,6 +131,14 @@ impl Plot {
             .filter(|container| container.ty == mchprs_blocks::block_entities::ContainerType::Barrel)
             .map(|container| container.pos)
             .collect();
+        let cacheable = open_barrels.is_empty();
+        let cached = self.redpiler_cache.as_ref().filter(|cache| {
+            cacheable && cache.options == options && cache.entry.matches(&self.world)
+        }).map(|cache| Arc::clone(&cache.program));
+        if cached.is_none() {
+            self.redpiler_cache = None;
+        }
+        let job_options = options.clone();
         let snapshot_ms = started.elapsed().as_millis();
         let monitor = Arc::new(TaskMonitor::default());
         let worker_monitor = monitor.clone();
@@ -127,7 +146,8 @@ impl Plot {
         info!(plot_x = self.world.x, plot_z = self.world.z, snapshot_ms, ?options, "Redpiler started");
         self.scoreboard.set_redpiler_state(&self.players, RedpilerState::Compiling);
         self.scoreboard.set_redpiler_options(&self.players, &options);
-        let milestone = format!("Redpiler: snapshot ready ({} ms); compiling circuit", snapshot_ms);
+        let milestone = format!("Redpiler: snapshot ready ({} ms); {}", snapshot_ms,
+            if cached.is_some() { "reusing compiled circuit" } else { "compiling circuit" });
         for player in &self.players {
             player.send_raw_system_message(crate::player::diagnostic_component(&milestone).to_string());
         }
@@ -142,7 +162,7 @@ impl Plot {
                 }
                 let ticks = world.to_be_ticked.iter_entries().collect();
                 let mut compiler = Compiler::default();
-                let result = compiler.compile(&world, world.get_corners(), options, ticks, worker_monitor);
+                let result = compiler.compile_cached(&world, world.get_corners(), options, ticks, worker_monitor, cached);
                 CompilationResult { world, compiler, result }
             });
         match worker {
@@ -153,6 +173,8 @@ impl Plot {
                     last_phase: 0,
                     monitor,
                     entry,
+                    options: job_options,
+                    cacheable,
                     worker,
                 })
             }
@@ -204,6 +226,13 @@ impl Plot {
         } else if !job.entry.matches(&self.world) || self.git_checkout_locked() {
             self.reject_redpiler(job.started, messages::REDPILER_COMPILATION_CHANGED);
         } else {
+            if job.cacheable {
+                self.redpiler_cache = output.compiler.cached_program().map(|program| CompilationCache {
+                    entry: job.entry,
+                    options: job.options,
+                    program,
+                });
+            }
             self.redpiler = output.compiler;
             let state = if self.redpiler.current_flags().is_some_and(|options| options.llvm) {
                 RedpilerState::RunningLlvm

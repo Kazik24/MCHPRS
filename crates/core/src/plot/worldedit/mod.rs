@@ -153,7 +153,7 @@ pub fn execute_command(plot: &mut Plot, player_idx: usize, command: &str, args: 
     }
     if let Err(error) = safety::validate_request(&plot.world, &plot.players[player_idx], command_name, command, &arguments) {
         plot.players[player_idx].send_error_message(&error);
-        if command_name == "/paste" && error == messages::WE_OPERATION_OUTSIDE_PLOT
+        if command_name == "/paste" && (error == messages::WE_OPERATION_OUTSIDE_PLOT || error == messages::WE_PASTE_MARGIN)
             && let Some(clipboard) = &plot.players[player_idx].worldedit_clipboard
         {
             let help = safety::paste_placement_help(&plot.world, clipboard, plot.players[player_idx].pos.block_pos());

@@ -6,7 +6,7 @@ pub enum PublicationMode {
     Redstone,
 }
 
-#[derive(PartialEq, Eq, Debug, Default)]
+#[derive(Clone, PartialEq, Eq, Debug, Default)]
 /// Options that control publication and reset behavior.
 pub struct CompilerOptions {
     /// Only flush visible outputs and controls, including lamps and copper bulbs.

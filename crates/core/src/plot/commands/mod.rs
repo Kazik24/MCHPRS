@@ -241,18 +241,22 @@ impl Plot {
                     });
                     return false;
                 };
-                if !Self::in_plot_bounds(self.world.x, self.world.z, pos.x, pos.z) || !(0..super::PLOT_BLOCK_HEIGHT).contains(&pos.y) {
+                let target = PlayerPos::new(f64::from(pos.x) + 0.5, f64::from(pos.y) + 0.5, f64::from(pos.z) + 0.5);
+                if !target.is_valid() || !(0..super::PLOT_BLOCK_HEIGHT).contains(&pos.y) {
                     self.players[player].send_error_message(messages::INVALID_TELEPORT_COORDINATES);
                     return false;
                 }
                 if teleport {
-                    let player_pos = self.players[player].pos;
-                    let destination = PlayerPos::new(
-                        f64::from(pos.x) + 0.5,
-                        f64::from(pos.y) + 0.5 - (self.players[player].eye_position().y - player_pos.y),
-                        f64::from(pos.z) + 0.5,
-                    );
-                    self.players[player].teleport(destination);
+                    let viewer = &self.players[player];
+                    let destination = PlayerPos::new(target.x, target.y - (viewer.eye_position().y - viewer.pos.y), target.z);
+                    let (yaw, pitch) = (viewer.yaw, viewer.pitch);
+                    if destination.plot_pos() != (self.world.x, self.world.z) {
+                        // Recreate the marker after transfer, when the destination chunks are loaded.
+                        self.players[player].command_queue.push(format!("/hl {} {} {}", pos.x, pos.y, pos.z));
+                    }
+                    if self.teleport_player_to(player, destination, yaw, pitch) {
+                        return true;
+                    }
                 }
                 self.show_block_highlight(player, pos, false);
             }
@@ -1046,6 +1050,47 @@ mod security_tests {
         assert_eq!((eye.x, eye.y, eye.z), (33.5, 21.5, 35.5));
         assert_eq!(native_command_permission("/hl", &[]).as_deref(), Some("commands.teleport"));
         assert!(declared_command_nodes().iter().any(|node| node.name == Some("hl")));
+    }
+
+    #[test]
+    fn highlight_teleport_transfers_to_the_target_plot_and_queues_its_marker() {
+        let (mut plot, _peer) = super::super::client_sync_tests::fixture(false);
+        let (sender, receiver) = std::sync::mpsc::channel();
+        plot.message_sender = sender;
+        assert!(plot.handle_command(0, "/hl", vec!["824", "62", "1022", "--tp"]));
+        assert!(plot.players.is_empty());
+        let Message::PlayerLeavePlot(mut player) = receiver.try_recv().unwrap() else {
+            panic!("highlight teleport must use normal plot routing");
+        };
+        let eye = player.eye_position();
+        assert_eq!((eye.x, eye.z), (824.5, 1022.5));
+        assert!((eye.y - 62.5).abs() < 1e-9);
+        assert_eq!(player.pos.plot_pos(), (1, 1));
+        assert_eq!(player.command_queue, ["/hl 824 62 1022"]);
+
+        let (mut destination, mut destination_peer) = super::super::client_sync_tests::fixture(false);
+        destination.world.x = 1;
+        destination.world.z = 1;
+        player.client = destination.players.remove(0).client;
+        destination.players.push(player);
+        assert!(!destination.handle_command(0, "/hl", vec!["824", "62", "1022"]));
+        assert_eq!(mchprs_network::test_support::read_frame(&mut destination_peer, false).unwrap().0, 0x01);
+        assert_eq!(mchprs_network::test_support::read_frame(&mut destination_peer, false).unwrap().0, 0x5c);
+    }
+
+    #[test]
+    fn highlight_rejects_coordinates_outside_the_world_without_transferring() {
+        let (mut plot, _peer) = super::super::client_sync_tests::fixture(false);
+        let before = plot.players[0].pos;
+        for args in [
+            vec!["30000001", "62", "1022", "--tp"],
+            vec!["824", "-1", "1022", "--tp"],
+            vec!["824", "256", "1022", "--tp"],
+        ] {
+            assert!(!plot.handle_command(0, "/hl", args));
+            assert_eq!(plot.players[0].pos, before);
+            assert!(plot.players[0].command_queue.is_empty());
+        }
     }
 
     #[test]

@@ -1,7 +1,9 @@
 //! Validate geometry and work before capturing undo data or mutating a plot.
 use super::*;
 use crate::config::CONFIG;
-use crate::plot::PLOT_BLOCK_HEIGHT;
+use crate::plot::{PLOT_BLOCK_HEIGHT, PLOT_BLOCK_WIDTH};
+
+const HORIZONTAL_PASTE_MARGIN: i64 = 2;
 
 fn volume(first: BlockPos, second: BlockPos) -> Result<u64, String> {
     [first.x.abs_diff(second.x), first.y.abs_diff(second.y), first.z.abs_diff(second.z)]
@@ -49,8 +51,16 @@ fn clipboard_geometry(cb: &WorldEditClipboard, pos: BlockPos) -> Result<(BlockPo
     ))
 }
 
+fn paste_has_margin(world: &PlotWorld, first: BlockPos, last: BlockPos) -> bool {
+    let width = i64::from(PLOT_BLOCK_WIDTH);
+    let min_x = i64::from(world.x) * width + HORIZONTAL_PASTE_MARGIN;
+    let min_z = i64::from(world.z) * width + HORIZONTAL_PASTE_MARGIN;
+    let max_x = i64::from(world.x) * width + width - 1 - HORIZONTAL_PASTE_MARGIN;
+    let max_z = i64::from(world.z) * width + width - 1 - HORIZONTAL_PASTE_MARGIN;
+    i64::from(first.x) >= min_x && i64::from(last.x) <= max_x && i64::from(first.z) >= min_z && i64::from(last.z) <= max_z
+}
+
 fn fitting_position(world: &PlotWorld, cb: &WorldEditClipboard, current: BlockPos) -> Option<BlockPos> {
-    use crate::plot::PLOT_BLOCK_WIDTH;
     let mut coordinates = [0; 3];
     for (index, (plot, capacity, size, offset, current)) in [
         (i64::from(world.x) * i64::from(PLOT_BLOCK_WIDTH), PLOT_BLOCK_WIDTH, cb.size_x, cb.offset_x, current.x),
@@ -59,8 +69,9 @@ fn fitting_position(world: &PlotWorld, cb: &WorldEditClipboard, current: BlockPo
     ].into_iter().enumerate() {
         if size == 0 || i64::from(size) > i64::from(capacity) { return None; }
         // The paste must fit, and its player anchor must remain inside this plot.
-        let low = (plot + i64::from(offset)).max(plot);
-        let high = (plot + i64::from(capacity) - i64::from(size) + i64::from(offset))
+        let margin = if index == 1 { 0 } else { HORIZONTAL_PASTE_MARGIN };
+        let low = (plot + i64::from(offset) + margin).max(plot);
+        let high = (plot + i64::from(capacity) - margin - i64::from(size) + i64::from(offset))
             .min(plot + i64::from(capacity) - 1);
         if low > high { return None; }
         coordinates[index] = i32::try_from(i64::from(current).clamp(low, high)).ok()?;
@@ -69,15 +80,15 @@ fn fitting_position(world: &PlotWorld, cb: &WorldEditClipboard, current: BlockPo
 }
 
 pub(super) fn paste_placement_help(world: &PlotWorld, cb: &WorldEditClipboard, current: BlockPos) -> serde_json::Value {
-    use crate::plot::PLOT_BLOCK_WIDTH;
     use serde_json::json;
     let mut text = messages::clipboard_dimensions(cb.size_x, cb.size_y, cb.size_z);
     if let Ok((first, last)) = clipboard_geometry(cb, current) {
         text.push_str(&format!("\n{}", messages::clipboard_paste_bounds(first, last)));
     }
     text.push('\n');
-    if cb.size_x > PLOT_BLOCK_WIDTH as u32 || cb.size_y > PLOT_BLOCK_HEIGHT as u32 || cb.size_z > PLOT_BLOCK_WIDTH as u32 {
-        text.push_str(&messages::clipboard_too_large(PLOT_BLOCK_WIDTH, PLOT_BLOCK_HEIGHT, PLOT_BLOCK_WIDTH));
+    let paste_width = PLOT_BLOCK_WIDTH - 2 * HORIZONTAL_PASTE_MARGIN as i32;
+    if cb.size_x > paste_width as u32 || cb.size_y > PLOT_BLOCK_HEIGHT as u32 || cb.size_z > paste_width as u32 {
+        text.push_str(&messages::clipboard_too_large(paste_width, PLOT_BLOCK_HEIGHT, paste_width));
         return json!({"text": text, "color": "yellow"});
     }
     let Some(position) = fitting_position(world, cb, current) else {
@@ -120,6 +131,9 @@ pub(super) fn validate_request(world: &PlotWorld, player: &Player, name: &str, c
         if name == "/paste" {
             let (first, second) = clipboard_geometry(cb, player.pos.block_pos())?;
             region(world, first, second)?;
+            if !paste_has_margin(world, first, second) {
+                return Err(messages::WE_PASTE_MARGIN.into());
+            }
         }
     }
     if matches!(name, "/move" | "/stack") {
@@ -173,13 +187,40 @@ mod tests {
         let cb = placement_clipboard();
         let current = BlockPos::new(-513, PLOT_BLOCK_HEIGHT - 1, 1535);
         let destination = fitting_position(&world, &cb, current).unwrap();
-        assert_eq!(destination, BlockPos::new(-525, PLOT_BLOCK_HEIGHT - 25, 1536));
+        assert_eq!(destination, BlockPos::new(-527, PLOT_BLOCK_HEIGHT - 25, 1536));
         let (first, last) = clipboard_geometry(&cb, destination).unwrap();
         assert!(region(&world, first, last).is_ok());
+        assert!(paste_has_margin(&world, first, last));
         assert!(Plot::in_plot_bounds(world.x, world.z, destination.x, destination.z));
         let help = paste_placement_help(&world, &cb, current);
         assert_eq!(help["extra"][0]["click_event"]["command"], format!("/tp {} {} {}", destination.x, destination.y, destination.z));
         assert!(paste_placement_help(&world, &cb, destination).get("extra").is_none());
+    }
+
+    #[test]
+    fn paste_keeps_two_block_horizontal_margins_and_rejects_width_509() {
+        let world = PlotWorld::from_chunks(-1, 2, vec![], Default::default());
+        let mut cb = placement_clipboard();
+        cb.offset_x = 0;
+        cb.offset_y = 0;
+        cb.offset_z = 0;
+        cb.size_x = (PLOT_BLOCK_WIDTH - 2 * HORIZONTAL_PASTE_MARGIN as i32) as u32;
+        cb.size_y = 1;
+        cb.size_z = 1;
+        cb.data = PalettedBitBuffer::new(508, 9);
+
+        let destination = fitting_position(&world, &cb, BlockPos::zero()).unwrap();
+        let (first, last) = clipboard_geometry(&cb, destination).unwrap();
+        assert_eq!(first.x, world.x * PLOT_BLOCK_WIDTH + 2);
+        assert_eq!(last.x, (world.x + 1) * PLOT_BLOCK_WIDTH - 3);
+        assert!(paste_has_margin(&world, first, last));
+
+        cb.size_x += 1;
+        cb.data = PalettedBitBuffer::new(cb.size_x as usize, 9);
+        assert!(fitting_position(&world, &cb, BlockPos::zero()).is_none());
+        let help = paste_placement_help(&world, &cb, BlockPos::zero());
+        assert!(help.get("extra").is_none());
+        assert!(help["text"].as_str().unwrap().contains("508 × 256 × 508"));
     }
 
     #[test]
@@ -198,7 +239,7 @@ mod tests {
     }
 
     #[test]
-    fn pm1_sort_and_full_plot_clipboards_fit_the_work_limit() {
+    fn pm1_and_full_plot_clips_respect_the_work_limit_and_paste_margin() {
         let chunks = (0..PLOT_WIDTH).flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x, z))).collect();
         let mut world = PlotWorld::from_chunks(0, 0, chunks, Default::default());
         let connection = mchprs_network::test_support::connection(false).unwrap();
@@ -211,9 +252,9 @@ mod tests {
         assert_eq!(cb.data.entries(), 8_639_540);
         let pm1_work = cb.data.entries() as u64;
         player.pos = PlayerPos {
-            x: f64::from(cb.offset_x),
+            x: f64::from(cb.offset_x) + 2.5,
             y: f64::from(cb.offset_y),
-            z: f64::from(cb.offset_z),
+            z: f64::from(cb.offset_z) + 2.5,
         };
         player.worldedit_clipboard = Some(cb);
         let paste = &COMMANDS["/paste"];
@@ -236,6 +277,9 @@ mod tests {
             flags: vec![],
         });
         assert_eq!(player.worldedit_clipboard.as_ref().unwrap().data.entries(), 8_639_540);
+        let clipboard = player.worldedit_clipboard.as_ref().unwrap();
+        player.pos.x = f64::from(clipboard.offset_x) + 2.5;
+        player.pos.z = f64::from(clipboard.offset_z) + 2.5;
         assert!(validate_request(&world, &player, "/paste", paste, &[]).is_ok());
 
         player.pos = PlayerPos { x: 0.0, y: 0.0, z: 0.0 };
@@ -254,13 +298,12 @@ mod tests {
             BlockPos::new(PLOT_BLOCK_WIDTH - 1, PLOT_BLOCK_HEIGHT - 1, PLOT_BLOCK_WIDTH - 1),
         )
         .unwrap();
-        assert_eq!(
-            validate_request(&world, &player, "/paste", paste, &[]).is_ok(),
-            full_plot_work <= CONFIG.worldedit_max_blocks
-        );
+        let full_plot_paste = validate_request(&world, &player, "/paste", paste, &[]);
         if full_plot_work > CONFIG.worldedit_max_blocks {
+            assert!(full_plot_paste.is_err());
             return;
         }
+        assert_eq!(full_plot_paste, Err(messages::WE_PASTE_MARGIN.to_owned()));
         player.second_position = Some(BlockPos::new(PLOT_BLOCK_WIDTH - 1, PLOT_BLOCK_HEIGHT - 1, PLOT_BLOCK_WIDTH - 1));
         assert!(validate_request(&world, &player, "/copy", copy, &[]).is_ok());
         player.pos.x = 1.0;

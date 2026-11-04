@@ -42,9 +42,6 @@ pub(crate) struct ScratchWorld {
     contract_air: HashSet<BlockPos>,
 }
 
-#[derive(Clone, Copy)]
-pub(crate) enum WireCacheBypass { Entry, Context, Writes, Entities }
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct WireWatcher {
     /// location of the wire being watched.
@@ -501,86 +498,6 @@ mod tests {
     const LEVER: BlockPos = BlockPos::new(40, 30, 40);
     const WIRE: BlockPos = BlockPos::new(41, 30, 40);
     const PISTON: BlockPos = BlockPos::new(42, 30, 40);
-
-    #[test]
-    fn wire_port_reads_stay_within_two_blocks() {
-        struct Guard<'a> { world: &'a PlotWorld, center: BlockPos }
-        impl World for Guard<'_> {
-            fn get_block_raw(&self, pos: BlockPos) -> u32 {
-                assert!(pos.x.abs_diff(self.center.x) + pos.y.abs_diff(self.center.y) + pos.z.abs_diff(self.center.z) <= 2, "unexpected read at {pos:?}");
-                self.world.get_block_raw(pos)
-            }
-            fn get_block_entity(&self, _: BlockPos) -> Option<&mchprs_blocks::block_entities::BlockEntity> { panic!("wire ports read an entity") }
-            fn set_block_raw(&mut self, _: BlockPos, _: u32) -> bool { unreachable!() }
-            fn delete_block_entity(&mut self, _: BlockPos) { unreachable!() }
-            fn get_block_entity_mut(&mut self, _: BlockPos) -> Option<&mut mchprs_blocks::block_entities::BlockEntity> { unreachable!() }
-            fn set_block_entity(&mut self, _: BlockPos, _: mchprs_blocks::block_entities::BlockEntity) { unreachable!() }
-            fn piston_state(&self) -> &PistonState { panic!("wire ports read piston state") }
-            fn piston_state_mut(&mut self) -> &mut PistonState { unreachable!() }
-            fn get_chunk(&self, _: i32, _: i32) -> Option<&Chunk> { panic!("wire ports read a chunk directly") }
-            fn get_chunk_mut(&mut self, _: i32, _: i32) -> Option<&mut Chunk> { unreachable!() }
-            fn schedule_tick(&mut self, _: BlockPos, _: u32, _: mchprs_world::TickPriority) { unreachable!() }
-            fn schedule_half_tick(&mut self, _: BlockPos, _: u32, _: mchprs_world::TickPriority) { unreachable!() }
-            fn pending_tick_at(&mut self, _: BlockPos) -> bool { panic!("wire ports read pending ticks") }
-            fn block_action(&mut self, _: BlockPos, _: crate::world::BlockAction) { unreachable!() }
-            fn play_sound(&mut self, _: BlockPos, _: i32, _: i32, _: f32, _: f32) { unreachable!() }
-        }
-        let mut world = fixture();
-        for name in ["air", "stone", "redstone_wire", "redstone_block", "lever", "repeater", "comparator", "observer", "redstone_torch"] {
-            let block = Block::from_name(name).unwrap();
-            for face in BlockFace::values() {
-                world.set_block(WIRE.offset(face), block);
-                for side in BlockFace::values() { world.set_block(WIRE.offset(face).offset(side), block); }
-            }
-            let _ = discover_wire_ports(&Guard { world: &world, center: WIRE }, WIRE);
-        }
-        for dx in -2i32..=2 {
-            for dy in -2i32..=2 {
-                for dz in -2i32..=2 {
-                    if dx.abs() + dy.abs() + dz.abs() <= 2 { world.set_block(WIRE + BlockPos::new(dx, dy, dz), Block::Air); }
-                }
-            }
-        }
-        world.set_block(WIRE, Block::RedstoneWire { wire: RedstoneWire::default() });
-        for name in ["redstone_wire", "redstone_block", "lever", "stone_button", "stone_pressure_plate",
-            "repeater", "comparator", "observer", "redstone_torch", "redstone_wall_torch"] {
-            let block = Block::from_name(name).unwrap();
-            for face in BlockFace::values() {
-                let conductor = WIRE.offset(face);
-                world.set_block(conductor, Block::Stone {});
-                for side in BlockFace::values() {
-                    let source = conductor.offset(side);
-                    if source == WIRE { continue; }
-                    world.set_block(source, block);
-                    let _ = discover_wire_ports(&Guard { world: &world, center: WIRE }, WIRE);
-                    world.set_block(source, Block::Air);
-                }
-                world.set_block(conductor, Block::Air);
-            }
-        }
-        for face in [BlockFace::North, BlockFace::South, BlockFace::East, BlockFace::West] {
-            let adjacent = WIRE.offset(face);
-            let below = adjacent.offset(BlockFace::Bottom);
-            let above = adjacent.offset(BlockFace::Top);
-            world.set_block(below, Block::RedstoneWire { wire: RedstoneWire::default() });
-            let _ = discover_wire_ports(&Guard { world: &world, center: WIRE }, WIRE);
-            world.set_block(below, Block::Air);
-            world.set_block(adjacent, Block::Stone {});
-            world.set_block(above, Block::RedstoneWire { wire: RedstoneWire::default() });
-            let _ = discover_wire_ports(&Guard { world: &world, center: WIRE }, WIRE);
-            world.set_block(above, Block::Air);
-            world.set_block(adjacent, Block::Air);
-        }
-        let guard = Guard { world: &world, center: WIRE };
-        for id in 0..mchprs_blocks::generated::TARGET_TO_LEGACY.len() as u32 {
-            let block = Block::from_id(id);
-            if is_supported_dynamic_source(block) || matches!(block, Block::RedstoneBlock | Block::RedstoneWire { .. }) { continue; }
-            for face in BlockFace::values() {
-                assert!(!crate::redstone::power::emits_weak_power(block, &guard, WIRE, face, true), "unsupported weak source id={id}");
-                assert!(!crate::redstone::power::emits_strong_power(block, &guard, WIRE, face, false), "unsupported strong source id={id}");
-            }
-        }
-    }
 
     fn fixture() -> PlotWorld {
         let chunks = (0..PLOT_WIDTH).flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x, z))).collect();
@@ -1356,19 +1273,6 @@ impl ScratchWorld {
 
     pub(crate) fn world(&self) -> &PlotWorld {
         &self.world
-    }
-
-    /// Cache only probes whose entire conservative footprint and writes are captured.
-    pub(crate) fn wire_cache_bypass(&self, footprint: &[BlockPos], writes: &[BlockPos]) -> Option<WireCacheBypass> {
-        if !self.scheduled.is_empty() || self.piston.phase != AdvancePhase::BetweenTicks || !self.piston.events.is_empty()
-            || !self.piston.motions.is_empty() || !self.piston.movement_work.is_empty() || self.piston.movement_cursor != 0 {
-            return Some(WireCacheBypass::Entry);
-        }
-        if !footprint.iter().all(|&pos| contains(self.read_bounds, pos)
-            && self.read_chunks.contains(&(pos.x.div_euclid(16), pos.z.div_euclid(16)))) { return Some(WireCacheBypass::Context); }
-        if !writes.iter().all(|&pos| contains(self.bounds, pos)) { return Some(WireCacheBypass::Writes); }
-        if !writes.iter().all(|&pos| self.world.get_block_entity(pos).is_none()) { return Some(WireCacheBypass::Entities); }
-        None
     }
     pub(crate) fn world_mut(&mut self) -> &mut PlotWorld {
         &mut self.world

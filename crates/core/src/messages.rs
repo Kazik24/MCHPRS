@@ -41,6 +41,7 @@ catalog! {
         GIT_OWNER_STORAGE_LIMIT_UNAVAILABLE = "Could not sniff out the plot owner's Git storage allowance. Try again in a moment, pup.";
         WE_SELECTION_VOLUME_OVERFLOW = "This selection is beyond the volume these paws can count.";
         WE_OPERATION_OUTSIDE_PLOT = "This WorldEdit pawstep would leave the current plot or world height.";
+        WE_PASTE_MARGIN = "WorldEdit pastes must leave a 2-block horizontal margin from each plot edge.";
         WE_PASTE_FITS_HERE = "Fits at your current position. Use //paste to place it.";
         WE_PASTE_ORIGIN_OUTSIDE_PLOT = "The saved clipboard origin cannot be reached inside this plot. Re-copy with an origin inside the selection.";
         WE_TELEPORT_TO_FIT = "[Teleport to fit]";
@@ -226,7 +227,7 @@ catalog! {
         HELP_CHAT = "Chat and command blocks\n/say <text> sends a message to everyone.\n/tellraw @a {\"text\":\"Hello\"} sends formatted text.\nUse @a, @s or a player name; selector filters are ignored.\nCommand blocks support say and tellraw. They require creative mode and permission. Other commands are saved in schematics but do not run.";
         HELP_HISTORY = "Tick history\n/rhistory on [ticks] records ticks (default 100); /rhistory off clears it.\n/rhistory shows count and memory. /rhistory rewind [ticks] rewinds; /rev [ticks] is the short form. Resume with /tps 20.\nRewind clears WorldEdit undo/redo. History needs the interpreter and resets when the plot becomes empty, on compile or restart.\nOld ticks drop at the shared 2 GiB limit. Admins can use /rhistory limit <MiB>.";
         HELP_PISTONS = "Visual settings\n/visual shows this plot's settings.\n/visual pistons [auto|on|off] controls piston animation.\n/visual rate [0-1000] sets update speed; 0 stops periodic updates. Above the server TPS threshold (200 by default), updates cap at 10 Hz.\n/visual displayonly [on|off] sends only lamp updates. Block edits still happen, but may not appear to players.";
-        HELP_PLOTS = "Plots\n/p auto claims an empty plot; /p claim claims the plot you're in.\n/p info shows the owner; /p middle goes to the centre.\n/p home visits your first plot; /p visit <player> [number] visits a plot.\n/p add <nick> and /p remove <nick> manage plot members.\n/p tp <x> <z> uses plot coordinates.\n/p lock and /p unlock control leaving. /p select selects the plot for WorldEdit.";
+        HELP_PLOTS = "Plots\n/p auto claims an empty plot; /p claim claims the plot you're in.\n/p info shows position, owner, players, TPS, engine, history and rendering status.\n/p middle goes to the centre.\n/p home visits your first plot; /p visit <player> [number] visits a plot.\n/p add <nick> and /p remove <nick> manage plot members.\n/p tp <x> <z> uses plot coordinates.\n/p lock and /p unlock control leaving. /p select selects the plot for WorldEdit.";
         HELP_QUICK_START = "MROWW — Minecraft Redstone o Wysokiej Wydajności\n/p auto claims a plot.\n/help plots - Claim and visit plots.\n/help warps - Save and visit shared destinations.\n/help tps - Control and step simulation.\n/help we - WorldEdit.\n/help tools - Redstone tools.\n/help wire - Draw redstone wires.\n/help schematics - Load and save builds.\n/help visual - Set visual representation.\n/help rewind - Tick history.\n/help git - Plot commits, branches and glowing diffs.\n/help chat - Chat and command blocks.\n/help redpiler - Compiled simulation.";
         HELP_REDPILER = "Compiled simulation\n/rp compile starts sampled execution when the selected circuit is supported; /rp reset returns it to the interpreter. Unsupported components and entry states leave native simulation active.\n--publish-all shows all blocks and piston motion; --publish-redstone shows redstone components; --io-only shows controls and visible outputs. Periodic publication follows /visual rate. --update recalculates blocks after reset. Use /tps 0 and /adv 1 to step compiled execution; nano/pico stepping requires /rp reset first. /toggleautorp toggles automatic compilation.";
         HELP_REDSTONE_TOOLS = "Redstone tools\n//find <block> searches your selection.\n//ss <regex> searches signs; -p <page> shows more.\n//rs [direction] [count] [spacing] stacks copies; -e expands selection; -w includes air.\n/autostack [direction] [count] [spacing] [-e] automatically stacks your placements and removals in the selected region; /autostack off stops it. Leaving the plot stops it.\n/wire draws dust with a live preview; /help wire explains controls and safety limits.\n/container <type> <0..15> creates a comparator container.\n/cursel toggles the selection sidebar.";
@@ -378,6 +379,9 @@ catalog! {
         PLOT_INFO_RUNNING = "Running";
         PLOT_INFO_NO_COMMITS = "No commits";
         PLOT_INFO_GIT_LOADING = "Loading";
+        PLOT_INFO_ENGINE_INTERPRETER = "Interpreter";
+        PLOT_INFO_ENGINE_REDPILER = "Redpiler";
+        PLOT_INFO_ENGINE_LLVM = "Redpiler-LLVM";
         RESULT_ACTION_HOVER = "Boop to follow this trail.";
         ROTATE_AMOUNT_MUST_MULTIPLE = "These rotation paws turn in 90-degree steps. Choose a multiple of 90.";
         RTPS_SET = "The circuit's new tick pace is set. Awoo!";
@@ -590,19 +594,20 @@ catalog! {
         plot_index_range(count: impl Display) = "Choose one of this player's plots from 1 through {count}, pup.";
         plot_load_failed(x: impl Display, z: impl Display) = "Could not load plot {x},{z}. Please contact the server administrator.";
         plot_locked(x: impl Display, z: impl Display) = "Locked to plot ({x}, {z}). Use /p unlock to unclip the leash and roam again.";
-        plot_owner(owner: impl Display) = "{owner} has their pawprint on this plot.";
         plot_info_heading(x: i32, z: i32, owner: &str) = "Plot ({x}, {z}) | Owner: {owner}";
-        plot_info_position(position: impl Display, local: impl Display) = "Your block position: {position} | Plot-local: {local}";
+        plot_info_position(position: impl Display, local: impl Display, locked: &str) = "Your block position: {position} | Plot-local: {local} | Your plot lock: {locked}";
         plot_info_bounds(first: impl Display, last: impl Display, width: i32, height: i32, chunks: usize, entities: usize) = "Bounds: {first} to {last} | Size: {width} x {height} x {width}\nChunks: {chunks} | Block entities: {entities}";
         plot_info_players(count: usize, names: impl Display) = "Players ({count}): {names}";
         plot_info_more_players(count: usize) = "... +{count} more";
         plot_info_simulation(state: &str, target: impl Display, measured: impl Display, mspt: impl Display) = "Simulation: {state} | Target TPS: {target}\nMeasured TPS (2s / 10s / 60s): {measured} | Last tick: {mspt}";
-        plot_info_engine(engine: &str, compiling: &str, automatic: &str) = "Engine: {engine} | Compiling: {compiling} | Auto Redpiler: {automatic}";
+        plot_info_engine(engine: &str, compiling: &str, automatic: &str, keep_loaded: &str) = "Engine: {engine} | Compiling: {compiling} | Auto Redpiler: {automatic} | Keep loaded: {keep_loaded}";
         plot_info_history(state: &str, ticks: usize, capacity: usize, memory: impl Display) = "Hist: {state} | Retained ticks: {ticks}/{capacity} | Memory: {memory}";
         plot_info_rendering(rate: u32, configured: u32, screen: &str, fast: &str, piston_mode: impl Display, animation: &str) = "Visual updates: {rate} Hz (configured {configured}) | Screen only: {screen} | Fast rendering: {fast}\nPiston animation: {piston_mode} (effective: {animation})";
         plot_info_pending(ticks: usize, events: usize, motions: usize, phase: impl Debug) = "Pending block ticks: {ticks} | Piston events: {events} | Moving pistons: {motions} | Tick phase: {phase:?}";
         plot_info_waveform(state: &str, probes: usize) = "Waveform recording: {state} | Probes: {probes}";
         plot_info_git(head: &str, restoring: &str, recovery: &str) = "Git: {head} | Restoring: {restoring} | Recovery required: {recovery}";
+        plot_info_compiled(components: usize, duration: Duration) = "Compiled components: {components} | Compile time: {duration:.3?}";
+        plot_info_worldedit(undo: usize, redo: usize) = "Your WorldEdit history: {undo} undo / {redo} redo operations";
         plot_rewound(ticks: impl Display, remaining: impl Display) = "Rewound {ticks} game ticks and paused the plot. {remaining} game ticks remain on the pawprint trail.";
         region_contracted(blocks: impl Display) = "Your region tucked in by {blocks} block(s).";
         region_expanded(blocks: impl Display) = "Your region stretched its paws by {blocks} block(s).";
@@ -667,7 +672,7 @@ mod tests {
     #[test]
     fn interpolation_preserves_payloads_without_treating_them_as_templates() {
         let name = "Pup{owner}🐾";
-        assert!(plot_owner(name).contains(name));
+        assert!(plot_info_heading(0, 0, name).contains(name));
         assert!(selection_first(-123, 319, 456).contains("(-123, 319, 456)"));
         assert!(
             history_tick_limit_permission(1000, "plots.admin.rewind.unlimited")

@@ -1409,6 +1409,10 @@ impl Program {
     }
 
     pub(super) fn into_runtime_prepared(self) -> Runtime {
+        Self::runtime_from_prepared(std::sync::Arc::new(self))
+    }
+
+    pub(super) fn runtime_from_prepared(self: std::sync::Arc<Self>) -> Runtime {
         let cell_count = self.projection_positions.len();
         let motion_capacity = self
             .pistons
@@ -1573,7 +1577,7 @@ impl Program {
             scheduled_repeater_ticks: 0,
             tick_operations: 0,
             failure: None,
-            program: std::sync::Arc::new(self),
+            program: self,
         };
         for (component, block) in runtime.program.initial.iter().enumerate() {
             let channels = match block {

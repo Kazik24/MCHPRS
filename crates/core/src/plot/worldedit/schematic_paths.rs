@@ -312,6 +312,22 @@ mod tests {
     }
 
     #[test]
+    fn completion_matches_numeric_nested_filename_prefix() {
+        let library = Library::new();
+        library.file("mroww/PM1_FIXED_COMPILATION_1.schem");
+        library.file("rf/PM1.schem");
+
+        for (query, expected) in [("rf/", "rf/PM1.schem"), ("mroww/", "mroww/PM1_FIXED_COMPILATION_1.schem")] {
+            assert!(complete_names(&library.0, query).unwrap().iter().any(|name| name == expected));
+        }
+
+        assert_eq!(
+            complete_names(&library.0, "mroww/PM1").unwrap(),
+            ["mroww/PM1_FIXED_COMPILATION_1.schem"]
+        );
+    }
+
+    #[test]
     fn completion_limits_results_after_ranking_not_before_searching() {
         let library = Library::new();
         for i in 0..300 {

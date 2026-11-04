@@ -101,13 +101,15 @@ pub struct CompileStatistics {
     pub pending_ticks: usize,
     /// elapsed compile time.
     pub duration: Duration,
+    /// Whether the immutable sampled program was reused.
+    pub cached: bool,
 }
 
 impl CompileStatistics {
     pub fn chat_summary_lines(&self) -> Vec<String> {
         vec![format!(
-            "Redpiler compiled {} components; {} pending ticks; {:?}",
-            self.components, self.pending_ticks, self.duration
+            "Redpiler {} {} components; {} pending ticks; {:?}",
+            if self.cached { "reused" } else { "compiled" }, self.components, self.pending_ticks, self.duration
         )]
     }
 }
@@ -164,6 +166,22 @@ impl Compiler {
         ticks: Vec<TickEntry>,
         monitor: Arc<TaskMonitor>,
     ) -> Result<(), CompileError> {
+        self.compile_cached(world, bounds, options, ticks, monitor, None)
+    }
+
+    pub(crate) fn cached_program(&self) -> Option<Arc<sampled::Program>> {
+        self.runtime.as_ref().map(Runtime::shared_program)
+    }
+
+    pub(crate) fn compile_cached<W: World>(
+        &mut self,
+        world: &W,
+        bounds: (BlockPos, BlockPos),
+        options: CompilerOptions,
+        ticks: Vec<TickEntry>,
+        monitor: Arc<TaskMonitor>,
+        cached: Option<Arc<sampled::Program>>,
+    ) -> Result<(), CompileError> {
         if self.is_active() {
             return Err(CompileError::AlreadyActive);
         }
@@ -193,13 +211,14 @@ impl Compiler {
             scheduled: ticks.clone(),
             piston: world.piston_state().clone(),
         };
-        let program = sampled::compile_program(world, bounds, entry, Some(&monitor)).map_err(|error| {
-            if monitor.cancelled() {
-                CompileError::Cancelled
-            } else {
-                CompileError::Unsupported(error)
-            }
-        })?;
+        let cache_hit = cached.is_some();
+        let program = if let Some(program) = cached {
+            program
+        } else {
+            Arc::new(sampled::compile_program(world, bounds, entry, Some(&monitor)).map_err(|error| {
+                if monitor.cancelled() { CompileError::Cancelled } else { CompileError::Unsupported(error) }
+            })?)
+        };
         if monitor.cancelled() {
             return Err(CompileError::Cancelled);
         }
@@ -211,12 +230,12 @@ impl Compiler {
             if total > 1 {
                 return Err(CompileError::UnsupportedComponents { first, total });
             }
-            let mut llvm = LlvmRuntime::new(program.clone(), &ticks).map_err(CompileError::Unsupported)?;
+            let mut llvm = LlvmRuntime::new((*program).clone(), &ticks).map_err(CompileError::Unsupported)?;
             llvm.initialize_tick(world.piston_state().logical_tick);
             Some(llvm)
         } else { None };
         monitor.set_phase("initializing runtime");
-        let runtime = sampled::start_runtime(program, ticks, world.piston_state().clone()).map_err(CompileError::Unsupported)?;
+        let runtime = sampled::start_shared_runtime(program, ticks, world.piston_state().clone()).map_err(CompileError::Unsupported)?;
         let capacity = runtime.motion_part_capacity();
         self.publication_parts.clear();
         self.publication_parts.reserve(capacity);
@@ -234,6 +253,7 @@ impl Compiler {
             components,
             pending_ticks,
             duration: start.elapsed(),
+            cached: cache_hit,
         });
         self.options = options;
         if std::env::var_os("MCHPRS_REDPILER_PHASE_TIMINGS").is_some() {

@@ -48,7 +48,7 @@ use mchprs_blocks::{
     block_entities::MovingPistonEntity,
     blocks::{Block, RedstonePistonHead},
 };
-pub(super) use program::Program;
+pub(crate) use program::Program;
 #[cfg(test)]
 use program::WatchedWire;
 use program::{ElectricalLink, Operation};
@@ -81,13 +81,25 @@ pub(super) fn start_runtime(
     ticks: Vec<mchprs_world::TickEntry>,
     piston: mchprs_world::PistonState,
 ) -> Result<Runtime, ScratchError> {
-    let mut runtime = program.into_runtime_prepared();
+    start_shared_runtime(std::sync::Arc::new(program), ticks, piston)
+}
+
+pub(super) fn start_shared_runtime(
+    program: std::sync::Arc<Program>,
+    ticks: Vec<mchprs_world::TickEntry>,
+    piston: mchprs_world::PistonState,
+) -> Result<Runtime, ScratchError> {
+    let mut runtime = program.runtime_from_prepared();
     runtime.set_pending(ticks)?;
     runtime.piston_state = piston;
     Ok(runtime)
 }
 
 impl Runtime {
+    pub(super) fn shared_program(&self) -> std::sync::Arc<Program> {
+        std::sync::Arc::clone(&self.program)
+    }
+
     pub(super) fn log_memory_layout(&self) {
         fn vector<T>(scope: &str, name: &str, values: &Vec<T>) {
             eprintln!(

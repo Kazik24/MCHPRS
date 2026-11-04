@@ -23,6 +23,8 @@ fn install_job(plot: &mut Plot, work: impl FnOnce(PlotWorld, Arc<TaskMonitor>) -
         last_progress: Instant::now(),
         last_phase: 0,
         entry: EntryVersion::capture(&plot.world),
+        options: Default::default(),
+        cacheable: false,
         monitor,
         worker: thread::spawn(move || work(world, worker_monitor)),
     });
@@ -107,6 +109,45 @@ fn activation_waits_for_poll_and_preserves_imported_deadlines() {
     assert!(plot.world.scheduler().iter_entries().next().is_none());
     plot.reset_redpiler().unwrap();
     assert_eq!(plot.world.scheduler().iter_entries().collect::<Vec<_>>(), pending);
+}
+
+#[test]
+fn unchanged_plot_reuses_program_but_edits_and_pending_work_recompile() {
+    let (mut plot, _peer) = fixture(false);
+    let pos = BlockPos::new(34, 20, 34);
+    plot.world.set_block(pos, Block::RedstoneLamp { lit: false });
+    plot.start_redpiler(Default::default());
+    plot.wait_for_redpiler();
+    assert!(!plot.redpiler.stats().unwrap().cached);
+    plot.reset_redpiler().unwrap();
+
+    plot.start_redpiler(Default::default());
+    plot.wait_for_redpiler();
+    assert!(plot.redpiler.stats().unwrap().cached);
+    plot.reset_redpiler().unwrap();
+
+    plot.world.set_block(pos, Block::Stone {});
+    plot.start_redpiler(Default::default());
+    plot.wait_for_redpiler();
+    assert!(!plot.redpiler.stats().unwrap().cached);
+    plot.reset_redpiler().unwrap();
+
+    plot.world.schedule_tick(pos, 4, TickPriority::High);
+    plot.start_redpiler(Default::default());
+    plot.wait_for_redpiler();
+    assert!(!plot.redpiler.stats().unwrap().cached);
+    plot.reset_redpiler().unwrap();
+
+    let pending: Vec<_> = plot.world.scheduler().iter_entries().collect();
+    plot.start_redpiler(Default::default());
+    plot.wait_for_redpiler();
+    assert!(plot.redpiler.stats().unwrap().cached);
+    plot.reset_redpiler().unwrap();
+    assert_eq!(plot.world.scheduler().iter_entries().collect::<Vec<_>>(), pending);
+
+    plot.start_redpiler(CompilerOptions { io_only: true, ..Default::default() });
+    plot.wait_for_redpiler();
+    assert!(!plot.redpiler.stats().unwrap().cached);
 }
 
 #[test]
@@ -209,6 +250,9 @@ fn entry_versions_ignore_flushes_but_detect_piston_state_changes() {
     plot.world.flush_block_changes();
     assert!(entry.matches(&plot.world));
     plot.world.piston_state.logical_tick += 1;
+    assert!(!entry.matches(&plot.world));
+    let entry = EntryVersion::capture(&plot.world);
+    plot.world.x += 1;
     assert!(!entry.matches(&plot.world));
 }
 
