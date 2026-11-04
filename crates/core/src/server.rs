@@ -31,6 +31,8 @@ pub const PROTOCOL_VERSION: i32 = 770;
 #[cfg(test)]
 mod chat_tests;
 #[cfg(test)]
+mod redbox_tests;
+#[cfg(test)]
 mod skin_tests;
 
 pub fn version_string() -> String {

@@ -785,6 +785,7 @@ fn native_command_permission(command: &str, args: &[&str]) -> Option<String> {
             match args.first().copied() {
                 Some("c" | "compile") => "compile",
                 Some("r" | "reset") => "reset",
+                Some("publish") => "publish",
                 _ => "help",
             }
         ),
@@ -1329,6 +1330,11 @@ mod security_tests {
         assert!(CompilerOptions::parse("--llvm").unwrap().llvm);
         assert_eq!(CompilerOptions::parse("--publish-all").unwrap().publication, Some(crate::redpiler::PublicationMode::All));
         assert_eq!(CompilerOptions::parse("--publish-redstone").unwrap().publication, Some(crate::redpiler::PublicationMode::Redstone));
+        let io = CompilerOptions::parse("--publish-io").unwrap();
+        assert_eq!(io.publication, Some(crate::redpiler::PublicationMode::Io));
+        assert!(io.io_only);
+        assert!(CompilerOptions::parse("--io-only --publish-io").is_ok());
+        assert!(CompilerOptions::parse("--publish-io --publish-redstone").is_err());
         assert!(CompilerOptions::parse("--publish-all --io-only").is_err());
         assert!(CompilerOptions::parse("--publish-all --publish-redstone").is_err());
     }
@@ -1342,8 +1348,10 @@ mod security_tests {
         assert_eq!(flags.name, Some("flags"));
         assert_eq!(flags.suggestions_type, Some("minecraft:ask_server"));
         for (text, expected) in [
-            ("/rp compile --", vec!["--publish-all", "--publish-redstone", "--io-only", "--update", "--llvm"]),
-            ("/redpiler c -", vec!["--publish-all", "--publish-redstone", "--io-only", "--update", "--llvm", "-i", "-u"]),
+            ("/rp compile --", vec!["--publish-all", "--publish-redstone", "--publish-io", "--io-only", "--update", "--llvm"]),
+            ("/redpiler c -", vec!["--publish-all", "--publish-redstone", "--publish-io", "--io-only", "--update", "--llvm", "-i", "-u"]),
+            ("/rp publish ", vec!["all", "redstone", "io"]),
+            ("/redpiler publish r", vec!["redstone"]),
             ("/rp compile --graph", vec![]),
         ] {
             let response = complete_redpiler(42, text).unwrap();
@@ -1352,5 +1360,8 @@ mod security_tests {
         assert!(complete_redpiler(0, "/rp analyze ").is_none());
         assert!(complete_redpiler(0, "/rp inspect ").is_none());
         assert!(complete_redpiler(0, "/rp reset ").is_none());
+        let publish = redpiler.children.iter().map(|&id| &nodes[id as usize]).find(|node| node.name == Some("publish")).unwrap();
+        assert_eq!(publish.children.iter().map(|&id| nodes[id as usize].name.unwrap()).collect::<Vec<_>>(), ["all", "redstone", "io"]);
+        assert_eq!(native_command_permission("/rp", &["publish", "all"]).as_deref(), Some("commands.redpiler.publish"));
     }
 }

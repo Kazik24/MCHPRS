@@ -59,6 +59,7 @@ fn explicit_publication_modes_select_piston_projection() {
     for (options, full) in [
         (CompilerOptions { publication: Some(PublicationMode::All), ..Default::default() }, true),
         (CompilerOptions { publication: Some(PublicationMode::Redstone), ..Default::default() }, false),
+        (CompilerOptions { publication: Some(PublicationMode::Io), ..Default::default() }, false),
         (CompilerOptions { io_only: true, ..Default::default() }, false),
     ] {
         let (mut world, lever, base, home, far, _, _, bounds) = piston_world();
@@ -168,7 +169,6 @@ fn effects_can_be_drained_without_publishing_blocks() {
     assert!(matches!(world.get_block(lever), Block::Lever { lever } if lever.powered));
 }
 
-#[cfg(feature = "redpiler-full-publication")]
 fn assert_publication_matches_runtime(compiler: &Compiler, world: &PlotWorld, moving_cells: &[BlockPos], comparator: BlockPos) {
     let runtime = compiler.runtime.as_ref().expect("compiled runtime active");
     for (pos, expected) in runtime.projected_blocks() {
@@ -193,6 +193,72 @@ fn assert_publication_matches_runtime(compiler: &Compiler, world: &PlotWorld, mo
         world.get_block_entity(comparator),
         Some(BlockEntity::Comparator { output_strength }) if *output_strength == expected_comparator
     ));
+}
+
+#[test]
+fn publication_mode_can_change_without_recompiling_or_advancing_execution() {
+    for llvm in [false, true] {
+        if llvm && !cfg!(any(windows, target_os = "linux")) { continue; }
+        let (mut world, lever, base, home, far, comparator, lamp, bounds) = piston_world();
+        let wire = lever.offset(BlockFace::North);
+        world.set_block(wire.offset(BlockFace::Bottom), Block::Stone {});
+        world.set_block(wire, Block::from_name("redstone_wire").unwrap());
+        let mut compiler = Compiler::default();
+        assert!(!compiler.set_publication_mode(PublicationMode::All));
+        compiler.compile(&world, bounds, CompilerOptions {
+            llvm, publication: Some(PublicationMode::Io), ..Default::default()
+        }, vec![], Arc::new(TaskMonitor::default())).unwrap();
+        assert!(compiler.current_flags().unwrap().io_only);
+        let program = compiler.cached_program().unwrap();
+        let original = [base, home, far].map(|pos| world.get_block(pos));
+        compiler.try_on_use_block(lever).unwrap();
+        for _ in 0..4 { compiler.tick().unwrap(); }
+        compiler.try_flush(&mut world).unwrap();
+        assert!(matches!(world.get_block(wire), Block::RedstoneWire { wire } if wire.power == 0));
+        assert_eq!([base, home, far].map(|pos| world.get_block(pos)), original);
+
+        let pending = |compiler: &Compiler| {
+            compiler.llvm_runtime.as_ref().map_or_else(
+                || compiler.runtime.as_ref().unwrap().pending_entries(),
+                |native| native.pending_entries().unwrap(),
+            )
+        };
+        let before = pending(&compiler);
+        let tick = compiler.runtime.as_ref().unwrap().logical_tick();
+        assert!(compiler.set_publication_mode(PublicationMode::Redstone));
+        compiler.try_flush(&mut world).unwrap();
+        assert!(!compiler.current_flags().unwrap().io_only);
+        assert!(matches!(world.get_block(wire), Block::RedstoneWire { wire } if wire.power == 15));
+        assert_eq!([base, home, far].map(|pos| world.get_block(pos)), original);
+        assert_eq!(pending(&compiler), before);
+        assert_eq!(compiler.runtime.as_ref().unwrap().logical_tick(), tick);
+
+        compiler.try_on_use_block(lever).unwrap();
+        compiler.tick().unwrap();
+        compiler.try_flush(&mut world).unwrap();
+        assert!(compiler.runtime.as_ref().unwrap().has_motions());
+        let before = pending(&compiler);
+        let tick = compiler.runtime.as_ref().unwrap().logical_tick();
+        compiler.set_publication_mode(PublicationMode::All);
+        compiler.try_flush(&mut world).unwrap();
+        assert_publication_matches_runtime(&compiler, &world, &[base, home, far], comparator);
+        assert!(!world.piston_state().motions.is_empty());
+        assert_eq!(pending(&compiler), before);
+        assert_eq!(compiler.runtime.as_ref().unwrap().logical_tick(), tick);
+
+        compiler.set_publication_mode(PublicationMode::Io);
+        compiler.try_flush(&mut world).unwrap();
+        for _ in 0..4 { compiler.tick().unwrap(); compiler.try_flush(&mut world).unwrap(); }
+        compiler.set_publication_mode(PublicationMode::All);
+        compiler.try_flush(&mut world).unwrap();
+        assert_publication_matches_runtime(&compiler, &world, &[base, home, far, wire, lamp], comparator);
+        assert!(world.piston_state().motions.is_empty());
+        for pos in [base, home, far] {
+            assert!(!matches!(world.get_block_entity(pos), Some(BlockEntity::MovingPiston(_))));
+        }
+        assert!(Arc::ptr_eq(&program, &compiler.cached_program().unwrap()));
+        compiler.try_reset(&mut world, bounds).unwrap();
+    }
 }
 
 #[test]

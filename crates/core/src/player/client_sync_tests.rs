@@ -25,6 +25,25 @@ fn read_teleport(peer: &mut std::net::TcpStream, destination: PlayerPos) -> i32 
 }
 
 #[test]
+fn redbox_speed_selects_movement_mode_and_preserves_paper_caps() {
+    use crate::redbox::SpeedMode::{Auto, Fly, Walk};
+    for (mode, flying, value, expected_fly, expected_walk) in [
+        (Fly, false, 3.0, 3.0, 1.0),
+        (Walk, true, 3.0, 1.0, 3.0),
+        (Auto, false, 3.0, 1.0, 3.0),
+        (Auto, true, 3.0, 3.0, 1.0),
+        (Fly, true, 100.0, 10.0, 1.0),
+        (Walk, false, 100.0, 1.0, 5.0),
+    ] {
+        let conn = connection(false).unwrap();
+        let mut player = Player::from_data(Default::default(), 0, "SpeedTest".into(), conn.player);
+        player.flying = flying;
+        player.set_redbox_speed(mode, value);
+        assert_eq!((player.fly_speed, player.walk_speed), (expected_fly, expected_walk));
+    }
+}
+
+#[test]
 fn queued_movement_cannot_undo_teleports_or_release_a_newer_destination() {
     let conn = connection(false).unwrap();
     let mut peer = conn.peer;

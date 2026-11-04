@@ -69,6 +69,55 @@ fn teleport_and_gamemode_round_trip() {
 }
 
 #[test]
+fn speed_messages_validate_java_layout_modes_and_values() {
+    for (name, mode) in [("auto", SpeedMode::Auto), ("walk", SpeedMode::Walk), ("fly", SpeedMode::Fly)] {
+        let payload = encode(SPEED, |data| {
+            write_utf(data, &HyphenatedUUID(test_uuid()).to_string());
+            write_utf(data, name);
+            data.extend_from_slice(&3.5_f64.to_be_bytes());
+        });
+        let incoming = decode(&payload).unwrap();
+        assert_eq!(incoming.uuid(), test_uuid());
+        assert_eq!(
+            incoming,
+            Incoming::Speed {
+                uuid: test_uuid(),
+                mode,
+                value: 3.5
+            }
+        );
+        for length in 0..payload.len() {
+            assert!(decode(&payload[..length]).is_err(), "prefix {length}");
+        }
+        let mut trailing = payload;
+        trailing.push(0);
+        assert!(decode(&trailing).is_err());
+    }
+    for (mode, value) in [
+        ("unknown", 1.0),
+        ("fly", f64::NAN),
+        ("fly", f64::INFINITY),
+        ("walk", f64::NEG_INFINITY),
+        ("auto", -1.0),
+        ("auto", 0.0),
+        ("auto", 100.01),
+    ] {
+        let payload = encode(SPEED, |data| {
+            write_utf(data, &HyphenatedUUID(test_uuid()).to_string());
+            write_utf(data, mode);
+            data.extend_from_slice(&value.to_be_bytes());
+        });
+        assert!(decode(&payload).is_err(), "{mode} {value}");
+    }
+    let maximum = encode(SPEED, |data| {
+        write_utf(data, &HyphenatedUUID(test_uuid()).to_string());
+        write_utf(data, "fly");
+        data.extend_from_slice(&100_f64.to_be_bytes());
+    });
+    assert!(decode(&maximum).is_ok());
+}
+
+#[test]
 fn permissions_round_trip() {
     let request = encode_permissions_request(test_uuid());
     assert_eq!(&request[..2], &(("PERMISSIONS_REQUEST".len() as u16).to_be_bytes()));

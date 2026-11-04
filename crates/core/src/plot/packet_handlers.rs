@@ -823,6 +823,11 @@ impl ServerBoundPacketHandler for Plot {
                             warn!(mode, "Ignored unsupported RedBox gamemode");
                         }
                     }
+                    crate::redbox::Incoming::Speed { mode, value, .. } => {
+                        self.players[player].set_redbox_speed(mode, value);
+                        self.players[player].update_player_abilities();
+                        self.players[player].update_walk_speed();
+                    }
                     crate::redbox::Incoming::Permissions {
                         uuid,
                         group,
@@ -944,6 +949,9 @@ impl ServerBoundPacketHandler for Plot {
             4 => self.players[player].sprinting = false,
             _ => {}
         }
+        if matches!(entity_action.action_id, 3 | 4) {
+            self.players[player].update_walk_speed();
+        }
         for (index, viewer) in self.players.iter().enumerate() {
             viewer.send_packet(&self.players[player].entity_metadata_packet(index == player));
         }
@@ -999,6 +1007,103 @@ impl ServerBoundPacketHandler for Plot {
 #[cfg(test)]
 mod movement_tests {
     use super::*;
+
+    fn redbox_packet(uuid: u128, kind: &str, body: impl FnOnce(&mut Vec<u8>)) -> SPluginMessage {
+        use mchprs_network::packets::PacketEncoderExt;
+        let mut data = Vec::new();
+        data.write_string(32767, kind);
+        data.write_string(32767, &crate::utils::HyphenatedUUID(uuid).to_string());
+        body(&mut data);
+        SPluginMessage {
+            channel: crate::redbox::CHANNEL.into(),
+            data,
+        }
+    }
+
+    #[test]
+    fn redbox_speed_updates_abilities_and_walk_attribute_only_for_the_carrier() {
+        use mchprs_network::packets::{PacketDecoderExt, PacketEncoderExt};
+        use mchprs_network::test_support::read_frame;
+        for compressed in [false, true] {
+            let (mut plot, mut peer) = crate::plot::client_sync_tests::fixture(compressed);
+            let uuid = plot.players[0].uuid;
+            for target in [uuid.wrapping_add(1), uuid] {
+                plot.handle_plugin_message(
+                    redbox_packet(target, "SPEED", |data| {
+                        data.write_string(32767, "walk");
+                        data.write_double(3.0);
+                    }),
+                    0,
+                );
+                let applied = crate::redbox::enabled() && target == uuid;
+                assert_eq!(plot.players[0].walk_speed, if applied { 3.0 } else { 1.0 });
+                assert_eq!(plot.players[0].fly_speed, 1.0);
+                if applied {
+                    let (id, mut frame) = read_frame(&mut peer, compressed).unwrap();
+                    assert_eq!(id, 0x39);
+                    frame.read_unsigned_byte().unwrap();
+                    assert_eq!(frame.read_float().unwrap(), 0.05);
+                    assert!((frame.read_float().unwrap() - 0.3).abs() < f32::EPSILON);
+                    let (id, mut frame) = read_frame(&mut peer, compressed).unwrap();
+                    assert_eq!(id, 0x7c);
+                    assert_eq!(frame.read_varint().unwrap(), plot.players[0].entity_id as i32);
+                    assert_eq!(frame.read_varint().unwrap(), 1);
+                    assert_eq!(frame.read_varint().unwrap(), 21);
+                    assert!((frame.read_double().unwrap() - 0.3).abs() < f64::EPSILON);
+                    assert_eq!(frame.read_varint().unwrap(), 0);
+                    assert_eq!(frame.position() as usize, frame.get_ref().len());
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn redbox_gamemode_routes_all_standard_modes_and_updates_the_player_list() {
+        use crate::player::Gamemode;
+        use mchprs_network::packets::{PacketDecoderExt, PacketEncoderExt};
+        use mchprs_network::test_support::read_frame;
+        for compressed in [false, true] {
+            let (mut plot, mut peer) = crate::plot::client_sync_tests::fixture(compressed);
+            let uuid = plot.players[0].uuid;
+            let (sender, messages) = std::sync::mpsc::channel();
+            plot.message_sender = sender;
+            let (private, receiver) = std::sync::mpsc::channel();
+            plot.priv_message_receiver = receiver;
+            for (id, expected, flags) in [
+                (3, Gamemode::Spectator, 0x07),
+                (0, Gamemode::Survival, 0x00),
+                (1, Gamemode::Creative, 0x0d),
+                (2, Gamemode::Adventure, 0x01),
+            ] {
+                for target in [uuid.wrapping_add(1), uuid] {
+                    plot.handle_plugin_message(redbox_packet(target, "GAMEMODE", |data| data.write_int(id)), 0);
+                    if crate::redbox::enabled() && target == uuid {
+                        let Message::RedBoxGamemode(target, mode) = messages.try_recv().unwrap() else {
+                            panic!("expected gamemode routing");
+                        };
+                        assert_eq!((target, mode), (uuid, expected));
+                        private.send(crate::server::PrivMessage::RedBoxGamemode(target, mode)).unwrap();
+                        plot.handle_messages();
+                        assert_eq!(plot.players[0].gamemode, expected);
+                        let (packet_id, mut frame) = read_frame(&mut peer, compressed).unwrap();
+                        assert_eq!(packet_id, 0x22);
+                        assert_eq!(frame.read_unsigned_byte().unwrap(), 3);
+                        assert_eq!(frame.read_float().unwrap(), id as f32);
+                        let (packet_id, mut frame) = read_frame(&mut peer, compressed).unwrap();
+                        assert_eq!(packet_id, 0x39);
+                        assert_eq!(frame.read_unsigned_byte().unwrap(), flags);
+                        assert!(
+                            matches!(messages.try_recv().unwrap(), Message::PlayerUpdateGamemode(target, mode) if target == uuid && mode == expected)
+                        );
+                    } else {
+                        assert!(messages.try_recv().is_err());
+                    }
+                }
+            }
+            plot.handle_plugin_message(redbox_packet(uuid, "GAMEMODE", |data| data.write_int(99)), 0);
+            assert!(messages.try_recv().is_err());
+        }
+    }
 
     #[test]
     fn native_chat_and_proxy_moderation_respect_configured_mode() {

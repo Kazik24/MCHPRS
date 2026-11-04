@@ -102,7 +102,12 @@ impl MinecraftServer {
                     crate::redbox::Incoming::Gamemode { mode, .. } => {
                         if let Some(gamemode) = crate::redbox::gamemode_from_id(mode) {
                             player.gamemode = gamemode;
+                            player.flying = matches!(gamemode, crate::player::Gamemode::Spectator)
+                                || (gamemode == crate::player::Gamemode::Creative && player.flying);
                         }
+                    }
+                    crate::redbox::Incoming::Speed { mode, value, .. } => {
+                        player.set_redbox_speed(mode, value);
                     }
                     _ => {}
                 }
@@ -220,6 +225,7 @@ impl MinecraftServer {
         player.client.send_packet(&time_update);
 
         player.update_player_abilities();
+        player.update_walk_speed();
 
         self.plot_sender.send(Message::PlayerJoined(player)).unwrap();
     }

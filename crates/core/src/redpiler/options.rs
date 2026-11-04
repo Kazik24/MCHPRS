@@ -4,6 +4,26 @@
 pub enum PublicationMode {
     All,
     Redstone,
+    Io,
+}
+
+impl PublicationMode {
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "all" => Some(Self::All),
+            "redstone" => Some(Self::Redstone),
+            "io" => Some(Self::Io),
+            _ => None,
+        }
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::All => "all",
+            Self::Redstone => "redstone",
+            Self::Io => "io",
+        }
+    }
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Default)]
@@ -20,6 +40,14 @@ pub struct CompilerOptions {
 }
 
 impl CompilerOptions {
+    pub fn publication_mode(&self) -> PublicationMode {
+        if self.io_only {
+            PublicationMode::Io
+        } else {
+            self.publication.unwrap_or(if cfg!(feature = "redpiler-full-publication") { PublicationMode::All } else { PublicationMode::Redstone })
+        }
+    }
+
     pub fn parse(flags: &str) -> Result<CompilerOptions, String> {
         let mut options = Self::default();
         for option in flags.split_whitespace() {
@@ -27,8 +55,8 @@ impl CompilerOptions {
                 match option {
                     "--io-only" => options.io_only = true,
                     "--llvm" => options.llvm = true,
-                    "--publish-all" | "--publish-redstone" => {
-                        let mode = if option == "--publish-all" { PublicationMode::All } else { PublicationMode::Redstone };
+                    "--publish-all" | "--publish-redstone" | "--publish-io" => {
+                        let mode = PublicationMode::parse(option.strip_prefix("--publish-").unwrap()).unwrap();
                         if options.publication.is_some_and(|previous| previous != mode) {
                             return Err("Choose only one publication mode".into());
                         }
@@ -52,9 +80,10 @@ impl CompilerOptions {
                 return Err(format!("Unrecognized Redpiler option: {option}"));
             }
         }
-        if options.io_only && options.publication.is_some() {
+        if options.io_only && options.publication.is_some_and(|mode| mode != PublicationMode::Io) {
             return Err("Choose only one publication mode".into());
         }
+        options.io_only |= options.publication == Some(PublicationMode::Io);
         Ok(options)
     }
 }

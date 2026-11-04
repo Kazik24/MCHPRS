@@ -291,13 +291,14 @@ impl Scoreboard {
 
     pub fn set_redpiler_options(&mut self, players: &[Player], options: &CompilerOptions) {
         self.compiler_flags.clear();
-        if options.io_only {
+        if options.io_only && options.publication != Some(crate::redpiler::PublicationMode::Io) {
             self.compiler_flags.push("io-only".to_owned());
         }
         if let Some(mode) = options.publication {
             self.compiler_flags.push(match mode {
                 crate::redpiler::PublicationMode::All => "publish-all",
                 crate::redpiler::PublicationMode::Redstone => "publish-redstone",
+                crate::redpiler::PublicationMode::Io => "publish-io",
             }.to_owned());
         }
         if options.update {

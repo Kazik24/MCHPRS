@@ -158,6 +158,17 @@ impl Compiler {
         self.is_active().then_some(&self.options)
     }
 
+    /// Change visible publication without recompiling or advancing execution.
+    pub fn set_publication_mode(&mut self, mode: PublicationMode) -> bool {
+        let Some(runtime) = self.runtime.as_mut() else { return false; };
+        if self.options.publication_mode() != mode {
+            runtime.invalidate_publication();
+        }
+        self.options.publication = Some(mode);
+        self.options.io_only = mode == PublicationMode::Io;
+        true
+    }
+
     pub fn compile<W: World>(
         &mut self,
         world: &W,
@@ -177,7 +188,7 @@ impl Compiler {
         &mut self,
         world: &W,
         bounds: (BlockPos, BlockPos),
-        options: CompilerOptions,
+        mut options: CompilerOptions,
         ticks: Vec<TickEntry>,
         monitor: Arc<TaskMonitor>,
         cached: Option<Arc<sampled::Program>>,
@@ -185,6 +196,7 @@ impl Compiler {
         if self.is_active() {
             return Err(CompileError::AlreadyActive);
         }
+        options.io_only = options.publication_mode() == PublicationMode::Io;
         let start = Instant::now();
         monitor.set_phase("entry validation");
         if monitor.cancelled() {
@@ -329,12 +341,8 @@ impl Compiler {
     }
 
     pub fn try_flush<W: World>(&mut self, world: &mut W) -> Result<(), ExecutionError> {
-        let full = match self.options.publication {
-            Some(PublicationMode::All) => true,
-            Some(PublicationMode::Redstone) => false,
-            None => cfg!(feature = "redpiler-full-publication"),
-        };
-        self.publish(world, self.options.io_only, full)
+        let mode = self.options.publication_mode();
+        self.publish(world, mode == PublicationMode::Io, mode == PublicationMode::All)
     }
 
     pub(crate) fn flush_effects<W: World>(&mut self, world: &mut W) {

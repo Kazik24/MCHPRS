@@ -342,6 +342,16 @@ pub(super) fn declared_command_nodes() -> Vec<Node<'static>> {
     nodes.push(Node::literal("waveform", &[]).executable());
     nodes[help].children = Box::leak(help_children.into_boxed_slice());
 
+    let redpiler = nodes.iter().position(|node| node.name == Some("redpiler")).unwrap();
+    let publish = nodes.len() as i32;
+    nodes.push(Node::literal("publish", Box::leak(vec![publish + 1, publish + 2, publish + 3].into_boxed_slice())));
+    for mode in ["all", "redstone", "io"] {
+        nodes.push(Node::literal(mode, &[]).executable());
+    }
+    let mut redpiler_children = nodes[redpiler].children.to_vec();
+    redpiler_children.push(publish);
+    nodes[redpiler].children = Box::leak(redpiler_children.into_boxed_slice());
+
     let redbox = crate::redbox::enabled();
     let mut root_children = nodes[0].children.to_vec();
     let hl = nodes.len() as i32;

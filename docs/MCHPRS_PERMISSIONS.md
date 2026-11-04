@@ -116,6 +116,15 @@ longer exist. `/tp` remains only for the internal redstone-tool `--highlight`
 diagnostic links, which still require `mchprs.commands.teleport`.
 RedBox's network `/back` command is separate from the native tick rewind `/rev`.
 
+With the RedBox bridge enabled, the proxy also owns `/speed`, `/gm` and
+`/gamemode` and checks their `redbox.*` permissions before sending backend
+operations. MROWW accepts all four standard gamemodes and `SPEED` messages with
+`auto`, `walk` or `fly` selection. `auto` uses the player's current flight state.
+Speed values must be finite and in `(0, 100]`; effective multipliers cap at 10
+for flight and 5 for walking, matching RedBox Paper. Both speeds are saved with
+the player. Direct backend `/speed` retains its flight-only `0–10` syntax and
+`mchprs.commands.speed` gate.
+
 WorldEdit gates retain the `mchprs.worldedit.*` namespace for navigation,
 selection, region, clipboard, history, and analysis commands. Native additions
 use `mchprs.we.update`, `.invalidatecaches`, and `.replacecontainer`. Redstone tools

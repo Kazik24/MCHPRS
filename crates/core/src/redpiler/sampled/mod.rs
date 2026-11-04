@@ -368,6 +368,13 @@ impl Runtime {
         })
     }
 
+    pub(super) fn invalidate_publication(&mut self) {
+        self.dirty_cells.clear();
+        self.dirty_cells.extend(0..self.dirty.len());
+        self.dirty.fill(true);
+        self.needs_full_publication = true;
+    }
+
     pub(super) fn prepare_publication(&mut self, io_only: bool) -> Result<(), ScratchError> {
         if let Some(error) = &self.failure {
             return Err(error.clone());

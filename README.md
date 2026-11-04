@@ -116,7 +116,8 @@ Rust is the default executor. The optional LLVM backend runs the same program in
 Compilation covers the current plot and runs on a worker with progress feedback. It activates only if the plot still matches its starting snapshot. Unsupported circuits or entry states are rejected with a reason and position, leaving the interpreter available. Let piston movement settle and finish partial ticks before compiling.
 
 - `/rp compile --llvm` selects the native backend. Install Clang and LLD on the server's PATH, or set `MCHPRS_LLVM_CLANG` and `MCHPRS_LLVM_LINKER` to their executable paths. Bundled native sources build on demand. `MCHPRS_LLVM_WORK_DIR` changes the work directory (default `./work/llvm`); `MCHPRS_LLVM_DLL` selects an already built matching library.
-- `--publish-all` shows all blocks and piston motion. `--publish-redstone` shows redstone components. `--io-only` (`-i`) shows controls and visible outputs. Pick one. Standard builds default to redstone publication; use full publication to inspect moved payloads.
+- `--publish-all` shows all blocks and piston motion. `--publish-redstone` shows redstone components. `--publish-io` (or `--io-only`, `-i`) shows controls and visible outputs. Pick one. Standard builds default to redstone publication; use full publication to inspect moved payloads.
+- `/rp publish all|redstone|io` changes the publication level after compilation without recompiling or advancing simulation. The newly selected level is published immediately, including current piston motion in `all` mode. Lower levels leave piston geometry at its last published state; switching back to `all` catches it up.
 - `--update` (`-u`) recalculates neighbors after reset. `/rp reset` exports state and pending work back to the interpreter.
 - `/toggleautorp` toggles automatic compilation.
 

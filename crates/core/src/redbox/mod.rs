@@ -3,7 +3,7 @@
 //! RedBox runs on the Velocity proxy and owns the network-wide commands such as
 //! `/home`, `/warp`, `/tp`, `/spawn`, and `/back`. This module is the backend
 //! half of that bridge and mirrors the RedBox Paper plugin: it reports player
-//! positions and chat to the proxy, and applies the teleports and gamemode
+//! positions and chat to the proxy, and applies the teleports, speed and gamemode
 //! changes the proxy requests.
 //!
 //! Every payload uses the Java `DataOutputStream` primitives the proxy reads,
@@ -23,6 +23,7 @@ const DEATH: &str = "DEATH";
 const TELEPORT: &str = "TELEPORT";
 const CHAT: &str = "CHAT";
 const GAMEMODE: &str = "GAMEMODE";
+const SPEED: &str = "SPEED";
 const PERMISSIONS_REQUEST: &str = "PERMISSIONS_REQUEST";
 const PERMISSIONS: &str = "PERMISSIONS";
 const HELD_ITEM: &str = "HELD_ITEM";
@@ -118,6 +119,14 @@ pub(crate) fn encode_pt_click(uuid: u128, button: i32, item: &str) -> Vec<u8> {
     })
 }
 
+/// Speed selection used by RedBox's `/speed <value> [walk|fly]` command.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum SpeedMode {
+    Auto,
+    Walk,
+    Fly,
+}
+
 /// A message the proxy can send to the backend.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum Incoming {
@@ -128,6 +137,11 @@ pub(crate) enum Incoming {
     Gamemode {
         uuid: u128,
         mode: i32,
+    },
+    Speed {
+        uuid: u128,
+        mode: SpeedMode,
+        value: f64,
     },
     Permissions {
         uuid: u128,
@@ -146,7 +160,11 @@ pub(crate) enum Incoming {
 impl Incoming {
     pub(crate) fn uuid(&self) -> u128 {
         match self {
-            Self::Teleport { uuid, .. } | Self::Gamemode { uuid, .. } | Self::Permissions { uuid, .. } | Self::PtRun { uuid, .. } => *uuid,
+            Self::Teleport { uuid, .. }
+            | Self::Gamemode { uuid, .. }
+            | Self::Speed { uuid, .. }
+            | Self::Permissions { uuid, .. }
+            | Self::PtRun { uuid, .. } => *uuid,
         }
     }
 }
@@ -165,6 +183,19 @@ pub(crate) fn decode(data: &[u8]) -> Result<Incoming, String> {
             uuid,
             mode: read_i32(&mut data)?,
         },
+        SPEED => {
+            let mode = match read_utf(&mut data)?.as_str() {
+                "auto" => SpeedMode::Auto,
+                "walk" => SpeedMode::Walk,
+                "fly" => SpeedMode::Fly,
+                _ => return Err("Invalid RedBox speed mode".into()),
+            };
+            let value = read_f64(&mut data)?;
+            if !value.is_finite() || value <= 0.0 || value > 100.0 {
+                return Err("Invalid RedBox speed value".into());
+            }
+            Incoming::Speed { uuid, mode, value }
+        }
         PERMISSIONS => {
             let group = read_utf(&mut data)?;
             let prefix = read_utf(&mut data)?;
@@ -201,7 +232,7 @@ pub(crate) fn decode(data: &[u8]) -> Result<Incoming, String> {
     Ok(message)
 }
 
-/// Maps a bridge gamemode id to a server gamemode. Survival (0) is unsupported.
+/// Maps a bridge gamemode id to a server gamemode.
 pub(crate) fn gamemode_from_id(mode: i32) -> Option<Gamemode> {
     match mode {
         0 => Some(Gamemode::Survival),

@@ -3,6 +3,31 @@ use super::*;
 use std::io::Cursor;
 
 #[test]
+fn walking_speed_attribute_preserves_the_sprint_modifier() {
+    for sprinting in [false, true] {
+        let packet = CEntityMovementSpeed {
+            entity_id: 7,
+            speed: 0.3,
+            sprinting,
+        }
+        .encode();
+        let mut data = Cursor::new(packet.buffer);
+        assert_eq!(packet.packet_id, 0x7c);
+        assert_eq!(data.read_varint().unwrap(), 7);
+        assert_eq!(data.read_varint().unwrap(), 1);
+        assert_eq!(data.read_varint().unwrap(), 21);
+        assert_eq!(data.read_double().unwrap(), 0.3);
+        assert_eq!(data.read_varint().unwrap(), i32::from(sprinting));
+        if sprinting {
+            assert_eq!(data.read_string().unwrap(), "minecraft:sprinting");
+            assert_eq!(data.read_double().unwrap(), 0.3);
+            assert_eq!(data.read_unsigned_byte().unwrap(), 2);
+        }
+        assert_eq!(data.position() as usize, data.get_ref().len());
+    }
+}
+
+#[test]
 fn angles_truncate_to_byte_steps_and_wrap_at_a_full_turn() {
     let mut encoded = Vec::new();
     for angle in [0.0, 90.0, 180.0, 270.0, 360.0, -90.0, 450.0, 1.0] {

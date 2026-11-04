@@ -206,6 +206,29 @@ impl ClientBoundPacket for CEntityScale {
     }
 }
 
+pub struct CEntityMovementSpeed {
+    pub entity_id: i32,
+    pub speed: f64,
+    pub sprinting: bool,
+}
+
+impl ClientBoundPacket for CEntityMovementSpeed {
+    fn encode(&self) -> PacketEncoder {
+        let mut buf = Vec::new();
+        buf.write_varint(self.entity_id);
+        buf.write_varint(1);
+        buf.write_varint(21); // Minecraft 1.21.5 movement_speed attribute.
+        buf.write_double(self.speed);
+        buf.write_varint(i32::from(self.sprinting));
+        if self.sprinting {
+            buf.write_string(32767, "minecraft:sprinting");
+            buf.write_double(0.3);
+            buf.write_unsigned_byte(2);
+        }
+        PacketEncoder::new(buf, 0x7c)
+    }
+}
+
 pub struct CEntityAnimation {
     pub entity_id: i32,
     pub animation: u8,

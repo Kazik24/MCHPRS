@@ -820,6 +820,31 @@ impl Player {
         self.client.send_packet(&disconnect);
     }
 
+    pub(crate) fn set_redbox_speed(&mut self, mode: crate::redbox::SpeedMode, value: f64) {
+        let fly = match mode {
+            crate::redbox::SpeedMode::Fly => true,
+            crate::redbox::SpeedMode::Walk => false,
+            crate::redbox::SpeedMode::Auto => self.flying,
+        };
+        // Paper caps Bukkit fly/walk speeds at 1.0, equivalent to these multipliers.
+        if fly {
+            self.fly_speed = value.min(10.0) as f32;
+        } else {
+            self.walk_speed = value.min(5.0) as f32;
+        }
+    }
+
+    pub(crate) fn update_walk_speed(&self) {
+        self.client.send_packet(
+            &CEntityMovementSpeed {
+                entity_id: self.entity_id as i32,
+                speed: 0.1 * f64::from(self.walk_speed),
+                sprinting: self.sprinting,
+            }
+            .encode(),
+        );
+    }
+
     pub fn update_player_abilities(&self) {
         let player_abilities = CPlayerAbilities {
             flags: match self.gamemode {
@@ -829,7 +854,7 @@ impl Player {
                 Gamemode::Survival => (self.flying as u8) << 1,
             },
             fly_speed: 0.05 * self.fly_speed,
-            fov_modifier: 0.1,
+            fov_modifier: 0.1 * self.walk_speed,
         }
         .encode();
         self.client.send_packet(&player_abilities);
