@@ -33,6 +33,40 @@ pub(in crate::plot) fn complete_redpiler(id: i32, text: &str) -> Option<CTabComp
     })
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::world::World;
+    use mchprs_blocks::{BlockDirection, BlockFace, BlockPos, blocks::{Block, Lever, LeverFace}};
+
+    #[test]
+    fn publication_command_requires_permission_and_catches_up_immediately() {
+        let (mut plot, _peer) = crate::plot::client_sync_tests::fixture(false);
+        plot.owner = Some(plot.players[0].uuid);
+        let lever = BlockPos::new(34, 21, 32);
+        plot.world.set_block(lever.offset(BlockFace::Bottom), Block::Stone {});
+        plot.world.set_block(lever, Block::Lever { lever: Lever::new(LeverFace::Floor, BlockDirection::North, false) });
+        plot.redpiler.compile(&plot.world, (BlockPos::new(32, 19, 30), BlockPos::new(36, 23, 34)), CompilerOptions::default(), vec![], Default::default()).unwrap();
+        plot.redpiler.try_on_use_block(lever).unwrap();
+        plot.players[0].set_test_permissions(&[]);
+        plot.handle_command(0, "/rp", vec!["publish", "io"]);
+        assert!(matches!(plot.world.get_block(lever), Block::Lever { lever } if !lever.powered));
+
+        plot.players[0].set_test_permissions(&["commands.redpiler.publish"]);
+        for mode in ["io", "redstone", "all"] {
+            plot.handle_command(0, "/rp", vec!["publish", mode]);
+            assert_eq!(plot.redpiler.current_flags().unwrap().publication, PublicationMode::parse(mode));
+            assert_eq!(plot.redpiler.current_flags().unwrap().io_only, mode == "io");
+            assert!(matches!(plot.world.get_block(lever), Block::Lever { lever } if lever.powered));
+        }
+        plot.handle_command(0, "/rp", vec!["publish", "invalid"]);
+        assert_eq!(plot.redpiler.current_flags().unwrap().publication, Some(PublicationMode::All));
+        plot.redpiler.try_reset(&mut plot.world, (lever, lever)).unwrap();
+        plot.handle_command(0, "/rp", vec!["publish", "io"]);
+        assert!(!plot.redpiler.is_active());
+    }
+}
+
 impl Plot {
     /// Handles a command that starts with `/redpiler` or `/rp`
     pub(super) fn handle_redpiler_command(&mut self, player: usize, command: &str, args: &[&str]) {

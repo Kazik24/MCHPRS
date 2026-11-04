@@ -1009,10 +1009,11 @@ mod movement_tests {
     use super::*;
 
     fn redbox_packet(uuid: u128, kind: &str, body: impl FnOnce(&mut Vec<u8>)) -> SPluginMessage {
-        use mchprs_network::packets::PacketEncoderExt;
         let mut data = Vec::new();
-        data.write_string(32767, kind);
-        data.write_string(32767, &crate::utils::HyphenatedUUID(uuid).to_string());
+        for text in [kind, &crate::utils::HyphenatedUUID(uuid).to_string()] {
+            data.extend_from_slice(&(text.len() as u16).to_be_bytes());
+            data.extend_from_slice(text.as_bytes());
+        }
         body(&mut data);
         SPluginMessage {
             channel: crate::redbox::CHANNEL.into(),
@@ -1030,7 +1031,7 @@ mod movement_tests {
             for target in [uuid.wrapping_add(1), uuid] {
                 plot.handle_plugin_message(
                     redbox_packet(target, "SPEED", |data| {
-                        data.write_string(32767, "walk");
+                        data.extend_from_slice(b"\0\x04walk");
                         data.write_double(3.0);
                     }),
                     0,

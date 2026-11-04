@@ -375,6 +375,13 @@ mod tests {
     }
 
     #[test]
+    fn explicit_io_publication_has_one_scoreboard_flag() {
+        let mut board = Scoreboard::default();
+        board.set_redpiler_options(&[], &CompilerOptions::parse("--publish-io").unwrap());
+        assert_eq!(board.compiler_flags, ["publish-io"]);
+    }
+
+    #[test]
     fn footer_stays_below_flags_and_within_sidebar_limits() {
         let mut board = Scoreboard::default();
         board.set_redpiler_state(&[], RedpilerState::Running);
