@@ -51,7 +51,12 @@ fn json_to_nbt(value: &serde_json::Value) -> nbt::Value {
             list(entries)
         }
         serde_json::Value::Object(object) => {
-            let entries = object.iter().map(|(key, value)| (key.clone(), json_to_nbt(value))).collect();
+            // Minecraft requires a nonempty list when a component includes `extra`.
+            let entries = object
+                .iter()
+                .filter(|(key, value)| key.as_str() != "extra" || !value.as_array().is_some_and(Vec::is_empty))
+                .map(|(key, value)| (key.clone(), json_to_nbt(value)))
+                .collect();
             nbt::Value::Compound(entries)
         }
         _ => nbt::Value::String(String::new()),
@@ -81,6 +86,39 @@ fn nbt_to_json(value: &nbt::Value, key: &str) -> serde_json::Value {
 mod tests {
     use super::*;
     use crate::packets::PacketEncoderExt;
+
+    #[test]
+    fn empty_extra_lists_are_omitted_from_encoded_text() {
+        let block_history = serde_json::json!({
+            "text": "Block at 1096, 25, 1125:", "color": "aqua",
+            "extra": [
+                {"text": "\ngold_block", "color": "gray"},
+                {"text": "\nNo changes recorded for this block, pup.", "color": "aqua", "extra": []}
+            ]
+        });
+        let mut expected_history = block_history.clone();
+        expected_history["extra"][1].as_object_mut().unwrap().remove("extra");
+        for (input, expected) in [
+            (block_history, expected_history),
+            (
+                serde_json::json!({"text": "No commits", "extra": []}),
+                serde_json::json!({"text": "No commits"}),
+            ),
+            (serde_json::json!([]), serde_json::json!({"text": ""})),
+            (
+                serde_json::json!({"translate": "example", "with": [], "extra": []}),
+                serde_json::json!({"translate": "example", "with": []}),
+            ),
+        ] {
+            let mut wire = Vec::new();
+            wire.write_text(&input.to_string());
+            let mut named = vec![wire[0], 0, 0];
+            named.extend_from_slice(&wire[1..]);
+            let decoded = nbt::Blob::from_reader(&mut std::io::Cursor::new(named)).unwrap();
+            let json: serde_json::Value = serde_json::from_str(&to_json(&nbt::Value::Compound(decoded.content))).unwrap();
+            assert_eq!(json, expected);
+        }
+    }
 
     #[test]
     fn numeric_and_boolean_text_stays_text_on_roundtrip() {
