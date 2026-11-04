@@ -24,6 +24,7 @@ mod redstonedb_tests;
 mod routing;
 mod shapes;
 pub(super) use llvm::initialize_cache;
+pub(super) use llvm::clear_cache;
 pub(in crate::redpiler) use llvm::{LlvmRuntime, unsupported_components};
 mod program;
 #[cfg(test)]

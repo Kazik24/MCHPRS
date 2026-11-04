@@ -23,6 +23,7 @@ pub(in crate::plot) fn complete_redpiler(id: i32, text: &str) -> Option<CTabComp
             "-u",
         ],
         Some(&"publish") if words.len() == 2 => &["all", "redstone", "io"],
+        Some(&"reset" | &"r" | &"off") if words.len() == 2 => &["--clear"],
         _ => return None,
     };
     let prefix = &text[start..];
@@ -92,6 +93,65 @@ mod tests {
         plot.handle_command(0, "/rp", vec!["publish", "io"]);
         assert!(!plot.redpiler.is_active());
     }
+
+    #[test]
+    fn reset_and_off_validate_arguments_permissions_and_cache_lifecycle() {
+        for command in ["reset", "off", "r"] {
+            let (mut plot, _peer) = crate::plot::client_sync_tests::fixture(false);
+            plot.owner = Some(plot.players[0].uuid);
+            let pos = BlockPos::new(34, 21, 32);
+            plot.world.set_block(pos.offset(BlockFace::Bottom), Block::Stone {});
+            plot.world.set_block(pos, Block::from_name("stone_button").unwrap());
+            let bounds = (pos - BlockPos::new(2, 2, 2), pos + BlockPos::new(2, 2, 2));
+            plot.redpiler
+                .compile(&plot.world, bounds, CompilerOptions::default(), vec![], Default::default())
+                .unwrap();
+
+            plot.players[0].set_test_permissions(&[]);
+            plot.handle_command(0, "/rp", vec![command, "--clear"]);
+            assert!(plot.redpiler.is_active(), "{command} bypassed reset permission");
+            plot.players[0].set_test_permissions(&["commands.redpiler.reset"]);
+            for args in [
+                vec![command, "--bad"],
+                vec![command, "--clear", "--clear"],
+                vec![command, "--clear", "extra"],
+            ] {
+                plot.handle_command(0, "/rp", args);
+                assert!(plot.redpiler.is_active(), "invalid {command} arguments stopped execution");
+            }
+            plot.handle_command(0, "/rp", vec![command]);
+            assert!(!plot.redpiler.is_active());
+            assert!(plot.redpiler_cache.is_some(), "plain {command} discarded the warm checkpoint");
+            plot.handle_command(0, "/rp", vec![command, "--bad"]);
+            assert!(plot.redpiler_cache.is_some());
+
+            plot.redpiler
+                .compile(&plot.world, bounds, CompilerOptions::default(), vec![], Default::default())
+                .unwrap();
+            plot.handle_command(0, "/rp", vec![command, "--clear"]);
+            assert!(!plot.redpiler.is_active());
+            assert!(plot.redpiler_cache.is_none(), "{command} --clear retained the warm checkpoint");
+        }
+    }
+
+    #[test]
+    fn clear_cancels_pending_compilation_without_repopulating_cache() {
+        let (mut plot, _peer) = crate::plot::client_sync_tests::fixture(false);
+        plot.owner = Some(plot.players[0].uuid);
+        plot.players[0].set_test_permissions(&["commands.redpiler.reset"]);
+        plot.start_redpiler_with_budget(CompilerOptions::default(), None);
+        assert!(plot.compilation.is_some());
+        plot.handle_command(0, "/rp", vec!["off", "--clear"]);
+        assert!(!plot.compiling_redpiler());
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        while plot.compilation.is_some() {
+            assert!(std::time::Instant::now() < deadline, "cancelled compiler worker did not finish");
+            plot.poll_redpiler_compilation();
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        }
+        assert!(!plot.redpiler.is_active());
+        assert!(plot.redpiler_cache.is_none());
+    }
 }
 
 impl Plot {
@@ -124,9 +184,26 @@ impl Plot {
                 }
                 self.start_redpiler_with_budget(options, budget);
             }
-            "reset" | "r" => {
+            "reset" | "r" | "off" => {
+                let clear = match args {
+                    [] => false,
+                    ["--clear"] => true,
+                    _ => {
+                        self.players[player].send_error_message(messages::REDPILER_RESET_USAGE);
+                        return;
+                    }
+                };
                 if let Err(error) = self.reset_redpiler() {
                     self.players[player].send_error_message(&error.to_string());
+                    return;
+                }
+                if clear {
+                    self.clear_redpiler_cache();
+                    self.players[player].send_system_message(messages::REDPILER_PLOT_CACHE_CLEARED);
+                    match crate::redpiler::clear_llvm_cache() {
+                        Ok(summary) => self.players[player].send_system_message(&summary),
+                        Err(error) => self.players[player].send_error_message(&error),
+                    }
                 }
             }
             "publish" => {

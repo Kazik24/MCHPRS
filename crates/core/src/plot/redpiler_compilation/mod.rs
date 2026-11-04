@@ -121,6 +121,11 @@ fn compilation_error(world: &PlotWorld, error: &CompileError, monitor: &TaskMoni
 }
 
 impl Plot {
+    pub(super) fn clear_redpiler_cache(&mut self) {
+        self.cancel_redpiler_compilation();
+        self.redpiler_cache = None;
+    }
+
     pub(super) fn compiling_redpiler(&self) -> bool {
         self.compilation.as_ref().is_some_and(|job| !job.monitor.cancelled())
     }
@@ -147,7 +152,8 @@ impl Plot {
         }
     }
 
-    pub(super) fn start_redpiler_with_budget(&mut self, options: CompilerOptions, budget: Option<Duration>) {
+    pub(super) fn start_redpiler_with_budget(&mut self, mut options: CompilerOptions, budget: Option<Duration>) {
+        options.io_only = options.publication_mode() == crate::redpiler::PublicationMode::Io;
         if self.world.waveform.enabled() {
             for player in &self.players {
                 player.send_error_message("Disable waveform capture before compiling Redpiler");

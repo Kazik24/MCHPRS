@@ -20,6 +20,7 @@ mod movement;
 mod routing;
 mod shapes;
 pub(in crate::redpiler) use cache::initialize as initialize_cache;
+pub(in crate::redpiler) use cache::clear as clear_cache;
 use movement::encode_movement;
 
 pub(super) const ABI_VERSION: u32 = 3;

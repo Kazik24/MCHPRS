@@ -7,7 +7,7 @@ use std::{
     io::{self, Read},
     path::{Path, PathBuf},
     process::{Command, Stdio},
-    sync::{Mutex, OnceLock},
+    sync::{Mutex, MutexGuard, OnceLock, TryLockError},
     time::{Duration, Instant},
 };
 
@@ -18,7 +18,101 @@ static CACHE: OnceLock<Result<Cache, String>> = OnceLock::new();
 struct Cache {
     path: PathBuf,
     _lock: File,
-    module: Mutex<Option<PathBuf>>,
+    module: Mutex<ModuleState>,
+}
+
+#[derive(Default)]
+struct ModuleState {
+    generation: u64,
+    path: Option<PathBuf>,
+}
+
+pub(super) struct ModulePath {
+    path: PathBuf,
+    // Keep clear from deleting the file between path lookup and library loading.
+    _guard: Option<MutexGuard<'static, ModuleState>>,
+}
+
+impl std::ops::Deref for ModulePath {
+    type Target = Path;
+
+    fn deref(&self) -> &Path {
+        &self.path
+    }
+}
+
+fn validate_owned_root(path: &Path) -> io::Result<()> {
+    let metadata = fs::symlink_metadata(path)?;
+    if !metadata.is_dir() || metadata.file_type().is_symlink() || path.canonicalize()? != path {
+        return Err(io::Error::other("LLVM cache child must be a real directory inside the work volume"));
+    }
+    let marker = path.join(".owner");
+    let metadata = fs::symlink_metadata(&marker)?;
+    if !metadata.is_file() || metadata.file_type().is_symlink() || fs::read(marker)? != OWNER {
+        return Err(io::Error::other("refusing to remove an unmarked LLVM cache directory"));
+    }
+    Ok(())
+}
+
+fn build_directory(cache: &Cache, key: &str, generation: u64) -> PathBuf {
+    cache.path.join(format!("{key}-{generation}"))
+}
+
+fn build_name(name: &str) -> bool {
+    let (key, generation) = name.split_once('-').map_or((name, None), |(key, generation)| (key, Some(generation)));
+    key.len() == 64 && key.bytes().all(|byte| byte.is_ascii_hexdigit())
+        && generation.is_none_or(|generation| generation.parse::<u64>().is_ok())
+}
+
+fn validate_build_directory(path: &Path) -> io::Result<()> {
+    let metadata = fs::symlink_metadata(path)?;
+    if !metadata.is_dir() || metadata.file_type().is_symlink() || path.canonicalize()? != path {
+        return Err(io::Error::other("refusing a redirected LLVM artifact directory"));
+    }
+    for file in fs::read_dir(path)? {
+        let metadata = file?.file_type()?;
+        if !metadata.is_file() || metadata.is_symlink() {
+            return Err(io::Error::other("LLVM artifact directory contains redirected or nested entries"));
+        }
+    }
+    Ok(())
+}
+
+impl Cache {
+    fn clear(&self) -> Result<String, String> {
+        let mut module = self.module.try_lock().map_err(|error| match error {
+            TryLockError::WouldBlock => "LLVM module build or load is busy; retry clearing after it finishes".to_owned(),
+            TryLockError::Poisoned(_) => "LLVM cache lock poisoned".to_owned(),
+        })?;
+        validate_owned_root(&self.path).map_err(|error| format!("cannot clear LLVM cache: {error}"))?;
+        let mut directories = Vec::new();
+        let mut deferred = 0;
+        for entry in fs::read_dir(&self.path).map_err(|error| error.to_string())? {
+            let entry = entry.map_err(|error| error.to_string())?;
+            if entry.file_name() == ".owner" { continue; }
+            let path = entry.path();
+            if !entry.file_name().to_str().is_some_and(build_name) {
+                deferred += 1;
+                continue;
+            }
+            validate_build_directory(&path).map_err(|error| error.to_string())?;
+            directories.push(path);
+        }
+        module.generation = module.generation.checked_add(1).ok_or("LLVM cache generation limit exceeded")?;
+        module.path = None;
+        let mut removed = 0;
+        for path in directories {
+            // The marked root, canonical child and its flat files were validated above.
+            match fs::remove_dir_all(&path) {
+                Ok(()) => removed += 1,
+                Err(error) => {
+                    deferred += 1;
+                    tracing::warn!(path = %path.display(), %error, "LLVM artifact removal deferred; the library may still be in use");
+                }
+            }
+        }
+        Ok(format!("LLVM cache invalidated: {removed} artifact directories removed, {deferred} entries deferred (in use or unrecognized). New modules will rebuild; custom MCHPRS_LLVM_DLL files are untouched."))
+    }
 }
 
 fn reset_root(root: &Path) -> io::Result<Cache> {
@@ -33,13 +127,8 @@ fn reset_root(root: &Path) -> io::Result<Cache> {
     lock.try_lock()
         .map_err(|error| io::Error::other(format!("LLVM cache is already in use: {error}")))?;
     let path = root.join(CHILD);
-    if let Ok(metadata) = fs::symlink_metadata(&path) {
-        if !metadata.is_dir() || metadata.file_type().is_symlink() || path.canonicalize()? != path {
-            return Err(io::Error::other("LLVM cache child must be a real directory inside the work volume"));
-        }
-        if fs::read(path.join(".owner")).ok().as_deref() != Some(OWNER) {
-            return Err(io::Error::other("refusing to remove an unmarked LLVM cache directory"));
-        }
+    if fs::symlink_metadata(&path).is_ok() {
+        validate_owned_root(&path)?;
         // Both the resolved target and its ownership marker were checked above.
         fs::remove_dir_all(&path)?;
     }
@@ -48,7 +137,7 @@ fn reset_root(root: &Path) -> io::Result<Cache> {
     Ok(Cache {
         path,
         _lock: lock,
-        module: Mutex::new(None),
+        module: Mutex::new(ModuleState::default()),
     })
 }
 
@@ -68,6 +157,10 @@ pub(crate) fn initialize() -> Result<(), String> {
     let cache = cache()?;
     tracing::info!(path = %cache.path.display(), "LLVM compiler cache reset for this process");
     Ok(())
+}
+
+pub(crate) fn clear() -> Result<String, String> {
+    cache()?.clear()
 }
 
 fn absolute_executable(path: PathBuf) -> Result<PathBuf, String> {
@@ -157,14 +250,17 @@ fn run_tool(tool: &Path, args: &[OsString], directory: &Path, log: &str, monitor
     }
 }
 
-pub(super) fn module_path(monitor: Option<&TaskMonitor>) -> Result<PathBuf, String> {
+pub(super) fn module_path(monitor: Option<&TaskMonitor>) -> Result<ModulePath, String> {
     if let Some(path) = std::env::var_os("MCHPRS_LLVM_DLL") {
-        return PathBuf::from(path).canonicalize().map_err(|error| format!("MCHPRS_LLVM_DLL: {error}"));
+        let path = PathBuf::from(path).canonicalize().map_err(|error| format!("MCHPRS_LLVM_DLL: {error}"))?;
+        return Ok(ModulePath { path, _guard: None });
     }
     let cache = cache()?;
     let mut module = cache.module.lock().map_err(|_| "LLVM cache lock poisoned".to_owned())?;
-    if let Some(path) = module.as_ref().filter(|path| path.is_file()) {
-        return Ok(path.clone());
+    validate_owned_root(&cache.path).map_err(|error| error.to_string())?;
+    if let Some(path) = module.path.as_ref().filter(|path| path.is_file()) {
+        validate_build_directory(path.parent().unwrap()).map_err(|error| error.to_string())?;
+        return Ok(ModulePath { path: path.clone(), _guard: Some(module) });
     }
     #[cfg(windows)]
     let clang = executable("clang.exe", "MCHPRS_LLVM_CLANG")?;
@@ -203,8 +299,9 @@ pub(super) fn module_path(monitor: Option<&TaskMonitor>) -> Result<PathBuf, Stri
     hash_file(&mut hash, &clang).map_err(|e| e.to_string())?;
     hash_file(&mut hash, &linker).map_err(|e| e.to_string())?;
     let key = format!("{:x}", hash.finalize());
-    let directory = cache.path.join(&key);
+    let directory = build_directory(cache, &key, module.generation);
     fs::create_dir_all(&directory).map_err(|e| e.to_string())?;
+    validate_build_directory(&directory).map_err(|error| error.to_string())?;
     for (name, data) in sources {
         fs::write(directory.join(name), data).map_err(|e| e.to_string())?;
     }
@@ -247,13 +344,102 @@ pub(super) fn module_path(monitor: Option<&TaskMonitor>) -> Result<PathBuf, Stri
     )
     .map_err(|e| e.to_string())?;
     tracing::info!(path=%path.display(),build_ms=started.elapsed().as_secs_f64()*1000.0,"LLVM module compiled");
-    *module = Some(path.clone());
-    Ok(path)
+    module.path = Some(path.clone());
+    Ok(ModulePath { path, _guard: Some(module) })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn temp_root(label: &str) -> PathBuf {
+        std::env::temp_dir().join(format!("mroww-cache-{label}-{}-{}", std::process::id(),
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()))
+    }
+
+    #[test]
+    fn clear_invalidates_module_and_uses_a_fresh_build_path_without_deleting_unowned_files() {
+        let root = temp_root("clear");
+        let cache = reset_root(&root).unwrap();
+        let key = "a".repeat(64);
+        let directory = build_directory(&cache, &key, 0);
+        fs::create_dir(&directory).unwrap();
+        let module_path = directory.join("engine.dll");
+        fs::write(&module_path, b"old module").unwrap();
+        cache.module.lock().unwrap().path = Some(module_path);
+        let custom = root.join("custom.dll");
+        fs::write(&custom, b"custom module").unwrap();
+        fs::write(cache.path.join("keep"), b"unrecognized").unwrap();
+        let summary = cache.clear().unwrap();
+        assert!(summary.contains("1 artifact directories removed, 1 entries deferred"));
+        let state = cache.module.lock().unwrap();
+        assert!(state.path.is_none());
+        assert_ne!(build_directory(&cache, &key, state.generation), directory);
+        assert_eq!(state.generation, 1);
+        assert!(!directory.exists());
+        assert_eq!(fs::read(custom).unwrap(), b"custom module");
+        assert!(cache.path.join("keep").exists());
+        drop(state);
+        drop(cache);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn clear_refuses_busy_builds_and_changed_ownership_markers() {
+        let root = temp_root("busy");
+        let cache = reset_root(&root).unwrap();
+        let state = cache.module.lock().unwrap();
+        assert!(cache.clear().unwrap_err().contains("busy"));
+        drop(state);
+        fs::write(cache.path.join(".owner"), b"not ours").unwrap();
+        assert!(cache.clear().is_err());
+        assert_eq!(cache.module.lock().unwrap().generation, 0);
+        drop(cache);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn clear_defers_locked_artifacts_but_invalidates_the_module() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let root = temp_root("locked");
+        let cache = reset_root(&root).unwrap();
+        let directory = build_directory(&cache, &"b".repeat(64), 0);
+        fs::create_dir(&directory).unwrap();
+        let module = directory.join("engine.dll");
+        fs::write(&module, b"loaded module").unwrap();
+        cache.module.lock().unwrap().path = Some(module.clone());
+        let locked = OpenOptions::new().read(true).share_mode(0).open(&module).unwrap();
+        let summary = cache.clear().unwrap();
+        assert!(summary.contains("0 artifact directories removed, 1 entries deferred"));
+        assert!(cache.module.lock().unwrap().path.is_none());
+        assert_eq!(cache.module.lock().unwrap().generation, 1);
+        drop(locked);
+        drop(cache);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn clear_rejects_symlinked_artifact_directories_and_files() {
+        use std::os::unix::fs::symlink;
+        let root = temp_root("links");
+        let cache = reset_root(&root).unwrap();
+        let outside = root.join("outside");
+        fs::create_dir(&outside).unwrap();
+        fs::write(outside.join("keep"), b"keep").unwrap();
+        let directory = build_directory(&cache, &"c".repeat(64), 0);
+        symlink(&outside, &directory).unwrap();
+        assert!(cache.clear().is_err());
+        fs::remove_file(&directory).unwrap();
+        fs::create_dir(&directory).unwrap();
+        symlink(outside.join("keep"), directory.join("engine.so")).unwrap();
+        assert!(cache.clear().is_err());
+        assert_eq!(cache.module.lock().unwrap().generation, 0);
+        assert_eq!(fs::read(outside.join("keep")).unwrap(), b"keep");
+        drop(cache);
+        fs::remove_dir_all(root).unwrap();
+    }
 
     #[test]
     fn reset_removes_only_owned_cache_and_obeys_lock() {

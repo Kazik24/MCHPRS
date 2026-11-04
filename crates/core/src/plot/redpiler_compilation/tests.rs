@@ -229,6 +229,40 @@ fn executed_plot_reuses_exported_state_and_keeps_pending_ticks_once() {
 }
 
 #[test]
+fn executor_cache_refreshes_drained_command_output_queue() {
+    for llvm in [false, true] {
+        if llvm && !cfg!(any(windows, target_os = "linux")) { continue; }
+        let (mut plot, _peer) = fixture(false);
+        let button = BlockPos::new(34, 21, 32);
+        let command = button.offset(mchprs_blocks::BlockFace::South);
+        plot.world.set_block(button.offset(mchprs_blocks::BlockFace::Bottom), Block::Stone {});
+        plot.world.set_block(button, Block::from_name("stone_button").unwrap());
+        plot.world.set_block(command, Block::from_name("command_block").unwrap());
+        plot.world.set_block_entity(command, BlockEntity::CommandBlock(Box::new(mchprs_blocks::block_entities::CommandBlockEntity {
+            command: "say resumed".into(), ..Default::default()
+        })));
+        // The rate window has expired, but an undrained queue would still reject output.
+        plot.world.command_output_window = Instant::now() - Duration::from_secs(2);
+        plot.world.command_output_count = 64;
+        plot.world.command_messages = (0..64).map(|_| crate::chat_commands::ChatCommand {
+            recipient: crate::chat_commands::Recipient::All, message: "already sent".into(),
+        }).collect();
+        let options = CompilerOptions { llvm, ..Default::default() };
+        plot.start_redpiler_with_budget(options.clone(), None);
+        plot.wait_for_redpiler();
+        plot.reset_redpiler().unwrap();
+        plot.world.command_messages.clear();
+        plot.start_redpiler_with_budget(options, None);
+        plot.wait_for_redpiler();
+        assert!(plot.redpiler.stats().unwrap().cached);
+        plot.redpiler.try_on_use_block(button).unwrap();
+        plot.redpiler.tick().unwrap();
+        plot.redpiler.try_flush(&mut plot.world).unwrap();
+        assert_eq!(plot.world.command_output().count(), 1, "llvm={llvm}: warm executor retained an already drained output queue");
+    }
+}
+
+#[test]
 fn exported_entry_rejects_host_changes_but_allows_draining_command_messages() {
     let (mut plot, _peer) = fixture(false);
     plot.world.command_messages.push(crate::chat_commands::ChatCommand {

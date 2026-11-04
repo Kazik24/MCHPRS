@@ -123,8 +123,9 @@ fn executor_cache_resumes_pending_motion_and_effects_like_uninterrupted_executio
         reference.clear_scheduled_ticks();
         compiler.try_flush_complete(&mut world).unwrap();
         assert_eq!(world.command_output().count(), 1, "resume must not replay acknowledged effects");
-        for tick in 1..=24 {
-            if tick == 12 {
+        for tick in 1..=48 {
+            if tick == 24 {
+                assert!(matches!(world.get_block(button), Block::StoneButton { button } if !button.powered));
                 compiler.try_on_use_block(button).unwrap();
                 uninterrupted.try_on_use_block(button).unwrap();
             }
@@ -243,6 +244,7 @@ fn zcore_executor_cache_lifecycle_benchmark() {
         exported,
         "the first warm publication must reproduce the reset checkpoint"
     );
+    eprintln!("ZCore admission: cold={cold_compile:?}, reset={reset:?}, warm={warm_compile:?}, completed={completed}");
     world.clear_scheduled_ticks();
 
     let mut fresh = Compiler::default();
@@ -253,19 +255,21 @@ fn zcore_executor_cache_lifecycle_benchmark() {
     let continuation = match fresh_result {
         Ok(()) => {
             fresh_world.clear_scheduled_ticks();
+            let mut result = serde_json::json!({"ticks":64,"matched":true});
             for tick in 1..=64 {
                 compiler.tick().unwrap();
                 fresh.tick().unwrap();
                 compiler.try_flush_complete(&mut world).unwrap();
                 fresh.try_flush_complete(&mut fresh_world).unwrap();
-                assert_eq!(pending(&compiler), pending(&fresh), "ZCore resumed/fresh pending tick {tick}");
-                assert_eq!(
-                    checkpoint(&world),
-                    checkpoint(&fresh_world),
-                    "ZCore resumed/fresh continuation tick {tick}"
-                );
+                let (actual_pending, expected_pending) = (pending(&compiler), pending(&fresh));
+                let (actual, expected) = (checkpoint(&world), checkpoint(&fresh_world));
+                if actual_pending != expected_pending || actual != expected {
+                    result = serde_json::json!({"ticks":tick,"matched":false,"resumed":actual,"fresh":expected,
+                        "resumed_pending":actual_pending,"fresh_pending":expected_pending});
+                    break;
+                }
             }
-            serde_json::json!({"ticks":64,"matched":true})
+            result
         }
         Err(error) => serde_json::json!({"ticks":0,"matched":null,"fresh_compile_rejection":error.to_string()}),
     };
@@ -283,6 +287,12 @@ fn zcore_executor_cache_lifecycle_benchmark() {
     std::fs::write(&artifact, serde_json::to_vec_pretty(&report).unwrap()).unwrap();
     eprintln!(
         "ZCore cache lifecycle: completed={completed}; cold={cold_compile:?}; warm={warm_compile:?}; {}",
+        artifact.display()
+    );
+    assert_ne!(
+        report["fresh_continuation"]["matched"].as_bool(),
+        Some(false),
+        "fresh continuation disagrees; see {}",
         artifact.display()
     );
 }

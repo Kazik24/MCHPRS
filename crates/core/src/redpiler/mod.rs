@@ -27,3 +27,7 @@ pub use task_monitor::TaskMonitor;
 pub(crate) fn initialize_llvm_cache() -> Result<(), String> {
     sampled::initialize_cache()
 }
+
+pub(crate) fn clear_llvm_cache() -> Result<String, String> {
+    sampled::clear_cache()
+}

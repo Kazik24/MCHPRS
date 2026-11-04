@@ -691,7 +691,7 @@ fn compiled_plot_rejects_a_wire_plan_prepared_before_compilation() {
     assert!(plot.players[0].worldedit_undo.is_empty());
     let session = plot.players[0].redstone_tools.wire.as_ref().unwrap();
     assert!(session.plan.is_some());
-    assert_eq!(session.notice.as_deref(), Some(messages::WIRE_UNSUPPORTED));
+    assert!(session.notice.as_deref().unwrap().contains(messages::WIRE_UNSUPPORTED));
 }
 
 #[test]

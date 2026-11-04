@@ -904,4 +904,3 @@ fn teleport_fences_movement_and_edits_until_destination_view_is_queued() {
     assert_eq!(ids[ids.len() - 2..], [0x08, 0x04]);
     assert_eq!(blocks, [(target, Block::Air.get_id())]);
 }
-                                  
