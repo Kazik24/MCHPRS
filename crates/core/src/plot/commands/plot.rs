@@ -98,11 +98,10 @@ impl Plot {
                 }
             }
             "info" | "i" => {
-                if let Some(owner) = database::get_plot_owner(plot_x, plot_z) {
-                    self.players[player].send_system_message(&messages::plot_owner(database::get_cached_username(owner.clone()).unwrap_or(owner)));
-                } else {
-                    self.players[player].send_system_message(messages::PLOT_UNCLAIMED);
-                }
+                let owner = database::get_plot_owner(plot_x, plot_z)
+                    .map(|uuid| database::get_cached_username(uuid.clone()).unwrap_or(uuid))
+                    .unwrap_or_else(|| messages::PLOT_INFO_UNCLAIMED.into());
+                self.players[player].send_system_message(&self.plot_info(player, &owner));
             }
             "claim" | "c" => {
                 self.claim_plot(plot_x, plot_z, player);

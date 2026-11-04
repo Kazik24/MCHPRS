@@ -4,6 +4,72 @@ use mchprs_blocks::{BlockDirection, BlockPos, blocks::Block};
 use mchprs_world::TickPriority;
 use serde_json::json;
 
+#[derive(serde::Deserialize)]
+struct Fixture {
+    min: BlockPos,
+    max: BlockPos,
+    start: BlockPos,
+    blocks: Vec<(BlockPos, u32)>,
+    #[serde(default)]
+    entities: Vec<(BlockPos, mchprs_blocks::block_entities::BlockEntity)>,
+    pending: Vec<mchprs_world::TickEntry>,
+}
+
+fn saved_fixture() -> Fixture {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs/redpiler-regressions/2026-11-04/pm1-piston-slice.json.gz");
+    serde_json::from_reader(flate2::read::GzDecoder::new(std::fs::File::open(path).unwrap())).unwrap()
+}
+
+#[test]
+#[ignore = "exports the verified PM1 divergent slice as a portable schematic"]
+fn pm1_export_saved_slice_schematic() {
+    use crate::plot::worldedit::{WorldEditClipboard, load_schematic, save_schematic};
+    use crate::world::storage::PalettedBitBuffer;
+    let fixture = saved_fixture();
+    let size = fixture.max - fixture.min + BlockPos::new(1, 1, 1);
+    let mut data = PalettedBitBuffer::new((size.x * size.y * size.z) as usize, 9);
+    for (pos, id) in fixture.blocks {
+        let pos = pos - fixture.min;
+        data.set_entry(((pos.y * size.z + pos.z) * size.x + pos.x) as usize, id);
+    }
+    let clipboard = WorldEditClipboard {
+        offset_x: 0,
+        offset_y: 0,
+        offset_z: 0,
+        size_x: size.x as u32,
+        size_y: size.y as u32,
+        size_z: size.z as u32,
+        data,
+        block_entities: fixture.entities.into_iter().map(|(pos, entity)| (pos - fixture.min, entity)).collect(),
+    };
+    let name = "regression-pm1-20261104-slice.schem";
+    save_schematic(name, &clipboard).unwrap();
+    let bytes = std::fs::read(std::path::Path::new("schems").join(name)).unwrap();
+    let loaded = load_schematic(std::io::Cursor::new(&bytes)).unwrap();
+    assert_eq!(
+        (loaded.size_x, loaded.size_y, loaded.size_z),
+        (clipboard.size_x, clipboard.size_y, clipboard.size_z)
+    );
+    for index in 0..clipboard.data.entries() {
+        assert_eq!(
+            loaded.data.get_entry(index),
+            clipboard.data.get_entry(index),
+            "schematic roundtrip cell {index}"
+        );
+    }
+    assert_eq!(loaded.block_entities.len(), clipboard.block_entities.len());
+    for (pos, entity) in &clipboard.block_entities {
+        assert_eq!(
+            serde_json::to_value(loaded.block_entities.get(pos)).unwrap(),
+            serde_json::to_value(Some(entity)).unwrap(),
+            "schematic entity roundtrip {pos:?}"
+        );
+    }
+    let destination = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs/redpiler-regressions/2026-11-04/pm1-piston-slice.schem");
+    std::fs::write(&destination, bytes).unwrap();
+    eprintln!("exported {} with {} entities", destination.display(), loaded.block_entities.len());
+}
+
 #[test]
 #[ignore = "PM1 staged crop investigation; writes diagnostic fixtures"]
 fn pm1_staged_piston_slices() {
@@ -185,21 +251,23 @@ fn pm1_staged_piston_slices() {
 fn pm1_saved_piston_slice_matches_interpreter() {
     use crate::redpiler::{Compiler, CompilerOptions, PublicationMode, TaskMonitor};
     use crate::world::{scheduler::TickScheduler, storage::Chunk};
-    use serde::Deserialize;
     use std::sync::Arc;
-    #[derive(Deserialize)]
-    struct Fixture {
-        min: BlockPos,
-        max: BlockPos,
-        start: BlockPos,
-        blocks: Vec<(BlockPos, u32)>,
-        #[serde(default)]
-        entities: Vec<(BlockPos, mchprs_blocks::block_entities::BlockEntity)>,
-        pending: Vec<mchprs_world::TickEntry>,
+    let mut fixture = saved_fixture();
+    if let Some(path) = std::env::var_os("MCHPRS_PM1_SCHEM_PATH") {
+        let clip = crate::plot::worldedit::load_schematic(std::fs::File::open(path).unwrap()).unwrap();
+        fixture.blocks.clear();
+        for y in 0..clip.size_y {
+            for z in 0..clip.size_z {
+                for x in 0..clip.size_x {
+                    let id = clip.data.get_entry(((y * clip.size_z + z) * clip.size_x + x) as usize);
+                    if id != (Block::Air {}).get_id() {
+                        fixture.blocks.push((fixture.min + BlockPos::new(x as i32, y as i32, z as i32), id));
+                    }
+                }
+            }
+        }
+        fixture.entities = clip.block_entities.into_iter().map(|(pos, entity)| (fixture.min + pos, entity)).collect();
     }
-    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs/redpiler-regressions/2026-11-04/pm1-piston-slice.json.gz");
-    let input = flate2::read::GzDecoder::new(std::fs::File::open(path).unwrap());
-    let fixture: Fixture = serde_json::from_reader(input).unwrap();
     let mut interpreter = PlotWorld::from_chunks(
         0,
         0,
