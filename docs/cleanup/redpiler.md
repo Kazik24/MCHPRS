@@ -63,12 +63,40 @@ Date: 2026-11-04. This pass reviewed all 51 files under `crates/core/src/redpile
 - `options.rs`: derive `Default` for `CompilerOptions` instead of maintaining an equivalent field-by-field implementation.
 - `sampled/passes/arrangements.rs`: remove redundant references passed to `group_probe::run`; its parameters already take references. The only caller is `sampled/compiler.rs`.
 - `sampled/passes/source_order.rs`: name the control, repeater, and other output-source iterators; name the fixed and arrangement input strength iterators. The accompanying comments state which source strengths are included and why the maximum is used. The test-only reference calculation is staged the same way so its comparison remains explicit.
+- `sampled/compiler.rs`: name the union of keys considered when finding added, removed, or changed links; the existing doc comment explains why the union is sorted and compared.
+- `sampled/group_probe.rs`: document how the flat arrangement number selects a state for each token axis.
+- `sampled/passes/movement.rs`: name the per-step list of watched wires that notify a moved component.
 - `sampled/executor.rs`: clarify that runtime input strength is the maximum across fixed and arrangement contributions; this adds no work to the hot path.
-- `sampled/program.rs`: name the three notification tables traversed by validation and explain their shared target constraint.
-- `sampled/shapes.rs`: name token occupancy and piston anchor cell iterators before combining them for shape sampling.
-- `scratch.rs`: name worker result batches, then flatten and restore caller job order after parallel probes. The comment records why the sort is required; the existing result vectors and order are unchanged.
+- `sampled/program.rs`: name the shape-map iterator used by validation and the three notification tables traversed by validation; explain their checked references.
+- `sampled/shapes.rs`: name token occupancy and piston anchor cell iterators before combining them for shape sampling, and explain the two-block token-axis neighborhood.
+- `scratch.rs`: document strongest attenuated wire-source selection; name worker result batches, then flatten and restore caller job order after parallel probes. The comment records why the sort is required; the existing result vectors and order are unchanged.
 
 No public API, serialized layout, C ABI, validation rule, scheduler order, or runtime instruction was changed. No abstraction or helper was added.
+
+## Iterator-chain scan
+
+The accompanying scan found 73 redpiler candidates when the source iterator and terminal operation are counted as stages. Each candidate was checked in context. The chains below either have a named destination/stage that states their purpose or are covered by an adjacent explanation; the semantically dense chains are named/commented in the source changes above. The nine candidates in `tests/sampled/cpu_trace.rs` are in a concurrently modified external file and were left untouched.
+
+| File | Candidate pipelines and their purpose |
+| --- | --- |
+| `sampled/compiler.rs` (2) | `find_changed_links` unions keys so additions and removals are seen, then keeps changed values in sorted order; the position index maps world coordinates to component IDs. |
+| `sampled/executor.rs` (3) | `input_strength` combines active fixed and arrangement strengths by maximum; `projected_blocks` maps the prepared projection cells to their current blocks. |
+| `sampled/group_probe.rs` (11) | Decode arrangement ordinals into per-token placements; gather unique possible inputs and initial token states; build the dense/routed graph and reader set; in tests, construct component indexes, preserve existing output operations while adding arrangement contributions, and compare dense and routed results. |
+| `sampled/llvm/mod.rs` (1) | Map compiled source IDs to world positions for native control lookup. |
+| `sampled/llvm/movement.rs` (1) | Retain only observer components whose facing reads the current projection cell. |
+| `sampled/passes/movement.rs` (3) | Include adjacent and support-cell observers, form ordered arrival/departure recipients, and attach the watched wires that notify each movement step. |
+| `sampled/passes/parse.rs` (4) | Build the captured wire, lamp, hopper/trapdoor, and note-block inventories; the nearby comment explains why existing saved placements remain admitted. |
+| `sampled/passes/source_order.rs` (4) | Select all output source classes, compare button-local pending ticks against a frame, flatten a source's operation records, and count eligible downstream racers. |
+| `sampled/program.rs` (10) | Expand token axis states; prepare projection/component/piston indexes; compact nonempty instruction ranges; validate shape map references; and validate notification targets across the three runtime tables. |
+| `sampled/routing.rs` (13) | Build local position/source indexes and reader contacts; tests compare indexed wire/piston contacts and reader source results with brute-force discovery. The named indexes, expected values, and test names identify each stage. |
+| `sampled/shapes.rs` (2) | Build a component-position index and select token axes close enough to affect a sampled wire shape. |
+| `scratch.rs` (4) | Select strongest attenuated wire input, identify watchers whose wire power changed, build a piston-position index, and gather piston-facing contact faces. |
+| `tests/classic_fuzz.rs` (1) | Serialize comparator outputs into deterministic differential-fixture snapshots. |
+| `tests/sampled/adder.rs` (1) | Find movable-token candidates within the test wire neighborhood for diagnostic output. |
+| `tests/sampled/core.rs` (4) | Build piston actor bindings from paired bases/homes, construct component indexes for arrangement tests, and compare compressed movement axes with their reference positions. |
+| `tests/sampled/cpu_trace.rs` (9) | External concurrent change; excluded from this pass to preserve the other task's work. |
+
+The scan includes idiomatic index-building chains with a clear named result as well as longer filtering pipelines. Those remained single expressions where splitting them would add names without making the filtering rule clearer.
 
 ## Larger proposals deferred
 

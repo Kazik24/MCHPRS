@@ -73,10 +73,27 @@ The combined `cargo test --workspace --locked --no-fail-fast` run completed with
   `test_data/cpu-references/zcore12b_sierpinski.json`. The reference loader fails
   while opening the expected file; no reference was regenerated or substituted.
 
+After the final source edits, the workspace run passed with 849 tests, no
+failures, 39 ignored tests and only the two failures above filtered out:
+
+```powershell
+cargo test --workspace --locked -- --skip redpiler::sampled::redstonedb_tests::redstonedb_levers_match_interpreter --skip frozen_cpu_inputs_and_initial_states
+```
+
+The final run emitted no compiler warnings. The ignored-test count changed
+because concurrent regression work added an ignored diagnostic test.
+
 All 16 tracked Python files also passed syntax parsing without executing their
 capture/download actions. No deployment, live-server capture, browser interaction
 test or performance benchmark is part of this source cleanup.
 
-Concurrent edits to `crates/core/src/redpiler/tests/sampled/cpu_trace.rs` and the dated
-`docs/redpiler-regressions/2026-11-04/` evidence belong to separate work and are
-preserved without claiming them as cleanup changes.
+`cargo fmt --all -- --check` remains red across the repository (482 diff
+sections, including untouched benchmark/example files). Edited supporting Rust
+files were formatted individually; a whole-repository formatting rewrite was
+kept out of the targeted cleanup. VS Code's corrected package/binary target was
+checked against `cargo metadata --no-deps --locked`.
+
+Concurrent edits to `crates/core/src/redpiler/tests/sampled/cpu_trace.rs`, new
+regression modules, and the dated `docs/redpiler-regressions/2026-11-04/` evidence
+belong to separate work and are preserved without claiming them as cleanup
+changes. Coverage follows the tracked source inventory at the start of this pass.

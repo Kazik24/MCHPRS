@@ -1,4096 +1,698 @@
 [
   {
-    "final_target": {
-      "interpreter": "Air",
-      "rust": "RedstoneBlock"
-    },
-    "first": {
-      "differences": [
-        {
-          "interpreter": "Air",
-          "pos": {
-            "x": 155,
-            "y": 10,
-            "z": 124
-          },
-          "rust": "RedstoneBlock"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 156,
-            "y": 10,
-            "z": 124
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 15 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 157,
-            "y": 10,
-            "z": 124
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 14 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 158,
-            "y": 10,
-            "z": 124
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 13 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 159,
-            "y": 10,
-            "z": 124
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 12 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 160,
-            "y": 10,
-            "z": 124
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 11 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 161,
-            "y": 10,
-            "z": 124
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 10 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 162,
-            "y": 10,
-            "z": 124
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 9 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 163,
-            "y": 10,
-            "z": 124
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 8 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 164,
-            "y": 10,
-            "z": 124
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 7 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 165,
-            "y": 10,
-            "z": 124
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 6 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 166,
-            "y": 10,
-            "z": 124
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 5 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 167,
-            "y": 10,
-            "z": 124
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 4 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 168,
-            "y": 10,
-            "z": 124
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 3 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 169,
-            "y": 10,
-            "z": 124
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 2 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 170,
-            "y": 10,
-            "z": 124
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 1 } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: East, sticky: true } }",
-          "pos": {
-            "x": 172,
-            "y": 10,
-            "z": 124
-          },
-          "rust": "Piston { piston: RedstonePiston { facing: East, sticky: true, extended: true } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: East, sticky: true } }",
-          "pos": {
-            "x": 173,
-            "y": 10,
-            "z": 124
-          },
-          "rust": "PistonHead { head: RedstonePistonHead { facing: East, sticky: true, short: false } }"
-        },
-        {
-          "interpreter": "Air",
-          "pos": {
-            "x": 174,
-            "y": 10,
-            "z": 124
-          },
-          "rust": "RedstoneBlock"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 175,
-            "y": 10,
-            "z": 124
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 15 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 176,
-            "y": 10,
-            "z": 124
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 14 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 177,
-            "y": 10,
-            "z": 124
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 13 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 178,
-            "y": 10,
-            "z": 124
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 12 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 179,
-            "y": 10,
-            "z": 124
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 11 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 180,
-            "y": 10,
-            "z": 124
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 10 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 181,
-            "y": 10,
-            "z": 124
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 9 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 182,
-            "y": 10,
-            "z": 124
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 8 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 183,
-            "y": 10,
-            "z": 124
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 7 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 184,
-            "y": 10,
-            "z": 124
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 6 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 185,
-            "y": 10,
-            "z": 124
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 5 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 186,
-            "y": 10,
-            "z": 124
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 4 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 187,
-            "y": 10,
-            "z": 124
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 3 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 188,
-            "y": 10,
-            "z": 124
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 2 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 189,
-            "y": 10,
-            "z": 124
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 1 } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: East, sticky: true } }",
-          "pos": {
-            "x": 191,
-            "y": 10,
-            "z": 124
-          },
-          "rust": "Piston { piston: RedstonePiston { facing: East, sticky: true, extended: true } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: East, sticky: true } }",
-          "pos": {
-            "x": 192,
-            "y": 10,
-            "z": 124
-          },
-          "rust": "PistonHead { head: RedstonePistonHead { facing: East, sticky: true, short: false } }"
-        },
-        {
-          "interpreter": "Air",
-          "pos": {
-            "x": 193,
-            "y": 10,
-            "z": 124
-          },
-          "rust": "RedstoneBlock"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 194,
-            "y": 10,
-            "z": 124
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 15 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 195,
-            "y": 10,
-            "z": 124
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 14 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 196,
-            "y": 10,
-            "z": 124
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 13 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 197,
-            "y": 10,
-            "z": 124
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 12 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 198,
-            "y": 10,
-            "z": 124
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 11 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 199,
-            "y": 10,
-            "z": 124
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 10 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 200,
-            "y": 10,
-            "z": 124
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 9 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 201,
-            "y": 10,
-            "z": 124
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 8 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 202,
-            "y": 10,
-            "z": 124
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 7 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Up, west: Side, power: 0 } }",
-          "pos": {
-            "x": 203,
-            "y": 10,
-            "z": 124
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Up, west: Side, power: 6 } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: North, sticky: true } }",
-          "pos": {
-            "x": 155,
-            "y": 10,
-            "z": 125
-          },
-          "rust": "PistonHead { head: RedstonePistonHead { facing: North, sticky: true, short: false } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: East, sticky: true } }",
-          "pos": {
-            "x": 119,
-            "y": 10,
-            "z": 126
-          },
-          "rust": "Piston { piston: RedstonePiston { facing: East, sticky: true, extended: true } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: East, sticky: true } }",
-          "pos": {
-            "x": 120,
-            "y": 10,
-            "z": 126
-          },
-          "rust": "PistonHead { head: RedstonePistonHead { facing: East, sticky: true, short: false } }"
-        },
-        {
-          "interpreter": "Air",
-          "pos": {
-            "x": 121,
-            "y": 10,
-            "z": 126
-          },
-          "rust": "RedstoneBlock"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 122,
-            "y": 10,
-            "z": 126
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 15 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 123,
-            "y": 10,
-            "z": 126
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 14 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 124,
-            "y": 10,
-            "z": 126
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 13 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 125,
-            "y": 10,
-            "z": 126
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 12 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 126,
-            "y": 10,
-            "z": 126
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 11 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 127,
-            "y": 10,
-            "z": 126
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 10 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 128,
-            "y": 10,
-            "z": 126
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 9 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 129,
-            "y": 10,
-            "z": 126
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 8 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 130,
-            "y": 10,
-            "z": 126
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 7 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 131,
-            "y": 10,
-            "z": 126
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 6 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 132,
-            "y": 10,
-            "z": 126
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 5 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 133,
-            "y": 10,
-            "z": 126
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 4 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 134,
-            "y": 10,
-            "z": 126
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 3 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 135,
-            "y": 10,
-            "z": 126
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 2 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 136,
-            "y": 10,
-            "z": 126
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 1 } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: East, sticky: true } }",
-          "pos": {
-            "x": 138,
-            "y": 10,
-            "z": 126
-          },
-          "rust": "Piston { piston: RedstonePiston { facing: East, sticky: true, extended: true } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: East, sticky: true } }",
-          "pos": {
-            "x": 139,
-            "y": 10,
-            "z": 126
-          },
-          "rust": "PistonHead { head: RedstonePistonHead { facing: East, sticky: true, short: false } }"
-        },
-        {
-          "interpreter": "Air",
-          "pos": {
-            "x": 140,
-            "y": 10,
-            "z": 126
-          },
-          "rust": "RedstoneBlock"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 141,
-            "y": 10,
-            "z": 126
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 15 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 142,
-            "y": 10,
-            "z": 126
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 14 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 143,
-            "y": 10,
-            "z": 126
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 13 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 144,
-            "y": 10,
-            "z": 126
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 12 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 145,
-            "y": 10,
-            "z": 126
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 11 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 146,
-            "y": 10,
-            "z": 126
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 10 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 147,
-            "y": 10,
-            "z": 126
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 9 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 148,
-            "y": 10,
-            "z": 126
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 8 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 149,
-            "y": 10,
-            "z": 126
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 7 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 150,
-            "y": 10,
-            "z": 126
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 6 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 151,
-            "y": 10,
-            "z": 126
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 5 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 152,
-            "y": 10,
-            "z": 126
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 4 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 153,
-            "y": 10,
-            "z": 126
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 3 } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: North, sticky: true } }",
-          "pos": {
-            "x": 155,
-            "y": 10,
-            "z": 126
-          },
-          "rust": "Piston { piston: RedstonePiston { facing: North, sticky: true, extended: true } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Up, west: Side, power: 0 } }",
-          "pos": {
-            "x": 204,
-            "y": 11,
-            "z": 124
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Up, west: Side, power: 5 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Up, power: 0 } }",
-          "pos": {
-            "x": 118,
-            "y": 11,
-            "z": 126
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Up, power: 5 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Up, west: Side, power: 0 } }",
-          "pos": {
-            "x": 205,
-            "y": 12,
-            "z": 124
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Up, west: Side, power: 4 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Up, power: 0 } }",
-          "pos": {
-            "x": 117,
-            "y": 12,
-            "z": 126
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Up, power: 6 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Up, west: Up, power: 0 } }",
-          "pos": {
-            "x": 110,
-            "y": 13,
-            "z": 115
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Up, west: Up, power: 6 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Up, power: 0 } }",
-          "pos": {
-            "x": 112,
-            "y": 13,
-            "z": 115
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Up, power: 4 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 113,
-            "y": 13,
-            "z": 115
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 3 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 114,
-            "y": 13,
-            "z": 115
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 2 } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: South, sticky: true } }",
-          "pos": {
-            "x": 115,
-            "y": 13,
-            "z": 116
-          },
-          "rust": "Piston { piston: RedstonePiston { facing: South, sticky: true, extended: true } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: South, sticky: true } }",
-          "pos": {
-            "x": 115,
-            "y": 13,
-            "z": 117
-          },
-          "rust": "PistonHead { head: RedstonePistonHead { facing: South, sticky: true, short: false } }"
-        },
-        {
-          "interpreter": "Air",
-          "pos": {
-            "x": 115,
-            "y": 13,
-            "z": 118
-          },
-          "rust": "RedstoneBlock"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: Side, south: Side, east: None, west: None, power: 0 } }",
-          "pos": {
-            "x": 115,
-            "y": 13,
-            "z": 119
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: Side, south: Side, east: None, west: None, power: 15 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: Side, south: Side, east: None, west: None, power: 0 } }",
-          "pos": {
-            "x": 115,
-            "y": 13,
-            "z": 120
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: Side, south: Side, east: None, west: None, power: 14 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: Side, south: Side, east: None, west: None, power: 0 } }",
-          "pos": {
-            "x": 115,
-            "y": 13,
-            "z": 121
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: Side, south: Side, east: None, west: None, power: 13 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: Side, south: Side, east: None, west: None, power: 0 } }",
-          "pos": {
-            "x": 115,
-            "y": 13,
-            "z": 122
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: Side, south: Side, east: None, west: None, power: 12 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: Side, south: Side, east: None, west: None, power: 0 } }",
-          "pos": {
-            "x": 115,
-            "y": 13,
-            "z": 123
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: Side, south: Side, east: None, west: None, power: 11 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: Side, south: Side, east: None, west: None, power: 0 } }",
-          "pos": {
-            "x": 115,
-            "y": 13,
-            "z": 124
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: Side, south: Side, east: None, west: None, power: 10 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 206,
-            "y": 13,
-            "z": 124
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 3 } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: East, sticky: true } }",
-          "pos": {
-            "x": 208,
-            "y": 13,
-            "z": 124
-          },
-          "rust": "Piston { piston: RedstonePiston { facing: East, sticky: true, extended: true } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: East, sticky: true } }",
-          "pos": {
-            "x": 209,
-            "y": 13,
-            "z": 124
-          },
-          "rust": "PistonHead { head: RedstonePistonHead { facing: East, sticky: true, short: false } }"
-        },
-        {
-          "interpreter": "Air",
-          "pos": {
-            "x": 210,
-            "y": 13,
-            "z": 124
-          },
-          "rust": "RedstoneBlock"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: Side, south: Side, east: None, west: None, power: 0 } }",
-          "pos": {
-            "x": 115,
-            "y": 13,
-            "z": 125
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: Side, south: Side, east: None, west: None, power: 9 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: Side, south: None, east: Side, west: None, power: 0 } }",
-          "pos": {
-            "x": 115,
-            "y": 13,
-            "z": 126
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: Side, south: None, east: Side, west: None, power: 8 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 116,
-            "y": 13,
-            "z": 126
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 7 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Up, power: 0 } }",
-          "pos": {
-            "x": 109,
-            "y": 14,
-            "z": 115
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Up, power: 7 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 111,
-            "y": 14,
-            "z": 115
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 5 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Up, power: 0 } }",
-          "pos": {
-            "x": 108,
-            "y": 15,
-            "z": 115
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Up, power: 8 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Up, power: 0 } }",
-          "pos": {
-            "x": 107,
-            "y": 16,
-            "z": 115
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Up, power: 9 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: Up, south: Side, east: None, west: None, power: 15 } }",
-          "pos": {
-            "x": 82,
-            "y": 17,
-            "z": 60
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: Side, south: Side, east: Side, west: Side, power: 15 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: Up, south: Side, east: None, west: None, power: 15 } }",
-          "pos": {
-            "x": 82,
-            "y": 17,
-            "z": 66
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: Side, south: Side, east: Side, west: Side, power: 15 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: Up, south: Side, east: None, west: None, power: 15 } }",
-          "pos": {
-            "x": 82,
-            "y": 17,
-            "z": 72
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: Side, south: Side, east: Side, west: Side, power: 15 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: Up, south: Side, east: None, west: None, power: 15 } }",
-          "pos": {
-            "x": 82,
-            "y": 17,
-            "z": 78
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: Side, south: Side, east: Side, west: Side, power: 15 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: Up, south: Side, east: None, west: None, power: 15 } }",
-          "pos": {
-            "x": 82,
-            "y": 17,
-            "z": 84
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: Side, south: Side, east: Side, west: Side, power: 15 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: Up, south: Side, east: None, west: None, power: 15 } }",
-          "pos": {
-            "x": 82,
-            "y": 17,
-            "z": 90
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: Side, south: Side, east: Side, west: Side, power: 15 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: Up, south: Side, east: None, west: None, power: 15 } }",
-          "pos": {
-            "x": 82,
-            "y": 17,
-            "z": 96
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: Side, south: Side, east: Side, west: Side, power: 15 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: Up, south: Side, east: None, west: None, power: 15 } }",
-          "pos": {
-            "x": 82,
-            "y": 17,
-            "z": 102
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: Side, south: Side, east: Side, west: Side, power: 15 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Up, power: 0 } }",
-          "pos": {
-            "x": 106,
-            "y": 17,
-            "z": 115
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Up, power: 10 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 13 } }",
-          "pos": {
-            "x": 82,
-            "y": 18,
-            "z": 56
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: Side, east: None, west: Side, power: 15 } }"
-        },
-        {
-          "interpreter": "Air",
-          "pos": {
-            "x": 82,
-            "y": 18,
-            "z": 57
-          },
-          "rust": "RedstoneBlock"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: Side, east: None, west: Side, power: 14 } }",
-          "pos": {
-            "x": 82,
-            "y": 18,
-            "z": 59
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 13 } }"
-        },
-        {
-          "interpreter": "Air",
-          "pos": {
-            "x": 82,
-            "y": 18,
-            "z": 60
-          },
-          "rust": "GoldBlock"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 12 } }",
-          "pos": {
-            "x": 81,
-            "y": 18,
-            "z": 62
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 14 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 11 } }",
-          "pos": {
-            "x": 82,
-            "y": 18,
-            "z": 62
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: Side, east: None, west: Side, power: 15 } }"
-        },
-        {
-          "interpreter": "Air",
-          "pos": {
-            "x": 82,
-            "y": 18,
-            "z": 63
-          },
-          "rust": "RedstoneBlock"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 13 } }",
-          "pos": {
-            "x": 81,
-            "y": 18,
-            "z": 65
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 12 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: Side, east: None, west: Side, power: 14 } }",
-          "pos": {
-            "x": 82,
-            "y": 18,
-            "z": 65
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 11 } }"
-        },
-        {
-          "interpreter": "Air",
-          "pos": {
-            "x": 82,
-            "y": 18,
-            "z": 66
-          },
-          "rust": "GoldBlock"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 13 } }",
-          "pos": {
-            "x": 82,
-            "y": 18,
-            "z": 68
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: Side, east: None, west: Side, power: 15 } }"
-        },
-        {
-          "interpreter": "Air",
-          "pos": {
-            "x": 82,
-            "y": 18,
-            "z": 69
-          },
-          "rust": "RedstoneBlock"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: Side, east: None, west: Side, power: 14 } }",
-          "pos": {
-            "x": 82,
-            "y": 18,
-            "z": 71
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 13 } }"
-        },
-        {
-          "interpreter": "Air",
-          "pos": {
-            "x": 82,
-            "y": 18,
-            "z": 72
-          },
-          "rust": "GoldBlock"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 11 } }",
-          "pos": {
-            "x": 80,
-            "y": 18,
-            "z": 74
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 13 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 10 } }",
-          "pos": {
-            "x": 81,
-            "y": 18,
-            "z": 74
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 14 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 9 } }",
-          "pos": {
-            "x": 82,
-            "y": 18,
-            "z": 74
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: Side, east: None, west: Side, power: 15 } }"
-        },
-        {
-          "interpreter": "Air",
-          "pos": {
-            "x": 82,
-            "y": 18,
-            "z": 75
-          },
-          "rust": "RedstoneBlock"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 12 } }",
-          "pos": {
-            "x": 80,
-            "y": 18,
-            "z": 77
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 11 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 13 } }",
-          "pos": {
-            "x": 81,
-            "y": 18,
-            "z": 77
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 10 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: Side, east: None, west: Side, power: 14 } }",
-          "pos": {
-            "x": 82,
-            "y": 18,
-            "z": 77
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 9 } }"
-        },
-        {
-          "interpreter": "Air",
-          "pos": {
-            "x": 82,
-            "y": 18,
-            "z": 78
-          },
-          "rust": "GoldBlock"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 13 } }",
-          "pos": {
-            "x": 82,
-            "y": 18,
-            "z": 80
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: Side, east: None, west: Side, power: 15 } }"
-        },
-        {
-          "interpreter": "Air",
-          "pos": {
-            "x": 82,
-            "y": 18,
-            "z": 81
-          },
-          "rust": "RedstoneBlock"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: Side, east: None, west: Side, power: 14 } }",
-          "pos": {
-            "x": 82,
-            "y": 18,
-            "z": 83
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 13 } }"
-        },
-        {
-          "interpreter": "Air",
-          "pos": {
-            "x": 82,
-            "y": 18,
-            "z": 84
-          },
-          "rust": "GoldBlock"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 12 } }",
-          "pos": {
-            "x": 81,
-            "y": 18,
-            "z": 86
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 14 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 11 } }",
-          "pos": {
-            "x": 82,
-            "y": 18,
-            "z": 86
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: Side, east: None, west: Side, power: 15 } }"
-        },
-        {
-          "interpreter": "Air",
-          "pos": {
-            "x": 82,
-            "y": 18,
-            "z": 87
-          },
-          "rust": "RedstoneBlock"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 13 } }",
-          "pos": {
-            "x": 81,
-            "y": 18,
-            "z": 89
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 12 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: Side, east: None, west: Side, power: 14 } }",
-          "pos": {
-            "x": 82,
-            "y": 18,
-            "z": 89
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 11 } }"
-        },
-        {
-          "interpreter": "Air",
-          "pos": {
-            "x": 82,
-            "y": 18,
-            "z": 90
-          },
-          "rust": "GoldBlock"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 13 } }",
-          "pos": {
-            "x": 82,
-            "y": 18,
-            "z": 92
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: Side, east: None, west: Side, power: 15 } }"
-        },
-        {
-          "interpreter": "Air",
-          "pos": {
-            "x": 82,
-            "y": 18,
-            "z": 93
-          },
-          "rust": "RedstoneBlock"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: Side, east: None, west: Side, power: 14 } }",
-          "pos": {
-            "x": 82,
-            "y": 18,
-            "z": 95
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 13 } }"
-        },
-        {
-          "interpreter": "Air",
-          "pos": {
-            "x": 82,
-            "y": 18,
-            "z": 96
-          },
-          "rust": "GoldBlock"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Up, power: 0 } }",
-          "pos": {
-            "x": 76,
-            "y": 18,
-            "z": 98
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Up, power: 9 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 77,
-            "y": 18,
-            "z": 98
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 10 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 78,
-            "y": 18,
-            "z": 98
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 11 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 79,
-            "y": 18,
-            "z": 98
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 12 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 80,
-            "y": 18,
-            "z": 98
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 13 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 81,
-            "y": 18,
-            "z": 98
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 14 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 82,
-            "y": 18,
-            "z": 98
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: Side, east: None, west: Side, power: 15 } }"
-        },
-        {
-          "interpreter": "Air",
-          "pos": {
-            "x": 82,
-            "y": 18,
-            "z": 99
-          },
-          "rust": "RedstoneBlock"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Up, power: 8 } }",
-          "pos": {
-            "x": 76,
-            "y": 18,
-            "z": 101
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Up, power: 0 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 9 } }",
-          "pos": {
-            "x": 77,
-            "y": 18,
-            "z": 101
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 10 } }",
-          "pos": {
-            "x": 78,
-            "y": 18,
-            "z": 101
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 11 } }",
-          "pos": {
-            "x": 79,
-            "y": 18,
-            "z": 101
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 12 } }",
-          "pos": {
-            "x": 80,
-            "y": 18,
-            "z": 101
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 13 } }",
-          "pos": {
-            "x": 81,
-            "y": 18,
-            "z": 101
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: Side, east: None, west: Side, power: 14 } }",
-          "pos": {
-            "x": 82,
-            "y": 18,
-            "z": 101
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }"
-        },
-        {
-          "interpreter": "Air",
-          "pos": {
-            "x": 82,
-            "y": 18,
-            "z": 102
-          },
-          "rust": "GoldBlock"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Up, power: 0 } }",
-          "pos": {
-            "x": 105,
-            "y": 18,
-            "z": 115
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Up, power: 11 } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: Down, sticky: true } }",
-          "pos": {
-            "x": 82,
-            "y": 19,
-            "z": 57
-          },
-          "rust": "PistonHead { head: RedstonePistonHead { facing: Down, sticky: true, short: false } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: Down, sticky: true } }",
-          "pos": {
-            "x": 82,
-            "y": 19,
-            "z": 60
-          },
-          "rust": "PistonHead { head: RedstonePistonHead { facing: Down, sticky: true, short: false } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: Down, sticky: true } }",
-          "pos": {
-            "x": 82,
-            "y": 19,
-            "z": 63
-          },
-          "rust": "PistonHead { head: RedstonePistonHead { facing: Down, sticky: true, short: false } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: Down, sticky: true } }",
-          "pos": {
-            "x": 82,
-            "y": 19,
-            "z": 66
-          },
-          "rust": "PistonHead { head: RedstonePistonHead { facing: Down, sticky: true, short: false } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: Down, sticky: true } }",
-          "pos": {
-            "x": 82,
-            "y": 19,
-            "z": 69
-          },
-          "rust": "PistonHead { head: RedstonePistonHead { facing: Down, sticky: true, short: false } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: Down, sticky: true } }",
-          "pos": {
-            "x": 82,
-            "y": 19,
-            "z": 72
-          },
-          "rust": "PistonHead { head: RedstonePistonHead { facing: Down, sticky: true, short: false } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: Down, sticky: true } }",
-          "pos": {
-            "x": 82,
-            "y": 19,
-            "z": 75
-          },
-          "rust": "PistonHead { head: RedstonePistonHead { facing: Down, sticky: true, short: false } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: Down, sticky: true } }",
-          "pos": {
-            "x": 82,
-            "y": 19,
-            "z": 78
-          },
-          "rust": "PistonHead { head: RedstonePistonHead { facing: Down, sticky: true, short: false } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: Down, sticky: true } }",
-          "pos": {
-            "x": 82,
-            "y": 19,
-            "z": 81
-          },
-          "rust": "PistonHead { head: RedstonePistonHead { facing: Down, sticky: true, short: false } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: Down, sticky: true } }",
-          "pos": {
-            "x": 82,
-            "y": 19,
-            "z": 84
-          },
-          "rust": "PistonHead { head: RedstonePistonHead { facing: Down, sticky: true, short: false } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: Down, sticky: true } }",
-          "pos": {
-            "x": 82,
-            "y": 19,
-            "z": 87
-          },
-          "rust": "PistonHead { head: RedstonePistonHead { facing: Down, sticky: true, short: false } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: Down, sticky: true } }",
-          "pos": {
-            "x": 82,
-            "y": 19,
-            "z": 90
-          },
-          "rust": "PistonHead { head: RedstonePistonHead { facing: Down, sticky: true, short: false } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: Down, sticky: true } }",
-          "pos": {
-            "x": 82,
-            "y": 19,
-            "z": 93
-          },
-          "rust": "PistonHead { head: RedstonePistonHead { facing: Down, sticky: true, short: false } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: Down, sticky: true } }",
-          "pos": {
-            "x": 82,
-            "y": 19,
-            "z": 96
-          },
-          "rust": "PistonHead { head: RedstonePistonHead { facing: Down, sticky: true, short: false } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Up, power: 0 } }",
-          "pos": {
-            "x": 75,
-            "y": 19,
-            "z": 98
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Up, power: 8 } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: Down, sticky: true } }",
-          "pos": {
-            "x": 82,
-            "y": 19,
-            "z": 99
-          },
-          "rust": "PistonHead { head: RedstonePistonHead { facing: Down, sticky: true, short: false } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Up, power: 7 } }",
-          "pos": {
-            "x": 75,
-            "y": 19,
-            "z": 101
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Up, power: 0 } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: Down, sticky: true } }",
-          "pos": {
-            "x": 82,
-            "y": 19,
-            "z": 102
-          },
-          "rust": "PistonHead { head: RedstonePistonHead { facing: Down, sticky: true, short: false } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Up, power: 0 } }",
-          "pos": {
-            "x": 104,
-            "y": 19,
-            "z": 115
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Up, power: 12 } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: Down, sticky: true } }",
-          "pos": {
-            "x": 82,
-            "y": 20,
-            "z": 57
-          },
-          "rust": "Piston { piston: RedstonePiston { facing: Down, sticky: true, extended: true } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: Down, sticky: true } }",
-          "pos": {
-            "x": 82,
-            "y": 20,
-            "z": 60
-          },
-          "rust": "Piston { piston: RedstonePiston { facing: Down, sticky: true, extended: true } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: Down, sticky: true } }",
-          "pos": {
-            "x": 82,
-            "y": 20,
-            "z": 63
-          },
-          "rust": "Piston { piston: RedstonePiston { facing: Down, sticky: true, extended: true } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: Down, sticky: true } }",
-          "pos": {
-            "x": 82,
-            "y": 20,
-            "z": 66
-          },
-          "rust": "Piston { piston: RedstonePiston { facing: Down, sticky: true, extended: true } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: Down, sticky: true } }",
-          "pos": {
-            "x": 82,
-            "y": 20,
-            "z": 69
-          },
-          "rust": "Piston { piston: RedstonePiston { facing: Down, sticky: true, extended: true } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: Down, sticky: true } }",
-          "pos": {
-            "x": 82,
-            "y": 20,
-            "z": 72
-          },
-          "rust": "Piston { piston: RedstonePiston { facing: Down, sticky: true, extended: true } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: Down, sticky: true } }",
-          "pos": {
-            "x": 82,
-            "y": 20,
-            "z": 75
-          },
-          "rust": "Piston { piston: RedstonePiston { facing: Down, sticky: true, extended: true } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: Down, sticky: true } }",
-          "pos": {
-            "x": 82,
-            "y": 20,
-            "z": 78
-          },
-          "rust": "Piston { piston: RedstonePiston { facing: Down, sticky: true, extended: true } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: Down, sticky: true } }",
-          "pos": {
-            "x": 82,
-            "y": 20,
-            "z": 81
-          },
-          "rust": "Piston { piston: RedstonePiston { facing: Down, sticky: true, extended: true } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: Down, sticky: true } }",
-          "pos": {
-            "x": 82,
-            "y": 20,
-            "z": 84
-          },
-          "rust": "Piston { piston: RedstonePiston { facing: Down, sticky: true, extended: true } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: Down, sticky: true } }",
-          "pos": {
-            "x": 82,
-            "y": 20,
-            "z": 87
-          },
-          "rust": "Piston { piston: RedstonePiston { facing: Down, sticky: true, extended: true } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: Down, sticky: true } }",
-          "pos": {
-            "x": 82,
-            "y": 20,
-            "z": 90
-          },
-          "rust": "Piston { piston: RedstonePiston { facing: Down, sticky: true, extended: true } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: Down, sticky: true } }",
-          "pos": {
-            "x": 82,
-            "y": 20,
-            "z": 93
-          },
-          "rust": "Piston { piston: RedstonePiston { facing: Down, sticky: true, extended: true } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: Down, sticky: true } }",
-          "pos": {
-            "x": 82,
-            "y": 20,
-            "z": 96
-          },
-          "rust": "Piston { piston: RedstonePiston { facing: Down, sticky: true, extended: true } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Up, power: 0 } }",
-          "pos": {
-            "x": 74,
-            "y": 20,
-            "z": 98
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Up, power: 7 } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: Down, sticky: true } }",
-          "pos": {
-            "x": 82,
-            "y": 20,
-            "z": 99
-          },
-          "rust": "Piston { piston: RedstonePiston { facing: Down, sticky: true, extended: true } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Up, power: 6 } }",
-          "pos": {
-            "x": 74,
-            "y": 20,
-            "z": 101
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Up, power: 0 } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: Down, sticky: true } }",
-          "pos": {
-            "x": 82,
-            "y": 20,
-            "z": 102
-          },
-          "rust": "Piston { piston: RedstonePiston { facing: Down, sticky: true, extended: true } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Up, power: 0 } }",
-          "pos": {
-            "x": 103,
-            "y": 20,
-            "z": 115
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Up, power: 13 } }"
-        },
-        {
-          "interpreter": "Air",
-          "pos": {
-            "x": 82,
-            "y": 21,
-            "z": 57
-          },
-          "rust": "RedstoneBlock"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: North, sticky: true } }",
-          "pos": {
-            "x": 82,
-            "y": 21,
-            "z": 58
-          },
-          "rust": "PistonHead { head: RedstonePistonHead { facing: North, sticky: true, short: false } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: North, sticky: true } }",
-          "pos": {
-            "x": 82,
-            "y": 21,
-            "z": 59
-          },
-          "rust": "Piston { piston: RedstonePiston { facing: North, sticky: true, extended: true } }"
-        },
-        {
-          "interpreter": "Air",
-          "pos": {
-            "x": 82,
-            "y": 21,
-            "z": 60
-          },
-          "rust": "RedstoneBlock"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: North, sticky: true } }",
-          "pos": {
-            "x": 82,
-            "y": 21,
-            "z": 61
-          },
-          "rust": "PistonHead { head: RedstonePistonHead { facing: North, sticky: true, short: false } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: North, sticky: true } }",
-          "pos": {
-            "x": 82,
-            "y": 21,
-            "z": 62
-          },
-          "rust": "Piston { piston: RedstonePiston { facing: North, sticky: true, extended: true } }"
-        },
-        {
-          "interpreter": "Air",
-          "pos": {
-            "x": 82,
-            "y": 21,
-            "z": 63
-          },
-          "rust": "RedstoneBlock"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: North, sticky: true } }",
-          "pos": {
-            "x": 82,
-            "y": 21,
-            "z": 64
-          },
-          "rust": "PistonHead { head: RedstonePistonHead { facing: North, sticky: true, short: false } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: North, sticky: true } }",
-          "pos": {
-            "x": 82,
-            "y": 21,
-            "z": 65
-          },
-          "rust": "Piston { piston: RedstonePiston { facing: North, sticky: true, extended: true } }"
-        },
-        {
-          "interpreter": "Air",
-          "pos": {
-            "x": 82,
-            "y": 21,
-            "z": 66
-          },
-          "rust": "RedstoneBlock"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: North, sticky: true } }",
-          "pos": {
-            "x": 82,
-            "y": 21,
-            "z": 67
-          },
-          "rust": "PistonHead { head: RedstonePistonHead { facing: North, sticky: true, short: false } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: North, sticky: true } }",
-          "pos": {
-            "x": 82,
-            "y": 21,
-            "z": 68
-          },
-          "rust": "Piston { piston: RedstonePiston { facing: North, sticky: true, extended: true } }"
-        },
-        {
-          "interpreter": "Air",
-          "pos": {
-            "x": 82,
-            "y": 21,
-            "z": 69
-          },
-          "rust": "RedstoneBlock"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: North, sticky: true } }",
-          "pos": {
-            "x": 82,
-            "y": 21,
-            "z": 70
-          },
-          "rust": "PistonHead { head: RedstonePistonHead { facing: North, sticky: true, short: false } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: North, sticky: true } }",
-          "pos": {
-            "x": 82,
-            "y": 21,
-            "z": 71
-          },
-          "rust": "Piston { piston: RedstonePiston { facing: North, sticky: true, extended: true } }"
-        },
-        {
-          "interpreter": "Air",
-          "pos": {
-            "x": 82,
-            "y": 21,
-            "z": 72
-          },
-          "rust": "RedstoneBlock"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: North, sticky: true } }",
-          "pos": {
-            "x": 82,
-            "y": 21,
-            "z": 73
-          },
-          "rust": "PistonHead { head: RedstonePistonHead { facing: North, sticky: true, short: false } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: North, sticky: true } }",
-          "pos": {
-            "x": 82,
-            "y": 21,
-            "z": 74
-          },
-          "rust": "Piston { piston: RedstonePiston { facing: North, sticky: true, extended: true } }"
-        },
-        {
-          "interpreter": "Air",
-          "pos": {
-            "x": 82,
-            "y": 21,
-            "z": 75
-          },
-          "rust": "RedstoneBlock"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: North, sticky: true } }",
-          "pos": {
-            "x": 82,
-            "y": 21,
-            "z": 76
-          },
-          "rust": "PistonHead { head: RedstonePistonHead { facing: North, sticky: true, short: false } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: North, sticky: true } }",
-          "pos": {
-            "x": 82,
-            "y": 21,
-            "z": 77
-          },
-          "rust": "Piston { piston: RedstonePiston { facing: North, sticky: true, extended: true } }"
-        },
-        {
-          "interpreter": "Air",
-          "pos": {
-            "x": 82,
-            "y": 21,
-            "z": 78
-          },
-          "rust": "RedstoneBlock"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: North, sticky: true } }",
-          "pos": {
-            "x": 82,
-            "y": 21,
-            "z": 79
-          },
-          "rust": "PistonHead { head: RedstonePistonHead { facing: North, sticky: true, short: false } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: North, sticky: true } }",
-          "pos": {
-            "x": 82,
-            "y": 21,
-            "z": 80
-          },
-          "rust": "Piston { piston: RedstonePiston { facing: North, sticky: true, extended: true } }"
-        },
-        {
-          "interpreter": "Air",
-          "pos": {
-            "x": 82,
-            "y": 21,
-            "z": 81
-          },
-          "rust": "RedstoneBlock"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: North, sticky: true } }",
-          "pos": {
-            "x": 82,
-            "y": 21,
-            "z": 82
-          },
-          "rust": "PistonHead { head: RedstonePistonHead { facing: North, sticky: true, short: false } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: North, sticky: true } }",
-          "pos": {
-            "x": 82,
-            "y": 21,
-            "z": 83
-          },
-          "rust": "Piston { piston: RedstonePiston { facing: North, sticky: true, extended: true } }"
-        },
-        {
-          "interpreter": "Air",
-          "pos": {
-            "x": 82,
-            "y": 21,
-            "z": 84
-          },
-          "rust": "RedstoneBlock"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: North, sticky: true } }",
-          "pos": {
-            "x": 82,
-            "y": 21,
-            "z": 85
-          },
-          "rust": "PistonHead { head: RedstonePistonHead { facing: North, sticky: true, short: false } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: North, sticky: true } }",
-          "pos": {
-            "x": 82,
-            "y": 21,
-            "z": 86
-          },
-          "rust": "Piston { piston: RedstonePiston { facing: North, sticky: true, extended: true } }"
-        },
-        {
-          "interpreter": "Air",
-          "pos": {
-            "x": 82,
-            "y": 21,
-            "z": 87
-          },
-          "rust": "RedstoneBlock"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: North, sticky: true } }",
-          "pos": {
-            "x": 82,
-            "y": 21,
-            "z": 88
-          },
-          "rust": "PistonHead { head: RedstonePistonHead { facing: North, sticky: true, short: false } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: North, sticky: true } }",
-          "pos": {
-            "x": 82,
-            "y": 21,
-            "z": 89
-          },
-          "rust": "Piston { piston: RedstonePiston { facing: North, sticky: true, extended: true } }"
-        },
-        {
-          "interpreter": "Air",
-          "pos": {
-            "x": 82,
-            "y": 21,
-            "z": 90
-          },
-          "rust": "RedstoneBlock"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: North, sticky: true } }",
-          "pos": {
-            "x": 82,
-            "y": 21,
-            "z": 91
-          },
-          "rust": "PistonHead { head: RedstonePistonHead { facing: North, sticky: true, short: false } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: North, sticky: true } }",
-          "pos": {
-            "x": 82,
-            "y": 21,
-            "z": 92
-          },
-          "rust": "Piston { piston: RedstonePiston { facing: North, sticky: true, extended: true } }"
-        },
-        {
-          "interpreter": "Air",
-          "pos": {
-            "x": 82,
-            "y": 21,
-            "z": 93
-          },
-          "rust": "RedstoneBlock"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: North, sticky: true } }",
-          "pos": {
-            "x": 82,
-            "y": 21,
-            "z": 94
-          },
-          "rust": "PistonHead { head: RedstonePistonHead { facing: North, sticky: true, short: false } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: North, sticky: true } }",
-          "pos": {
-            "x": 82,
-            "y": 21,
-            "z": 95
-          },
-          "rust": "Piston { piston: RedstonePiston { facing: North, sticky: true, extended: true } }"
-        },
-        {
-          "interpreter": "Air",
-          "pos": {
-            "x": 82,
-            "y": 21,
-            "z": 96
-          },
-          "rust": "RedstoneBlock"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: North, sticky: true } }",
-          "pos": {
-            "x": 82,
-            "y": 21,
-            "z": 97
-          },
-          "rust": "PistonHead { head: RedstonePistonHead { facing: North, sticky: true, short: false } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 73,
-            "y": 21,
-            "z": 98
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 6 } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: North, sticky: true } }",
-          "pos": {
-            "x": 82,
-            "y": 21,
-            "z": 98
-          },
-          "rust": "Piston { piston: RedstonePiston { facing: North, sticky: true, extended: true } }"
-        },
-        {
-          "interpreter": "Air",
-          "pos": {
-            "x": 82,
-            "y": 21,
-            "z": 99
-          },
-          "rust": "RedstoneBlock"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: North, sticky: true } }",
-          "pos": {
-            "x": 82,
-            "y": 21,
-            "z": 100
-          },
-          "rust": "PistonHead { head: RedstonePistonHead { facing: North, sticky: true, short: false } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 5 } }",
-          "pos": {
-            "x": 73,
-            "y": 21,
-            "z": 101
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: North, sticky: true } }",
-          "pos": {
-            "x": 82,
-            "y": 21,
-            "z": 101
-          },
-          "rust": "Piston { piston: RedstonePiston { facing: North, sticky: true, extended: true } }"
-        },
-        {
-          "interpreter": "Air",
-          "pos": {
-            "x": 82,
-            "y": 21,
-            "z": 102
-          },
-          "rust": "RedstoneBlock"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: North, sticky: true } }",
-          "pos": {
-            "x": 82,
-            "y": 21,
-            "z": 103
-          },
-          "rust": "PistonHead { head: RedstonePistonHead { facing: North, sticky: true, short: false } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: North, sticky: true } }",
-          "pos": {
-            "x": 82,
-            "y": 21,
-            "z": 104
-          },
-          "rust": "Piston { piston: RedstonePiston { facing: North, sticky: true, extended: true } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Up, power: 0 } }",
-          "pos": {
-            "x": 102,
-            "y": 21,
-            "z": 115
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Up, power: 14 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 74,
-            "y": 22,
-            "z": 98
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 5 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 4 } }",
-          "pos": {
-            "x": 74,
-            "y": 22,
-            "z": 101
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: Side, south: Up, east: None, west: None, power: 0 } }",
-          "pos": {
-            "x": 82,
-            "y": 22,
-            "z": 105
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: Side, south: Up, east: None, west: None, power: 13 } }"
-        },
-        {
-          "interpreter": "Air",
-          "pos": {
-            "x": 100,
-            "y": 22,
-            "z": 115
-          },
-          "rust": "RedstoneBlock"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 101,
-            "y": 22,
-            "z": 115
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 15 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 73,
-            "y": 23,
-            "z": 98
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 4 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 3 } }",
-          "pos": {
-            "x": 73,
-            "y": 23,
-            "z": 101
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: Side, south: Up, east: None, west: None, power: 0 } }",
-          "pos": {
-            "x": 82,
-            "y": 23,
-            "z": 106
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: Side, south: Up, east: None, west: None, power: 14 } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: Down, sticky: true } }",
-          "pos": {
-            "x": 100,
-            "y": 23,
-            "z": 115
-          },
-          "rust": "PistonHead { head: RedstonePistonHead { facing: Down, sticky: true, short: false } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 74,
-            "y": 24,
-            "z": 98
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 3 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 2 } }",
-          "pos": {
-            "x": 74,
-            "y": 24,
-            "z": 101
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: Side, south: Side, east: None, west: None, power: 0 } }",
-          "pos": {
-            "x": 82,
-            "y": 24,
-            "z": 107
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: Side, south: Side, east: None, west: None, power: 15 } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: Down, sticky: true } }",
-          "pos": {
-            "x": 100,
-            "y": 24,
-            "z": 115
-          },
-          "rust": "Piston { piston: RedstonePiston { facing: Down, sticky: true, extended: true } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 73,
-            "y": 25,
-            "z": 98
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 2 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 1 } }",
-          "pos": {
-            "x": 73,
-            "y": 25,
-            "z": 101
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }"
-        },
-        {
-          "interpreter": "RedstoneBlock",
-          "pos": {
-            "x": 92,
-            "y": 25,
-            "z": 102
-          },
-          "rust": "Air"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: Side, south: Side, east: Side, west: Side, power: 15 } }",
-          "pos": {
-            "x": 92,
-            "y": 25,
-            "z": 103
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: Side, south: Side, east: Side, west: Side, power: 0 } }"
-        },
-        {
-          "interpreter": "Piston { piston: RedstonePiston { facing: South, sticky: true, extended: true } }",
-          "pos": {
-            "x": 92,
-            "y": 25,
-            "z": 104
-          },
-          "rust": "MovingPiston { moving: RedstoneMovingPiston { facing: South, sticky: true } }"
-        },
-        {
-          "interpreter": "PistonHead { head: RedstonePistonHead { facing: South, sticky: true, short: false } }",
-          "pos": {
-            "x": 92,
-            "y": 25,
-            "z": 105
-          },
-          "rust": "MovingPiston { moving: RedstoneMovingPiston { facing: South, sticky: true } }"
-        },
-        {
-          "interpreter": "Air",
-          "pos": {
-            "x": 100,
-            "y": 25,
-            "z": 106
-          },
-          "rust": "RedstoneBlock"
-        },
-        {
-          "interpreter": "Air",
-          "pos": {
-            "x": 82,
-            "y": 25,
-            "z": 107
-          },
-          "rust": "RedstoneBlock"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: Side, south: Side, east: None, west: None, power: 0 } }",
-          "pos": {
-            "x": 100,
-            "y": 25,
-            "z": 107
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: Side, south: Side, east: None, west: None, power: 15 } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: North, sticky: true } }",
-          "pos": {
-            "x": 82,
-            "y": 25,
-            "z": 108
-          },
-          "rust": "PistonHead { head: RedstonePistonHead { facing: North, sticky: true, short: false } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: Side, south: Side, east: None, west: None, power: 0 } }",
-          "pos": {
-            "x": 100,
-            "y": 25,
-            "z": 108
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: Side, south: Side, east: None, west: None, power: 14 } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: North, sticky: true } }",
-          "pos": {
-            "x": 82,
-            "y": 25,
-            "z": 109
-          },
-          "rust": "Piston { piston: RedstonePiston { facing: North, sticky: true, extended: true } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: Side, south: Side, east: None, west: None, power: 0 } }",
-          "pos": {
-            "x": 100,
-            "y": 25,
-            "z": 109
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: Side, south: Side, east: None, west: None, power: 13 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: Side, south: Side, east: None, west: None, power: 0 } }",
-          "pos": {
-            "x": 100,
-            "y": 25,
-            "z": 110
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: Side, south: Side, east: None, west: None, power: 12 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: Side, south: Side, east: None, west: None, power: 0 } }",
-          "pos": {
-            "x": 82,
-            "y": 25,
-            "z": 111
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: Side, south: Side, east: None, west: None, power: 13 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: Side, south: Side, east: None, west: None, power: 0 } }",
-          "pos": {
-            "x": 100,
-            "y": 25,
-            "z": 111
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: Side, south: Side, east: None, west: None, power: 11 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: Side, south: Side, east: None, west: None, power: 0 } }",
-          "pos": {
-            "x": 82,
-            "y": 25,
-            "z": 112
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: Side, south: Side, east: None, west: None, power: 14 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: Side, south: Side, east: None, west: None, power: 0 } }",
-          "pos": {
-            "x": 82,
-            "y": 25,
-            "z": 113
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: Side, south: Side, east: None, west: None, power: 15 } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: South, sticky: true } }",
-          "pos": {
-            "x": 100,
-            "y": 25,
-            "z": 113
-          },
-          "rust": "Piston { piston: RedstonePiston { facing: South, sticky: true, extended: true } }"
-        },
-        {
-          "interpreter": "Air",
-          "pos": {
-            "x": 82,
-            "y": 25,
-            "z": 114
-          },
-          "rust": "RedstoneBlock"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: South, sticky: true } }",
-          "pos": {
-            "x": 100,
-            "y": 25,
-            "z": 114
-          },
-          "rust": "PistonHead { head: RedstonePistonHead { facing: South, sticky: true, short: false } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: North, sticky: true } }",
-          "pos": {
-            "x": 82,
-            "y": 25,
-            "z": 115
-          },
-          "rust": "PistonHead { head: RedstonePistonHead { facing: North, sticky: true, short: false } }"
-        },
-        {
-          "interpreter": "Air",
-          "pos": {
-            "x": 100,
-            "y": 25,
-            "z": 115
-          },
-          "rust": "RedstoneBlock"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: North, sticky: true } }",
-          "pos": {
-            "x": 82,
-            "y": 25,
-            "z": 116
-          },
-          "rust": "Piston { piston: RedstonePiston { facing: North, sticky: true, extended: true } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Up, power: 0 } }",
-          "pos": {
-            "x": 74,
-            "y": 26,
-            "z": 97
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: Side, east: None, west: Up, power: 15 } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: East, sticky: true } }",
-          "pos": {
-            "x": 72,
-            "y": 26,
-            "z": 98
-          },
-          "rust": "Piston { piston: RedstonePiston { facing: East, sticky: true, extended: true } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: East, sticky: true } }",
-          "pos": {
-            "x": 73,
-            "y": 26,
-            "z": 98
-          },
-          "rust": "PistonHead { head: RedstonePistonHead { facing: East, sticky: true, short: false } }"
-        },
-        {
-          "interpreter": "Air",
-          "pos": {
-            "x": 74,
-            "y": 26,
-            "z": 98
-          },
-          "rust": "RedstoneBlock"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: Side, east: None, west: Up, power: 15 } }",
-          "pos": {
-            "x": 74,
-            "y": 26,
-            "z": 100
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Up, power: 0 } }"
-        },
-        {
-          "interpreter": "Piston { piston: RedstonePiston { facing: East, sticky: true, extended: true } }",
-          "pos": {
-            "x": 72,
-            "y": 26,
-            "z": 101
-          },
-          "rust": "MovingPiston { moving: RedstoneMovingPiston { facing: East, sticky: true } }"
-        },
-        {
-          "interpreter": "PistonHead { head: RedstonePistonHead { facing: East, sticky: true, short: false } }",
-          "pos": {
-            "x": 73,
-            "y": 26,
-            "z": 101
-          },
-          "rust": "MovingPiston { moving: RedstoneMovingPiston { facing: East, sticky: true } }"
-        },
-        {
-          "interpreter": "RedstoneBlock",
-          "pos": {
-            "x": 74,
-            "y": 26,
-            "z": 101
-          },
-          "rust": "Air"
-        },
-        {
-          "interpreter": "PistonHead { head: RedstonePistonHead { facing: Down, sticky: true, short: false } }",
-          "pos": {
-            "x": 92,
-            "y": 26,
-            "z": 102
-          },
-          "rust": "MovingPiston { moving: RedstoneMovingPiston { facing: Down, sticky: true } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: Down, sticky: true } }",
-          "pos": {
-            "x": 92,
-            "y": 26,
-            "z": 106
-          },
-          "rust": "PistonHead { head: RedstonePistonHead { facing: Down, sticky: true, short: false } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: Down, sticky: true } }",
-          "pos": {
-            "x": 100,
-            "y": 26,
-            "z": 106
-          },
-          "rust": "PistonHead { head: RedstonePistonHead { facing: Down, sticky: true, short: false } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 73,
-            "y": 27,
-            "z": 97
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 14 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 14 } }",
-          "pos": {
-            "x": 73,
-            "y": 27,
-            "z": 100
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }"
-        },
-        {
-          "interpreter": "RedstoneBlock",
-          "pos": {
-            "x": 75,
-            "y": 27,
-            "z": 101
-          },
-          "rust": "Air"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 15 } }",
-          "pos": {
-            "x": 76,
-            "y": 27,
-            "z": 101
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 14 } }",
-          "pos": {
-            "x": 77,
-            "y": 27,
-            "z": 101
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 13 } }",
-          "pos": {
-            "x": 78,
-            "y": 27,
-            "z": 101
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 12 } }",
-          "pos": {
-            "x": 79,
-            "y": 27,
-            "z": 101
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 11 } }",
-          "pos": {
-            "x": 80,
-            "y": 27,
-            "z": 101
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 10 } }",
-          "pos": {
-            "x": 81,
-            "y": 27,
-            "z": 101
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 9 } }",
-          "pos": {
-            "x": 82,
-            "y": 27,
-            "z": 101
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }"
-        },
-        {
-          "interpreter": "PistonHead { head: RedstonePistonHead { facing: North, sticky: true, short: false } }",
-          "pos": {
-            "x": 75,
-            "y": 27,
-            "z": 102
-          },
-          "rust": "MovingPiston { moving: RedstoneMovingPiston { facing: North, sticky: true } }"
-        },
-        {
-          "interpreter": "Piston { piston: RedstonePiston { facing: Down, sticky: true, extended: true } }",
-          "pos": {
-            "x": 92,
-            "y": 27,
-            "z": 102
-          },
-          "rust": "MovingPiston { moving: RedstoneMovingPiston { facing: Down, sticky: true } }"
-        },
-        {
-          "interpreter": "Piston { piston: RedstonePiston { facing: North, sticky: true, extended: true } }",
-          "pos": {
-            "x": 75,
-            "y": 27,
-            "z": 103
-          },
-          "rust": "MovingPiston { moving: RedstoneMovingPiston { facing: North, sticky: true } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: Side, south: Side, east: Side, west: Side, power: 15 } }",
-          "pos": {
-            "x": 74,
-            "y": 27,
-            "z": 104
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: Side, south: Side, east: Side, west: Side, power: 0 } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: Down, sticky: true } }",
-          "pos": {
-            "x": 92,
-            "y": 27,
-            "z": 106
-          },
-          "rust": "Piston { piston: RedstonePiston { facing: Down, sticky: true, extended: true } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: Down, sticky: true } }",
-          "pos": {
-            "x": 100,
-            "y": 27,
-            "z": 106
-          },
-          "rust": "Piston { piston: RedstonePiston { facing: Down, sticky: true, extended: true } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 74,
-            "y": 28,
-            "z": 97
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 13 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: Side, east: None, west: Side, power: 13 } }",
-          "pos": {
-            "x": 74,
-            "y": 28,
-            "z": 100
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: Side, east: None, west: Side, power: 0 } }"
-        },
-        {
-          "interpreter": "Piston { piston: RedstonePiston { facing: East, sticky: true, extended: true } }",
-          "pos": {
-            "x": 83,
-            "y": 28,
-            "z": 101
-          },
-          "rust": "MovingPiston { moving: RedstoneMovingPiston { facing: East, sticky: true } }"
-        },
-        {
-          "interpreter": "PistonHead { head: RedstonePistonHead { facing: East, sticky: true, short: false } }",
-          "pos": {
-            "x": 84,
-            "y": 28,
-            "z": 101
-          },
-          "rust": "MovingPiston { moving: RedstoneMovingPiston { facing: East, sticky: true } }"
-        },
-        {
-          "interpreter": "RedstoneBlock",
-          "pos": {
-            "x": 85,
-            "y": 28,
-            "z": 101
-          },
-          "rust": "Air"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 15 } }",
-          "pos": {
-            "x": 86,
-            "y": 28,
-            "z": 101
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 14 } }",
-          "pos": {
-            "x": 87,
-            "y": 28,
-            "z": 101
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 13 } }",
-          "pos": {
-            "x": 88,
-            "y": 28,
-            "z": 101
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 12 } }",
-          "pos": {
-            "x": 89,
-            "y": 28,
-            "z": 101
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 11 } }",
-          "pos": {
-            "x": 90,
-            "y": 28,
-            "z": 101
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 10 } }",
-          "pos": {
-            "x": 91,
-            "y": 28,
-            "z": 101
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 9 } }",
-          "pos": {
-            "x": 92,
-            "y": 28,
-            "z": 101
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 8 } }",
-          "pos": {
-            "x": 93,
-            "y": 28,
-            "z": 101
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 7 } }",
-          "pos": {
-            "x": 94,
-            "y": 28,
-            "z": 101
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 6 } }",
-          "pos": {
-            "x": 95,
-            "y": 28,
-            "z": 101
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 5 } }",
-          "pos": {
-            "x": 96,
-            "y": 28,
-            "z": 101
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 4 } }",
-          "pos": {
-            "x": 97,
-            "y": 28,
-            "z": 101
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 3 } }",
-          "pos": {
-            "x": 98,
-            "y": 28,
-            "z": 101
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 2 } }",
-          "pos": {
-            "x": 99,
-            "y": 28,
-            "z": 101
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 1 } }",
-          "pos": {
-            "x": 100,
-            "y": 28,
-            "z": 101
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }"
-        },
-        {
-          "interpreter": "Piston { piston: RedstonePiston { facing: East, sticky: true, extended: true } }",
-          "pos": {
-            "x": 101,
-            "y": 28,
-            "z": 101
-          },
-          "rust": "MovingPiston { moving: RedstoneMovingPiston { facing: East, sticky: true } }"
-        },
-        {
-          "interpreter": "PistonHead { head: RedstonePistonHead { facing: East, sticky: true, short: false } }",
-          "pos": {
-            "x": 102,
-            "y": 28,
-            "z": 101
-          },
-          "rust": "MovingPiston { moving: RedstoneMovingPiston { facing: East, sticky: true } }"
-        },
-        {
-          "interpreter": "RedstoneBlock",
-          "pos": {
-            "x": 103,
-            "y": 28,
-            "z": 101
-          },
-          "rust": "Air"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: Side, south: Side, east: Side, west: Side, power: 15 } }",
-          "pos": {
-            "x": 103,
-            "y": 28,
-            "z": 102
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: Side, south: Side, east: Side, west: Side, power: 0 } }"
-        },
-        {
-          "interpreter": "RedstoneBlock",
-          "pos": {
-            "x": 74,
-            "y": 28,
-            "z": 104
-          },
-          "rust": "Air"
-        },
-        {
-          "interpreter": "Air",
-          "pos": {
-            "x": 92,
-            "y": 28,
-            "z": 106
-          },
-          "rust": "RedstoneBlock"
-        },
-        {
-          "interpreter": "Air",
-          "pos": {
-            "x": 100,
-            "y": 28,
-            "z": 106
-          },
-          "rust": "RedstoneBlock"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 73,
-            "y": 29,
-            "z": 97
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 12 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: Side, south: Up, east: None, west: None, power: 12 } }",
-          "pos": {
-            "x": 74,
-            "y": 29,
-            "z": 101
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: Side, south: Up, east: None, west: None, power: 0 } }"
-        },
-        {
-          "interpreter": "PistonHead { head: RedstonePistonHead { facing: Down, sticky: true, short: false } }",
-          "pos": {
-            "x": 74,
-            "y": 29,
-            "z": 104
-          },
-          "rust": "MovingPiston { moving: RedstoneMovingPiston { facing: Down, sticky: true } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: Down, sticky: true } }",
-          "pos": {
-            "x": 92,
-            "y": 29,
-            "z": 106
-          },
-          "rust": "PistonHead { head: RedstonePistonHead { facing: Down, sticky: true, short: false } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: Down, sticky: true } }",
-          "pos": {
-            "x": 100,
-            "y": 29,
-            "z": 106
-          },
-          "rust": "PistonHead { head: RedstonePistonHead { facing: Down, sticky: true, short: false } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 74,
-            "y": 30,
-            "z": 97
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 11 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: Side, south: Up, east: None, west: None, power: 11 } }",
-          "pos": {
-            "x": 74,
-            "y": 30,
-            "z": 102
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: Side, south: Up, east: None, west: None, power: 0 } }"
-        },
-        {
-          "interpreter": "Piston { piston: RedstonePiston { facing: Down, sticky: true, extended: true } }",
-          "pos": {
-            "x": 74,
-            "y": 30,
-            "z": 104
-          },
-          "rust": "MovingPiston { moving: RedstoneMovingPiston { facing: Down, sticky: true } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: Down, sticky: true } }",
-          "pos": {
-            "x": 92,
-            "y": 30,
-            "z": 106
-          },
-          "rust": "Piston { piston: RedstonePiston { facing: Down, sticky: true, extended: true } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: Down, sticky: true } }",
-          "pos": {
-            "x": 100,
-            "y": 30,
-            "z": 106
-          },
-          "rust": "Piston { piston: RedstonePiston { facing: Down, sticky: true, extended: true } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 73,
-            "y": 31,
-            "z": 97
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 10 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: Side, south: None, east: Up, west: None, power: 10 } }",
-          "pos": {
-            "x": 74,
-            "y": 31,
-            "z": 103
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: Side, south: None, east: Up, west: None, power: 0 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: Up, south: Side, east: None, west: None, power: 6 } }",
-          "pos": {
-            "x": 77,
-            "y": 31,
-            "z": 104
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: Up, south: Side, east: None, west: None, power: 0 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: Up, south: Side, east: None, west: None, power: 2 } }",
-          "pos": {
-            "x": 81,
-            "y": 31,
-            "z": 104
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: Up, south: Side, east: None, west: None, power: 0 } }"
-        },
-        {
-          "interpreter": "Air",
-          "pos": {
-            "x": 92,
-            "y": 31,
-            "z": 106
-          },
-          "rust": "RedstoneBlock"
-        },
-        {
-          "interpreter": "Air",
-          "pos": {
-            "x": 100,
-            "y": 31,
-            "z": 106
-          },
-          "rust": "RedstoneBlock"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 74,
-            "y": 32,
-            "z": 97
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 9 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Up, west: Side, power: 9 } }",
-          "pos": {
-            "x": 75,
-            "y": 32,
-            "z": 103
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Up, west: Side, power: 0 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: Side, east: Up, west: Up, power: 7 } }",
-          "pos": {
-            "x": 77,
-            "y": 32,
-            "z": 103
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: Side, east: Up, west: Up, power: 0 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: Side, east: None, west: Up, power: 3 } }",
-          "pos": {
-            "x": 81,
-            "y": 32,
-            "z": 103
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: Side, east: None, west: Up, power: 0 } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: Down, sticky: true } }",
-          "pos": {
-            "x": 92,
-            "y": 32,
-            "z": 106
-          },
-          "rust": "PistonHead { head: RedstonePistonHead { facing: Down, sticky: true, short: false } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: Down, sticky: true } }",
-          "pos": {
-            "x": 100,
-            "y": 32,
-            "z": 106
-          },
-          "rust": "PistonHead { head: RedstonePistonHead { facing: Down, sticky: true, short: false } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 73,
-            "y": 33,
-            "z": 97
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 8 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 8 } }",
-          "pos": {
-            "x": 76,
-            "y": 33,
-            "z": 103
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 6 } }",
-          "pos": {
-            "x": 78,
-            "y": 33,
-            "z": 103
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 5 } }",
-          "pos": {
-            "x": 79,
-            "y": 33,
-            "z": 103
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 4 } }",
-          "pos": {
-            "x": 80,
-            "y": 33,
-            "z": 103
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: Down, sticky: true } }",
-          "pos": {
-            "x": 92,
-            "y": 33,
-            "z": 106
-          },
-          "rust": "Piston { piston: RedstonePiston { facing: Down, sticky: true, extended: true } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: Down, sticky: true } }",
-          "pos": {
-            "x": 100,
-            "y": 33,
-            "z": 106
-          },
-          "rust": "Piston { piston: RedstonePiston { facing: Down, sticky: true, extended: true } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 74,
-            "y": 34,
-            "z": 97
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 7 } }"
-        },
-        {
-          "interpreter": "Air",
-          "pos": {
-            "x": 92,
-            "y": 34,
-            "z": 102
-          },
-          "rust": "RedstoneBlock"
-        },
-        {
-          "interpreter": "Air",
-          "pos": {
-            "x": 100,
-            "y": 34,
-            "z": 102
-          },
-          "rust": "RedstoneBlock"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: Side, south: Side, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 92,
-            "y": 34,
-            "z": 103
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: Side, south: Side, east: Side, west: Side, power: 15 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: Side, south: Side, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 100,
-            "y": 34,
-            "z": 103
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: Side, south: Side, east: Side, west: Side, power: 15 } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: South, sticky: true } }",
-          "pos": {
-            "x": 92,
-            "y": 34,
-            "z": 104
-          },
-          "rust": "Piston { piston: RedstonePiston { facing: South, sticky: true, extended: true } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: South, sticky: true } }",
-          "pos": {
-            "x": 100,
-            "y": 34,
-            "z": 104
-          },
-          "rust": "Piston { piston: RedstonePiston { facing: South, sticky: true, extended: true } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: South, sticky: true } }",
-          "pos": {
-            "x": 92,
-            "y": 34,
-            "z": 105
-          },
-          "rust": "PistonHead { head: RedstonePistonHead { facing: South, sticky: true, short: false } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: South, sticky: true } }",
-          "pos": {
-            "x": 100,
-            "y": 34,
-            "z": 105
-          },
-          "rust": "PistonHead { head: RedstonePistonHead { facing: South, sticky: true, short: false } }"
-        },
-        {
-          "interpreter": "Air",
-          "pos": {
-            "x": 92,
-            "y": 34,
-            "z": 106
-          },
-          "rust": "RedstoneBlock"
-        },
-        {
-          "interpreter": "Air",
-          "pos": {
-            "x": 100,
-            "y": 34,
-            "z": 106
-          },
-          "rust": "RedstoneBlock"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 73,
-            "y": 35,
-            "z": 97
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 6 } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: Down, sticky: true } }",
-          "pos": {
-            "x": 92,
-            "y": 35,
-            "z": 102
-          },
-          "rust": "PistonHead { head: RedstonePistonHead { facing: Down, sticky: true, short: false } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: Down, sticky: true } }",
-          "pos": {
-            "x": 100,
-            "y": 35,
-            "z": 102
-          },
-          "rust": "PistonHead { head: RedstonePistonHead { facing: Down, sticky: true, short: false } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 74,
-            "y": 36,
-            "z": 97
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 5 } }"
-        },
-        {
-          "interpreter": "Air",
-          "pos": {
-            "x": 75,
-            "y": 36,
-            "z": 101
-          },
-          "rust": "RedstoneBlock"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 76,
-            "y": 36,
-            "z": 101
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 15 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 77,
-            "y": 36,
-            "z": 101
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 14 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 78,
-            "y": 36,
-            "z": 101
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 13 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 79,
-            "y": 36,
-            "z": 101
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 12 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 80,
-            "y": 36,
-            "z": 101
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 11 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 81,
-            "y": 36,
-            "z": 101
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 10 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 82,
-            "y": 36,
-            "z": 101
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 9 } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: North, sticky: true } }",
-          "pos": {
-            "x": 75,
-            "y": 36,
-            "z": 102
-          },
-          "rust": "PistonHead { head: RedstonePistonHead { facing: North, sticky: true, short: false } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: Down, sticky: true } }",
-          "pos": {
-            "x": 92,
-            "y": 36,
-            "z": 102
-          },
-          "rust": "Piston { piston: RedstonePiston { facing: Down, sticky: true, extended: true } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: Down, sticky: true } }",
-          "pos": {
-            "x": 100,
-            "y": 36,
-            "z": 102
-          },
-          "rust": "Piston { piston: RedstonePiston { facing: Down, sticky: true, extended: true } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: North, sticky: true } }",
-          "pos": {
-            "x": 75,
-            "y": 36,
-            "z": 103
-          },
-          "rust": "Piston { piston: RedstonePiston { facing: North, sticky: true, extended: true } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: Side, south: Side, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 74,
-            "y": 36,
-            "z": 104
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: Side, south: Side, east: Side, west: Side, power: 15 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 73,
-            "y": 37,
-            "z": 97
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 4 } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: East, sticky: true } }",
-          "pos": {
-            "x": 83,
-            "y": 37,
-            "z": 101
-          },
-          "rust": "Piston { piston: RedstonePiston { facing: East, sticky: true, extended: true } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: East, sticky: true } }",
-          "pos": {
-            "x": 84,
-            "y": 37,
-            "z": 101
-          },
-          "rust": "PistonHead { head: RedstonePistonHead { facing: East, sticky: true, short: false } }"
-        },
-        {
-          "interpreter": "Air",
-          "pos": {
-            "x": 85,
-            "y": 37,
-            "z": 101
-          },
-          "rust": "RedstoneBlock"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 86,
-            "y": 37,
-            "z": 101
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 15 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 87,
-            "y": 37,
-            "z": 101
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 14 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 88,
-            "y": 37,
-            "z": 101
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 13 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 89,
-            "y": 37,
-            "z": 101
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 12 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 90,
-            "y": 37,
-            "z": 101
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 11 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 91,
-            "y": 37,
-            "z": 101
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 10 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 92,
-            "y": 37,
-            "z": 101
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 9 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 93,
-            "y": 37,
-            "z": 101
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 8 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 94,
-            "y": 37,
-            "z": 101
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 7 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 95,
-            "y": 37,
-            "z": 101
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 6 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 96,
-            "y": 37,
-            "z": 101
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 5 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 97,
-            "y": 37,
-            "z": 101
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 4 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 98,
-            "y": 37,
-            "z": 101
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 3 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 99,
-            "y": 37,
-            "z": 101
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 2 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 100,
-            "y": 37,
-            "z": 101
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 1 } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: East, sticky: true } }",
-          "pos": {
-            "x": 101,
-            "y": 37,
-            "z": 101
-          },
-          "rust": "Piston { piston: RedstonePiston { facing: East, sticky: true, extended: true } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: East, sticky: true } }",
-          "pos": {
-            "x": 102,
-            "y": 37,
-            "z": 101
-          },
-          "rust": "PistonHead { head: RedstonePistonHead { facing: East, sticky: true, short: false } }"
-        },
-        {
-          "interpreter": "Air",
-          "pos": {
-            "x": 103,
-            "y": 37,
-            "z": 101
-          },
-          "rust": "RedstoneBlock"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: Side, south: Side, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 103,
-            "y": 37,
-            "z": 102
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: Side, south: Side, east: Side, west: Side, power: 15 } }"
-        },
-        {
-          "interpreter": "Air",
-          "pos": {
-            "x": 74,
-            "y": 37,
-            "z": 104
-          },
-          "rust": "RedstoneBlock"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: Up, east: None, west: Side, power: 0 } }",
-          "pos": {
-            "x": 74,
-            "y": 38,
-            "z": 97
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: Up, east: None, west: Side, power: 3 } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: Down, sticky: true } }",
-          "pos": {
-            "x": 74,
-            "y": 38,
-            "z": 104
-          },
-          "rust": "PistonHead { head: RedstonePistonHead { facing: Down, sticky: true, short: false } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: Side, south: Side, east: None, west: None, power: 0 } }",
-          "pos": {
-            "x": 74,
-            "y": 39,
-            "z": 98
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: Side, south: Side, east: None, west: None, power: 2 } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: Down, sticky: true } }",
-          "pos": {
-            "x": 74,
-            "y": 39,
-            "z": 104
-          },
-          "rust": "Piston { piston: RedstonePiston { facing: Down, sticky: true, extended: true } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: South, sticky: true } }",
-          "pos": {
-            "x": 74,
-            "y": 40,
-            "z": 99
-          },
-          "rust": "Piston { piston: RedstonePiston { facing: South, sticky: true, extended: true } }"
-        },
-        {
-          "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: South, sticky: true } }",
-          "pos": {
-            "x": 74,
-            "y": 40,
-            "z": 100
-          },
-          "rust": "PistonHead { head: RedstonePistonHead { facing: South, sticky: true, short: false } }"
-        },
-        {
-          "interpreter": "Air",
-          "pos": {
-            "x": 74,
-            "y": 40,
-            "z": 101
-          },
-          "rust": "RedstoneBlock"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: Side, south: Side, east: None, west: None, power: 0 } }",
-          "pos": {
-            "x": 74,
-            "y": 40,
-            "z": 102
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: Side, south: Side, east: None, west: None, power: 15 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: Side, south: None, east: Up, west: None, power: 0 } }",
-          "pos": {
-            "x": 74,
-            "y": 40,
-            "z": 103
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: Side, south: None, east: Up, west: None, power: 14 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: Up, south: Side, east: None, west: None, power: 0 } }",
-          "pos": {
-            "x": 77,
-            "y": 40,
-            "z": 104
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: Up, south: Side, east: None, west: None, power: 10 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: Up, south: Side, east: None, west: None, power: 0 } }",
-          "pos": {
-            "x": 81,
-            "y": 40,
-            "z": 104
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: Up, south: Side, east: None, west: None, power: 6 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Up, west: Side, power: 0 } }",
-          "pos": {
-            "x": 75,
-            "y": 41,
-            "z": 103
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Up, west: Side, power: 13 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: Side, east: Up, west: Up, power: 0 } }",
-          "pos": {
-            "x": 77,
-            "y": 41,
-            "z": 103
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: Side, east: Up, west: Up, power: 11 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: Side, east: None, west: Up, power: 0 } }",
-          "pos": {
-            "x": 81,
-            "y": 41,
-            "z": 103
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: Side, east: None, west: Up, power: 7 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 76,
-            "y": 42,
-            "z": 103
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 12 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 78,
-            "y": 42,
-            "z": 103
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 10 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 79,
-            "y": 42,
-            "z": 103
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 9 } }"
-        },
-        {
-          "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }",
-          "pos": {
-            "x": 80,
-            "y": 42,
-            "z": 103
-          },
-          "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 8 } }"
-        }
-      ],
-      "global_tick": 10,
-      "relative_tick": 10
+    "log": "pm1-slice-final-generate.log",
+    "stage": 0,
+    "name": "custom",
+    "min": {
+      "x": 8,
+      "y": 8,
+      "z": 32
     },
     "max": {
       "x": 210,
       "y": 65,
       "z": 132
     },
+    "non_air": 176279,
+    "pending": 0,
+    "first_tick": 10,
+    "first_position": {
+      "x": 155,
+      "y": 10,
+      "z": 124
+    },
+    "differing_blocks": 452,
+    "final_target": {
+      "interpreter": "Air",
+      "rust": "RedstoneBlock"
+    }
+  },
+  {
+    "log": "pm1-slice-initial.log",
+    "stage": 0,
+    "name": "custom",
+    "min": {
+      "x": 8,
+      "y": 8,
+      "z": 8
+    },
+    "max": {
+      "x": 240,
+      "y": 80,
+      "z": 180
+    },
+    "non_air": 428614,
+    "pending": 0,
+    "first_tick": 10,
+    "first_position": {
+      "x": 155,
+      "y": 10,
+      "z": 124
+    },
+    "differing_blocks": 603,
+    "final_target": {
+      "interpreter": "Air",
+      "rust": "RedstoneBlock"
+    }
+  },
+  {
+    "log": "pm1-slice-reduce1.log",
+    "stage": 0,
+    "name": "custom",
+    "min": {
+      "x": 90,
+      "y": 8,
+      "z": 75
+    },
+    "max": {
+      "x": 200,
+      "y": 45,
+      "z": 145
+    },
+    "non_air": 52232,
+    "pending": 0,
+    "first_tick": 1,
+    "first_position": {
+      "x": 192,
+      "y": 40,
+      "z": 75
+    },
+    "differing_blocks": 4,
+    "final_target": {
+      "interpreter": "RedstoneBlock",
+      "rust": "RedstoneBlock"
+    }
+  },
+  {
+    "log": "pm1-slice-reduce2.log",
+    "stage": 0,
+    "name": "custom",
+    "min": {
+      "x": 8,
+      "y": 8,
+      "z": 8
+    },
+    "max": {
+      "x": 240,
+      "y": 45,
+      "z": 180
+    },
+    "non_air": 229107,
+    "pending": 0,
+    "first_tick": 10,
+    "first_position": {
+      "x": 78,
+      "y": 17,
+      "z": 69
+    },
+    "differing_blocks": 866,
+    "final_target": {
+      "interpreter": "RedstoneBlock",
+      "rust": "RedstoneBlock"
+    }
+  },
+  {
+    "log": "pm1-slice-reduce3.log",
+    "stage": 0,
+    "name": "custom",
+    "min": {
+      "x": 8,
+      "y": 8,
+      "z": 8
+    },
+    "max": {
+      "x": 210,
+      "y": 80,
+      "z": 145
+    },
+    "non_air": 293848,
+    "pending": 0,
+    "first_tick": 10,
+    "first_position": {
+      "x": 155,
+      "y": 10,
+      "z": 124
+    },
+    "differing_blocks": 452,
+    "final_target": {
+      "interpreter": "Air",
+      "rust": "RedstoneBlock"
+    }
+  },
+  {
+    "log": "pm1-slice-reduce4.log",
+    "stage": 0,
+    "name": "custom",
+    "min": {
+      "x": 8,
+      "y": 8,
+      "z": 8
+    },
+    "max": {
+      "x": 210,
+      "y": 65,
+      "z": 145
+    },
+    "non_air": 251265,
+    "pending": 0,
+    "first_tick": 10,
+    "first_position": {
+      "x": 155,
+      "y": 10,
+      "z": 124
+    },
+    "differing_blocks": 452,
+    "final_target": {
+      "interpreter": "Air",
+      "rust": "RedstoneBlock"
+    }
+  },
+  {
+    "log": "pm1-slice-reduce5.log",
+    "stage": 0,
+    "name": "custom",
     "min": {
       "x": 8,
       "y": 8,
       "z": 32
     },
+    "max": {
+      "x": 210,
+      "y": 65,
+      "z": 145
+    },
+    "non_air": 202274,
+    "pending": 0,
+    "first_tick": 10,
+    "first_position": {
+      "x": 155,
+      "y": 10,
+      "z": 124
+    },
+    "differing_blocks": 452,
+    "final_target": {
+      "interpreter": "Air",
+      "rust": "RedstoneBlock"
+    }
+  },
+  {
+    "log": "pm1-slice-reduce6.log",
+    "stage": 0,
     "name": "custom",
+    "min": {
+      "x": 65,
+      "y": 8,
+      "z": 32
+    },
+    "max": {
+      "x": 210,
+      "y": 65,
+      "z": 132
+    },
+    "non_air": 147148,
+    "pending": 0,
+    "first_tick": 10,
+    "first_position": {
+      "x": 102,
+      "y": 13,
+      "z": 123
+    },
+    "differing_blocks": 1273,
+    "final_target": {
+      "interpreter": "RedstoneBlock",
+      "rust": "RedstoneBlock"
+    }
+  },
+  {
+    "log": "pm1-slice-reduce7.log",
+    "stage": 0,
+    "name": "custom",
+    "min": {
+      "x": 65,
+      "y": 9,
+      "z": 38
+    },
+    "max": {
+      "x": 210,
+      "y": 62,
+      "z": 132
+    },
+    "non_air": 125284,
+    "pending": 0,
+    "first_tick": 10,
+    "first_position": {
+      "x": 102,
+      "y": 13,
+      "z": 123
+    },
+    "differing_blocks": 1258,
+    "final_target": {
+      "interpreter": "RedstoneBlock",
+      "rust": "RedstoneBlock"
+    }
+  },
+  {
+    "log": "pm1-slice-reduce8.log",
+    "stage": 0,
+    "name": "custom",
+    "min": {
+      "x": 65,
+      "y": 8,
+      "z": 32
+    },
+    "max": {
+      "x": 210,
+      "y": 65,
+      "z": 145
+    },
+    "non_air": 168694,
+    "pending": 0,
+    "first_tick": 10,
+    "first_position": {
+      "x": 155,
+      "y": 10,
+      "z": 140
+    },
+    "differing_blocks": 1382,
+    "final_target": {
+      "interpreter": "RedstoneBlock",
+      "rust": "RedstoneBlock"
+    }
+  },
+  {
+    "log": "pm1-slice-reduce9.log",
+    "stage": 0,
+    "name": "custom",
+    "min": {
+      "x": 8,
+      "y": 8,
+      "z": 32
+    },
+    "max": {
+      "x": 210,
+      "y": 65,
+      "z": 132
+    },
     "non_air": 176279,
     "pending": 0,
-    "stage": 0
+    "first_tick": 10,
+    "first_position": {
+      "x": 155,
+      "y": 10,
+      "z": 124
+    },
+    "differing_blocks": 452,
+    "final_target": {
+      "interpreter": "Air",
+      "rust": "RedstoneBlock"
+    }
+  },
+  {
+    "log": "pm1-slice.log",
+    "stage": 6,
+    "name": "wide",
+    "min": {
+      "x": 140,
+      "y": 8,
+      "z": 110
+    },
+    "max": {
+      "x": 180,
+      "y": 20,
+      "z": 140
+    },
+    "non_air": 3924,
+    "pending": 0,
+    "first_tick": null,
+    "first_position": null,
+    "differing_blocks": 0,
+    "final_target": {
+      "interpreter": "RedstoneBlock",
+      "rust": "RedstoneBlock"
+    }
+  },
+  {
+    "log": "pm1-slice.log",
+    "stage": 6,
+    "name": "medium",
+    "min": {
+      "x": 150,
+      "y": 8,
+      "z": 120
+    },
+    "max": {
+      "x": 176,
+      "y": 14,
+      "z": 132
+    },
+    "non_air": 308,
+    "pending": 0,
+    "first_tick": null,
+    "first_position": null,
+    "differing_blocks": 0,
+    "final_target": {
+      "interpreter": "RedstoneBlock",
+      "rust": "RedstoneBlock"
+    }
+  },
+  {
+    "log": "pm1-slice.log",
+    "stage": 6,
+    "name": "small",
+    "min": {
+      "x": 151,
+      "y": 9,
+      "z": 122
+    },
+    "max": {
+      "x": 158,
+      "y": 12,
+      "z": 129
+    },
+    "non_air": 64,
+    "pending": 0,
+    "first_tick": null,
+    "first_position": null,
+    "differing_blocks": 0,
+    "final_target": {
+      "interpreter": "RedstoneBlock",
+      "rust": "RedstoneBlock"
+    }
+  },
+  {
+    "log": "pm1-slice.log",
+    "stage": 7,
+    "name": "wide",
+    "min": {
+      "x": 140,
+      "y": 8,
+      "z": 110
+    },
+    "max": {
+      "x": 180,
+      "y": 20,
+      "z": 140
+    },
+    "non_air": 3924,
+    "pending": 0,
+    "first_tick": null,
+    "first_position": null,
+    "differing_blocks": 0,
+    "final_target": {
+      "interpreter": "RedstoneBlock",
+      "rust": "RedstoneBlock"
+    }
+  },
+  {
+    "log": "pm1-slice.log",
+    "stage": 7,
+    "name": "medium",
+    "min": {
+      "x": 150,
+      "y": 8,
+      "z": 120
+    },
+    "max": {
+      "x": 176,
+      "y": 14,
+      "z": 132
+    },
+    "non_air": 308,
+    "pending": 0,
+    "first_tick": null,
+    "first_position": null,
+    "differing_blocks": 0,
+    "final_target": {
+      "interpreter": "RedstoneBlock",
+      "rust": "RedstoneBlock"
+    }
+  },
+  {
+    "log": "pm1-slice.log",
+    "stage": 7,
+    "name": "small",
+    "min": {
+      "x": 151,
+      "y": 9,
+      "z": 122
+    },
+    "max": {
+      "x": 158,
+      "y": 12,
+      "z": 129
+    },
+    "non_air": 64,
+    "pending": 0,
+    "first_tick": null,
+    "first_position": null,
+    "differing_blocks": 0,
+    "final_target": {
+      "interpreter": "RedstoneBlock",
+      "rust": "RedstoneBlock"
+    }
+  },
+  {
+    "log": "pm1-slice.log",
+    "stage": 8,
+    "name": "wide",
+    "min": {
+      "x": 140,
+      "y": 8,
+      "z": 110
+    },
+    "max": {
+      "x": 180,
+      "y": 20,
+      "z": 140
+    },
+    "non_air": 3924,
+    "pending": 0,
+    "first_tick": null,
+    "first_position": null,
+    "differing_blocks": 0,
+    "final_target": {
+      "interpreter": "RedstoneBlock",
+      "rust": "RedstoneBlock"
+    }
+  },
+  {
+    "log": "pm1-slice.log",
+    "stage": 8,
+    "name": "medium",
+    "min": {
+      "x": 150,
+      "y": 8,
+      "z": 120
+    },
+    "max": {
+      "x": 176,
+      "y": 14,
+      "z": 132
+    },
+    "non_air": 308,
+    "pending": 0,
+    "first_tick": null,
+    "first_position": null,
+    "differing_blocks": 0,
+    "final_target": {
+      "interpreter": "RedstoneBlock",
+      "rust": "RedstoneBlock"
+    }
+  },
+  {
+    "log": "pm1-slice.log",
+    "stage": 8,
+    "name": "small",
+    "min": {
+      "x": 151,
+      "y": 9,
+      "z": 122
+    },
+    "max": {
+      "x": 158,
+      "y": 12,
+      "z": 129
+    },
+    "non_air": 64,
+    "pending": 0,
+    "first_tick": null,
+    "first_position": null,
+    "differing_blocks": 0,
+    "final_target": {
+      "interpreter": "RedstoneBlock",
+      "rust": "RedstoneBlock"
+    }
+  },
+  {
+    "log": "pm1-slice.log",
+    "stage": 9,
+    "name": "chain",
+    "min": {
+      "x": 8,
+      "y": 8,
+      "z": 90
+    },
+    "max": {
+      "x": 180,
+      "y": 40,
+      "z": 145
+    },
+    "non_air": 49225,
+    "pending": 10,
+    "first_tick": null,
+    "first_position": null,
+    "differing_blocks": 0,
+    "final_target": {
+      "interpreter": "RedstoneBlock",
+      "rust": "RedstoneBlock"
+    }
+  },
+  {
+    "log": "pm1-slice.log",
+    "stage": 9,
+    "name": "pulse",
+    "min": {
+      "x": 140,
+      "y": 9,
+      "z": 122
+    },
+    "max": {
+      "x": 158,
+      "y": 12,
+      "z": 129
+    },
+    "non_air": 138,
+    "pending": 1,
+    "first_tick": 10,
+    "first_position": {
+      "x": 153,
+      "y": 10,
+      "z": 124
+    },
+    "differing_blocks": 9,
+    "final_target": {
+      "interpreter": "Air",
+      "rust": "Air"
+    }
+  },
+  {
+    "log": "pm1-slice.log",
+    "stage": 9,
+    "name": "control",
+    "min": {
+      "x": 100,
+      "y": 8,
+      "z": 90
+    },
+    "max": {
+      "x": 180,
+      "y": 40,
+      "z": 145
+    },
+    "non_air": 29789,
+    "pending": 9,
+    "first_tick": null,
+    "first_position": null,
+    "differing_blocks": 0,
+    "final_target": {
+      "interpreter": "RedstoneBlock",
+      "rust": "RedstoneBlock"
+    }
+  },
+  {
+    "log": "pm1-slice.log",
+    "stage": 9,
+    "name": "west",
+    "min": {
+      "x": 120,
+      "y": 8,
+      "z": 110
+    },
+    "max": {
+      "x": 180,
+      "y": 20,
+      "z": 140
+    },
+    "non_air": 5570,
+    "pending": 0,
+    "first_tick": null,
+    "first_position": null,
+    "differing_blocks": 0,
+    "final_target": {
+      "interpreter": "RedstoneBlock",
+      "rust": "RedstoneBlock"
+    }
+  },
+  {
+    "log": "pm1-slice.log",
+    "stage": 9,
+    "name": "wide",
+    "min": {
+      "x": 140,
+      "y": 8,
+      "z": 110
+    },
+    "max": {
+      "x": 180,
+      "y": 20,
+      "z": 140
+    },
+    "non_air": 3924,
+    "pending": 0,
+    "first_tick": null,
+    "first_position": null,
+    "differing_blocks": 0,
+    "final_target": {
+      "interpreter": "RedstoneBlock",
+      "rust": "RedstoneBlock"
+    }
+  },
+  {
+    "log": "pm1-slice.log",
+    "stage": 9,
+    "name": "medium",
+    "min": {
+      "x": 150,
+      "y": 8,
+      "z": 120
+    },
+    "max": {
+      "x": 176,
+      "y": 14,
+      "z": 132
+    },
+    "non_air": 308,
+    "pending": 0,
+    "first_tick": null,
+    "first_position": null,
+    "differing_blocks": 0,
+    "final_target": {
+      "interpreter": "RedstoneBlock",
+      "rust": "RedstoneBlock"
+    }
+  },
+  {
+    "log": "pm1-slice.log",
+    "stage": 9,
+    "name": "small",
+    "min": {
+      "x": 151,
+      "y": 9,
+      "z": 122
+    },
+    "max": {
+      "x": 158,
+      "y": 12,
+      "z": 129
+    },
+    "non_air": 64,
+    "pending": 0,
+    "first_tick": null,
+    "first_position": null,
+    "differing_blocks": 0,
+    "final_target": {
+      "interpreter": "RedstoneBlock",
+      "rust": "RedstoneBlock"
+    }
   }
 ]
