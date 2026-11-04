@@ -18,6 +18,9 @@ mod pm1_causal;
 #[cfg(test)]
 #[path = "../tests/sampled/piston_bud_repro.rs"]
 mod piston_bud_repro;
+#[cfg(test)]
+#[path = "../tests/sampled/piston_head_notifications.rs"]
+mod piston_head_notifications;
 mod group_probe;
 #[cfg(test)]
 #[path = "../tests/sampled/incremental_input.rs"]

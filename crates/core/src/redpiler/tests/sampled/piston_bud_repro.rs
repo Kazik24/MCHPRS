@@ -1,3 +1,4 @@
+use super::program::{PISTON_HEAD_NOTIFICATION, notification_component};
 use crate::{
     plot::worldedit::{load_schematic, paste_clipboard},
     redpiler::{Compiler, CompilerOptions, PublicationMode},
@@ -7,18 +8,26 @@ use mchprs_blocks::{BlockPos, blocks::Block};
 use serde_json::json;
 
 #[test]
-#[ignore = "known missing piston-head update on BUD unlock"]
 fn saved_minimal_bud_piston_receives_unlock_update() {
-    minimal_bud_piston_receives_unlock_update(false);
+    minimal_bud_piston_receives_unlock_update(false, false);
 }
 
 #[test]
-#[ignore = "known missing piston-head update on BUD unlock; requires LLVM DLL"]
 fn llvm_saved_minimal_bud_piston_receives_unlock_update() {
-    minimal_bud_piston_receives_unlock_update(true);
+    minimal_bud_piston_receives_unlock_update(true, false);
 }
 
-fn minimal_bud_piston_receives_unlock_update(llvm: bool) {
+#[test]
+fn minimal_bud_piston_unlocks_with_lower_lever_still_high() {
+    minimal_bud_piston_receives_unlock_update(false, true);
+}
+
+#[test]
+fn llvm_minimal_bud_piston_unlocks_with_lower_lever_still_high() {
+    minimal_bud_piston_receives_unlock_update(true, true);
+}
+
+fn minimal_bud_piston_receives_unlock_update(llvm: bool, lower_held: bool) {
     let origin = BlockPos::new(16, 16, 16);
     let mut clip =
         load_schematic(std::fs::File::open(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../test_data/minimal_repo.schem")).unwrap())
@@ -49,11 +58,16 @@ fn minimal_bud_piston_receives_unlock_update(llvm: bool) {
         )
         .unwrap();
     let mut rows = vec![];
-    for (stage, lever) in [("top_on", top), ("bottom_on", bottom), ("bottom_off", bottom), ("top_off", top)] {
+    let mut sequence = vec![("top_on", top), ("bottom_on", bottom)];
+    if !lower_held {
+        sequence.push(("bottom_off", bottom));
+    }
+    sequence.push(("top_off", top));
+    for (stage, lever) in sequence {
         let events = crate::redstone::instant_piston_tests::capture_all(|| {
             crate::interaction::use_redstone(native.get_block(lever), &mut native, lever, None);
         });
-        let compiled_events = super::pm1_causal::trace(||compiler.try_on_use_block(lever).unwrap());
+        let compiled_events = super::pm1_causal::trace(|| compiler.try_on_use_block(lever).unwrap());
         let mut differences = vec![];
         for tick in 0..=6 {
             compiler.try_flush(&mut compiled).unwrap();
@@ -74,7 +88,7 @@ fn minimal_bud_piston_receives_unlock_update(llvm: bool) {
                 compiler.tick().unwrap();
             }
         }
-        let watched = compiler.runtime.as_ref().map(|runtime|runtime.program.watched_wires.iter().map(|wire| json!({"wire":runtime.program.positions[wire.wire],"watchers":wire.watchers.iter().map(|&node|runtime.program.positions[node]).collect::<Vec<_>>()})).collect::<Vec<_>>());
+        let watched = compiler.runtime.as_ref().map(|runtime|runtime.program.watched_wires.iter().map(|wire| json!({"wire":runtime.program.positions[wire.wire],"watchers":wire.watchers.iter().map(|&route|json!({"pos":runtime.program.positions[notification_component(route)],"via_head":route & PISTON_HEAD_NOTIFICATION != 0})).collect::<Vec<_>>()})).collect::<Vec<_>>());
         let compiled_input = compiler
             .runtime
             .as_ref()
@@ -94,14 +108,18 @@ fn minimal_bud_piston_receives_unlock_update(llvm: bool) {
         }
     }
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(format!(
-        "../../target/minimal-bud-piston-repro-{}.json",
-        if llvm { "llvm" } else { "rust" }
+        "../../target/minimal-bud-piston-repro-{}{}.json",
+        if llvm { "llvm" } else { "rust" },
+        if lower_held { "-lower-held" } else { "" }
     ));
     std::fs::write(path, serde_json::to_vec_pretty(&rows).unwrap()).unwrap();
     assert!(
         matches!(native.get_block(piston),Block::Piston {piston} if !piston.extended),
         "native must update and release the quasi-powered piston"
     );
+    if lower_held {
+        assert!(matches!(compiled.get_block(bottom), Block::Lever { lever } if lever.powered));
+    }
     assert_eq!(
         compiled.get_block(piston),
         native.get_block(piston),
@@ -114,13 +132,11 @@ fn minimal_bud_piston_receives_unlock_update(llvm: bool) {
 }
 
 #[test]
-#[ignore = "known missing piston-head updates in PM1 reproduction"]
 fn saved_bigger_bud_pistons_receive_unlock_update() {
     bigger_bud_pistons_receive_unlock_update(false);
 }
 
 #[test]
-#[ignore = "known missing piston-head updates in PM1 reproduction; requires LLVM DLL"]
 fn llvm_saved_bigger_bud_pistons_receive_unlock_update() {
     bigger_bud_pistons_receive_unlock_update(true);
 }

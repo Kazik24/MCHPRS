@@ -1,5 +1,6 @@
 //! Sample token departures/arrivals and lower their ordered notification steps.
 use super::*;
+use crate::redpiler::sampled::program::{PISTON_HEAD_NOTIFICATION, notification_component};
 
 pub(in super::super) fn run(
     context: &Context<'_, impl World>,
@@ -43,7 +44,7 @@ pub(in super::super) fn run(
                     {
                         continue;
                     }
-                    if let Some(&index) = probe_indexes.components.get(&event.pos)
+                    if let Some(index) = probe_indexes.notification(&event)
                         && !cell_updates[usize::from(arrival)].contains(&index)
                     {
                         cell_updates[usize::from(arrival)].push(index);
@@ -82,14 +83,15 @@ pub(in super::super) fn run(
                 mchprs_blocks::BlockFace::South,
             ] {
                 let at = cell.offset(face);
-                if let Some(&component) = probe_indexes.components.get(&at) {
+                for notification in probe_indexes.notifications_at(at) {
+                    let component = notification_component(notification);
                     let watch = match program.initial[component] {
                         Block::Piston { .. } => true,
                         Block::Observer { observer } => at.offset(observer.facing.into()) == cell,
                         _ => false,
                     };
                     if watch {
-                        watchers.push(component);
+                        watchers.push(notification);
                     }
                 }
             }
@@ -113,12 +115,12 @@ pub(in super::super) fn run(
         let mut watchers = Vec::new();
         let mut seen = std::collections::HashSet::new();
         for (order, &at) in footprint.iter().enumerate() {
-            if let Some(&node) = probe_indexes.components.get(&at)
-                && node != source
-                && matches!(program.initial[node], Block::Piston { .. })
-                && seen.insert(node)
-            {
-                watchers.push((order, node));
+            for notification in probe_indexes.notifications_at(at) {
+                let node = notification_component(notification);
+                if (node != source || notification & PISTON_HEAD_NOTIFICATION != 0)
+                    && matches!(program.initial[node], Block::Piston { .. }) && seen.insert(notification) {
+                    watchers.push((order, notification));
+                }
             }
         }
         // Controls also notify observers of their support, even if that block's state stays unchanged.
@@ -145,9 +147,10 @@ pub(in super::super) fn run(
         let mut watchers = Vec::new();
         for face in update_order() {
             let at = piston.home.offset(face);
-            if let Some(&node) = probe_indexes.components.get(&at) {
+            for notification in probe_indexes.notifications_at(at) {
+                let node = notification_component(notification);
                 match program.initial[node] {
-                    Block::Piston { .. } => watchers.push(node),
+                    Block::Piston { .. } => watchers.push(notification),
                     Block::Observer { observer } if at.offset(observer.facing.into()) == piston.home => watchers.push(node),
                     _ => {}
                 }
@@ -169,7 +172,7 @@ pub(in super::super) fn run(
             let observers: Vec<_> = watchers
                 .iter()
                 .copied()
-                .filter(|&node| matches!(program.initial[node], Block::Observer { .. }))
+                .filter(|&node| matches!(program.initial[notification_component(node)], Block::Observer { .. }))
                 .collect();
             let mut edges = [Vec::new(), Vec::new()];
             for arrival in [false, true] {
@@ -177,7 +180,7 @@ pub(in super::super) fn run(
                 if !arrival {
                     nodes.extend(observers.iter().copied());
                 }
-                nodes.extend(updates[usize::from(arrival)].iter().copied().filter(|&node| match program.initial[node] {
+                nodes.extend(updates[usize::from(arrival)].iter().copied().filter(|&node| match program.initial[notification_component(node)] {
                     Block::RedstoneWire { .. } => watched_by_node[node].is_some(),
                     Block::Piston { .. }
                     | Block::RedstoneRepeater { .. }
@@ -204,12 +207,12 @@ pub(in super::super) fn run(
                         let notifying_wires = nodes
                             .iter()
                             .copied()
-                            .filter(|&wire| watched_by_node[wire].is_some_and(|index| program.watched_wires[index].watchers.contains(&node)))
+                            .filter(|&wire| wire & PISTON_HEAD_NOTIFICATION == 0 && watched_by_node[wire].is_some_and(|index| program.watched_wires[index].watchers.contains(&node)))
                             .collect();
                         crate::redpiler::sampled::program::MoveStepSpec {
                             node,
                             watcher: watchers.contains(&node),
-                            wire: watched_by_node[node].is_some(),
+                            wire: node & PISTON_HEAD_NOTIFICATION == 0 && watched_by_node[node].is_some(),
                             wires: notifying_wires,
                         }
                     })

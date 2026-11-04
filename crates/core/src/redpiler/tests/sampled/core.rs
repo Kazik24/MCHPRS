@@ -1,4 +1,4 @@
-use super::program::{ArrangementSource, RepeaterRecord};
+use super::program::{ArrangementSource, RepeaterRecord, notification_component};
 use super::*;
 use crate::plot::{PLOT_WIDTH, PlotWorld};
 use crate::redpiler::scratch::discover_lamp_sources;
@@ -994,7 +994,7 @@ fn torch_piston_watchers_follow_interpreter_notification_order() {
     }
     let program = compile(&world, (BlockPos::new(10, 10, 10), BlockPos::new(22, 22, 22)), entry(&world)).unwrap();
     let source = program.component_indices[&torch];
-    let actual: Vec<_> = program.source_watchers[source].iter().map(|&index| program.positions[index]).collect();
+    let actual: Vec<_> = program.source_watchers[source].iter().map(|&index| program.positions[notification_component(index)]).collect();
     world.observe_redstone_updates(true);
     crate::redstone::on_torch_state_change(&mut world, torch);
     let mut expected = Vec::new();

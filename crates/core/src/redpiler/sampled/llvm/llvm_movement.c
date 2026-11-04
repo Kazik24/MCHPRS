@@ -74,7 +74,8 @@ static uint32_t valid_movement(const MchprsNativeProgramDescriptor *p, const uin
     }
     for (uint32_t i = 0; i < n[23]; i += 5u) {
         const uint32_t *r = t[23] + i;
-        if (r[0] >= nodes || r[1] > 1u || r[2] > 1u || !bounded(r[3], r[4], n[24]))
+        if (!valid_notification(p, blob, t, n, r[0]) || r[1] > 1u || r[2] > 1u
+            || ((r[0] & PISTON_HEAD_NOTIFICATION) && r[2]) || !bounded(r[3], r[4], n[24]))
             return 0u;
     }
     for (uint32_t i = 0; i < n[24]; ++i)
@@ -636,7 +637,8 @@ static uint32_t set_token_pos(NEEngine *e, uint32_t token, uint32_t position) {
     uint32_t start = position != NONE ? row[4] : row[2], count = position != NONE ? row[5] : row[3];
     for (uint32_t i = 0; i < count; ++i) {
         const uint32_t *r = table(e, 23u) + (start + i) * 5u;
-        uint32_t node = r[0], deliver = e->switched[node] || r[1];
+        uint32_t notification = r[0], node = notification_component(notification);
+        uint32_t deliver = (!(notification & PISTON_HEAD_NOTIFICATION) && e->switched[node]) || r[1];
         for (uint32_t j = 0; j < r[4] && !deliver; ++j)
             deliver = e->changed[table(e, 24u)[r[3] + j]];
         if (consume(e))
@@ -650,9 +652,9 @@ static uint32_t set_token_pos(NEEngine *e, uint32_t token, uint32_t position) {
                 }
             }
         } else if (deliver) {
-            e->switched[node] = 0u;
+            if (!(notification & PISTON_HEAD_NOTIFICATION)) e->switched[node] = 0u;
             uint32_t result =
-                components(e)[node].kind == 7u && !r[1] ? update_wire_watcher(e, node) : update_once(e, node);
+                components(e)[node].kind == 7u && !r[1] ? update_wire_watcher(e, notification) : update_once(e, notification);
             if (result)
                 return result;
         }

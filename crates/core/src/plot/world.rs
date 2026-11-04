@@ -412,6 +412,13 @@ impl World for PlotWorld {
                 Some((rear, side))
             }
             Block::Piston { piston } => Some((crate::redstone::piston::should_piston_extend(self, piston.facing, pos), false)),
+            Block::PistonHead { head } => {
+                let base = pos.offset(head.facing.opposite().into());
+                match self.get_block(base) {
+                    Block::Piston { piston } => Some((crate::redstone::piston::should_piston_extend(self, piston.facing, base), false)),
+                    _ => None,
+                }
+            }
             Block::RedstoneTorch { .. } => Some((crate::redstone::torch_should_be_off(self, pos), false)),
             Block::RedstoneWallTorch { facing, .. } => Some((crate::redstone::wall_torch_should_be_off(self, pos, facing), false)),
             Block::RedstoneLamp { .. } => Some((

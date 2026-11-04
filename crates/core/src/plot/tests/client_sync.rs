@@ -344,6 +344,63 @@ fn placement(pos: BlockPos, sequence: i32) -> SPlayerBlockPlacemnt {
 }
 
 #[test]
+fn compiled_bud_piston_unlocks_through_player_lever_clicks() {
+    use crate::plot::worldedit::{load_schematic, paste_clipboard};
+    use crate::redpiler::PublicationMode;
+    let origin = BlockPos::new(32, 19, 30);
+    let top = origin + BlockPos::new(0, 2, 2);
+    let bottom = origin + BlockPos::new(0, 1, 4);
+    let piston = origin + BlockPos::new(2, 1, 3);
+    let output = origin + BlockPos::new(2, 1, 0);
+    for publication in [None, Some(PublicationMode::All)] {
+        let (mut plot, _peer) = fixture(false);
+        let connection = connection(false).unwrap();
+        let _incoming = connection.incoming;
+        let _live_peer = connection.peer;
+        plot.players[0].client = connection.player;
+        plot.world.packet_senders.clear();
+        plot.world.packet_senders.push(PlayerPacketSender::new(&plot.players[0].client));
+        plot.owner = Some(plot.players[0].uuid);
+        plot.players[0].set_test_permissions(&["*"]);
+        plot.players[0].inventory[36] = None;
+        let mut clip = load_schematic(std::fs::File::open(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../test_data/minimal_repo.schem")
+        ).unwrap()).unwrap();
+        clip.offset_x = 0;
+        clip.offset_y = 0;
+        clip.offset_z = 0;
+        paste_clipboard(&mut plot.world, &clip, origin, false);
+        let mut native = plot.world.activation_snapshot();
+        plot.redpiler.compile(
+            &plot.world,
+            (origin - BlockPos::new(2, 2, 2), origin + BlockPos::new(6, 6, 7)),
+            CompilerOptions { publication, ..Default::default() },
+            vec![], Default::default()
+        ).unwrap();
+        for (sequence, control) in [top, bottom, top].into_iter().enumerate() {
+            crate::interaction::use_redstone(native.get_block(control), &mut native, control, None);
+            plot.handle_player_block_placement(placement(control, sequence as i32 + 1), 0);
+            for _ in 0..6 {
+                native.tick_interpreted();
+                assert!(plot.tick());
+            }
+            plot.last_world_send_time = Instant::now() - Duration::from_secs(1);
+            plot.update();
+            assert!(plot.redpiler.is_active());
+            assert_eq!(plot.world.get_block(output), native.get_block(output), "output after click {sequence}, {publication:?}");
+            assert!(matches!(native.get_block(piston), Block::Piston { piston } if piston.extended == (sequence == 1)));
+            if publication == Some(PublicationMode::All) {
+                assert_eq!(plot.world.get_block(piston), native.get_block(piston), "visible piston after click {sequence}");
+            }
+        }
+        assert!(matches!(plot.world.get_block(bottom), Block::Lever { lever } if lever.powered));
+        plot.reset_redpiler().unwrap();
+        assert_eq!(plot.world.get_block(piston), native.get_block(piston));
+        assert_eq!(plot.world.get_block(output), native.get_block(output));
+    }
+}
+
+#[test]
 fn wand_right_click_accepts_block_edges_and_extended_shapes_without_placing() {
     for compressed in [false, true] {
         let (mut plot, mut peer) = fixture(compressed);

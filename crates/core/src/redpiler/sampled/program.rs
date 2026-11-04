@@ -6,6 +6,19 @@ use std::num::NonZeroUsize;
 
 pub(super) const MAX_ARRANGEMENT_STATES: usize = 4096;
 
+// Notification IDs retain the physical head route separately from a direct base callback.
+pub(super) const PISTON_HEAD_NOTIFICATION: usize = 1 << 31;
+
+pub(super) fn notification_component(notification: usize) -> usize {
+    notification & !PISTON_HEAD_NOTIFICATION
+}
+
+fn valid_notification(initial: &[Block], notification: usize) -> bool {
+    let component = notification_component(notification);
+    component < initial.len()
+        && (notification & PISTON_HEAD_NOTIFICATION == 0 || matches!(initial[component], Block::Piston { .. }))
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum Operation {
     Contribution(usize),
@@ -38,13 +51,13 @@ pub(super) struct ElectricalLink {
 pub(super) struct WatchedWire {
     /// index into `Program::positions` for the wire being monitored.
     pub(super) wire: usize,
-    /// component indices in `Program::positions` notified when this wire changes.
+    /// component notification IDs, with bit 31 marking forwarding through a live piston head.
     pub(super) watchers: Vec<usize>,
 }
 
 #[derive(Clone)]
 pub(super) struct MoveStepSpec {
-    /// component index into `Program::positions` for this movement callback.
+    /// component notification ID for this movement callback.
     pub(super) node: usize,
     /// indicating this step was selected because the component watches a moved cell.
     pub(super) watcher: bool,
@@ -56,7 +69,7 @@ pub(super) struct MoveStepSpec {
 
 #[derive(Clone)]
 pub(super) struct MoveStep {
-    /// component index into `Program::positions` for this movement callback.
+    /// component notification ID for this movement callback.
     pub(super) node: usize,
     /// indicating this step was selected because the component watches a moved cell.
     pub(super) watcher: bool,
@@ -309,13 +322,13 @@ pub(crate) struct Program {
     pub(super) token_piston_components: Vec<Vec<usize>>,
     /// indexed token, token cell, then source component/attenuation dependencies.
     pub(super) token_sources: Vec<Vec<Vec<(usize, u8)>>>,
-    /// indexed token and cell, with separate ordered component updates for departure and arrival.
+    /// indexed token and cell, with separate ordered notification IDs for departure and arrival.
     pub(super) token_updates: Vec<Vec<[Vec<usize>; 2]>>,
-    /// indexed token and cell, listing component indices watching movement at that cell.
+    /// indexed token and cell, listing notification IDs watching movement at that cell.
     pub(super) token_watchers: Vec<Vec<Vec<usize>>>,
-    /// per source component, listing components notified by source changes.
+    /// per source component, listing notification IDs reached by source changes.
     pub(super) source_watchers: Vec<Vec<usize>>,
-    /// per piston component, listing components notified by changes around its home cell.
+    /// per piston component, listing notification IDs reached around its home cell.
     pub(super) home_watchers: Vec<SmallVec<[usize; 2]>>,
 
     // Arrangements and movement instructions
@@ -529,7 +542,7 @@ impl Program {
                 for step in steps {
                     let watched = |node| self.watched_wires.iter().any(|wire| wire.wire == node);
                     let wires = self.movement_wires.get(step.wires.clone());
-                    if step.node >= self.initial.len()
+                    if !valid_notification(&self.initial, step.node)
                         || (step.wire && !watched(step.node))
                         || wires.is_none_or(|wires| wires.iter().any(|&wire| !watched(wire)))
                     {
@@ -977,6 +990,9 @@ impl Program {
     ) -> Result<Self, ScratchError> {
         let invalid = |reason| ScratchError { position: None, reason };
         validate_histogram_bound(&initial)?;
+        if initial.len() >= PISTON_HEAD_NOTIFICATION {
+            return Err(invalid("sampled component IDs exceed notification range"));
+        }
         if positions.len() != initial.len() {
             return Err(invalid("sampled program position/initial length mismatch"));
         }
@@ -1095,8 +1111,8 @@ impl Program {
             let mut recipients = std::collections::HashSet::new();
             record.watchers.retain(|watcher| recipients.insert(*watcher));
             for &watcher in &record.watchers {
-                if !matches!(
-                    initial.get(watcher),
+                if !valid_notification(&initial, watcher) || !matches!(
+                    initial.get(notification_component(watcher)),
                     Some(Block::RedstoneLamp { .. } | Block::Piston { .. } | Block::Observer { .. })
                 ) {
                     return Err(invalid("sampled watched-wire receiver is not a lamp, piston or observer"));
@@ -1201,6 +1217,9 @@ impl Program {
         validate_histogram_bound(&self.initial)?;
         let invalid = |reason| ScratchError { position: None, reason };
         let nodes = self.initial.len();
+        if nodes >= PISTON_HEAD_NOTIFICATION {
+            return Err(invalid("sampled component IDs exceed notification range"));
+        }
         let motion_capacity = self.pistons.len().checked_mul(2).and_then(|n| n.checked_add(self.tokens.len()));
         if nodes.checked_mul(2).is_none() || self.pistons.len().checked_mul(3).is_none() || motion_capacity.and_then(|n| n.checked_mul(2)).is_none() {
             return Err(invalid("runtime storage capacity overflow"));
@@ -1235,6 +1254,18 @@ impl Program {
                 return Err(invalid("invalid or duplicate piston component"));
             }
             piston_components[component] = true;
+        }
+        let notifications = self.source_watchers.iter().flatten()
+            .chain(self.home_watchers.iter().flat_map(|row| row.iter()))
+            .chain(self.watched_wires.iter().flat_map(|record| record.watchers.iter()))
+            .chain(self.movement_steps.iter().map(|step| &step.node));
+        for &notification in notifications {
+            if notification & PISTON_HEAD_NOTIFICATION != 0
+                && valid_notification(&self.initial, notification)
+                && !piston_components[notification_component(notification)]
+            {
+                return Err(invalid("piston-head notification has no piston record"));
+            }
         }
         for token in &self.tokens {
             if token.position.is_some_and(|pos| !token.cells.contains(&pos)) {
@@ -1338,7 +1369,7 @@ impl Program {
         }
         let mut watched = vec![false; nodes];
         for record in &self.watched_wires {
-            if record.wire >= nodes || record.watchers.iter().any(|&node| node >= nodes) {
+            if record.wire >= nodes || record.watchers.iter().any(|&node| !valid_notification(&self.initial, node)) {
                 return Err(invalid("invalid watcher reference"));
             }
             watched[record.wire] = true;
@@ -1357,7 +1388,9 @@ impl Program {
                         .movement_wires
                         .get(step.wires.clone())
                         .ok_or_else(|| invalid("invalid movement wire range"))?;
-                    if step.node >= nodes || (step.wire && !watched[step.node]) || wires.iter().any(|&wire| wire >= nodes || !watched[wire]) {
+                    if !valid_notification(&self.initial, step.node)
+                        || (step.wire && !watched.get(step.node).copied().unwrap_or(false))
+                        || wires.iter().any(|&wire| wire >= nodes || !watched[wire]) {
                         return Err(invalid("invalid sealed movement step reference"));
                     }
                 }
@@ -1387,13 +1420,14 @@ impl Program {
             .source_watchers
             .iter()
             .map(Vec::as_slice)
-            .chain(self.home_watchers.iter().map(SmallVec::as_slice))
-            .chain(self.reactive_neighbours.iter().map(Vec::as_slice));
-        // These three tables are the runtime's component notification targets.
+            .chain(self.home_watchers.iter().map(SmallVec::as_slice));
         for list in notification_lists {
-            if list.iter().any(|&node| node >= nodes) {
+            if list.iter().any(|&node| !valid_notification(&self.initial, node)) {
                 return Err(invalid("invalid notification reference"));
             }
+        }
+        if self.reactive_neighbours.iter().flatten().any(|&node| node >= nodes) {
+            return Err(invalid("invalid reactive notification reference"));
         }
         Ok(())
     }

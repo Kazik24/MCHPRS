@@ -154,9 +154,10 @@ pub(in super::super) fn run<'a>(
 
     let mut watched_wires: Vec<WatchedWire> = Vec::new();
     let piston_positions: Vec<_> = pistons.iter().map(|piston| piston.base).collect();
-    for watch in crate::redpiler::scratch::discover_wire_watchers(&wire_positions, &piston_positions) {
+    for watch in crate::redpiler::scratch::discover_wire_watchers(world, &wire_positions, &piston_positions) {
         let wire = position_index[&watch.wire];
-        let piston = position_index[&watch.piston];
+        let piston = position_index[&watch.piston]
+            | if watch.head { crate::redpiler::sampled::program::PISTON_HEAD_NOTIFICATION } else { 0 };
         if let Some(record) = watched_wires.iter_mut().find(|record| record.wire == wire) {
             record.watchers.push(piston);
         } else {

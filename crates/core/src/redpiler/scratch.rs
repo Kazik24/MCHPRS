@@ -48,6 +48,7 @@ pub(crate) struct WireWatcher {
     pub(crate) wire: BlockPos,
     /// location of the piston whose motion can affect the wire.
     pub(crate) piston: BlockPos,
+    pub(crate) head: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -199,14 +200,20 @@ pub(crate) fn discover_watched_wire_sources(world: &impl World, bounds: (BlockPo
             }
         }
     }
-    let watchers = discover_wire_watchers(&wires, &pistons);
+    let watchers = discover_wire_watchers(world, &wires, &pistons);
 
     let sources = discover_wire_sources(world, &wires)?;
     Ok(WireDiscovery { watchers, sources })
 }
 
-pub(crate) fn discover_wire_watchers(wires: &[BlockPos], pistons: &[BlockPos]) -> Vec<WireWatcher> {
-    let piston_index: HashMap<_, _> = pistons.iter().enumerate().map(|(index, &pos)| (pos, index)).collect();
+pub(crate) fn discover_wire_watchers(world: &impl World, wires: &[BlockPos], pistons: &[BlockPos]) -> Vec<WireWatcher> {
+    let mut piston_index: HashMap<BlockPos, Vec<(usize, bool)>> = HashMap::new();
+    for (index, &pos) in pistons.iter().enumerate() {
+        piston_index.entry(pos).or_default().push((index, false));
+        if let Block::Piston { piston } = world.get_block(pos) {
+            piston_index.entry(pos.offset(piston.facing.into())).or_default().push((index, true));
+        }
+    }
     let mut watchers = Vec::new();
     for &wire in wires {
         let mut nearby = Vec::new();
@@ -214,17 +221,19 @@ pub(crate) fn discover_wire_watchers(wires: &[BlockPos], pistons: &[BlockPos]) -
             for dy in -2i32..=2 {
                 for dz in -2i32..=2 {
                     if dx.abs() + dy.abs() + dz.abs() <= 2
-                        && let Some(&index) = piston_index.get(&BlockPos::new(wire.x + dx, wire.y + dy, wire.z + dz))
+                        && let Some(indices) = piston_index.get(&BlockPos::new(wire.x + dx, wire.y + dy, wire.z + dz))
                     {
-                        nearby.push(index);
+                        nearby.extend(indices.iter().copied());
                     }
                 }
             }
         }
         nearby.sort_unstable();
-        watchers.extend(nearby.into_iter().map(|index| WireWatcher {
+        nearby.dedup();
+        watchers.extend(nearby.into_iter().map(|(index, head)| WireWatcher {
             wire,
             piston: pistons[index],
+            head,
         }));
     }
     watchers
@@ -812,7 +821,7 @@ mod tests {
     fn watched_wire_discovery_separates_dependencies_from_notifications() {
         let mut world = fixture();
         let discovery = discover_watched_wire_sources(&world, BOUNDS).unwrap();
-        assert!(discovery.watchers.contains(&WireWatcher { wire: WIRE, piston: PISTON }));
+        assert!(discovery.watchers.contains(&WireWatcher { wire: WIRE, piston: PISTON, head: false }));
         assert!(discovery.sources.contains(&WireSource {
             wire: WIRE,
             source: LEVER,
@@ -835,7 +844,7 @@ mod tests {
     #[test]
     fn changed_watched_wire_is_the_notification_condition() {
         let discovery = WireDiscovery {
-            watchers: vec![WireWatcher { wire: WIRE, piston: PISTON }],
+            watchers: vec![WireWatcher { wire: WIRE, piston: PISTON, head: false }],
             sources: vec![],
         };
         assert_eq!(changed_wire_watchers(&discovery, &[(WIRE, 0)], &[(WIRE, 1)]), discovery.watchers);
@@ -844,7 +853,7 @@ mod tests {
     #[test]
     fn masked_source_change_does_not_change_wire_or_notify() {
         let discovery = WireDiscovery {
-            watchers: vec![WireWatcher { wire: WIRE, piston: PISTON }],
+            watchers: vec![WireWatcher { wire: WIRE, piston: PISTON, head: false }],
             sources: vec![],
         };
         let before = max_attenuated_strength([(15, 1), (14, 2)]);
@@ -864,7 +873,7 @@ mod tests {
     #[test]
     fn nearby_power_dependency_without_wire_change_does_not_notify() {
         let discovery = WireDiscovery {
-            watchers: vec![WireWatcher { wire: WIRE, piston: PISTON }],
+            watchers: vec![WireWatcher { wire: WIRE, piston: PISTON, head: false }],
             sources: vec![],
         };
         assert!(changed_wire_watchers(&discovery, &[(WIRE, 7)], &[(WIRE, 7)]).is_empty());

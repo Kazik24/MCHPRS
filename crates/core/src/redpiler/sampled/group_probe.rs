@@ -1,5 +1,5 @@
 use super::compiler::find_changed_links;
-use super::program::{ArrangementSource, InputArrangement};
+use super::program::{ArrangementSource, InputArrangement, PISTON_HEAD_NOTIFICATION};
 use super::{Program, ScratchEntry, ScratchError, ScratchWorld};
 use crate::redpiler::TaskMonitor;
 use crate::world::World;
@@ -39,9 +39,26 @@ pub(super) struct ProbeIndexes<'a> {
     redstone_tokens: HashMap<BlockPos, usize>,
     /// wire world positions mapped to component IDs.
     wire_at: HashMap<BlockPos, usize>,
+    head_owners: HashMap<BlockPos, Vec<usize>>,
 }
 
 impl<'a> ProbeIndexes<'a> {
+    pub(super) fn notification(&self, event: &crate::world::RedstoneUpdateObservation) -> Option<usize> {
+        match event.block {
+            Block::PistonHead { head } if event.input_on.is_some() => self.components
+                .get(&event.pos.offset(head.facing.opposite().into()))
+                .map(|&base| base | PISTON_HEAD_NOTIFICATION),
+            Block::PistonHead { .. } => None,
+            _ => self.components.get(&event.pos).copied(),
+        }
+    }
+
+    pub(super) fn notifications_at(&self, position: BlockPos) -> impl Iterator<Item = usize> + '_ {
+        self.components.get(&position).copied().into_iter().chain(
+            self.head_owners.get(&position).into_iter().flatten().map(|&base| base | PISTON_HEAD_NOTIFICATION)
+        )
+    }
+
     pub(super) fn source_at(&self, pos: BlockPos) -> Result<ArrangementSource, ScratchError> {
         if let Some(&token) = self.redstone_tokens.get(&pos) {
             Ok(ArrangementSource::Token(token))
@@ -63,6 +80,7 @@ impl<'a> ProbeIndexes<'a> {
     ) -> Result<ProbeIndexes<'a>, ScratchError> {
         let mut redstone_tokens = HashMap::new();
         let mut wire_at = HashMap::new();
+        let mut head_owners: HashMap<BlockPos, Vec<usize>> = HashMap::new();
         for (&pos, &block) in positions.iter().zip(initial) {
             if monitor.is_some_and(TaskMonitor::cancelled) {
                 return Err(ScratchError {
@@ -73,6 +91,9 @@ impl<'a> ProbeIndexes<'a> {
             let index = components[&pos];
             if matches!(block, Block::RedstoneWire { .. }) {
                 wire_at.insert(pos, index);
+            }
+            if let Block::Piston { piston } = block {
+                head_owners.entry(pos.offset(piston.facing.into())).or_default().push(index);
             }
         }
         for (token, record) in tokens.iter().enumerate() {
@@ -86,6 +107,7 @@ impl<'a> ProbeIndexes<'a> {
             components,
             redstone_tokens,
             wire_at,
+            head_owners,
         })
     }
 }

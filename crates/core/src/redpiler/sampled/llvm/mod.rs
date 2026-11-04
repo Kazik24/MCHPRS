@@ -4,7 +4,7 @@
 //! the DLL boundary, and future descriptor versions must not reinterpret existing blobs.
 use super::{
     ScratchError,
-    program::{Operation, Program},
+    program::{Operation, PISTON_HEAD_NOTIFICATION, Program, notification_component},
 };
 use mchprs_blocks::BlockPos;
 use mchprs_blocks::blocks::Block;
@@ -152,7 +152,7 @@ impl LlvmRuntime {
         }
         let library = Library::load()?;
         let api = unsafe { (library.api_descriptor)() };
-        if api.abi_version != ABI_VERSION || api.descriptor_bytes != 16 || api.semantic_version != 25 {
+        if api.abi_version != ABI_VERSION || api.descriptor_bytes != 16 || api.semantic_version != 26 {
             return Err(ScratchError {
                 position: None,
                 reason: "LLVM DLL ABI/version mismatch",
@@ -666,6 +666,9 @@ unsafe extern "system" {
 
 impl LlvmProgram {
     pub(super) fn encode(program: &Program) -> Result<Self, ScratchError> {
+        if program.positions.len() >= PISTON_HEAD_NOTIFICATION {
+            return Err(overflow());
+        }
         let mut blob = Vec::with_capacity(
             HEADER_BYTES
                 .checked_add(program.operations.len().checked_mul(OP_BYTES).ok_or_else(overflow)?)
@@ -791,14 +794,14 @@ fn encode_aux(program: &Program, blob: &mut Vec<u8>) -> Result<(), ScratchError>
         let start = id(tables[4].len())?;
         tables[2].extend([start, id(row.len())?]);
         for &node in row {
-            tables[4].push(id(node)?);
+            tables[4].push(encode_notification(program, node)?);
         }
     }
     for record in &program.watched_wires {
         let start = id(tables[4].len())?;
         tables[3].extend([id(record.wire)?, start, id(record.watchers.len())?]);
         for &node in &record.watchers {
-            tables[4].push(id(node)?);
+            tables[4].push(encode_notification(program, node)?);
         }
     }
     for row in &program.outgoing {
@@ -842,12 +845,31 @@ fn encode_aux(program: &Program, blob: &mut Vec<u8>) -> Result<(), ScratchError>
     Ok(())
 }
 
+fn encode_notification(program: &Program, notification: usize) -> Result<u32, ScratchError> {
+    let encoded = u32::try_from(notification).map_err(|_| overflow())?;
+    let component = notification_component(notification);
+    if component >= program.initial.len()
+        || (notification & PISTON_HEAD_NOTIFICATION != 0
+            && (!matches!(program.initial[component], Block::Piston { .. })
+                || !program.piston_by_component.get(component).copied().flatten().is_some_and(|piston| {
+                    program
+                        .pistons
+                        .get(piston.get() - 1)
+                        .is_some_and(|piston| piston.base == program.positions[component])
+                })))
+    {
+        return Err(overflow());
+    }
+    Ok(encoded)
+}
+
 pub(super) fn validate_blob(descriptor: &NativeProgramDescriptor, blob: &[u8]) -> Result<(), ScratchError> {
     let invalid = || ScratchError {
         position: None,
         reason: "invalid native Program descriptor",
     };
     if descriptor.abi_version != ABI_VERSION
+        || descriptor.component_count >= PISTON_HEAD_NOTIFICATION as u32
         || descriptor.header_bytes as usize != HEADER_BYTES
         || descriptor.total_bytes as usize != blob.len()
         || blob.get(..4) != Some(&MAGIC)
@@ -994,7 +1016,23 @@ pub(super) fn validate_blob(descriptor: &NativeProgramDescriptor, blob: &[u8]) -
             return Err(invalid());
         }
     }
-    if tables[4].iter().any(|&node| node >= descriptor.component_count) || tables[6].iter().any(|&link| link >= descriptor.link_count) {
+    let piston_components: std::collections::HashSet<_> = tables[7].chunks_exact(10).map(|piston| piston[0] as usize).collect();
+    let valid_notification = |notification: u32| {
+        let component = notification_component(notification as usize);
+        component < descriptor.component_count as usize
+            && (notification & PISTON_HEAD_NOTIFICATION as u32 == 0
+                || (blob[descriptor.component_offset as usize + component * COMPONENT_BYTES + 12] == 8 && piston_components.contains(&component)))
+    };
+    if tables[4].iter().any(|&node| !valid_notification(node)) || tables[6].iter().any(|&link| link >= descriptor.link_count) {
+        return Err(invalid());
+    }
+    if tables[7].len() % 10 != 0
+        || tables[23].len() % 5 != 0
+        || tables[23]
+            .chunks_exact(5)
+            .any(|row| !valid_notification(row[0]) || (row[0] & PISTON_HEAD_NOTIFICATION as u32 != 0 && row[2] != 0))
+        || tables[24].iter().any(|&wire| wire >= descriptor.component_count)
+    {
         return Err(invalid());
     }
     if tables[60]
@@ -1080,6 +1118,93 @@ fn native_status_reason(status: u32) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    #[cfg(any(windows, target_os = "linux"))]
+    fn llvm_notification_tags_validate_physical_piston_routes() {
+        use super::super::program::MoveStep;
+        use crate::world::World;
+        use mchprs_blocks::{BlockFace, BlockFacing, blocks::RedstonePiston};
+        let mut world = super::super::tests::host();
+        let base = BlockPos::new(15, 15, 15);
+        let lamp = base + BlockPos::new(3, 0, 0);
+        let wire = base + BlockPos::new(-2, 0, 0);
+        let spare = base + BlockPos::new(0, 0, 3);
+        world.set_block(
+            base,
+            Block::Piston {
+                piston: RedstonePiston {
+                    facing: BlockFacing::North,
+                    sticky: true,
+                    extended: false,
+                },
+            },
+        );
+        world.set_block(spare, world.get_block(base));
+        world.set_block(lamp, Block::RedstoneLamp { lit: false });
+        world.set_block(wire.offset(BlockFace::Bottom), Block::Stone {});
+        world.set_block(wire, Block::from_name("redstone_wire").unwrap());
+        let mut program = super::super::compile_program(
+            &world,
+            (base - BlockPos::new(4, 4, 4), base + BlockPos::new(4, 4, 4)),
+            super::super::ScratchEntry {
+                scheduled: vec![],
+                piston: world.piston_state().clone(),
+            },
+            None,
+        )
+        .unwrap();
+        let piston = program.component_indices[&base];
+        let tag = PISTON_HEAD_NOTIFICATION | piston;
+        program.source_watchers[piston] = vec![tag];
+        let wire_start = program.movement_wires.len();
+        let step_index = program.movement_steps.len();
+        program.movement_wires.push(program.component_indices[&wire]);
+        program.movement_steps.push(MoveStep {
+            node: tag,
+            watcher: true,
+            wire: false,
+            wires: wire_start..wire_start + 1,
+        });
+        let encoded = LlvmProgram::encode(&program).unwrap();
+        let library = Library::load().unwrap();
+        let native_size = |blob: &[u8]| unsafe { (library.state_size)(&encoded.descriptor, blob.as_ptr(), blob.len() as u32, 0) };
+        assert!(native_size(&encoded.blob) > 0);
+        let directory = encoded.descriptor.source_offset as usize + encoded.descriptor.source_count as usize * 4;
+        let word_offset = |table: usize| read_u32(&encoded.blob, directory + table * 8).unwrap() as usize;
+        let watcher_index = program.source_watchers[..piston].iter().map(Vec::len).sum::<usize>();
+        for (table, index) in [(4, watcher_index), (23, step_index * 5)] {
+            for invalid in [
+                PISTON_HEAD_NOTIFICATION as u32 | program.component_indices[&lamp] as u32,
+                PISTON_HEAD_NOTIFICATION as u32 | encoded.descriptor.component_count,
+                0xc000_0000,
+                u32::MAX,
+            ] {
+                let mut corrupt = encoded.blob.clone();
+                let offset = word_offset(table) + index * 4;
+                corrupt[offset..offset + 4].copy_from_slice(&invalid.to_le_bytes());
+                assert!(validate_blob(&encoded.descriptor, &corrupt).is_err(), "table {table}, tag {invalid:#x}");
+                assert_eq!(native_size(&corrupt), 0, "table {table}, tag {invalid:#x}");
+            }
+        }
+        let mut corrupt = encoded.blob.clone();
+        let offset = word_offset(24) + wire_start * 4;
+        corrupt[offset..offset + 4].copy_from_slice(&(PISTON_HEAD_NOTIFICATION as u32 | piston as u32).to_le_bytes());
+        assert!(validate_blob(&encoded.descriptor, &corrupt).is_err(), "wire IDs must remain untagged");
+        assert_eq!(native_size(&corrupt), 0);
+        let mut corrupt = encoded.blob.clone();
+        let record = program.piston_bindings.iter().position(|binding| binding.component == piston).unwrap();
+        let offset = word_offset(7) + record * 10 * 4;
+        corrupt[offset..offset + 4].copy_from_slice(&(program.component_indices[&spare] as u32).to_le_bytes());
+        assert!(
+            validate_blob(&encoded.descriptor, &corrupt).is_err(),
+            "head route must have an owning piston record"
+        );
+        assert_eq!(native_size(&corrupt), 0);
+        if let Some(high_bit) = 1usize.checked_shl(32) {
+            assert!(encode_notification(&program, high_bit | tag).is_err());
+        }
+    }
 
     #[test]
     fn llvm_errors_distinguish_invalid_state_capacity_and_work_limits() {

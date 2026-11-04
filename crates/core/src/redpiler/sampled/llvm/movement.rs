@@ -1,5 +1,5 @@
 //! Binary movement tables. Every offset in a row is an index into its named table.
-use super::{AUX_TABLES, Program, ScratchError, overflow};
+use super::{AUX_TABLES, Program, ScratchError, encode_notification, overflow};
 use crate::redpiler::sampled::program::ArrangementSource;
 use mchprs_blocks::blocks::Block;
 
@@ -111,7 +111,13 @@ pub(super) fn encode_movement(p: &Program, t: &mut [Vec<u32>; AUX_TABLES]) -> Re
     }
     for r in &p.movement_steps {
         let wires = range(&r.wires)?;
-        t[23].extend([id(r.node)?, u32::from(r.watcher), u32::from(r.wire), wires[0], wires[1]]);
+        t[23].extend([
+            encode_notification(p, r.node)?,
+            u32::from(r.watcher),
+            u32::from(r.wire),
+            wires[0],
+            wires[1],
+        ]);
     }
     for &wire in &p.movement_wires {
         t[24].push(id(wire)?);
@@ -161,7 +167,7 @@ pub(super) fn encode_movement(p: &Program, t: &mut [Vec<u32>; AUX_TABLES]) -> Re
         let start = id(t[4].len())?;
         t[31].extend([start, id(row.len())?]);
         for &node in row {
-            t[4].push(id(node)?);
+            t[4].push(encode_notification(p, node)?);
         }
     }
     for &cell in &p.component_cells {

@@ -1,4 +1,4 @@
-use super::program::{ArrangementSource, ComparatorInput};
+use super::program::{ArrangementSource, ComparatorInput, PISTON_HEAD_NOTIFICATION, notification_component};
 use super::{Operation, Program, ScratchError};
 use mchprs_blocks::blocks::Block;
 use mchprs_world::TickPriority;
@@ -235,10 +235,11 @@ impl Runtime {
     pub(super) fn notify_source_watchers(&mut self, source: usize, shape: bool, update: bool) {
         for index in 0..self.program.source_watchers[source].len() {
             let watcher = self.program.source_watchers[source][index];
-            if !self.consume_component_operation(watcher) {
+            let component = notification_component(watcher);
+            if !self.consume_component_operation(component) {
                 return;
             }
-            let delivered = if matches!(self.blocks[watcher], Block::Observer { .. }) {
+            let delivered = if matches!(self.blocks[component], Block::Observer { .. }) {
                 shape
             } else {
                 update
@@ -249,7 +250,7 @@ impl Runtime {
                     self,
                     "deliver {:?} -> {:?} shape={shape} update={update}",
                     self.program.positions[source],
-                    self.program.positions[watcher]
+                    self.program.positions[component]
                 );
             }
             if delivered {
@@ -262,10 +263,11 @@ impl Runtime {
         let count = self.program.home_watchers.get(piston).map_or(0, |watchers| watchers.len());
         for index in 0..count {
             let watcher = self.program.home_watchers[piston][index];
-            if !self.consume_component_operation(watcher) {
+            let component = notification_component(watcher);
+            if !self.consume_component_operation(component) {
                 return;
             }
-            if !shape_only || matches!(self.blocks[watcher], Block::Observer { .. }) {
+            if !shape_only || matches!(self.blocks[component], Block::Observer { .. }) {
                 self.update_once(watcher);
             }
         }
@@ -1069,10 +1071,12 @@ impl Runtime {
         }
         for index in steps {
             let step = &self.program.movement_steps[index];
-            let node = step.node;
+            let notification = step.node;
+            let node = notification_component(notification);
+            let via_head = notification & PISTON_HEAD_NOTIFICATION != 0;
             let wire = step.wire;
             let watcher = step.watcher;
-            let deliver = self.switched[node]
+            let deliver = (!via_head && self.switched[node])
                 || watcher
                 || self.program.movement_wires[step.wires.clone()]
                     .iter()
@@ -1089,11 +1093,13 @@ impl Runtime {
                     }
                 }
             } else if deliver {
-                self.switched[node] = false;
+                if !via_head {
+                    self.switched[node] = false;
+                }
                 if matches!(self.blocks[node], Block::Observer { .. }) && !watcher {
-                    self.update_wire_watcher(node);
+                    self.update_wire_watcher(notification);
                 } else {
-                    self.update_once(node);
+                    self.update_once(notification);
                 }
             }
             self.operations += 1;
@@ -1121,7 +1127,7 @@ impl Runtime {
             if let Some(index) = self.program.watched_by_component[wire].map(|index| index.get() - 1) {
                 for offset in 0..self.program.watched_wires[index].watchers.len() {
                     let watcher = self.program.watched_wires[index].watchers[offset];
-                    if !self.consume_component_operation(watcher) {
+                    if !self.consume_component_operation(notification_component(watcher)) {
                         return;
                     }
                     self.update_wire_watcher(watcher);
@@ -1414,6 +1420,16 @@ impl Runtime {
     }
 
     pub(super) fn update_once(&mut self, receiver: usize) {
+        if receiver & PISTON_HEAD_NOTIFICATION != 0 {
+            let component = notification_component(receiver);
+            if let Some(piston) = self.program.piston_by_component[component].map(|index| index.get() - 1)
+                && self.piston_head_present[piston]
+                && !self.piston_head_moving[piston]
+            {
+                self.update_piston(component);
+            }
+            return;
+        }
         if self.updated_in_phase[receiver] == self.phase {
             #[cfg(any(test, feature = "redpiler-trace"))]
             if runtime_trace_enabled!(self) {
@@ -1479,6 +1495,10 @@ impl Runtime {
     }
 
     fn update_wire_watcher(&mut self, receiver: usize) {
+        if receiver & PISTON_HEAD_NOTIFICATION != 0 {
+            self.update_once(receiver);
+            return;
+        }
         if let Block::Observer { observer } = self.blocks[receiver] {
             // Dust power callbacks have no direction; only a powered observer may release.
             if observer.powered {

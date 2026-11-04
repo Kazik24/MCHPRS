@@ -1,5 +1,6 @@
 //! Sample ordered source transitions and compare the lowered execution with scratch frames.
 use super::*;
+use crate::redpiler::sampled::program::notification_component;
 use std::time::{Duration, Instant};
 
 #[derive(Default)]
@@ -392,13 +393,14 @@ pub(in super::super) fn run(
             let targets = &source_index.targets[source];
             let mut ordered = Vec::new();
             for delivery in &frames[0].deliveries {
-                let Some(&target) = probe_indexes.components.get(&delivery.pos) else {
+                let Some(notification) = probe_indexes.notification(delivery) else {
                     continue;
                 };
+                let target = notification_component(notification);
                 let Some(record) = targets.iter().find(|record| record.target == target) else {
                     continue;
                 };
-                if ordered.contains(&target) || matches!(delivery.block, Block::RedstoneWire { .. }) {
+                if ordered.contains(&notification) || matches!(delivery.block, Block::RedstoneWire { .. }) {
                     continue;
                 }
                 if matches!(delivery.block, Block::Observer { .. })
@@ -408,16 +410,23 @@ pub(in super::super) fn run(
                         .input_on
                         .is_some_and(|(main, side)| (if record.rear { main } else { side }) == powered)
                 {
-                    ordered.push(target);
+                    ordered.push(notification);
                 }
             }
             for record in targets {
-                if !ordered.contains(&record.target) {
+                if !ordered.iter().any(|&notification| notification_component(notification) == record.target) {
                     ordered.push(record.target);
                 }
             }
             let mut operations = Vec::new();
+            // Dust/head callbacks must see the source's new piston input contributions.
+            ordered.sort_by_key(|&target| !matches!(program.initial[notification_component(target)], Block::Piston { .. }));
+            let mut staged_pistons = std::collections::HashSet::new();
             for target in ordered {
+                let target = notification_component(target);
+                if matches!(program.initial[target], Block::Piston { .. }) && !staged_pistons.insert(target) {
+                    continue;
+                }
                 operations.extend(targets.iter().find(|record| record.target == target).unwrap().operations.iter().cloned());
             }
             outputs[usize::from(powered)] = operations;
@@ -564,6 +573,7 @@ impl SourceIndex {
             if source % 1024 == 0 {
                 check_cancelled(monitor)?;
             }
+            targets.sort_by_key(|record| !matches!(program.initial[record.target], Block::Piston { .. }));
             for record in targets {
                 let target = record.target;
                 match program.initial[target] {
@@ -714,6 +724,7 @@ fn source_operations(program: &Program, source: usize) -> Vec<Operation> {
         }
     }
     let mut operations = Vec::new();
+    targets.sort_by_key(|&target| !matches!(program.initial[target], Block::Piston { .. }));
     for target in targets {
         operations.extend(
             program

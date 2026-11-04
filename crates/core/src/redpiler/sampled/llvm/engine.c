@@ -11,6 +11,7 @@
 #define NE_TABLES 61u
 #define NONE UINT32_MAX
 #define PASSIVE_TICK 0x80000000u
+#define PISTON_HEAD_NOTIFICATION 0x80000000u
 
 typedef struct {
     uint32_t piston, token, destination, order, flags, next;
@@ -152,13 +153,35 @@ static uint32_t schedule(NEEngine *engine, uint32_t component, uint32_t delay, u
 static uint32_t execute_output(NEEngine *engine, uint32_t component, uint8_t powered);
 static uint32_t update_once(NEEngine *engine, uint32_t component);
 
+static uint32_t notification_component(uint32_t notification) {
+    return notification & ~PISTON_HEAD_NOTIFICATION;
+}
+
+static uint32_t valid_notification(const MchprsNativeProgramDescriptor *p, const uint8_t *blob,
+                                   const uint32_t **t, const uint32_t *n, uint32_t notification) {
+    uint32_t node = notification_component(notification);
+    if (node >= p->component_count) return 0u;
+    if (!(notification & PISTON_HEAD_NOTIFICATION)) return 1u;
+    if (blob[p->component_offset + (size_t)node * 32u + 12u] != 8u || n[7] % 10u || n[16] % 7u || n[32] != p->component_count) return 0u;
+    uint32_t cell = t[32][node];
+    if (cell >= n[16] / 7u) return 0u;
+    const uint32_t *row = t[16] + cell * 7u;
+    if ((uint64_t)row[3] + row[4] > n[17]) return 0u;
+    for (uint32_t i = 0; i < row[4]; ++i) {
+        uint32_t piston = t[17][row[3] + i];
+        if (piston >= n[7] / 10u) return 0u;
+        if (t[7][piston * 10u] == node) return 1u;
+    }
+    return 0u;
+}
+
 static uint32_t notify(NEEngine *e, uint32_t source, uint8_t shape, uint8_t update) {
     const uint32_t *row = table(e, 2u) + (size_t)source * 2u, *ids = table(e, 4u);
     for (uint32_t i = 0; i < row[1]; ++i) {
         uint32_t watcher = ids[row[0] + i];
         if (++e->tick_operations > NE_MAX_TICK_OPERATIONS) return e->error = NE_OPERATION_LIMIT;
         e->work_count++;
-        if (components(e)[watcher].kind == 7u ? shape : update) {
+        if (components(e)[notification_component(watcher)].kind == 7u ? shape : update) {
             uint32_t result = update_once(e, watcher);
             if (result) return result;
         }
@@ -291,12 +314,19 @@ static uint32_t update_component(NEEngine *e, uint32_t node) {
     return NE_OK;
 }
 static uint32_t update_once(NEEngine *e, uint32_t node) {
+    if (node & PISTON_HEAD_NOTIFICATION) {
+        node = notification_component(node);
+        uint32_t piston = e->piston_by_component[node];
+        if (piston == NONE || (e->piston_flags[piston] & (2u | 4u)) != 2u) return NE_OK;
+        return update_piston(e, node);
+    }
     if (e->updated[node] == e->phase) return NE_OK;
     e->updated[node] = e->phase;
     return update_component(e, node);
 }
 
 static uint32_t update_wire_watcher(NEEngine *e, uint32_t node) {
+    if (node & PISTON_HEAD_NOTIFICATION) return update_once(e, node);
     if (components(e)[node].kind == 7u) return e->component_state[node] ? schedule(e, node, 2u, 3u) : NE_OK;
     return update_once(e, node);
 }
@@ -496,7 +526,7 @@ static uint32_t valid_aux(const MchprsNativeProgramDescriptor *p, const uint8_t 
         if (t[3][i] >= p->component_count || blob[p->component_offset + (size_t)t[3][i] * 32u + 12u] != 5u
             || (uint64_t)t[3][i + 1u] + t[3][i + 2u] > n[4]) return 0u;
     }
-    for (uint32_t i = 0; i < n[4]; ++i) if (t[4][i] >= p->component_count) return 0u;
+    for (uint32_t i = 0; i < n[4]; ++i) if (!valid_notification(p, blob, t, n, t[4][i])) return 0u;
     for (uint32_t i = 0; i < n[6]; ++i) if (t[6][i] >= p->link_count) return 0u;
     for (uint32_t i=0;i<p->component_count;++i) {
         const uint32_t *r=t[43]+i*5u;
@@ -530,7 +560,8 @@ static uint32_t valid_aux(const MchprsNativeProgramDescriptor *p, const uint8_t 
 static uint32_t valid_program(const MchprsNativeProgramDescriptor *program, const uint8_t *blob, uint32_t blob_bytes) {
     if (!program || !blob || (uintptr_t)blob % _Alignof(uint32_t) != 0u || blob_bytes < 16u || program->abi_version != 3u || program->header_bytes != 16u
         || program->total_bytes != blob_bytes || blob[0] != 'M' || blob[1] != 'C' || blob[2] != 'H' || blob[3] != 'N'
-        || read_u32(blob + 4) != 3u || read_u32(blob + 8) != 16u || read_u32(blob + 12) != program->total_bytes) return 0u;
+        || read_u32(blob + 4) != 3u || read_u32(blob + 8) != 16u || read_u32(blob + 12) != program->total_bytes
+        || program->component_count >= PISTON_HEAD_NOTIFICATION) return 0u;
     if (program->operation_offset != 16u
         || (uint64_t)program->link_offset != (uint64_t)program->operation_offset + (uint64_t)program->operation_count * 8u
         || (uint64_t)program->component_offset != (uint64_t)program->link_offset + (uint64_t)program->link_count * 12u
@@ -604,7 +635,7 @@ static uint32_t valid_program(const MchprsNativeProgramDescriptor *program, cons
 static size_t align8(size_t value) { return (value + 7u) & ~(size_t)7u; }
 
 MchprsNativeApiDescriptor ne_api_descriptor(void) {
-    MchprsNativeApiDescriptor value = {3u, 16u, 25u};
+    MchprsNativeApiDescriptor value = {3u, 16u, 26u};
     return value;
 }
 
