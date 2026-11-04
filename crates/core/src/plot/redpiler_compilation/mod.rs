@@ -108,7 +108,7 @@ impl Plot {
         }
     }
 
-    pub(super) fn start_redpiler(&mut self, options: CompilerOptions) {
+    pub(super) fn start_automatic_redpiler(&mut self, options: CompilerOptions) {
         let budget = self.players.iter()
             .filter(|player| player.has_permission("commands.redpiler.compile")
                 && player.has_permission("commands.toggleautorp")

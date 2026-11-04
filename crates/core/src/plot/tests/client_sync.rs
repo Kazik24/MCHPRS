@@ -168,7 +168,7 @@ fn rejected_circuit_compile_keeps_the_open_container_in_native_mode() {
     plot.world.set_block(BlockPos::new(39, 20, 32), Block::Stone {});
     let pending_before = plot.world.scheduler().iter_entries().collect::<Vec<_>>();
 
-    plot.start_redpiler(CompilerOptions::default());
+    plot.start_redpiler_with_budget(CompilerOptions::default(), None);
     plot.wait_for_redpiler();
 
     assert!(!plot.redpiler.is_active());
@@ -188,7 +188,7 @@ fn unpowered_pressure_plate_compiles_and_hands_off_on_player_contact() {
     let wire = plate.offset(BlockFace::East);
     plot.world.set_block(wire.offset(BlockFace::Bottom), Block::Stone {});
     plot.world.set_block(wire, Block::from_name("redstone_wire").unwrap());
-    plot.start_redpiler(CompilerOptions::default());
+    plot.start_redpiler_with_budget(CompilerOptions::default(), None);
     plot.wait_for_redpiler();
     assert!(plot.redpiler.is_active());
     plot.players[0].on_ground = true;

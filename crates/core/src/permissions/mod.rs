@@ -187,6 +187,11 @@ impl PlayerPermissionsCache {
         }
     }
 
+    #[cfg(test)]
+    pub(crate) fn for_test_rank(nodes: &[&str], rank: Rank) -> Self {
+        Self { waveform_rank: Some(rank), valid_until: Some(Instant::now() + Duration::from_secs(30)), ..Self::for_test(nodes) }
+    }
+
     /// Builds a cache from LuckPerms data already resolved on the Velocity
     /// proxy: the effective permission map plus primary group and prefix.
     /// Wildcards and negations arrive as-is and are matched locally.

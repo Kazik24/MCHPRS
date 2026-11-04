@@ -377,6 +377,11 @@ impl Player {
         self.permissions_cache = Some(PlayerPermissionsCache::for_test(nodes));
     }
 
+    #[cfg(test)]
+    pub(crate) fn set_test_rank_permissions(&mut self, nodes: &[&str], rank: Rank) {
+        self.permissions_cache = Some(PlayerPermissionsCache::for_test_rank(nodes, rank));
+    }
+
     pub fn generate_offline_uuid(username: &str) -> u128 {
         u128::from_be_bytes(md5::compute(format!("OfflinePlayer:{}", username)).0)
             // Encode UUID variant and version 3 (MD5).
@@ -1046,12 +1051,13 @@ impl Player {
     }
 
     pub(crate) fn redpiler_compile_budget(&self) -> Result<Option<std::time::Duration>, String> {
+        if let Some(cache) = &self.permissions_cache {
+            return cache.redpiler_compile_budget();
+        }
         if CONFIG.luckperms.is_none() && CONFIG.velocity.is_none() {
             return Ok(None);
         }
-        self.permissions_cache.as_ref()
-            .ok_or("Permissions unavailable; rejoin and try again.")?
-            .redpiler_compile_budget()
+        Err("Permissions unavailable; rejoin and try again.".into())
     }
 
     pub(crate) fn waveform_limits(&self) -> Result<(usize, usize), String> {

@@ -48,14 +48,32 @@ fn blocked_compile(plot: &mut Plot) -> mpsc::Sender<()> {
 fn automatic_compilation_requires_an_authorized_editor() {
     let (mut plot, _peer) = fixture(false);
     plot.players[0].set_test_permissions(&["commands.toggleautorp"]);
-    plot.start_redpiler(Default::default());
+    plot.start_automatic_redpiler(Default::default());
     assert!(plot.compilation.is_none());
     plot.players[0].set_test_permissions(&["commands.redpiler.compile"]);
-    plot.start_redpiler(Default::default());
+    plot.start_automatic_redpiler(Default::default());
     assert!(plot.compilation.is_none());
-    plot.players[0].set_test_permissions(&["commands.redpiler.compile", "commands.toggleautorp"]);
-    plot.start_redpiler(Default::default());
-    assert!(plot.compilation.is_some());
+    for (rank, budget) in [
+        (crate::permissions::Rank::Advanced, Some(Duration::from_secs(30))),
+        (crate::permissions::Rank::Expert, Some(Duration::from_secs(120))),
+        (crate::permissions::Rank::Engineer, None),
+    ] {
+        plot.players[0].set_test_rank_permissions(&["commands.redpiler.compile", "commands.toggleautorp", "mchprs.build"], rank);
+        plot.start_automatic_redpiler(Default::default());
+        assert_eq!(plot.compilation.as_ref().unwrap().budget, budget);
+        plot.wait_for_redpiler();
+        assert!(plot.redpiler.is_active());
+        plot.reset_redpiler().unwrap();
+    }
+}
+
+#[test]
+fn manual_compilation_uses_the_requesting_players_budget() {
+    let (mut plot, _peer) = fixture(false);
+    plot.players[0].set_test_rank_permissions(&["commands.redpiler.compile"], crate::permissions::Rank::Advanced);
+    plot.owner = Some(plot.players[0].uuid);
+    plot.handle_command(0, "/rp", vec!["compile"]);
+    assert_eq!(plot.compilation.as_ref().unwrap().budget, Some(Duration::from_secs(30)));
     plot.wait_for_redpiler();
     assert!(plot.redpiler.is_active());
     plot.reset_redpiler().unwrap();
@@ -149,7 +167,7 @@ fn activation_waits_for_poll_and_preserves_imported_deadlines() {
     plot.world.schedule_tick(pos, 4, TickPriority::High);
     let pending: Vec<_> = plot.world.scheduler().iter_entries().collect();
 
-    plot.start_redpiler(Default::default());
+    plot.start_redpiler_with_budget(Default::default(), None);
     assert!(plot.compilation.is_some());
     let monitor = plot.compilation.as_ref().unwrap().monitor.clone();
     assert!(!plot.redpiler.is_active());
@@ -169,36 +187,36 @@ fn unchanged_plot_reuses_program_but_edits_and_pending_work_recompile() {
     let (mut plot, _peer) = fixture(false);
     let pos = BlockPos::new(34, 20, 34);
     plot.world.set_block(pos, Block::RedstoneLamp { lit: false });
-    plot.start_redpiler(Default::default());
+    plot.start_redpiler_with_budget(Default::default(), None);
     plot.wait_for_redpiler();
     assert!(!plot.redpiler.stats().unwrap().cached);
     plot.reset_redpiler().unwrap();
 
-    plot.start_redpiler(Default::default());
+    plot.start_redpiler_with_budget(Default::default(), None);
     plot.wait_for_redpiler();
     assert!(plot.redpiler.stats().unwrap().cached);
     plot.reset_redpiler().unwrap();
 
     plot.world.set_block(pos, Block::Stone {});
-    plot.start_redpiler(Default::default());
+    plot.start_redpiler_with_budget(Default::default(), None);
     plot.wait_for_redpiler();
     assert!(!plot.redpiler.stats().unwrap().cached);
     plot.reset_redpiler().unwrap();
 
     plot.world.schedule_tick(pos, 4, TickPriority::High);
-    plot.start_redpiler(Default::default());
+    plot.start_redpiler_with_budget(Default::default(), None);
     plot.wait_for_redpiler();
     assert!(!plot.redpiler.stats().unwrap().cached);
     plot.reset_redpiler().unwrap();
 
     let pending: Vec<_> = plot.world.scheduler().iter_entries().collect();
-    plot.start_redpiler(Default::default());
+    plot.start_redpiler_with_budget(Default::default(), None);
     plot.wait_for_redpiler();
     assert!(plot.redpiler.stats().unwrap().cached);
     plot.reset_redpiler().unwrap();
     assert_eq!(plot.world.scheduler().iter_entries().collect::<Vec<_>>(), pending);
 
-    plot.start_redpiler(CompilerOptions { io_only: true, ..Default::default() });
+    plot.start_redpiler_with_budget(CompilerOptions { io_only: true, ..Default::default() }, None);
     plot.wait_for_redpiler();
     assert!(!plot.redpiler.stats().unwrap().cached);
 }
@@ -254,7 +272,7 @@ fn edits_and_new_pending_work_prevent_stale_activation() {
 #[test]
 fn reset_discards_even_an_already_completed_compilation() {
     let (mut plot, _peer) = fixture(false);
-    plot.start_redpiler(Default::default());
+    plot.start_redpiler_with_budget(Default::default(), None);
     let deadline = Instant::now() + Duration::from_secs(20);
     while !plot.compilation.as_ref().unwrap().worker.is_finished() {
         assert!(Instant::now() < deadline);
@@ -272,11 +290,11 @@ fn cancelling_and_recompiling_cannot_overlap_large_workers() {
     let release = blocked_compile(&mut plot);
     plot.reset_redpiler().unwrap();
     let original = plot.compilation.as_ref().unwrap().worker.thread().id();
-    plot.start_redpiler(Default::default());
+    plot.start_redpiler_with_budget(Default::default(), None);
     assert_eq!(plot.compilation.as_ref().unwrap().worker.thread().id(), original);
     release.send(()).unwrap();
     plot.wait_for_redpiler();
-    plot.start_redpiler(Default::default());
+    plot.start_redpiler_with_budget(Default::default(), None);
     plot.wait_for_redpiler();
     assert!(plot.redpiler.is_active());
 }
@@ -291,7 +309,7 @@ fn worker_panics_preserve_live_work_and_allow_retry() {
     plot.wait_for_redpiler();
     assert!(!plot.redpiler.is_active());
     assert_eq!(plot.world.scheduler().iter_entries().collect::<Vec<_>>(), pending);
-    plot.start_redpiler(Default::default());
+    plot.start_redpiler_with_budget(Default::default(), None);
     plot.wait_for_redpiler();
     assert!(plot.redpiler.is_active());
 }

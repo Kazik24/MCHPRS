@@ -1431,7 +1431,7 @@ fn rejected_piston_compilation_highlights_the_block_and_keeps_interpreter_work()
         };
         plot.world.piston_state_mut().events.push_back(queued);
         let ticks = plot.world.scheduler().iter_entries().collect::<Vec<_>>();
-        plot.start_redpiler(Default::default());
+        plot.start_redpiler_with_budget(Default::default(), None);
         plot.wait_for_redpiler();
         assert_eq!(plot.world.piston_state().events.iter().copied().collect::<Vec<_>>(), vec![queued]);
         assert!(!plot.redpiler.is_active());

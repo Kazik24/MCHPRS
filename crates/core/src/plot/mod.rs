@@ -1029,7 +1029,7 @@ impl Plot {
                 && (self.tps == Tps::Unlimited || self.timings.is_running_behind())
                 && !self.world.chunks.iter().any(Chunk::requires_interpreter)
             {
-                self.start_redpiler(Default::default());
+                self.start_automatic_redpiler(Default::default());
             }
 
             let now = Instant::now();
