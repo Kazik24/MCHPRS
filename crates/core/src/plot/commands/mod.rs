@@ -1402,7 +1402,12 @@ mod security_tests {
             ["all", "redstone", "io"]
         );
         for command in ["reset", "off", "clear"] {
-            let node = redpiler.children.iter().map(|&id| &nodes[id as usize]).find(|node| node.name == Some(command)).unwrap();
+            let node = redpiler
+                .children
+                .iter()
+                .map(|&id| &nodes[id as usize])
+                .find(|node| node.name == Some(command))
+                .unwrap();
             assert!(node.children.is_empty());
         }
         assert_eq!(
