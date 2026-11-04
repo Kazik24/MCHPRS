@@ -8,18 +8,28 @@ fn command_block_edits_cannot_stop_an_active_redpiler() {
     plot.players[0].set_test_permissions(&["*"]);
     let pos = BlockPos::new(33, 21, 35);
     place(&mut plot.world, pos, "command_block", "say before", false, false);
-    plot.redpiler.compile(
-        &plot.world,
-        (BlockPos::new(30, 19, 30), BlockPos::new(36, 23, 34)),
-        Default::default(),
-        vec![],
-        Default::default(),
-    ).unwrap();
-    plot.handle_update_command_block(mchprs_network::packets::serverbound::SUpdateCommandBlock {
-        pos: pos.packed(), command: "say after".into(), mode: 1, flags: 4,
-    }, 0);
+    plot.redpiler
+        .compile(
+            &plot.world,
+            (BlockPos::new(30, 19, 30), BlockPos::new(36, 23, 34)),
+            Default::default(),
+            vec![],
+            Default::default(),
+        )
+        .unwrap();
+    plot.handle_update_command_block(
+        mchprs_network::packets::serverbound::SUpdateCommandBlock {
+            pos: pos.packed(),
+            command: "say after".into(),
+            mode: 1,
+            flags: 4,
+        },
+        0,
+    );
     assert!(plot.redpiler.is_active());
-    let Some(BlockEntity::CommandBlock(entity)) = plot.world.get_block_entity(pos) else { panic!("command block disappeared"); };
+    let Some(BlockEntity::CommandBlock(entity)) = plot.world.get_block_entity(pos) else {
+        panic!("command block disappeared");
+    };
     assert_eq!(entity.command, "say before");
     assert_eq!(plot.world.get_block(pos).get_name(), "command_block");
 }

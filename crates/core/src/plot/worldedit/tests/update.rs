@@ -22,13 +22,18 @@ fn compiled_plots_reject_worldedit_and_stacking_until_explicit_reset() {
         plot.handle_command(0, "//set", vec!["stone"]);
         let undo_count = plot.players[0].worldedit_undo.len();
         assert_eq!(plot.world.get_block(source), Block::Stone {});
-        plot.redpiler.compile(
-            &plot.world,
-            (BlockPos::new(30, 19, 30), BlockPos::new(38, 23, 38)),
-            CompilerOptions { publication, ..Default::default() },
-            vec![],
-            Default::default(),
-        ).unwrap();
+        plot.redpiler
+            .compile(
+                &plot.world,
+                (BlockPos::new(30, 19, 30), BlockPos::new(38, 23, 38)),
+                CompilerOptions {
+                    publication,
+                    ..Default::default()
+                },
+                vec![],
+                Default::default(),
+            )
+            .unwrap();
 
         for (command, args) in [
             ("//set", vec!["glass"]),
@@ -40,14 +45,21 @@ fn compiled_plots_reject_worldedit_and_stacking_until_explicit_reset() {
             plot.handle_command(0, command, args);
             assert!(plot.redpiler.is_active(), "{command} stopped Redpiler");
             assert_eq!(plot.world.get_block(source), Block::Stone {}, "{command}");
-            assert_eq!(plot.world.get_block(source.offset(mchprs_blocks::BlockFace::East)), Block::Air, "{command}");
+            assert_eq!(
+                plot.world.get_block(source.offset(mchprs_blocks::BlockFace::East)),
+                Block::Air,
+                "{command}"
+            );
             assert_eq!(plot.players[0].worldedit_undo.len(), undo_count, "{command}");
             assert!(plot.players[0].worldedit_redo.is_empty(), "{command}");
         }
         // Copying and selecting do not modify the compiled circuit.
         plot.handle_command(0, "//copy", vec![]);
         assert!(plot.redpiler.is_active());
-        assert_eq!(plot.players[0].worldedit_clipboard.as_ref().unwrap().data.get_entry(0), Block::Stone {}.get_id());
+        assert_eq!(
+            plot.players[0].worldedit_clipboard.as_ref().unwrap().data.get_entry(0),
+            Block::Stone {}.get_id()
+        );
         plot.handle_command(0, "/rp", vec!["reset"]);
         assert!(!plot.redpiler.is_active());
         plot.handle_command(0, "//set", vec!["glass"]);

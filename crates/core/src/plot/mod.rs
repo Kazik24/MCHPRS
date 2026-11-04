@@ -560,7 +560,9 @@ impl Plot {
         if self.redpiler.is_active() {
             debug!("Resetting redpiler");
             let bounds = self.world.get_corners();
-            self.redpiler_cache = self.redpiler.try_suspend(&mut self.world, bounds)?
+            self.redpiler_cache = self
+                .redpiler
+                .try_suspend(&mut self.world, bounds)?
                 .map(|compiler| redpiler_compilation::CompilationCache::exported(&self.world, compiler));
             self.scoreboard.set_redpiler_state(&self.players, RedpilerState::Stopped);
             self.scoreboard.set_redpiler_options(&self.players, &Default::default());
