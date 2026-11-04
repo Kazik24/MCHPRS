@@ -37,7 +37,13 @@ fn compact_optional_indexes_preserve_component_zero() {
 fn projection_token_rows_preserve_order_when_inline_capacity_is_exceeded() {
     let mut program = lamp_program();
     let cell = BlockPos::new(5, 10, 10);
-    program.tokens = (0..3).map(|_| PistonToken { block: Block::Stone {}, position: None, cells: vec![cell] }).collect();
+    program.tokens = (0..3)
+        .map(|_| PistonToken {
+            block: Block::Stone {},
+            position: None,
+            cells: vec![cell],
+        })
+        .collect();
     let runtime = program.start();
     let row = &runtime.program.cell_tokens[runtime.program.projection_indices[&cell]];
     assert!(row.spilled());

@@ -321,10 +321,7 @@ mod tests {
             assert!(complete_names(&library.0, query).unwrap().iter().any(|name| name == expected));
         }
 
-        assert_eq!(
-            complete_names(&library.0, "mroww/PM1").unwrap(),
-            ["mroww/PM1_FIXED_COMPILATION_1.schem"]
-        );
+        assert_eq!(complete_names(&library.0, "mroww/PM1").unwrap(), ["mroww/PM1_FIXED_COMPILATION_1.schem"]);
     }
 
     #[test]

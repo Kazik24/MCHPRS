@@ -109,7 +109,15 @@ impl Repository {
                 now,
                 message,
             ))?));
-            repo.insert_commit(database::CommitRecord { id: &id, parent: parent.as_deref(), snapshot: &fp.full, author, name, date: now, message })?;
+            repo.insert_commit(database::CommitRecord {
+                id: &id,
+                parent: parent.as_deref(),
+                snapshot: &fp.full,
+                author,
+                name,
+                date: now,
+                message,
+            })?;
             if branch.starts_with('@') {
                 repo.set_active(&format!("@{id}"))?;
             } else {
@@ -358,7 +366,15 @@ impl Repository {
                 &message,
                 branch,
             ))?));
-            repo.insert_commit(database::CommitRecord { id: &id, parent: Some(parent), snapshot, author, name, date: now, message: &message })?;
+            repo.insert_commit(database::CommitRecord {
+                id: &id,
+                parent: Some(parent),
+                snapshot,
+                author,
+                name,
+                date: now,
+                message: &message,
+            })?;
             repo.insert_branch(branch, &id)?;
             Ok(())
         })
@@ -463,7 +479,15 @@ impl Repository {
                     name,
                     chrono::Utc::now().timestamp_nanos_opt().unwrap(),
                 ))?));
-                repo.insert_recovery(database::RecoveryRecord { id: &id, parent: &head, snapshot: &fp.full, author, name, date: now, source: &source })?;
+                repo.insert_recovery(database::RecoveryRecord {
+                    id: &id,
+                    parent: &head,
+                    snapshot: &fp.full,
+                    author,
+                    name,
+                    date: now,
+                    source: &source,
+                })?;
                 recovery = Some(id);
             }
             repo.insert_checkout(destination, target, &fp.full)?;

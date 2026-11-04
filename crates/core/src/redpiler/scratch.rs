@@ -68,36 +68,60 @@ pub(crate) struct WirePorts {
 
 /// One dust vertex, without flattening paths through other dust vertices.
 pub(crate) fn discover_wire_ports(world: &impl World, pos: BlockPos) -> Result<WirePorts, ScratchError> {
-    let mut ports = WirePorts { wires: Vec::new(), sources: Vec::new() };
+    let mut ports = WirePorts {
+        wires: Vec::new(),
+        sources: Vec::new(),
+    };
     for face in BlockFace::values() {
         let at = pos.offset(face);
         let block = world.get_block(at);
         if matches!(block, Block::RedstoneWire { .. }) {
-            if !matches!(face, BlockFace::Top | BlockFace::Bottom) { ports.wires.push(at); }
+            if !matches!(face, BlockFace::Top | BlockFace::Bottom) {
+                ports.wires.push(at);
+            }
         } else if is_supported_dynamic_source(block) || block == Block::RedstoneBlock {
-            if source_emits_to(block, world, at, face) { ports.sources.push(at); }
+            if source_emits_to(block, world, at, face) {
+                ports.sources.push(at);
+            }
         } else if block.is_solid() {
             for side in BlockFace::values() {
                 let source = at.offset(side);
                 let state = world.get_block(source);
-                if !crate::redstone::power::emits_strong_power(state, world, source, side, false) { continue; }
+                if !crate::redstone::power::emits_strong_power(state, world, source, side, false) {
+                    continue;
+                }
                 if is_supported_dynamic_source(state) || state == Block::RedstoneBlock {
                     ports.sources.push(source);
                 } else if !matches!(state, Block::RedstoneWire { .. }) {
-                    return Err(ScratchError { position: Some(source), reason: "unsupported watched-wire source dependency" });
+                    return Err(ScratchError {
+                        position: Some(source),
+                        reason: "unsupported watched-wire source dependency",
+                    });
                 }
             }
         } else if source_emits_to(block, world, at, face) {
-            return Err(ScratchError { position: Some(at), reason: "unsupported watched-wire source dependency" });
+            return Err(ScratchError {
+                position: Some(at),
+                reason: "unsupported watched-wire source dependency",
+            });
         }
     }
     let above_solid = world.get_block(pos.offset(BlockFace::Top)).is_solid();
     for face in [BlockFace::North, BlockFace::South, BlockFace::East, BlockFace::West] {
         let adjacent = pos.offset(face);
         let block = world.get_block(adjacent);
-        let diagonal = if !block.is_solid() { Some(adjacent.offset(BlockFace::Bottom)) }
-            else if !above_solid && !block.is_transparent() { Some(adjacent.offset(BlockFace::Top)) } else { None };
-        if let Some(at) = diagonal && matches!(world.get_block(at), Block::RedstoneWire { .. }) { ports.wires.push(at); }
+        let diagonal = if !block.is_solid() {
+            Some(adjacent.offset(BlockFace::Bottom))
+        } else if !above_solid && !block.is_transparent() {
+            Some(adjacent.offset(BlockFace::Top))
+        } else {
+            None
+        };
+        if let Some(at) = diagonal
+            && matches!(world.get_block(at), Block::RedstoneWire { .. })
+        {
+            ports.wires.push(at);
+        }
     }
     ports.wires.sort_unstable_by_key(|p| (p.x, p.y, p.z));
     ports.wires.dedup();
@@ -233,7 +257,9 @@ fn discover_wire_sources_inner(
     // Dust attenuation follows the shortest represented wire path; dynamic source
     // states are included even when currently off (e.g. an unpowered lever).
     let mut sources = HashMap::new();
-    if let Some(monitor) = monitor { monitor.set_progress(0, wires.len(), "wires checked"); }
+    if let Some(monitor) = monitor {
+        monitor.set_progress(0, wires.len(), "wires checked");
+    }
     for (index, &wire) in wires.iter().enumerate() {
         if monitor.is_some_and(super::TaskMonitor::cancelled) {
             return Err(ScratchError {
@@ -256,7 +282,10 @@ fn discover_wire_sources_inner(
             }
             let ports = discover_wire_ports(world, current)?;
             for source in ports.sources {
-                sources.entry((wire, source)).and_modify(|old: &mut u8| *old = (*old).min(distance)).or_insert(distance);
+                sources
+                    .entry((wire, source))
+                    .and_modify(|old: &mut u8| *old = (*old).min(distance))
+                    .or_insert(distance);
             }
             if distance < 14 {
                 for neighbor in ports.wires {
@@ -268,7 +297,9 @@ fn discover_wire_sources_inner(
                 }
             }
         }
-        if let Some(monitor) = monitor { monitor.set_progress(index + 1, wires.len(), "wires checked"); }
+        if let Some(monitor) = monitor {
+            monitor.set_progress(index + 1, wires.len(), "wires checked");
+        }
     }
     let mut sources: Vec<_> = sources
         .into_iter()
@@ -320,11 +351,23 @@ fn discover_torch_contacts(world: &impl World, pos: BlockPos, block: Block, expa
 }
 
 fn wire_contact(world: &impl World, pos: BlockPos, expand: bool) -> Result<Vec<WireSource>, ScratchError> {
-    if expand { discover_wire_sources(world, &[pos]) }
-    else { Ok(vec![WireSource { wire: pos, source: pos, attenuation: 0 }]) }
+    if expand {
+        discover_wire_sources(world, &[pos])
+    } else {
+        Ok(vec![WireSource {
+            wire: pos,
+            source: pos,
+            attenuation: 0,
+        }])
+    }
 }
 
-fn discover_signal_contacts(world: &impl World, lamp: BlockPos, faces: impl IntoIterator<Item = BlockFace>, expand: bool) -> Result<Vec<WireSource>, ScratchError> {
+fn discover_signal_contacts(
+    world: &impl World,
+    lamp: BlockPos,
+    faces: impl IntoIterator<Item = BlockFace>,
+    expand: bool,
+) -> Result<Vec<WireSource>, ScratchError> {
     let mut sources = HashMap::new();
     let mut add = |source: BlockPos, attenuation: u8| {
         sources
@@ -399,7 +442,12 @@ pub(crate) fn discover_piston_ports(world: &impl World, pos: BlockPos, facing: m
     discover_piston_contacts(world, pos, facing, false)
 }
 
-fn discover_piston_contacts(world: &impl World, pos: BlockPos, facing: mchprs_blocks::BlockFacing, expand: bool) -> Result<Vec<WireSource>, ScratchError> {
+fn discover_piston_contacts(
+    world: &impl World,
+    pos: BlockPos,
+    facing: mchprs_blocks::BlockFacing,
+    expand: bool,
+) -> Result<Vec<WireSource>, ScratchError> {
     let mut contacts: Vec<_> = BlockFace::values()
         .into_iter()
         .filter(|&face| face != facing.into())
@@ -626,11 +674,18 @@ mod tests {
                     assert_eq!(index, expected_index);
                     assert_eq!(state, if index % 2 == 0 { driven.clone() } else { quiet.clone() });
                 }
-                let error = scratch.probe_jobs(&jobs, None, |_, &index| {
-                    if index == 7 {
-                        Err(ScratchError { position: Some(LEVER), reason: "probe failed" })
-                    } else { Ok(index) }
-                }).unwrap_err();
+                let error = scratch
+                    .probe_jobs(&jobs, None, |_, &index| {
+                        if index == 7 {
+                            Err(ScratchError {
+                                position: Some(LEVER),
+                                reason: "probe failed",
+                            })
+                        } else {
+                            Ok(index)
+                        }
+                    })
+                    .unwrap_err();
                 assert_eq!(error.reason, "probe failed");
                 let monitor = super::super::TaskMonitor::default();
                 monitor.cancel();
@@ -1319,7 +1374,9 @@ impl ScratchWorld {
         probe: impl Fn(&mut Self, &J) -> Result<R, ScratchError> + Sync,
     ) -> Result<Vec<R>, ScratchError> {
         use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-        if let Some(monitor) = monitor { monitor.set_progress(0, jobs.len(), "probes"); }
+        if let Some(monitor) = monitor {
+            monitor.set_progress(0, jobs.len(), "probes");
+        }
         let workers = rayon::current_num_threads().min((jobs.len() / 128).max(1));
         if workers == 1 {
             return jobs
@@ -1333,7 +1390,9 @@ impl ScratchWorld {
                         });
                     }
                     let result = probe(self, job)?;
-                    if let Some(monitor) = monitor { monitor.advance_progress(); }
+                    if let Some(monitor) = monitor {
+                        monitor.advance_progress();
+                    }
                     Ok(result)
                 })
                 .collect();

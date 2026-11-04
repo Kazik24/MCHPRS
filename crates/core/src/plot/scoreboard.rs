@@ -295,11 +295,14 @@ impl Scoreboard {
             self.compiler_flags.push("io-only".to_owned());
         }
         if let Some(mode) = options.publication {
-            self.compiler_flags.push(match mode {
-                crate::redpiler::PublicationMode::All => "publish-all",
-                crate::redpiler::PublicationMode::Redstone => "publish-redstone",
-                crate::redpiler::PublicationMode::Io => "publish-io",
-            }.to_owned());
+            self.compiler_flags.push(
+                match mode {
+                    crate::redpiler::PublicationMode::All => "publish-all",
+                    crate::redpiler::PublicationMode::Redstone => "publish-redstone",
+                    crate::redpiler::PublicationMode::Io => "publish-io",
+                }
+                .to_owned(),
+            );
         }
         if options.update {
             self.compiler_flags.push("update".to_owned());
@@ -409,7 +412,12 @@ mod tests {
             &board.current_state[7..],
             &["Pistons: auto/off", "Screen only: on", "Git: very-long-b...",]
         );
-        for engine in [RedpilerState::Running, RedpilerState::RunningLlvm, RedpilerState::Compiling, RedpilerState::Stopped] {
+        for engine in [
+            RedpilerState::Running,
+            RedpilerState::RunningLlvm,
+            RedpilerState::Compiling,
+            RedpilerState::Stopped,
+        ] {
             board.set_redpiler_state(&[], engine);
             let lines = &board.current_state;
             assert!(lines.len() <= 15);

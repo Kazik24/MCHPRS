@@ -103,7 +103,11 @@ pub(in super::super) fn run(context: &Context<'_, impl World>, phases: &mut Comp
             }
         }
         if let Some(monitor) = monitor {
-            monitor.set_progress(layer_size.saturating_mul((i64::from(y) - i64::from(bounds.0.y) + 1) as usize), total_blocks, "blocks scanned");
+            monitor.set_progress(
+                layer_size.saturating_mul((i64::from(y) - i64::from(bounds.0.y) + 1) as usize),
+                total_blocks,
+                "blocks scanned",
+            );
         }
     }
 
@@ -128,7 +132,9 @@ pub(in super::super) fn run(context: &Context<'_, impl World>, phases: &mut Comp
         .copied()
         .filter(|&pos| matches!(scratch.world().get_block(pos), Block::NoteBlock { .. }))
         .collect();
-    if let Some(monitor) = monitor { monitor.set_counts(positions.len(), wire_positions.len(), pistons.len()); }
+    if let Some(monitor) = monitor {
+        monitor.set_counts(positions.len(), wire_positions.len(), pistons.len());
+    }
     if phases.enabled {
         eprintln!(
             "Redpiler inventory: sampled_components={} wires={} lamps={} repeaters={} copper_bulbs={}",

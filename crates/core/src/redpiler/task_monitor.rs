@@ -1,5 +1,5 @@
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
 #[derive(Default)]
@@ -59,12 +59,23 @@ impl TaskMonitor {
     pub(crate) fn status(&self) -> String {
         let status = self.status.lock().unwrap();
         let mut text = match status.phase_started {
-            Some(started) => format!("phase {}: {} ({:.1}s in this phase)", status.phase_number, status.phase, started.elapsed().as_secs_f64()),
+            Some(started) => format!(
+                "phase {}: {} ({:.1}s in this phase)",
+                status.phase_number,
+                status.phase,
+                started.elapsed().as_secs_f64()
+            ),
             None => "preparing snapshot".to_owned(),
         };
-        if let Some((step, _)) = status.detail { text.push_str(&format!("; {step}")); }
-        if let Some((completed, total, unit)) = status.progress { text.push_str(&format!("; {completed}/{total} {unit}")); }
-        if let Some((nodes, wires, pistons)) = status.counts { text.push_str(&format!("; {nodes} nodes, {wires} wires, {pistons} pistons")); }
+        if let Some((step, _)) = status.detail {
+            text.push_str(&format!("; {step}"));
+        }
+        if let Some((completed, total, unit)) = status.progress {
+            text.push_str(&format!("; {completed}/{total} {unit}"));
+        }
+        if let Some((nodes, wires, pistons)) = status.counts {
+            text.push_str(&format!("; {nodes} nodes, {wires} wires, {pistons} pistons"));
+        }
         text
     }
 
@@ -105,7 +116,9 @@ mod tests {
         monitor.set_phase("sampling");
         monitor.set_progress(0, 8, "probes");
         std::thread::scope(|scope| {
-            for _ in 0..8 { scope.spawn(|| monitor.advance_progress()); }
+            for _ in 0..8 {
+                scope.spawn(|| monitor.advance_progress());
+            }
         });
         assert!(monitor.status().starts_with("phase 1: sampling ("));
         assert!(monitor.status().contains("8/8 probes; 12 nodes, 5 wires, 2 pistons"));

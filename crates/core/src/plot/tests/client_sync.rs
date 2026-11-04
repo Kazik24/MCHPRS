@@ -40,8 +40,21 @@ fn compiled_projection_waits_for_visual_deadline() {
     plot.world.packet_senders.push(PlayerPacketSender::new(&plot.players[0].client));
     let lever = BlockPos::new(34, 21, 32);
     plot.world.set_block(lever.offset(BlockFace::Bottom), Block::Stone {});
-    plot.world.set_block(lever, Block::Lever { lever: mchprs_blocks::blocks::Lever::new(mchprs_blocks::blocks::LeverFace::Floor, mchprs_blocks::BlockDirection::North, false) });
-    plot.redpiler.compile(&plot.world, (BlockPos::new(32, 19, 30), BlockPos::new(36, 23, 34)), CompilerOptions::default(), Vec::new(), Default::default()).unwrap();
+    plot.world.set_block(
+        lever,
+        Block::Lever {
+            lever: mchprs_blocks::blocks::Lever::new(mchprs_blocks::blocks::LeverFace::Floor, mchprs_blocks::BlockDirection::North, false),
+        },
+    );
+    plot.redpiler
+        .compile(
+            &plot.world,
+            (BlockPos::new(32, 19, 30), BlockPos::new(36, 23, 34)),
+            CompilerOptions::default(),
+            Vec::new(),
+            Default::default(),
+        )
+        .unwrap();
     plot.world_send_rate = WorldSendRate(10);
     plot.redpiler.try_on_use_block(lever).unwrap();
     plot.last_world_send_time = Instant::now();

@@ -162,9 +162,15 @@ fn command_lifecycle_output_and_comparators_match_reference() {
                 .unwrap();
             let mut rust_reference = llvm.then(|| {
                 let mut reference = Compiler::default();
-                reference.compile(
-                    &native, bounds, CompilerOptions::default(), native.scheduler().iter_entries().collect(), Arc::new(TaskMonitor::default()),
-                ).unwrap();
+                reference
+                    .compile(
+                        &native,
+                        bounds,
+                        CompilerOptions::default(),
+                        native.scheduler().iter_entries().collect(),
+                        Arc::new(TaskMonitor::default()),
+                    )
+                    .unwrap();
                 native.clear_scheduled_ticks();
                 reference
             });
@@ -186,8 +192,11 @@ fn command_lifecycle_output_and_comparators_match_reference() {
                 compiler.tick().unwrap();
                 compiler.try_flush_complete(&mut published).unwrap();
                 if let Some(reference) = &rust_reference {
-                    assert_eq!(compiler.runtime.as_ref().unwrap().pending_entries(), reference.runtime.as_ref().unwrap().pending_entries(),
-                        "LLVM/Rust pending ticks: {name} valid={valid} tick={tick}");
+                    assert_eq!(
+                        compiler.runtime.as_ref().unwrap().pending_entries(),
+                        reference.runtime.as_ref().unwrap().pending_entries(),
+                        "LLVM/Rust pending ticks: {name} valid={valid} tick={tick}"
+                    );
                 }
                 for pos in [command, chain, comparator] {
                     let expected = serde_json::to_value(native.get_block_entity(pos)).unwrap();
@@ -202,7 +211,9 @@ fn command_lifecycle_output_and_comparators_match_reference() {
                 );
                 if tick == 7 {
                     compiler.try_reset(&mut published, bounds).unwrap();
-                    if let Some(reference) = &mut rust_reference { reference.try_reset(&mut native, bounds).unwrap(); }
+                    if let Some(reference) = &mut rust_reference {
+                        reference.try_reset(&mut native, bounds).unwrap();
+                    }
                     assert_eq!(
                         published.scheduler().iter_entries().collect::<Vec<_>>(),
                         native.scheduler().iter_entries().collect::<Vec<_>>()
@@ -218,15 +229,23 @@ fn command_lifecycle_output_and_comparators_match_reference() {
                         .unwrap();
                     published.clear_scheduled_ticks();
                     if let Some(reference) = &mut rust_reference {
-                        reference.compile(
-                            &native, bounds, CompilerOptions::default(), native.scheduler().iter_entries().collect(), Arc::new(TaskMonitor::default()),
-                        ).unwrap();
+                        reference
+                            .compile(
+                                &native,
+                                bounds,
+                                CompilerOptions::default(),
+                                native.scheduler().iter_entries().collect(),
+                                Arc::new(TaskMonitor::default()),
+                            )
+                            .unwrap();
                         native.clear_scheduled_ticks();
                     }
                 }
             }
             compiler.try_reset(&mut published, bounds).unwrap();
-            if let Some(reference) = &mut rust_reference { reference.try_reset(&mut native, bounds).unwrap(); }
+            if let Some(reference) = &mut rust_reference {
+                reference.try_reset(&mut native, bounds).unwrap();
+            }
             assert_eq!(
                 published.scheduler().iter_entries().collect::<Vec<_>>(),
                 native.scheduler().iter_entries().collect::<Vec<_>>()
@@ -268,9 +287,15 @@ fn compiled_command_output_limits_match_reference() {
             .unwrap();
         let mut rust_reference = llvm.then(|| {
             let mut reference = Compiler::default();
-            reference.compile(
-                &native, bounds, CompilerOptions::default(), native.scheduler().iter_entries().collect(), Arc::new(TaskMonitor::default()),
-            ).unwrap();
+            reference
+                .compile(
+                    &native,
+                    bounds,
+                    CompilerOptions::default(),
+                    native.scheduler().iter_entries().collect(),
+                    Arc::new(TaskMonitor::default()),
+                )
+                .unwrap();
             native.clear_scheduled_ticks();
             reference
         });
@@ -284,7 +309,11 @@ fn compiled_command_output_limits_match_reference() {
             compiler.tick().unwrap();
             compiler.try_flush_complete(&mut published).unwrap();
             if let Some(reference) = &rust_reference {
-                assert_eq!(compiler.runtime.as_ref().unwrap().pending_entries(), reference.runtime.as_ref().unwrap().pending_entries(), "LLVM/Rust pending ticks");
+                assert_eq!(
+                    compiler.runtime.as_ref().unwrap().pending_entries(),
+                    reference.runtime.as_ref().unwrap().pending_entries(),
+                    "LLVM/Rust pending ticks"
+                );
             }
             assert_eq!(
                 serde_json::to_value(published.get_block_entity(pos)).unwrap(),

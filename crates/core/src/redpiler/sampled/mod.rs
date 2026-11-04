@@ -11,20 +11,20 @@ mod compiler;
 #[cfg(test)]
 #[path = "../tests/sampled/cpu_trace.rs"]
 mod cpu_trace;
-#[cfg(test)]
-#[path = "../tests/sampled/redstonedb.rs"]
-mod redstonedb_tests;
 mod executor;
 mod group_probe;
 #[cfg(test)]
 #[path = "../tests/sampled/incremental_input.rs"]
 mod incremental_input_tests;
 mod input;
+mod llvm;
+#[cfg(test)]
+#[path = "../tests/sampled/redstonedb.rs"]
+mod redstonedb_tests;
 mod routing;
 mod shapes;
-mod llvm;
-pub(in crate::redpiler) use llvm::{LlvmRuntime, unsupported_components};
 pub(super) use llvm::initialize_cache;
+pub(in crate::redpiler) use llvm::{LlvmRuntime, unsupported_components};
 mod program;
 #[cfg(test)]
 #[path = "../tests/sampled/reviewed_fixes.rs"]
@@ -124,7 +124,10 @@ impl Runtime {
             let spilled = values.iter().filter(|row| row.spilled());
             let payload_capacity: usize = spilled.map(|row| row.capacity()).sum();
             let bytes = values.capacity() * std::mem::size_of::<smallvec::SmallVec<[usize; 2]>>() + payload_capacity * std::mem::size_of::<usize>();
-            eprintln!("Redpiler memory: program.{name} rows={} entries={entries} spilled_payload_capacity={payload_capacity} buffer_bytes={bytes}", values.len());
+            eprintln!(
+                "Redpiler memory: program.{name} rows={} entries={entries} spilled_payload_capacity={payload_capacity} buffer_bytes={bytes}",
+                values.len()
+            );
         }
         macro_rules! vectors {
             ($owner:expr, $scope:literal, $($field:ident),+ $(,)?) => { $(vector($scope, stringify!($field), &($owner).$field);)+ };
@@ -190,7 +193,12 @@ impl Runtime {
             movement_cells
         );
         let shape_ports: usize = self.program.shape_steps.iter().map(|step| step.states.ports.len()).sum();
-        let shape_valid_ports: usize = self.program.shape_steps.iter().map(|step| step.states.ports.iter().flatten().count()).sum();
+        let shape_valid_ports: usize = self
+            .program
+            .shape_steps
+            .iter()
+            .map(|step| step.states.ports.iter().flatten().count())
+            .sum();
         let shape_port_capacity: usize = self.program.shape_steps.iter().map(|step| step.states.ports.capacity()).sum();
         eprintln!(
             "Redpiler shape maps: unique_maps={} valid_ports={shape_valid_ports} invalid_ports={} unpooled_map_bytes={} unique_map_bytes={} port_buffer_bytes={}",
@@ -200,21 +208,47 @@ impl Runtime {
             self.program.shape_maps.len() * 256,
             shape_port_capacity * std::mem::size_of::<Option<usize>>()
         );
-        let arrangement_payload: usize = self.program.input_arrangements.iter().map(|group| {
-            group.tokens.capacity() * std::mem::size_of::<usize>()
-                + group.token_states.capacity() * std::mem::size_of::<Vec<usize>>()
-                + group.token_states.iter().map(|row| row.capacity() * std::mem::size_of::<usize>()).sum::<usize>()
-                + group.conditional_sources.capacity() * std::mem::size_of::<program::ArrangementSource>()
-                + group.inputs.capacity() * std::mem::size_of::<Vec<(program::ArrangementSource, u8)>>()
-                + group.inputs.iter().map(|row| row.capacity() * std::mem::size_of::<(program::ArrangementSource, u8)>()).sum::<usize>()
-        }).sum();
+        let arrangement_payload: usize = self
+            .program
+            .input_arrangements
+            .iter()
+            .map(|group| {
+                group.tokens.capacity() * std::mem::size_of::<usize>()
+                    + group.token_states.capacity() * std::mem::size_of::<Vec<usize>>()
+                    + group
+                        .token_states
+                        .iter()
+                        .map(|row| row.capacity() * std::mem::size_of::<usize>())
+                        .sum::<usize>()
+                    + group.conditional_sources.capacity() * std::mem::size_of::<program::ArrangementSource>()
+                    + group.inputs.capacity() * std::mem::size_of::<Vec<(program::ArrangementSource, u8)>>()
+                    + group
+                        .inputs
+                        .iter()
+                        .map(|row| row.capacity() * std::mem::size_of::<(program::ArrangementSource, u8)>())
+                        .sum::<usize>()
+            })
+            .sum();
         let link_payload: usize = self.program.arrangement_links.iter().map(|link| link.active.capacity()).sum();
-        let axis_payload: usize = self.program.movement_groups.iter().map(|group| {
-            group.axes.capacity() * std::mem::size_of::<program::MovementAxis>()
-                + group.axes.iter().map(|axis| axis.states.capacity() * std::mem::size_of::<usize>()
-                    + (axis.depart.capacity() + axis.arrive.capacity()) * std::mem::size_of::<std::ops::Range<usize>>()).sum::<usize>()
-        }).sum();
-        eprintln!("Redpiler memory: arrangement_deep_bytes={arrangement_payload} arrangement_link_deep_bytes={link_payload} movement_group_deep_bytes={axis_payload}");
+        let axis_payload: usize = self
+            .program
+            .movement_groups
+            .iter()
+            .map(|group| {
+                group.axes.capacity() * std::mem::size_of::<program::MovementAxis>()
+                    + group
+                        .axes
+                        .iter()
+                        .map(|axis| {
+                            axis.states.capacity() * std::mem::size_of::<usize>()
+                                + (axis.depart.capacity() + axis.arrive.capacity()) * std::mem::size_of::<std::ops::Range<usize>>()
+                        })
+                        .sum::<usize>()
+            })
+            .sum();
+        eprintln!(
+            "Redpiler memory: arrangement_deep_bytes={arrangement_payload} arrangement_link_deep_bytes={link_payload} movement_group_deep_bytes={axis_payload}"
+        );
         small_rows("home_watchers", &self.program.home_watchers);
         small_rows("cell_tokens", &self.program.cell_tokens);
         small_rows("cell_pistons", &self.program.cell_pistons);
@@ -341,7 +375,10 @@ impl Runtime {
     pub(in crate::redpiler) fn log_routing_metrics(&self) {
         if std::env::var_os("MCHPRS_REDPILER_PHASE_TIMINGS").is_some() {
             let [changes, readers, visits] = self.routing_metrics;
-            eprintln!("Redpiler routing runtime: token_changes={changes} readers={readers} wire_visits={visits} operations={}", self.operations);
+            eprintln!(
+                "Redpiler routing runtime: token_changes={changes} readers={readers} wire_visits={visits} operations={}",
+                self.operations
+            );
         }
     }
 

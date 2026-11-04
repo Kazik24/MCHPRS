@@ -234,7 +234,10 @@ fn load(path: &Path) -> (PlotWorld, (BlockPos, BlockPos)) {
         ORIGIN + BlockPos::new(clip.size_x as i32 - 1, clip.size_y as i32 - 1, clip.size_z as i32 - 1),
     );
     for pos in INPUTS.into_iter().chain(OPCODE) {
-        assert!(matches!(world.get_block(ORIGIN + pos), Block::Lever { .. }), "expected input lever at {pos:?}");
+        assert!(
+            matches!(world.get_block(ORIGIN + pos), Block::Lever { .. }),
+            "expected input lever at {pos:?}"
+        );
     }
     assert!(matches!(world.get_block(ORIGIN + TRIGGER), Block::Lever { .. }));
     for pos in OUTPUTS {
@@ -259,7 +262,17 @@ fn compile(
     let (compiler, world, result, timed_out) = std::thread::scope(|scope| {
         let worker = scope.spawn(move || {
             let mut compiler = Compiler::default();
-            let result = compiler.compile(&world, bounds, CompilerOptions { llvm, publication:Some(mchprs_core::redpiler::PublicationMode::All), ..Default::default() }, ticks, worker_monitor);
+            let result = compiler.compile(
+                &world,
+                bounds,
+                CompilerOptions {
+                    llvm,
+                    publication: Some(mchprs_core::redpiler::PublicationMode::All),
+                    ..Default::default()
+                },
+                ticks,
+                worker_monitor,
+            );
             (compiler, world, result)
         });
         let mut timed_out = false;
@@ -383,7 +396,11 @@ fn main() {
             break;
         }
     }
-    let output = Path::new(env!("CARGO_MANIFEST_DIR")).join(if std::env::args().any(|arg|arg=="--llvm") {"../../target/redpiler-bench-results/fpu-llvm.json"} else {"../../target/redpiler-bench-results/fpu.json"});
+    let output = Path::new(env!("CARGO_MANIFEST_DIR")).join(if std::env::args().any(|arg| arg == "--llvm") {
+        "../../target/redpiler-bench-results/fpu-llvm.json"
+    } else {
+        "../../target/redpiler-bench-results/fpu.json"
+    });
     std::fs::create_dir_all(output.parent().unwrap()).unwrap();
     std::fs::write(&output, serde_json::to_vec_pretty(&json!({"fixture_sha256":"b6182c6c0541d692d635d72d23ecc8f33cef2fb6071f4ba4be66485ff6892bc1", "dimensions":[171,43,107], "trigger_reset_to_off":true, "opcode_mask":2, "input_repetitions":INPUT_REPETITIONS, "window_ticks":WINDOW_TICKS, "reports":reports})).unwrap()).unwrap();
     println!("wrote {}", output.display());

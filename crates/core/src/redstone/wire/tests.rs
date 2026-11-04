@@ -62,8 +62,11 @@ fn lazy_sides_match_the_existing_neighborhood_oracle() {
         });
         assert_eq!(actual, get_raw_sides_from_neighbors(wire, &neighbors), "neighborhood {case}");
         let indexed = [3, 4, 20, 17, 5, 21, 18, 1, 13, 12, 0, 8, 7];
-        assert_eq!(crate::circuit_geometry::get_raw_sides_indexed(wire, |slot| neighbors[indexed[slot]]), actual,
-            "compiled geometry neighborhood {case}");
+        assert_eq!(
+            crate::circuit_geometry::get_raw_sides_indexed(wire, |slot| neighbors[indexed[slot]]),
+            actual,
+            "compiled geometry neighborhood {case}"
+        );
         assert!(reads.get() <= 13);
     }
 }

@@ -27,24 +27,19 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-    - uses: actions/checkout@v3
-    - uses: actions-rs/toolchain@v1
+    - uses: actions/checkout@v4
+    - uses: dtolnay/rust-toolchain@stable
       with:
-        toolchain: stable
-        target: ${{ matrix.target }}
-        profile: minimal
-    - uses: Swatinem/rust-cache@v1
+        targets: ${{ matrix.target }}
+    - uses: Swatinem/rust-cache@v2
       with:
         key: ${{ matrix.target }}
 
     - name: Build
-      uses: actions-rs/cargo@v1
-      with:
-        command: build
-        args: --release --target ${{ matrix.target }}
+      run: cargo build --release --target ${{ matrix.target }}
 
     - name: Upload
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v4
       with:
         name: mroww-${{ matrix.target }}
         path: target/${{ matrix.target }}/release/mroww${{ matrix.ext }}
@@ -53,11 +48,11 @@ jobs:
     needs: build
     runs-on: macos-latest
     steps:
-      - uses: actions/download-artifact@v3
+      - uses: actions/download-artifact@v4
         with:
           name: mroww-x86_64-apple-darwin
           path: x86_64
-      - uses: actions/download-artifact@v3
+      - uses: actions/download-artifact@v4
         with:
           name: mroww-aarch64-apple-darwin
           path: aarch64
@@ -66,7 +61,7 @@ jobs:
         run: lipo -create -output mroww x86_64/mroww aarch64/mroww
 
       - name: Upload
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
           name: mroww-universal-apple-darwin
           path: mroww

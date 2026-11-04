@@ -9,16 +9,16 @@ use super::{
 use mchprs_blocks::BlockPos;
 use mchprs_blocks::blocks::Block;
 use mchprs_world::{TickEntry, TickPriority};
-use std::ffi::c_void;
 #[cfg(windows)]
 use std::ffi::c_char;
-mod movement;
-mod routing;
-mod effects;
-mod shapes;
+use std::ffi::c_void;
+mod cache;
 mod command;
 mod command_notifications;
-mod cache;
+mod effects;
+mod movement;
+mod routing;
+mod shapes;
 pub(in crate::redpiler) use cache::initialize as initialize_cache;
 use movement::encode_movement;
 
@@ -89,10 +89,14 @@ pub(in crate::redpiler) struct LlvmRuntime {
 impl LlvmRuntime {
     pub(in crate::redpiler) fn acknowledge_effects(&mut self, host_queued: usize) {
         unsafe { (self.library.ack_effects)(self.state.as_mut_ptr().cast()) }
-        if let Some(commands) = &mut self.commands { commands.acknowledge(&self.library.commands, host_queued); }
+        if let Some(commands) = &mut self.commands {
+            commands.acknowledge(&self.library.commands, host_queued);
+        }
     }
     pub(in crate::redpiler) fn initialize_tick(&mut self, tick: u64) {
-        if let Some(commands) = &mut self.commands { commands.logical_base = tick; }
+        if let Some(commands) = &mut self.commands {
+            commands.logical_base = tick;
+        }
     }
     pub(in crate::redpiler) fn new(program: Program, ticks: &[TickEntry]) -> Result<Self, ScratchError> {
         if std::env::var_os("MCHPRS_LLVM_DIAGNOSTICS").is_some() {
@@ -107,27 +111,32 @@ impl LlvmRuntime {
             return Err(error);
         }
         let initial_tick_count = u32::try_from(ticks.len()).map_err(|_| overflow())?;
-        if initial_tick_count >= PASSIVE_TICK || program.component_count() >= PASSIVE_TICK as usize { return Err(overflow()); }
-        let pending_capacity = u32::try_from(program.component_count().checked_mul(2)
-            .and_then(|count| count.checked_add(ticks.len())).ok_or_else(overflow)?.max(64)).map_err(|_| overflow())?;
+        if initial_tick_count >= PASSIVE_TICK || program.component_count() >= PASSIVE_TICK as usize {
+            return Err(overflow());
+        }
+        let pending_capacity = u32::try_from(
+            program
+                .component_count()
+                .checked_mul(2)
+                .and_then(|count| count.checked_add(ticks.len()))
+                .ok_or_else(overflow)?
+                .max(64),
+        )
+        .map_err(|_| overflow())?;
         let mut initial_ticks = Vec::with_capacity(ticks.len());
         for (index, tick) in ticks.iter().enumerate() {
-            if tick.ticks_left >= 32
-                || (tick.ticks_left == 0 && tick.tick_priority != TickPriority::NanoTick)
-            {
+            if tick.ticks_left >= 32 || (tick.ticks_left == 0 && tick.tick_priority != TickPriority::NanoTick) {
                 return Err(ScratchError {
                     position: Some(tick.pos),
                     reason: "LLVM cannot import this scheduled tick",
                 });
             }
-            let component = program.component_indices.get(&tick.pos)
+            let component = program
+                .component_indices
+                .get(&tick.pos)
                 .filter(|&&node| tick.block_type == Some(program.initial[node].registry_id()))
                 .map_or(PASSIVE_TICK | index as u32, |&node| node as u32);
-            initial_ticks.push((
-                component,
-                tick.ticks_left,
-                tick.tick_priority as u8,
-            ));
+            initial_ticks.push((component, tick.ticks_left, tick.tick_priority as u8));
         }
         let encoded = LlvmProgram::encode(&program)?;
         if std::env::var_os("MCHPRS_LLVM_DIAGNOSTICS").is_some() {
@@ -149,11 +158,15 @@ impl LlvmRuntime {
             });
         }
         // The C executor reads u32 tables directly, so their backing allocation must be aligned.
-        let blob: Vec<u64> = encoded.blob.chunks(8).map(|chunk| {
-            let mut bytes = [0; 8];
-            bytes[..chunk.len()].copy_from_slice(chunk);
-            u64::from_ne_bytes(bytes)
-        }).collect();
+        let blob: Vec<u64> = encoded
+            .blob
+            .chunks(8)
+            .map(|chunk| {
+                let mut bytes = [0; 8];
+                bytes[..chunk.len()].copy_from_slice(chunk);
+                u64::from_ne_bytes(bytes)
+            })
+            .collect();
         let descriptor = encoded.descriptor;
         let blob_bytes = descriptor.total_bytes;
         drop(encoded.blob);
@@ -181,7 +194,12 @@ impl LlvmRuntime {
                 reason: "LLVM rejected the sampled Program",
             });
         }
-        let commands = command::State::new(&program, &library.commands, state.as_mut_ptr().cast(), blob.as_ptr().cast::<u8>().wrapping_add(descriptor.component_offset as usize).cast())?;
+        let commands = command::State::new(
+            &program,
+            &library.commands,
+            state.as_mut_ptr().cast(),
+            blob.as_ptr().cast::<u8>().wrapping_add(descriptor.component_offset as usize).cast(),
+        )?;
         for (component, delay, priority) in initial_ticks {
             if unsafe { (library.import_tick)(state.as_mut_ptr().cast(), component, delay, priority) } != 0 {
                 unsafe {
@@ -234,7 +252,9 @@ impl LlvmRuntime {
     }
 
     pub(super) fn sync_commands(&self, runtime: &mut super::Runtime) -> Result<(), ScratchError> {
-        if let Some(commands) = &self.commands { commands.sync(&self.library.commands, runtime)?; }
+        if let Some(commands) = &self.commands {
+            commands.sync(&self.library.commands, runtime)?;
+        }
         Ok(())
     }
 
@@ -252,15 +272,23 @@ impl LlvmRuntime {
         pending
             .into_iter()
             .map(|entry| {
-                let invalid = || ScratchError { position: None, reason: "LLVM pending tick component is invalid" };
+                let invalid = || ScratchError {
+                    position: None,
+                    reason: "LLVM pending tick component is invalid",
+                };
                 let (pos, block_type) = if entry.component & PASSIVE_TICK != 0 {
-                    let original = self.imported_pending.get((entry.component & !PASSIVE_TICK) as usize).ok_or_else(invalid)?;
+                    let original = self
+                        .imported_pending
+                        .get((entry.component & !PASSIVE_TICK) as usize)
+                        .ok_or_else(invalid)?;
                     (original.pos, original.block_type)
                 } else {
                     let pos = *self.positions.get(entry.component as usize).ok_or_else(invalid)?;
                     (pos, Some(self.initial[entry.component as usize].registry_id()))
                 };
-                if entry.ticks_left >= 32 { return Err(invalid()); }
+                if entry.ticks_left >= 32 {
+                    return Err(invalid());
+                }
                 let tick_priority = match entry.priority {
                     0 => TickPriority::Highest,
                     1 => TickPriority::Higher,
@@ -314,8 +342,12 @@ pub(in crate::redpiler) struct LlvmRuntime;
 
 #[cfg(not(any(windows, target_os = "linux")))]
 impl LlvmRuntime {
-    pub(in crate::redpiler) fn acknowledge_effects(&mut self, _: usize) { unreachable!() }
-    pub(in crate::redpiler) fn initialize_tick(&mut self, _: u64) { unreachable!() }
+    pub(in crate::redpiler) fn acknowledge_effects(&mut self, _: usize) {
+        unreachable!()
+    }
+    pub(in crate::redpiler) fn initialize_tick(&mut self, _: u64) {
+        unreachable!()
+    }
     pub(in crate::redpiler) fn new(_: Program, _: &[TickEntry]) -> Result<Self, ScratchError> {
         Library::load().map(|_| Self)
     }
@@ -343,15 +375,34 @@ pub(in crate::redpiler) fn unsupported_components(program: &Program) -> (Vec<Scr
     let mut first = Vec::new();
     let mut count = 0;
     for (node, block) in program.initial.iter().enumerate() {
-        if !matches!(block, Block::Lever { .. } | Block::StoneButton { .. } | Block::RedstoneLamp { .. } | Block::RedstoneBlock
-            | Block::RedstoneRepeater { .. } | Block::RedstoneWire { .. } | Block::Observer { .. } | Block::RedstoneTorch { .. }
-            | Block::RedstoneWallTorch { .. } | Block::Piston { .. } | Block::RedstoneComparator { .. } | Block::Hopper { .. }
-            | Block::NoteBlock { .. } | Block::StonePressurePlate { .. } | Block::IronTrapdoor { .. }) && !block.is_copper_bulb()
-            && !block.pressure_plate_powered().is_some() && !block.is_command_block() {
+        if !matches!(
+            block,
+            Block::Lever { .. }
+                | Block::StoneButton { .. }
+                | Block::RedstoneLamp { .. }
+                | Block::RedstoneBlock
+                | Block::RedstoneRepeater { .. }
+                | Block::RedstoneWire { .. }
+                | Block::Observer { .. }
+                | Block::RedstoneTorch { .. }
+                | Block::RedstoneWallTorch { .. }
+                | Block::Piston { .. }
+                | Block::RedstoneComparator { .. }
+                | Block::Hopper { .. }
+                | Block::NoteBlock { .. }
+                | Block::StonePressurePlate { .. }
+                | Block::IronTrapdoor { .. }
+        ) && !block.is_copper_bulb()
+            && !block.pressure_plate_powered().is_some()
+            && !block.is_command_block()
+        {
             count += 1;
             if first.len() < 3 {
                 let reason = block.get_name();
-                first.push(ScratchError { position: Some(program.positions[node]), reason });
+                first.push(ScratchError {
+                    position: Some(program.positions[node]),
+                    reason,
+                });
             }
         }
     }
@@ -364,7 +415,10 @@ fn unsupported_reason(program: &Program) -> Option<ScratchError> {
         return Some(issue);
     }
     for link in &program.links {
-        if matches!(program.initial[link.target], Block::Lever { .. } | Block::StoneButton { .. } | Block::RedstoneBlock) {
+        if matches!(
+            program.initial[link.target],
+            Block::Lever { .. } | Block::StoneButton { .. } | Block::RedstoneBlock
+        ) {
             return error(Some(program.positions[link.target]), "LLVM does not support this electrical link target");
         }
     }
@@ -400,7 +454,10 @@ impl Library {
     fn load() -> Result<Self, ScratchError> {
         let path = cache::module_path(None).map_err(|error| {
             tracing::warn!(%error, "LLVM module preparation failed");
-            ScratchError { position: None, reason: "could not prepare LLVM module; see server log for details" }
+            ScratchError {
+                position: None,
+                reason: "could not prepare LLVM module; see server log for details",
+            }
         })?;
         let wide: Vec<u16> = path.as_os_str().encode_wide().chain(Some(0)).collect();
         let handle = unsafe { LoadLibraryW(wide.as_ptr()) };
@@ -487,36 +544,69 @@ impl Library {
         use std::ffi::CString;
         let path = cache::module_path(None).map_err(|error| {
             tracing::warn!(%error, "LLVM module preparation failed");
-            ScratchError { position: None, reason: "could not prepare LLVM module; see server log for details" }
+            ScratchError {
+                position: None,
+                reason: "could not prepare LLVM module; see server log for details",
+            }
         })?;
-        let path = CString::new(path.to_string_lossy().as_bytes()).map_err(|_| ScratchError { position: None, reason: "invalid LLVM module path" })?;
+        let path = CString::new(path.to_string_lossy().as_bytes()).map_err(|_| ScratchError {
+            position: None,
+            reason: "invalid LLVM module path",
+        })?;
         let handle = unsafe { dlopen(path.as_ptr(), 2) };
-        if handle.is_null() { return Err(ScratchError { position: None, reason: "could not load LLVM module" }); }
+        if handle.is_null() {
+            return Err(ScratchError {
+                position: None,
+                reason: "could not load LLVM module",
+            });
+        }
         unsafe fn symbol<T: Copy>(handle: *mut c_void, name: &'static [u8]) -> Result<T, ScratchError> {
             let address = unsafe { dlsym(handle, name.as_ptr().cast()) };
-            if address.is_null() { return Err(ScratchError { position: None, reason: "LLVM module is missing a required export" }); }
+            if address.is_null() {
+                return Err(ScratchError {
+                    position: None,
+                    reason: "LLVM module is missing a required export",
+                });
+            }
             Ok(unsafe { std::mem::transmute_copy(&address) })
         }
         let result = (|| unsafe {
             Ok(Self {
-                handle, api_descriptor: symbol(handle, b"ne_api_descriptor\0")?, state_size: symbol(handle, b"ne_state_size\0")?,
-                create: symbol(handle, b"ne_create\0")?, import_tick: symbol(handle, b"ne_import_tick\0")?,
-                destroy: symbol(handle, b"ne_destroy\0")?, tick: symbol(handle, b"ne_tick\0")?,
-                use_control: symbol(handle, b"ne_use_control\0")?, read_state: symbol(handle, b"ne_read_state\0")?,
-                pending_count: symbol(handle, b"ne_pending_count\0")?, read_pending: symbol(handle, b"ne_read_pending\0")?,
-                work_count: symbol(handle, b"ne_work_count\0")?, snapshot_words: symbol(handle, b"ne_snapshot_words\0")?,
+                handle,
+                api_descriptor: symbol(handle, b"ne_api_descriptor\0")?,
+                state_size: symbol(handle, b"ne_state_size\0")?,
+                create: symbol(handle, b"ne_create\0")?,
+                import_tick: symbol(handle, b"ne_import_tick\0")?,
+                destroy: symbol(handle, b"ne_destroy\0")?,
+                tick: symbol(handle, b"ne_tick\0")?,
+                use_control: symbol(handle, b"ne_use_control\0")?,
+                read_state: symbol(handle, b"ne_read_state\0")?,
+                pending_count: symbol(handle, b"ne_pending_count\0")?,
+                read_pending: symbol(handle, b"ne_read_pending\0")?,
+                work_count: symbol(handle, b"ne_work_count\0")?,
+                snapshot_words: symbol(handle, b"ne_snapshot_words\0")?,
                 read_snapshot: symbol(handle, b"ne_read_snapshot\0")?,
                 ack_effects: symbol(handle, b"ne_ack_effects\0")?,
                 commands: command::Api::load(handle)?,
             })
         })();
-        if result.is_err() { unsafe { dlclose(handle); } }
+        if result.is_err() {
+            unsafe {
+                dlclose(handle);
+            }
+        }
         result
     }
 }
 
 #[cfg(target_os = "linux")]
-impl Drop for Library { fn drop(&mut self) { unsafe { dlclose(self.handle); } } }
+impl Drop for Library {
+    fn drop(&mut self) {
+        unsafe {
+            dlclose(self.handle);
+        }
+    }
+}
 
 #[cfg(target_os = "linux")]
 #[link(name = "dl")]
@@ -635,22 +725,29 @@ fn encode_comparators(program: &Program, table: &mut Vec<u32>) -> Result<(), Scr
         Some(ComparatorInput::CopperBulb(source)) => {
             // Static levels use 1..=16; the high bit tags a live bulb component.
             let source = u32::try_from(source).map_err(|_| overflow())?;
-            if source >= 0x8000_0000 { return Err(overflow()); }
+            if source >= 0x8000_0000 {
+                return Err(overflow());
+            }
             Ok(0x8000_0000 | source)
         }
         Some(ComparatorInput::CommandBlock(source)) => {
             let source = u32::try_from(source).map_err(|_| overflow())?;
-            if source >= 0x4000_0000 { return Err(overflow()); }
+            if source >= 0x4000_0000 {
+                return Err(overflow());
+            }
             Ok(0x4000_0000 | source)
         }
     };
     table.resize(program.initial.len().checked_mul(4).ok_or_else(overflow)?, 0);
     for record in &program.comparators {
-        let Block::RedstoneComparator { comparator } = program.initial[record.component] else { return Err(overflow()); };
+        let Block::RedstoneComparator { comparator } = program.initial[record.component] else {
+            return Err(overflow());
+        };
         table[record.component * 4..record.component * 4 + 4].copy_from_slice(&[
-            1 | (u32::from(comparator.mode == mchprs_blocks::blocks::ComparatorMode::Subtract) << 1)
-                | (u32::from(record.output_is_diode) << 2),
-            level(record.rear_override)?, level(record.far_override)?, u32::from(record.stored),
+            1 | (u32::from(comparator.mode == mchprs_blocks::blocks::ComparatorMode::Subtract) << 1) | (u32::from(record.output_is_diode) << 2),
+            level(record.rear_override)?,
+            level(record.far_override)?,
+            u32::from(record.stored),
         ]);
     }
     Ok(())
@@ -695,13 +792,18 @@ fn encode_aux(program: &Program, blob: &mut Vec<u8>) -> Result<(), ScratchError>
     for row in &program.comparators_by_override {
         let start = id(tables[60].len())?;
         tables[59].extend([start, id(row.len())?]);
-        for &node in row { tables[60].push(id(node)?); }
+        for &node in row {
+            tables[60].push(id(node)?);
+        }
     }
-    tables[52] = program.initial.iter().map(|block| match block {
-        Block::RedstoneWire { wire } => wire.north.get_id() | (wire.south.get_id() << 2)
-            | (wire.east.get_id() << 4) | (wire.west.get_id() << 6),
-        _ => 0,
-    }).collect();
+    tables[52] = program
+        .initial
+        .iter()
+        .map(|block| match block {
+            Block::RedstoneWire { wire } => wire.north.get_id() | (wire.south.get_id() << 2) | (wire.east.get_id() << 4) | (wire.west.get_id() << 6),
+            _ => 0,
+        })
+        .collect();
     let directory = blob.len();
     blob.resize(directory.checked_add(AUX_TABLES * 8).ok_or_else(overflow)?, 0);
     for (index, table) in tables.iter().enumerate() {
@@ -839,13 +941,19 @@ pub(super) fn validate_blob(descriptor: &NativeProgramDescriptor, blob: &[u8]) -
         return Err(invalid());
     }
     for (node, &sides) in tables[52].iter().enumerate() {
-        if sides > 255 || (0..4).any(|side| (sides >> (side * 2)) & 3 == 3)
+        if sides > 255
+            || (0..4).any(|side| (sides >> (side * 2)) & 3 == 3)
             || (sides != 0 && blob[descriptor.component_offset as usize + node * COMPONENT_BYTES + 12] != 5)
         {
             return Err(invalid());
         }
     }
-    for (rows, limit) in [(0, tables[1].len() / 2), (2, tables[4].len()), (5, tables[6].len()), (59, tables[60].len())] {
+    for (rows, limit) in [
+        (0, tables[1].len() / 2),
+        (2, tables[4].len()),
+        (5, tables[6].len()),
+        (59, tables[60].len()),
+    ] {
         for row in tables[rows].chunks_exact(2) {
             if u64::from(row[0]) + u64::from(row[1]) > limit as u64 {
                 return Err(invalid());
@@ -865,8 +973,10 @@ pub(super) fn validate_blob(descriptor: &NativeProgramDescriptor, blob: &[u8]) -
     if tables[4].iter().any(|&node| node >= descriptor.component_count) || tables[6].iter().any(|&link| link >= descriptor.link_count) {
         return Err(invalid());
     }
-    if tables[60].iter().any(|&node| node >= descriptor.component_count
-        || blob[descriptor.component_offset as usize + node as usize * COMPONENT_BYTES + 12] != 9) {
+    if tables[60]
+        .iter()
+        .any(|&node| node >= descriptor.component_count || blob[descriptor.component_offset as usize + node as usize * COMPONENT_BYTES + 12] != 9)
+    {
         return Err(invalid());
     }
     Ok(())
@@ -1004,7 +1114,11 @@ mod tests {
     }
 
     #[cfg(any(windows, target_os = "linux"))]
-    fn compare_execution(mut program: Program, controls: &[(usize, usize)], ticks: usize) -> (super::super::Runtime, super::super::Runtime, LlvmRuntime) {
+    fn compare_execution(
+        mut program: Program,
+        controls: &[(usize, usize)],
+        ticks: usize,
+    ) -> (super::super::Runtime, super::super::Runtime, LlvmRuntime) {
         if program.projection_positions.is_empty() || program.effective_links.len() != program.links.len() {
             program.prepare_projection();
         }
@@ -1020,7 +1134,10 @@ mod tests {
             }
             let rust_result = rust.tick();
             let native_result = native.tick();
-            assert!(rust_result.is_ok() && native_result.is_ok(), "execution tick {tick}: Rust={rust_result:?}, LLVM={native_result:?}");
+            assert!(
+                rust_result.is_ok() && native_result.is_ok(),
+                "execution tick {tick}: Rust={rust_result:?}, LLVM={native_result:?}"
+            );
             let mut states = vec![0u8; positions.len()];
             assert_eq!(
                 unsafe { (native.library.read_state)(native.state.as_ptr().cast(), states.as_mut_ptr(), states.len() as u32) },
@@ -1046,15 +1163,25 @@ mod tests {
             assert_eq!(projection.group_arrangements, rust.group_arrangements, "arrangements tick {tick}");
             assert_eq!(projection.routing_attenuations, rust.routing_attenuations, "routing tick {tick}");
             assert_eq!(projection.comparator_outputs, rust.comparator_outputs, "comparators tick {tick}");
-            assert_eq!(projection.reactive_wire_strengths, rust.reactive_wire_strengths, "reactive wires tick {tick}");
+            assert_eq!(
+                projection.reactive_wire_strengths, rust.reactive_wire_strengths,
+                "reactive wires tick {tick}"
+            );
             assert_eq!(projection.notes, rust.notes, "note effects tick {tick}");
             assert_eq!(projection.command_blocks, rust.command_blocks, "command entities tick {tick}");
-            let emissions = |r: &super::super::Runtime| r.command_emissions.iter()
-                .map(|event| (event.pos, event.tick, event.message.recipient.clone(), event.message.message.clone())).collect::<Vec<_>>();
+            let emissions = |r: &super::super::Runtime| {
+                r.command_emissions
+                    .iter()
+                    .map(|event| (event.pos, event.tick, event.message.recipient.clone(), event.message.message.clone()))
+                    .collect::<Vec<_>>()
+            };
             assert_eq!(emissions(&projection), emissions(&rust), "command emissions tick {tick}");
             // Unlimited replay still has wall-clock accounting windows, which can reset between backend calls.
-            let output = |r: &super::super::Runtime| r.command_output_state.as_ref().map(|state|
-                (state.limited.then_some((state.count, state.bytes)), state.queued, state.limited));
+            let output = |r: &super::super::Runtime| {
+                r.command_output_state
+                    .as_ref()
+                    .map(|state| (state.limited.then_some((state.count, state.bytes)), state.queued, state.limited))
+            };
             assert_eq!(output(&projection), output(&rust), "command output state tick {tick}");
             assert_eq!(projection.note_queued, rust.note_queued, "queued effects tick {tick}");
             assert_eq!(projection.watched_strengths, rust.watched_strengths, "watched wires tick {tick}");
@@ -1106,23 +1233,48 @@ mod tests {
         let mut rust_world = cpus::load_cpu(cpu);
         let mut native_world = rust_world.activation_snapshot();
         assert!(rust_world.scheduler().iter_entries().next().is_none());
-        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../test_data").join(cpu.schematic);
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../test_data")
+            .join(cpu.schematic);
         let clip = load_schematic(std::fs::File::open(path).unwrap()).unwrap();
-        let bounds = (cpu.origin, cpu.origin + BlockPos::new(clip.size_x as i32 - 1, clip.size_y as i32 - 1, clip.size_z as i32 - 1));
+        let bounds = (
+            cpu.origin,
+            cpu.origin + BlockPos::new(clip.size_x as i32 - 1, clip.size_y as i32 - 1, clip.size_z as i32 - 1),
+        );
         let started = std::time::Instant::now();
-        let program = super::super::compile_program(&rust_world, bounds,
-            super::super::ScratchEntry { scheduled: vec![], piston: rust_world.piston_state().clone() }, None).unwrap();
+        let program = super::super::compile_program(
+            &rust_world,
+            bounds,
+            super::super::ScratchEntry {
+                scheduled: vec![],
+                piston: rust_world.piston_state().clone(),
+            },
+            None,
+        )
+        .unwrap();
         eprintln!("PM1 sampled compile_ms={}", started.elapsed().as_millis());
         let start = program.component_indices[&(cpu.origin + cpu.start)];
         let stop = program.component_indices[&(cpu.origin + cpu.stop.unwrap())];
-        let ticks = std::env::var("MCHPRS_LLVM_VERIFY_TICKS").ok().map_or(cpu.active_ticks as usize + 100, |s| s.parse().unwrap());
+        let ticks = std::env::var("MCHPRS_LLVM_VERIFY_TICKS")
+            .ok()
+            .map_or(cpu.active_ticks as usize + 100, |s| s.parse().unwrap());
         let mut controls = vec![(0, start)];
-        if ticks > cpu.active_ticks as usize { controls.push((cpu.active_ticks as usize, stop)); }
+        if ticks > cpu.active_ticks as usize {
+            controls.push((cpu.active_ticks as usize, stop));
+        }
         let (rust, projection, native) = compare_execution(program, &controls, ticks);
-        let chat: Vec<_> = rust.command_emissions.iter().map(|event| (event.tick as u32, event.message.message.clone())).collect();
+        let chat: Vec<_> = rust
+            .command_emissions
+            .iter()
+            .map(|event| (event.tick as u32, event.message.message.clone()))
+            .collect();
         assert!(!chat.is_empty(), "PM1 start produced no command output");
-        eprintln!("PM1 matched_ticks={ticks} messages={} halt_observed={} last_message={:?}",
-            chat.len(), chat.iter().any(|(_, text)| text.contains("shut")), chat.last());
+        eprintln!(
+            "PM1 matched_ticks={ticks} messages={} halt_observed={} last_message={:?}",
+            chat.len(),
+            chat.iter().any(|(_, text)| text.contains("shut")),
+            chat.last()
+        );
         let mut rust_compiler = Compiler::default();
         rust_compiler.runtime = Some(rust);
         let mut native_compiler = Compiler::default();
@@ -1130,8 +1282,16 @@ mod tests {
         native_compiler.llvm_runtime = Some(native);
         rust_compiler.try_reset(&mut rust_world, bounds).unwrap();
         native_compiler.try_reset(&mut native_world, bounds).unwrap();
-        assert_eq!(native_world.command_output().collect::<Vec<_>>(), rust_world.command_output().collect::<Vec<_>>(), "PM1 published messages after reset");
-        assert_eq!(cpus::checkpoint(&native_world, ticks as u32, &chat), cpus::checkpoint(&rust_world, ticks as u32, &chat), "PM1 full reset checkpoint");
+        assert_eq!(
+            native_world.command_output().collect::<Vec<_>>(),
+            rust_world.command_output().collect::<Vec<_>>(),
+            "PM1 published messages after reset"
+        );
+        assert_eq!(
+            cpus::checkpoint(&native_world, ticks as u32, &chat),
+            cpus::checkpoint(&rust_world, ticks as u32, &chat),
+            "PM1 full reset checkpoint"
+        );
         eprintln!("PM1 full reset checkpoint matched");
     }
 
@@ -1143,12 +1303,25 @@ mod tests {
         use crate::{plot::worldedit::load_schematic, world::World};
         let cpu = cpus::CPUS[1];
         let world = cpus::load_cpu(cpu);
-        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../test_data").join(cpu.schematic);
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../test_data")
+            .join(cpu.schematic);
         let clip = load_schematic(std::fs::File::open(path).unwrap()).unwrap();
-        let bounds = (cpu.origin, cpu.origin + BlockPos::new(clip.size_x as i32 - 1, clip.size_y as i32 - 1, clip.size_z as i32 - 1));
+        let bounds = (
+            cpu.origin,
+            cpu.origin + BlockPos::new(clip.size_x as i32 - 1, clip.size_y as i32 - 1, clip.size_z as i32 - 1),
+        );
         let started = std::time::Instant::now();
-        let program = super::super::compile_program(&world, bounds,
-            super::super::ScratchEntry { scheduled: vec![], piston: world.piston_state().clone() }, None).unwrap();
+        let program = super::super::compile_program(
+            &world,
+            bounds,
+            super::super::ScratchEntry {
+                scheduled: vec![],
+                piston: world.piston_state().clone(),
+            },
+            None,
+        )
+        .unwrap();
         eprintln!("ANPU sampled compile_ms={}", started.elapsed().as_millis());
         let start = program.positions.iter().position(|&pos| pos == cpu.origin + cpu.start).unwrap();
         let ticks = std::env::var("MCHPRS_LLVM_VERIFY_TICKS").ok().map_or(5000, |s| s.parse().unwrap());
@@ -1344,15 +1517,32 @@ mod tests {
     #[test]
     fn llvm_compressed_concrete_axes_preserve_motion_and_wire_state() {
         use crate::world::World;
-        use mchprs_blocks::{BlockDirection, BlockFace, BlockFacing, blocks::{Lever, LeverFace, RedstonePiston}};
+        use mchprs_blocks::{
+            BlockDirection, BlockFace, BlockFacing,
+            blocks::{Lever, LeverFace, RedstonePiston},
+        };
         let mut world = super::super::tests::host();
         let base = BlockPos::new(15, 15, 15);
         let lever = base.offset(BlockFace::East);
         let upper = BlockPos::new(15, 14, 15);
         let lower = BlockPos::new(15, 13, 15);
-        world.set_block(lever, Block::Lever { lever: Lever::new(LeverFace::Floor, BlockDirection::North, false) });
+        world.set_block(
+            lever,
+            Block::Lever {
+                lever: Lever::new(LeverFace::Floor, BlockDirection::North, false),
+            },
+        );
         world.set_block(lever.offset(BlockFace::Bottom), Block::Stone {});
-        world.set_block(base, Block::Piston { piston: RedstonePiston { facing: BlockFacing::Down, sticky: true, extended: false } });
+        world.set_block(
+            base,
+            Block::Piston {
+                piston: RedstonePiston {
+                    facing: BlockFacing::Down,
+                    sticky: true,
+                    extended: false,
+                },
+            },
+        );
         world.set_block(upper, Block::from_name("black_concrete").unwrap());
         world.set_block(lower.offset(BlockFace::Bottom), Block::from_name("redstone_wire").unwrap());
         world.set_block(BlockPos::new(16, 12, 15), Block::Stone {});
@@ -1362,30 +1552,73 @@ mod tests {
             let wire = crate::redstone::wire::get_state_for_placement(&world, pos);
             world.set_block(pos, Block::RedstoneWire { wire });
         }
-        let program = super::super::compile_program(&world, (BlockPos::new(10, 10, 10), BlockPos::new(20, 20, 20)),
-            super::super::ScratchEntry { scheduled: vec![], piston: world.piston_state().clone() }, None).unwrap();
-        assert!(program.movement_groups.iter().flat_map(|group| &group.axes).any(|axis| axis.states.len() == 3 && axis.states.iter().max() == Some(&1)));
+        let program = super::super::compile_program(
+            &world,
+            (BlockPos::new(10, 10, 10), BlockPos::new(20, 20, 20)),
+            super::super::ScratchEntry {
+                scheduled: vec![],
+                piston: world.piston_state().clone(),
+            },
+            None,
+        )
+        .unwrap();
+        assert!(
+            program
+                .movement_groups
+                .iter()
+                .flat_map(|group| &group.axes)
+                .any(|axis| axis.states.len() == 3 && axis.states.iter().max() == Some(&1))
+        );
         let source = program.positions.iter().position(|&pos| pos == lever).unwrap();
-        compare_execution(program, &[(0, source), (6, source), (12, source), (13, source), (20, source), (28, source)], 40);
+        compare_execution(
+            program,
+            &[(0, source), (6, source), (12, source), (13, source), (20, source), (28, source)],
+            40,
+        );
     }
 
     #[cfg(any(windows, target_os = "linux"))]
     #[test]
     fn llvm_empty_head_notifies_quasi_powered_piston_immediately() {
         use crate::world::World;
-        use mchprs_blocks::{BlockDirection, BlockFace, BlockFacing, blocks::{Lever, LeverFace, RedstonePiston}};
+        use mchprs_blocks::{
+            BlockDirection, BlockFace, BlockFacing,
+            blocks::{Lever, LeverFace, RedstonePiston},
+        };
         let mut world = super::super::tests::host();
         let driver = BlockPos::new(10, 10, 10);
         let bud = BlockPos::new(9, 10, 9);
         let lever = BlockPos::new(10, 10, 11);
-        world.set_block(lever, Block::Lever { lever: Lever::new(LeverFace::Floor, BlockDirection::North, false) });
+        world.set_block(
+            lever,
+            Block::Lever {
+                lever: Lever::new(LeverFace::Floor, BlockDirection::North, false),
+            },
+        );
         world.set_block(lever.offset(BlockFace::Bottom), Block::Stone {});
         for (pos, facing) in [(driver, BlockFacing::North), (bud, BlockFacing::Down)] {
-            world.set_block(pos, Block::Piston { piston: RedstonePiston { facing, sticky: true, extended: false } });
+            world.set_block(
+                pos,
+                Block::Piston {
+                    piston: RedstonePiston {
+                        facing,
+                        sticky: true,
+                        extended: false,
+                    },
+                },
+            );
         }
         world.set_block(bud + BlockPos::new(0, 2, 0), Block::RedstoneBlock);
-        let program = super::super::compile_program(&world, (BlockPos::new(5, 5, 5), BlockPos::new(15, 15, 15)),
-            super::super::ScratchEntry { scheduled: vec![], piston: world.piston_state().clone() }, None).unwrap();
+        let program = super::super::compile_program(
+            &world,
+            (BlockPos::new(5, 5, 5), BlockPos::new(15, 15, 15)),
+            super::super::ScratchEntry {
+                scheduled: vec![],
+                piston: world.piston_state().clone(),
+            },
+            None,
+        )
+        .unwrap();
         let source = program.positions.iter().position(|&pos| pos == lever).unwrap();
         compare_execution(program, &[(0, source), (5, source), (10, source), (11, source)], 32);
     }
@@ -1501,19 +1734,52 @@ mod tests {
         use mchprs_blocks::blocks::ComparatorMode;
         for mode in [ComparatorMode::Compare, ComparatorMode::Subtract] {
             for stored in [0, 5, 15] {
-                let Block::RedstoneComparator { mut comparator } = Block::from_name("comparator").unwrap() else { unreachable!() };
+                let Block::RedstoneComparator { mut comparator } = Block::from_name("comparator").unwrap() else {
+                    unreachable!()
+                };
                 comparator.mode = mode;
                 comparator.powered = stored != 0;
                 let rear = vec![Operation::Contribution(0), Operation::UpdateComparator(2)];
                 let side = vec![Operation::UpdateComparator(2)];
                 let out = vec![Operation::Contribution(1), Operation::UpdateLamp(3)];
-                let mut program = Program::new((0..4).map(|x| BlockPos::new(x, 15, 15)).collect(),
-                    vec![Block::from_name("lever").unwrap(), Block::from_name("lever").unwrap(),
-                        Block::RedstoneComparator { comparator }, Block::RedstoneLamp { lit: stored != 0 }],
-                    vec![0, 1], vec![[rear.clone(), rear], [side.clone(), side], [out.clone(), out], [vec![], vec![]]],
-                    vec![ElectricalLink { source: 0, target: 2, attenuation: 5 }, ElectricalLink { source: 2, target: 3, attenuation: 0 }], vec![], vec![]).unwrap();
-                program.comparators.push(ComparatorRecord { component: 2, stored, rear_override: None, far_override: None, output_is_diode: false });
-                program.side_links.push(ElectricalLink { source: 1, target: 2, attenuation: 8 });
+                let mut program = Program::new(
+                    (0..4).map(|x| BlockPos::new(x, 15, 15)).collect(),
+                    vec![
+                        Block::from_name("lever").unwrap(),
+                        Block::from_name("lever").unwrap(),
+                        Block::RedstoneComparator { comparator },
+                        Block::RedstoneLamp { lit: stored != 0 },
+                    ],
+                    vec![0, 1],
+                    vec![[rear.clone(), rear], [side.clone(), side], [out.clone(), out], [vec![], vec![]]],
+                    vec![
+                        ElectricalLink {
+                            source: 0,
+                            target: 2,
+                            attenuation: 5,
+                        },
+                        ElectricalLink {
+                            source: 2,
+                            target: 3,
+                            attenuation: 0,
+                        },
+                    ],
+                    vec![],
+                    vec![],
+                )
+                .unwrap();
+                program.comparators.push(ComparatorRecord {
+                    component: 2,
+                    stored,
+                    rear_override: None,
+                    far_override: None,
+                    output_is_diode: false,
+                });
+                program.side_links.push(ElectricalLink {
+                    source: 1,
+                    target: 2,
+                    attenuation: 8,
+                });
                 program.prepare_projection();
                 let mut rust = program.clone().into_runtime_prepared();
                 let mut native = LlvmRuntime::new(program.clone(), &[]).unwrap();
@@ -1523,11 +1789,15 @@ mod tests {
                         let pos = program.positions[source];
                         rust.use_control(pos).unwrap();
                         native.use_control(pos).unwrap();
-                        if let Some(runtime) = &mut handoff { runtime.use_control(pos).unwrap(); }
+                        if let Some(runtime) = &mut handoff {
+                            runtime.use_control(pos).unwrap();
+                        }
                     }
                     rust.tick().unwrap();
                     native.tick().unwrap();
-                    if let Some(runtime) = &mut handoff { runtime.tick().unwrap(); }
+                    if let Some(runtime) = &mut handoff {
+                        runtime.tick().unwrap();
+                    }
                     if tick == 1 {
                         let mut runtime = program.clone().into_runtime_prepared();
                         native.sync_publication(&mut runtime).unwrap();
@@ -1539,7 +1809,11 @@ mod tests {
                     for runtime in std::iter::once(&projection).chain(handoff.iter()) {
                         assert_eq!(runtime.projected_blocks(), rust.projected_blocks(), "tick {tick}");
                         assert_eq!(runtime.input_strength(2), rust.input_strength(2), "rear tick {tick}");
-                        assert_eq!(runtime.input_levels[2][1].maximum(&runtime.input_histograms), rust.input_levels[2][1].maximum(&rust.input_histograms), "side tick {tick}");
+                        assert_eq!(
+                            runtime.input_levels[2][1].maximum(&runtime.input_histograms),
+                            rust.input_levels[2][1].maximum(&rust.input_histograms),
+                            "side tick {tick}"
+                        );
                         assert_eq!(runtime.comparator_outputs, rust.comparator_outputs, "output tick {tick}");
                         assert_eq!(runtime.pending_entries(), rust.pending_entries(), "pending tick {tick}");
                     }

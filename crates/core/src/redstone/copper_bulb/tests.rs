@@ -221,8 +221,16 @@ fn compiled_copper_bulb_matches_native_latch_comparators_and_observer() {
 #[test]
 #[cfg(any(windows, target_os = "linux"))]
 fn llvm_copper_bulbs_match_native_latch_comparators_observer_and_reset() {
-    for name in ["copper_bulb", "exposed_copper_bulb", "weathered_copper_bulb", "oxidized_copper_bulb",
-        "waxed_copper_bulb", "waxed_exposed_copper_bulb", "waxed_weathered_copper_bulb", "waxed_oxidized_copper_bulb"] {
+    for name in [
+        "copper_bulb",
+        "exposed_copper_bulb",
+        "weathered_copper_bulb",
+        "oxidized_copper_bulb",
+        "waxed_copper_bulb",
+        "waxed_exposed_copper_bulb",
+        "waxed_weathered_copper_bulb",
+        "waxed_oxidized_copper_bulb",
+    ] {
         for (lit, powered) in [(false, false), (true, false), (false, true), (true, true)] {
             compiled_copper_bulb_matches_native(name, lit, powered, false);
             compiled_copper_bulb_matches_native(name, lit, powered, true);
@@ -240,10 +248,17 @@ fn compiled_copper_bulb_matches_native(name: &str, lit: bool, powered: bool, llv
     let second = BULB.offset(BlockFace::Top);
     for world in [&mut world, &mut compiled_world] {
         // The multi-input circuit starts settled; stale latch states have separate Java traces.
-        let Block::Lever { mut lever } = world.get_block(INPUT) else { unreachable!() };
+        let Block::Lever { mut lever } = world.get_block(INPUT) else {
+            unreachable!()
+        };
         lever.powered = powered;
         world.set_block(INPUT, Block::Lever { lever });
-        world.set_block(second, Block::Lever { lever: Lever::new(LeverFace::Floor, BlockDirection::North, false) });
+        world.set_block(
+            second,
+            Block::Lever {
+                lever: Lever::new(LeverFace::Floor, BlockDirection::North, false),
+            },
+        );
     }
     let bounds = (BULB - BlockPos::new(4, 2, 4), BULB + BlockPos::new(4, 2, 4));
     let ticks = world.scheduler().iter_entries().collect();
@@ -279,7 +294,11 @@ fn compiled_copper_bulb_matches_native(name: &str, lit: bool, powered: bool, llv
             compiler.tick().unwrap();
             compiler.try_flush(&mut compiled_world).unwrap();
             for pos in positions {
-                assert_eq!(world.get_block(pos), compiled_world.get_block(pos), "{name} initial lit={lit} powered={powered}, input {input:?}, block {pos:?}, pulse tick {tick}, llvm={llvm}");
+                assert_eq!(
+                    world.get_block(pos),
+                    compiled_world.get_block(pos),
+                    "{name} initial lit={lit} powered={powered}, input {input:?}, block {pos:?}, pulse tick {tick}, llvm={llvm}"
+                );
             }
             for pos in [DIRECT, FAR] {
                 assert_eq!(

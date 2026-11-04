@@ -61,22 +61,46 @@ fn compile_button(world: &PlotWorld, bounds: (BlockPos, BlockPos)) -> Compiler {
 fn llvm_handoff_errors_identify_pending_pistons_and_partial_ticks() {
     let (mut world, pos, _, bounds) = button_world(ButtonFace::Floor, BlockDirection::North);
     world.piston_state_mut().events.push_back(mchprs_world::PistonEvent {
-        pos, sticky: false, facing: BlockFace::East, action: mchprs_world::PistonAction::Extend,
+        pos,
+        sticky: false,
+        facing: BlockFace::East,
+        action: mchprs_world::PistonAction::Extend,
     });
-    let compile = |world: &PlotWorld| Compiler::default().compile(world, bounds,
-        CompilerOptions { llvm: true, ..Default::default() }, Vec::new(), Default::default());
-    let Err(CompileError::Unsupported(error)) = compile(&world) else { panic!("pending piston was accepted") };
+    let compile = |world: &PlotWorld| {
+        Compiler::default().compile(
+            world,
+            bounds,
+            CompilerOptions {
+                llvm: true,
+                ..Default::default()
+            },
+            Vec::new(),
+            Default::default(),
+        )
+    };
+    let Err(CompileError::Unsupported(error)) = compile(&world) else {
+        panic!("pending piston was accepted")
+    };
     assert_eq!(error.position, Some(pos));
     world.piston_state_mut().events.clear();
     let moving = pos.offset(BlockFace::East);
     world.piston_state_mut().motions.push_back(mchprs_world::PistonMotion {
-        pos: moving, identity: 1, progress: 0.5, previous_progress: 0.0, last_tick: 0, carried_entity: None,
+        pos: moving,
+        identity: 1,
+        progress: 0.5,
+        previous_progress: 0.0,
+        last_tick: 0,
+        carried_entity: None,
     });
-    let Err(CompileError::Unsupported(error)) = compile(&world) else { panic!("moving piston was accepted") };
+    let Err(CompileError::Unsupported(error)) = compile(&world) else {
+        panic!("moving piston was accepted")
+    };
     assert_eq!(error.position, Some(moving));
     world.piston_state_mut().motions.clear();
     world.piston_state_mut().phase = AdvancePhase::ScheduledTicks;
-    let Err(CompileError::Unsupported(error)) = compile(&world) else { panic!("partial tick was accepted") };
+    let Err(CompileError::Unsupported(error)) = compile(&world) else {
+        panic!("partial tick was accepted")
+    };
     assert_eq!(error.position, None);
     assert!(error.reason.contains("scheduled ticks"));
 }
@@ -88,8 +112,18 @@ fn llvm_accepts_completed_interpreter_tick_with_scheduler_advanced() {
     world.tick_interpreted();
     assert_eq!(world.piston_state().phase, AdvancePhase::BetweenTicks);
     assert!(world.piston_state().scheduled_advanced);
-    Compiler::default().compile(&world, bounds, CompilerOptions { llvm: true, ..Default::default() },
-        world.scheduler().iter_entries().collect(), Default::default()).unwrap();
+    Compiler::default()
+        .compile(
+            &world,
+            bounds,
+            CompilerOptions {
+                llvm: true,
+                ..Default::default()
+            },
+            world.scheduler().iter_entries().collect(),
+            Default::default(),
+        )
+        .unwrap();
 }
 
 #[test]
@@ -137,8 +171,9 @@ fn compiled_non_control_use_is_noop_for_both_backends() {
     for llvm in [false, true] {
         let (mut world, button, lamp, bounds) = button_world(ButtonFace::Floor, BlockDirection::North);
         let mut compiler = Compiler::default();
-        compiler.compile(&world, bounds, CompilerOptions { llvm, ..Default::default() },
-            vec![], Default::default()).unwrap();
+        compiler
+            .compile(&world, bounds, CompilerOptions { llvm, ..Default::default() }, vec![], Default::default())
+            .unwrap();
         for pos in [lamp, bounds.1 + BlockPos::new(1, 1, 1)] {
             assert!(!compiler.accepts_control(pos));
             compiler.try_on_use_block(pos).unwrap();
@@ -155,7 +190,11 @@ fn compiled_non_control_use_is_noop_for_both_backends() {
 
 #[test]
 fn llvm_dll_executes_button_lamp_and_hands_off_reset_tick() {
-    if std::env::var_os("MCHPRS_LLVM_DLL").is_none() && !std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/native_engine.dll").exists() {
+    if std::env::var_os("MCHPRS_LLVM_DLL").is_none()
+        && !std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../target/native_engine.dll")
+            .exists()
+    {
         return;
     }
     let (mut reference, button, lamp, bounds) = button_world(ButtonFace::Floor, BlockDirection::North);
@@ -198,7 +237,11 @@ fn llvm_dll_executes_button_lamp_and_hands_off_reset_tick() {
 
 #[test]
 fn llvm_imports_pending_button_release_and_hands_it_back() {
-    if std::env::var_os("MCHPRS_LLVM_DLL").is_none() && !std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/native_engine.dll").exists() {
+    if std::env::var_os("MCHPRS_LLVM_DLL").is_none()
+        && !std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../target/native_engine.dll")
+            .exists()
+    {
         return;
     }
     let (mut reference, button, lamp, bounds) = button_world(ButtonFace::Floor, BlockDirection::North);
@@ -207,7 +250,18 @@ fn llvm_imports_pending_button_release_and_hands_it_back() {
     crate::interaction::use_redstone(candidate.get_block(button), &mut candidate, button, None);
     let pending = candidate.scheduler().iter_entries().collect();
     let mut compiler = Compiler::default();
-    compiler.compile(&candidate, bounds, CompilerOptions { llvm: true, ..Default::default() }, pending, Arc::new(TaskMonitor::default())).unwrap();
+    compiler
+        .compile(
+            &candidate,
+            bounds,
+            CompilerOptions {
+                llvm: true,
+                ..Default::default()
+            },
+            pending,
+            Arc::new(TaskMonitor::default()),
+        )
+        .unwrap();
     candidate.clear_scheduled_ticks();
     for tick in 1..=7 {
         reference.tick_interpreted();
@@ -217,7 +271,10 @@ fn llvm_imports_pending_button_release_and_hands_it_back() {
         assert_eq!(reference.get_block(lamp), candidate.get_block(lamp), "lamp tick {tick}");
     }
     compiler.try_reset(&mut candidate, bounds).unwrap();
-    assert_eq!(reference.scheduler().iter_entries().collect::<Vec<_>>(), candidate.scheduler().iter_entries().collect::<Vec<_>>());
+    assert_eq!(
+        reference.scheduler().iter_entries().collect::<Vec<_>>(),
+        candidate.scheduler().iter_entries().collect::<Vec<_>>()
+    );
     for tick in 8..=22 {
         reference.tick_interpreted();
         candidate.tick_interpreted();
@@ -228,23 +285,59 @@ fn llvm_imports_pending_button_release_and_hands_it_back() {
 
 #[test]
 fn llvm_imported_ticks_preserve_priority_and_duplicates() {
-    if std::env::var_os("MCHPRS_LLVM_DLL").is_none() && !std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/native_engine.dll").exists() {
+    if std::env::var_os("MCHPRS_LLVM_DLL").is_none()
+        && !std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../target/native_engine.dll")
+            .exists()
+    {
         return;
     }
     let (mut world, button, _, bounds) = button_world(ButtonFace::Floor, BlockDirection::North);
     let kind = Some(world.get_block(button).registry_id());
-    for (delay, priority) in [(5, TickPriority::Normal), (3, TickPriority::High), (5, TickPriority::Highest), (5, TickPriority::Highest)] {
-        world.restore_scheduled_tick(TickEntry { ticks_left: delay, tick_priority: priority, pos: button, block_type: kind });
+    for (delay, priority) in [
+        (5, TickPriority::Normal),
+        (3, TickPriority::High),
+        (5, TickPriority::Highest),
+        (5, TickPriority::Highest),
+    ] {
+        world.restore_scheduled_tick(TickEntry {
+            ticks_left: delay,
+            tick_priority: priority,
+            pos: button,
+            block_type: kind,
+        });
     }
     let expected: Vec<_> = world.scheduler().iter_entries().collect();
     let mut compiler = Compiler::default();
-    compiler.compile(&world, bounds, CompilerOptions { llvm: true, ..Default::default() }, expected.clone(), Arc::new(TaskMonitor::default())).unwrap();
+    compiler
+        .compile(
+            &world,
+            bounds,
+            CompilerOptions {
+                llvm: true,
+                ..Default::default()
+            },
+            expected.clone(),
+            Arc::new(TaskMonitor::default()),
+        )
+        .unwrap();
     world.clear_scheduled_ticks();
     compiler.try_reset(&mut world, bounds).unwrap();
     assert_eq!(expected, world.scheduler().iter_entries().collect::<Vec<_>>());
     let mut stale = expected[0].clone();
     stale.block_type = None;
-    compiler.compile(&world, bounds, CompilerOptions { llvm: true, ..Default::default() }, vec![stale.clone()], Arc::new(TaskMonitor::default())).unwrap();
+    compiler
+        .compile(
+            &world,
+            bounds,
+            CompilerOptions {
+                llvm: true,
+                ..Default::default()
+            },
+            vec![stale.clone()],
+            Arc::new(TaskMonitor::default()),
+        )
+        .unwrap();
     world.clear_scheduled_ticks();
     compiler.try_reset(&mut world, bounds).unwrap();
     assert_eq!(world.scheduler().iter_entries().collect::<Vec<_>>(), vec![stale]);
@@ -259,8 +352,12 @@ fn compiled_pending_ticks_preserve_stale_passive_and_large_initial_queues() {
     for world in [&mut reference, &mut candidate] {
         world.set_block(plate, Block::StonePressurePlate { powered: false });
         for _ in 0..128 {
-            world.restore_scheduled_tick(TickEntry { pos: button, block_type: Some(world.get_block(button).registry_id()),
-                ticks_left: 30, tick_priority: TickPriority::High });
+            world.restore_scheduled_tick(TickEntry {
+                pos: button,
+                block_type: Some(world.get_block(button).registry_id()),
+                ticks_left: 30,
+                tick_priority: TickPriority::High,
+            });
         }
         for (pos, block_type, ticks_left) in [
             (button, None, 2),
@@ -269,15 +366,27 @@ fn compiled_pending_ticks_preserve_stale_passive_and_large_initial_queues() {
             (button.offset(BlockFace::Bottom), Some(Block::Stone {}.registry_id()), 8),
             (plate, Some(world.get_block(plate).registry_id()), 9),
         ] {
-            world.restore_scheduled_tick(TickEntry { pos, block_type, ticks_left, tick_priority: TickPriority::Normal });
+            world.restore_scheduled_tick(TickEntry {
+                pos,
+                block_type,
+                ticks_left,
+                tick_priority: TickPriority::Normal,
+            });
         }
     }
     let initial_count = reference.scheduler().iter_entries().count();
     let mut rust = Compiler::default();
     let mut native = Compiler::default();
     for (compiler, world, llvm) in [(&mut rust, &mut reference, false), (&mut native, &mut candidate, true)] {
-        compiler.compile(world, bounds, CompilerOptions { llvm, ..Default::default() },
-            world.scheduler().iter_entries().collect(), Default::default()).unwrap();
+        compiler
+            .compile(
+                world,
+                bounds,
+                CompilerOptions { llvm, ..Default::default() },
+                world.scheduler().iter_entries().collect(),
+                Default::default(),
+            )
+            .unwrap();
         world.clear_scheduled_ticks();
         compiler.try_on_use_block(button).unwrap();
     }
@@ -298,7 +407,9 @@ fn compiled_pending_ticks_preserve_stale_passive_and_large_initial_queues() {
             let actual = native.runtime.as_ref().unwrap();
             assert_eq!(actual.pending_entries(), expected.pending_entries(), "pending tick {tick}");
             assert_eq!(actual.projected_blocks(), expected.projected_blocks(), "snapshot tick {tick}");
-            if tick == 0 { assert_eq!(expected.pending_entries().len(), initial_count + 1); }
+            if tick == 0 {
+                assert_eq!(expected.pending_entries().len(), initial_count + 1);
+            }
         }
         for pos in [button, lamp, plate] {
             assert_eq!(reference.get_block(pos), candidate.get_block(pos), "block {pos:?} tick {tick}");
@@ -308,21 +419,39 @@ fn compiled_pending_ticks_preserve_stale_passive_and_large_initial_queues() {
             native.try_reset(&mut candidate, bounds).unwrap();
         }
         if !rust.is_active() {
-            assert_eq!(reference.scheduler().iter_entries().collect::<Vec<_>>(), candidate.scheduler().iter_entries().collect::<Vec<_>>(),
-                "handoff tick {tick}");
+            assert_eq!(
+                reference.scheduler().iter_entries().collect::<Vec<_>>(),
+                candidate.scheduler().iter_entries().collect::<Vec<_>>(),
+                "handoff tick {tick}"
+            );
         }
     }
 }
 
 #[test]
 fn llvm_scheduler_wraps_and_reuses_slots_without_changing_pulses() {
-    if std::env::var_os("MCHPRS_LLVM_DLL").is_none() && !std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/native_engine.dll").exists() {
+    if std::env::var_os("MCHPRS_LLVM_DLL").is_none()
+        && !std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../target/native_engine.dll")
+            .exists()
+    {
         return;
     }
     let (mut reference, button, lamp, bounds) = button_world(ButtonFace::Floor, BlockDirection::North);
     let (mut candidate, _, _, _) = button_world(ButtonFace::Floor, BlockDirection::North);
     let mut compiler = Compiler::default();
-    compiler.compile(&candidate, bounds, CompilerOptions { llvm: true, ..Default::default() }, Vec::new(), Arc::new(TaskMonitor::default())).unwrap();
+    compiler
+        .compile(
+            &candidate,
+            bounds,
+            CompilerOptions {
+                llvm: true,
+                ..Default::default()
+            },
+            Vec::new(),
+            Arc::new(TaskMonitor::default()),
+        )
+        .unwrap();
     for tick in 0..257 {
         if tick % 25 == 0 {
             crate::interaction::use_redstone(reference.get_block(button), &mut reference, button, None);
@@ -335,7 +464,10 @@ fn llvm_scheduler_wraps_and_reuses_slots_without_changing_pulses() {
         assert_eq!(reference.get_block(lamp), candidate.get_block(lamp), "lamp tick {tick}");
     }
     compiler.try_reset(&mut candidate, bounds).unwrap();
-    assert_eq!(reference.scheduler().iter_entries().collect::<Vec<_>>(), candidate.scheduler().iter_entries().collect::<Vec<_>>());
+    assert_eq!(
+        reference.scheduler().iter_entries().collect::<Vec<_>>(),
+        candidate.scheduler().iter_entries().collect::<Vec<_>>()
+    );
     for tick in 0..32 {
         reference.tick_interpreted();
         candidate.tick_interpreted();
@@ -346,17 +478,32 @@ fn llvm_scheduler_wraps_and_reuses_slots_without_changing_pulses() {
 
 #[test]
 fn llvm_control_work_counts_toward_the_next_scheduled_tick_limit() {
-    if std::env::var_os("MCHPRS_LLVM_DLL").is_none() && !std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/native_engine.dll").exists() {
+    if std::env::var_os("MCHPRS_LLVM_DLL").is_none()
+        && !std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../target/native_engine.dll")
+            .exists()
+    {
         return;
     }
     let (mut world, lever, _, bounds) = button_world(ButtonFace::Floor, BlockDirection::North);
     world.set_block(
         lever,
-        Block::Lever { lever: Lever::new(LeverFace::Floor, BlockDirection::North, false) },
+        Block::Lever {
+            lever: Lever::new(LeverFace::Floor, BlockDirection::North, false),
+        },
     );
     let mut compiler = Compiler::default();
     compiler
-        .compile(&world, bounds, CompilerOptions { llvm: true, ..Default::default() }, Vec::new(), Arc::new(TaskMonitor::default()))
+        .compile(
+            &world,
+            bounds,
+            CompilerOptions {
+                llvm: true,
+                ..Default::default()
+            },
+            Vec::new(),
+            Arc::new(TaskMonitor::default()),
+        )
         .unwrap();
     compiler.try_on_use_block(lever).unwrap();
     compiler.tick().unwrap();
@@ -431,7 +578,13 @@ fn headless_pistons_preserve_entry_and_match_native_motion_and_handoff() {
 
 #[test]
 fn llvm_pistons_preserve_entry_motion_and_reset_handoff() {
-    if std::env::var_os("MCHPRS_LLVM_DLL").is_none() && !std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/native_engine.dll").exists() { return; }
+    if std::env::var_os("MCHPRS_LLVM_DLL").is_none()
+        && !std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../target/native_engine.dll")
+            .exists()
+    {
+        return;
+    }
     check_piston_motion_and_handoff(true);
 }
 
@@ -478,7 +631,13 @@ fn check_piston_motion_and_handoff(llvm: bool) {
             let bounds = (BlockPos::new(10, 10, 10), BlockPos::new(22, 20, 20));
             let mut compiler = Compiler::default();
             compiler
-                .compile(&compiled, bounds, CompilerOptions { llvm, ..Default::default() }, vec![], Arc::new(TaskMonitor::default()))
+                .compile(
+                    &compiled,
+                    bounds,
+                    CompilerOptions { llvm, ..Default::default() },
+                    vec![],
+                    Arc::new(TaskMonitor::default()),
+                )
                 .unwrap();
             compiler.try_flush_complete(&mut compiled).unwrap();
             assert_eq!(compiled.get_block(base), native.get_block(base));

@@ -25,7 +25,9 @@ pub(in super::super) fn run(
     phases.next("movement program validation");
     check_cancelled(monitor)?;
     program.compile_movement_flips()?;
-    if let Some(graph) = &mut routing { graph.bind_links(&program.arrangement_links); }
+    if let Some(graph) = &mut routing {
+        graph.bind_links(&program.arrangement_links);
+    }
     program.routing = routing.map(std::sync::Arc::new);
     Ok(())
 }

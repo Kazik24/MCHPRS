@@ -8,10 +8,7 @@ pub(super) struct InputState {
 
 impl Default for InputState {
     fn default() -> Self {
-        Self {
-            active: 0,
-            analog: u32::MAX,
-        }
+        Self { active: 0, analog: u32::MAX }
     }
 }
 

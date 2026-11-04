@@ -124,7 +124,9 @@ fn blocked_compiler_reports_phase_counts_and_elapsed_time_without_blocking_poll(
         job.monitor.set_phase("source transition sampling");
         job.monitor.set_counts(120, 80, 4);
         job.monitor.set_progress(2, 10, "probes");
-        if !phase_changed { job.last_phase = job.monitor.phase_number(); }
+        if !phase_changed {
+            job.last_phase = job.monitor.phase_number();
+        }
         plot.poll_redpiler_compilation();
         assert!(!plot.redpiler.is_active());
         assert!(plot.compilation.is_some());
@@ -147,11 +149,24 @@ fn compilation_errors_report_phase_block_coordinates_and_specific_recovery() {
     let position = BlockPos::new(34, 20, 34);
     plot.world.set_block(position, Block::from_name("piston").unwrap());
     plot.world.piston_state.events.push_back(mchprs_world::PistonEvent {
-        pos: position, sticky: false, facing: mchprs_blocks::BlockFace::East, action: mchprs_world::PistonAction::Extend,
+        pos: position,
+        sticky: false,
+        facing: mchprs_blocks::BlockFace::East,
+        action: mchprs_world::PistonAction::Extend,
     });
     let monitor = Arc::new(TaskMonitor::default());
-    let error = Compiler::default().compile(&plot.world, plot.world.get_corners(),
-        CompilerOptions { llvm: true, ..Default::default() }, vec![], monitor.clone()).unwrap_err();
+    let error = Compiler::default()
+        .compile(
+            &plot.world,
+            plot.world.get_corners(),
+            CompilerOptions {
+                llvm: true,
+                ..Default::default()
+            },
+            vec![],
+            monitor.clone(),
+        )
+        .unwrap_err();
     let text = compilation_error(&plot.world, &error, &monitor);
     assert!(text.contains("phase 1: entry validation"));
     assert!(text.contains("piston at (34, 20, 34)"));
@@ -216,7 +231,13 @@ fn unchanged_plot_reuses_program_but_edits_and_pending_work_recompile() {
     plot.reset_redpiler().unwrap();
     assert_eq!(plot.world.scheduler().iter_entries().collect::<Vec<_>>(), pending);
 
-    plot.start_redpiler_with_budget(CompilerOptions { io_only: true, ..Default::default() }, None);
+    plot.start_redpiler_with_budget(
+        CompilerOptions {
+            io_only: true,
+            ..Default::default()
+        },
+        None,
+    );
     plot.wait_for_redpiler();
     assert!(!plot.redpiler.stats().unwrap().cached);
 }

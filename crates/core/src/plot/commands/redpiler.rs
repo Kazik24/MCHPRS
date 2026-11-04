@@ -12,13 +12,24 @@ pub(in crate::plot) fn complete_redpiler(id: i32, text: &str) -> Option<CTabComp
         return None;
     }
     let candidates: &[&str] = match words.get(1) {
-        Some(&"compile" | &"c") => &["--publish-all", "--publish-redstone", "--publish-io", "--io-only", "--update", "--llvm", "-i", "-u"],
+        Some(&"compile" | &"c") => &[
+            "--publish-all",
+            "--publish-redstone",
+            "--publish-io",
+            "--io-only",
+            "--update",
+            "--llvm",
+            "-i",
+            "-u",
+        ],
         Some(&"publish") if words.len() == 2 => &["all", "redstone", "io"],
         _ => return None,
     };
     let prefix = &text[start..];
     // Offer only flags that match the current word and have not already been used.
-    let matches = candidates.iter().copied()
+    let matches = candidates
+        .iter()
+        .copied()
         .filter(|flag| flag.starts_with(prefix) && !words[2..].contains(flag))
         .map(|flag| CTabCompleteMatch {
             match_: flag.to_owned(),
@@ -37,7 +48,10 @@ pub(in crate::plot) fn complete_redpiler(id: i32, text: &str) -> Option<CTabComp
 mod tests {
     use super::*;
     use crate::world::World;
-    use mchprs_blocks::{BlockDirection, BlockFace, BlockPos, blocks::{Block, Lever, LeverFace}};
+    use mchprs_blocks::{
+        BlockDirection, BlockFace, BlockPos,
+        blocks::{Block, Lever, LeverFace},
+    };
 
     #[test]
     fn publication_command_requires_permission_and_catches_up_immediately() {
@@ -45,8 +59,21 @@ mod tests {
         plot.owner = Some(plot.players[0].uuid);
         let lever = BlockPos::new(34, 21, 32);
         plot.world.set_block(lever.offset(BlockFace::Bottom), Block::Stone {});
-        plot.world.set_block(lever, Block::Lever { lever: Lever::new(LeverFace::Floor, BlockDirection::North, false) });
-        plot.redpiler.compile(&plot.world, (BlockPos::new(32, 19, 30), BlockPos::new(36, 23, 34)), CompilerOptions::default(), vec![], Default::default()).unwrap();
+        plot.world.set_block(
+            lever,
+            Block::Lever {
+                lever: Lever::new(LeverFace::Floor, BlockDirection::North, false),
+            },
+        );
+        plot.redpiler
+            .compile(
+                &plot.world,
+                (BlockPos::new(32, 19, 30), BlockPos::new(36, 23, 34)),
+                CompilerOptions::default(),
+                vec![],
+                Default::default(),
+            )
+            .unwrap();
         plot.redpiler.try_on_use_block(lever).unwrap();
         plot.players[0].set_test_permissions(&[]);
         plot.handle_command(0, "/rp", vec!["publish", "io"]);
@@ -119,7 +146,8 @@ impl Plot {
                     self.players[player].send_error_message(&error.to_string());
                     return;
                 }
-                self.scoreboard.set_redpiler_options(&self.players, self.redpiler.current_flags().unwrap());
+                self.scoreboard
+                    .set_redpiler_options(&self.players, self.redpiler.current_flags().unwrap());
                 self.players[player].send_system_message(&messages::redpiler_publication(mode.name()));
             }
             _ => self.players[player].send_error_message(messages::REDPILER_INVALID_ARGUMENT),

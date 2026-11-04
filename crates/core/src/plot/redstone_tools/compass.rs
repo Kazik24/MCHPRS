@@ -10,7 +10,6 @@ use std::time::{Duration, Instant};
 const RANGE: f64 = 1024.0;
 const SEARCH_DISTANCE: f64 = 8.0;
 
-
 impl Plot {
     /// Returns true when the held item consumes this interaction, even on a miss.
     pub(in crate::plot) fn use_compass(&mut self, player: usize, hand: i32, yaw: f32, pitch: f32) -> bool {

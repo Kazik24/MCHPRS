@@ -24,8 +24,14 @@ struct Cache {
 fn reset_root(root: &Path) -> io::Result<Cache> {
     fs::create_dir_all(root)?;
     let root = root.canonicalize()?;
-    let lock = OpenOptions::new().create(true).truncate(false).read(true).write(true).open(root.join(".mroww-native.lock"))?;
-    lock.try_lock().map_err(|error| io::Error::other(format!("LLVM cache is already in use: {error}")))?;
+    let lock = OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .read(true)
+        .write(true)
+        .open(root.join(".mroww-native.lock"))?;
+    lock.try_lock()
+        .map_err(|error| io::Error::other(format!("LLVM cache is already in use: {error}")))?;
     let path = root.join(CHILD);
     if let Ok(metadata) = fs::symlink_metadata(&path) {
         if !metadata.is_dir() || metadata.file_type().is_symlink() || path.canonicalize()? != path {
@@ -39,14 +45,23 @@ fn reset_root(root: &Path) -> io::Result<Cache> {
     }
     fs::create_dir(&path)?;
     fs::write(path.join(".owner"), OWNER)?;
-    Ok(Cache { path, _lock: lock, module: Mutex::new(None) })
+    Ok(Cache {
+        path,
+        _lock: lock,
+        module: Mutex::new(None),
+    })
 }
 
 fn cache() -> Result<&'static Cache, String> {
-    CACHE.get_or_init(|| {
-        let root = std::env::var_os("MCHPRS_LLVM_WORK_DIR").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("./work/llvm"));
-        reset_root(&root).map_err(|error| format!("cannot initialize LLVM cache {}: {error}", root.display()))
-    }).as_ref().map_err(Clone::clone)
+    CACHE
+        .get_or_init(|| {
+            let root = std::env::var_os("MCHPRS_LLVM_WORK_DIR")
+                .map(PathBuf::from)
+                .unwrap_or_else(|| PathBuf::from("./work/llvm"));
+            reset_root(&root).map_err(|error| format!("cannot initialize LLVM cache {}: {error}", root.display()))
+        })
+        .as_ref()
+        .map_err(Clone::clone)
 }
 
 pub(crate) fn initialize() -> Result<(), String> {
@@ -56,8 +71,14 @@ pub(crate) fn initialize() -> Result<(), String> {
 }
 
 fn absolute_executable(path: PathBuf) -> Result<PathBuf, String> {
-    let path = if path.is_absolute() { path } else { std::env::current_dir().map_err(|error| error.to_string())?.join(path) };
-    if !path.is_file() { return Err(format!("{} is not a file", path.display())); }
+    let path = if path.is_absolute() {
+        path
+    } else {
+        std::env::current_dir().map_err(|error| error.to_string())?.join(path)
+    };
+    if !path.is_file() {
+        return Err(format!("{} is not a file", path.display()));
+    }
     Ok(path)
 }
 
@@ -68,13 +89,17 @@ fn executable(name: &str, configured: &str) -> Result<PathBuf, String> {
     if let Some(paths) = std::env::var_os("PATH") {
         for directory in std::env::split_paths(&paths) {
             let path = directory.join(name);
-            if path.is_file() { return absolute_executable(path); }
+            if path.is_file() {
+                return absolute_executable(path);
+            }
         }
     }
     #[cfg(windows)]
     {
         let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/llvm-23.1.4/bin").join(name);
-        if path.is_file() { return absolute_executable(path); }
+        if path.is_file() {
+            return absolute_executable(path);
+        }
     }
     Err(format!("{name} is not installed; set {configured} to its path"))
 }
@@ -82,29 +107,51 @@ fn executable(name: &str, configured: &str) -> Result<PathBuf, String> {
 fn hash_file(hash: &mut Sha256, path: &Path) -> io::Result<()> {
     let mut file = File::open(path)?;
     let mut buffer = [0u8; 65536];
-    loop { let read = file.read(&mut buffer)?; if read == 0 { return Ok(()); } hash.update(&buffer[..read]); }
+    loop {
+        let read = file.read(&mut buffer)?;
+        if read == 0 {
+            return Ok(());
+        }
+        hash.update(&buffer[..read]);
+    }
 }
 
 fn run_tool(tool: &Path, args: &[OsString], directory: &Path, log: &str, monitor: Option<&TaskMonitor>) -> Result<(), String> {
     let path = directory.join(log);
     let mut command = Command::new(tool);
-    command.args(args).current_dir(directory).stdin(Stdio::null()).stdout(Stdio::null()).stderr(File::create(&path).map_err(|e| e.to_string())?);
+    command
+        .args(args)
+        .current_dir(directory)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(File::create(&path).map_err(|e| e.to_string())?);
     #[cfg(windows)]
-    { use std::os::windows::process::CommandExt; command.creation_flags(0x08000000); }
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(0x08000000);
+    }
     let mut child = command.spawn().map_err(|error| format!("cannot run {}: {error}", tool.display()))?;
     loop {
         match child.try_wait() {
             Ok(Some(status)) if status.success() => return Ok(()),
             Ok(Some(status)) => {
                 let mut text = String::new();
-                if let Ok(file) = File::open(&path) { let _ = file.take(65536).read_to_string(&mut text); }
+                if let Ok(file) = File::open(&path) {
+                    let _ = file.take(65536).read_to_string(&mut text);
+                }
                 return Err(format!("{} failed ({status}); {}: {text}", tool.display(), path.display()));
             }
-            Err(error) => { let _ = child.kill(); let _ = child.wait(); return Err(error.to_string()); }
+            Err(error) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(error.to_string());
+            }
             Ok(None) => {}
         }
         if monitor.is_some_and(TaskMonitor::cancelled) {
-            let _ = child.kill(); let _ = child.wait(); return Err("LLVM compilation cancelled".to_owned());
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err("LLVM compilation cancelled".to_owned());
         }
         std::thread::sleep(Duration::from_millis(10));
     }
@@ -116,16 +163,26 @@ pub(super) fn module_path(monitor: Option<&TaskMonitor>) -> Result<PathBuf, Stri
     }
     let cache = cache()?;
     let mut module = cache.module.lock().map_err(|_| "LLVM cache lock poisoned".to_owned())?;
-    if let Some(path) = module.as_ref().filter(|path| path.is_file()) { return Ok(path.clone()); }
-    #[cfg(windows)] let clang = executable("clang.exe", "MCHPRS_LLVM_CLANG")?;
-    #[cfg(not(windows))] let clang = executable("clang", "MCHPRS_LLVM_CLANG")?;
-    #[cfg(windows)] let linker = if std::env::var_os("MCHPRS_LLVM_LINKER").is_some() {
+    if let Some(path) = module.as_ref().filter(|path| path.is_file()) {
+        return Ok(path.clone());
+    }
+    #[cfg(windows)]
+    let clang = executable("clang.exe", "MCHPRS_LLVM_CLANG")?;
+    #[cfg(not(windows))]
+    let clang = executable("clang", "MCHPRS_LLVM_CLANG")?;
+    #[cfg(windows)]
+    let linker = if std::env::var_os("MCHPRS_LLVM_LINKER").is_some() {
         executable("lld-link.exe", "MCHPRS_LLVM_LINKER")?
     } else {
         let adjacent = clang.with_file_name("lld-link.exe");
-        if adjacent.is_file() { adjacent } else { executable("lld-link.exe", "MCHPRS_LLVM_LINKER")? }
+        if adjacent.is_file() {
+            adjacent
+        } else {
+            executable("lld-link.exe", "MCHPRS_LLVM_LINKER")?
+        }
     };
-    #[cfg(not(windows))] let linker = executable("ld.lld", "MCHPRS_LLVM_LINKER")?;
+    #[cfg(not(windows))]
+    let linker = executable("ld.lld", "MCHPRS_LLVM_LINKER")?;
     let sources: [(&str, &[u8]); 4] = [
         ("engine.c", include_bytes!("engine.c")),
         ("llvm_movement.c", include_bytes!("llvm_movement.c")),
@@ -134,22 +191,38 @@ pub(super) fn module_path(monitor: Option<&TaskMonitor>) -> Result<PathBuf, Stri
     ];
     let flags = ["-std=c11", "-O3", "-ffreestanding", "-fno-builtin", "-Werror"];
     let mut hash = Sha256::new();
-    for (name, data) in sources { hash.update(name); hash.update(data); }
-    for flag in flags { hash.update(flag); }
-    hash.update(std::env::consts::ARCH); hash.update(std::env::consts::OS);
+    for (name, data) in sources {
+        hash.update(name);
+        hash.update(data);
+    }
+    for flag in flags {
+        hash.update(flag);
+    }
+    hash.update(std::env::consts::ARCH);
+    hash.update(std::env::consts::OS);
     hash_file(&mut hash, &clang).map_err(|e| e.to_string())?;
     hash_file(&mut hash, &linker).map_err(|e| e.to_string())?;
     let key = format!("{:x}", hash.finalize());
     let directory = cache.path.join(&key);
     fs::create_dir_all(&directory).map_err(|e| e.to_string())?;
-    for (name, data) in sources { fs::write(directory.join(name), data).map_err(|e| e.to_string())?; }
+    for (name, data) in sources {
+        fs::write(directory.join(name), data).map_err(|e| e.to_string())?;
+    }
     let mut args: Vec<OsString> = flags.iter().map(OsString::from).collect();
     let started = Instant::now();
     #[cfg(windows)]
     let filename = {
         args.extend(["--target=x86_64-pc-windows-msvc", "-c", "engine.c", "-o", "engine.obj"].map(OsString::from));
         run_tool(&clang, &args, &directory, "compile.log", monitor)?;
-        let args = ["/dll", "/noentry", "/nodefaultlib", "/machine:x64", "/out:engine.pending.dll", "engine.obj"].map(OsString::from);
+        let args = [
+            "/dll",
+            "/noentry",
+            "/nodefaultlib",
+            "/machine:x64",
+            "/out:engine.pending.dll",
+            "engine.obj",
+        ]
+        .map(OsString::from);
         run_tool(&linker, &args, &directory, "link.log", monitor)?;
         fs::rename(directory.join("engine.pending.dll"), directory.join("engine.dll")).map_err(|e| e.to_string())?;
         "engine.dll"
@@ -168,7 +241,11 @@ pub(super) fn module_path(monitor: Option<&TaskMonitor>) -> Result<PathBuf, Stri
     let manifest = serde_json::json!({"key":key,"clang":clang,"linker":linker,"flags":args,"target_arch":std::env::consts::ARCH,
         "target_os":std::env::consts::OS,"compiler_version":String::from_utf8_lossy(&version.stdout),
         "build_ms":started.elapsed().as_secs_f64()*1000.0,"module_bytes":fs::metadata(&path).map_err(|e|e.to_string())?.len()});
-    fs::write(directory.join("build.json"), serde_json::to_vec_pretty(&manifest).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
+    fs::write(
+        directory.join("build.json"),
+        serde_json::to_vec_pretty(&manifest).map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| e.to_string())?;
     tracing::info!(path=%path.display(),build_ms=started.elapsed().as_secs_f64()*1000.0,"LLVM module compiled");
     *module = Some(path.clone());
     Ok(path)
@@ -180,8 +257,11 @@ mod tests {
 
     #[test]
     fn reset_removes_only_owned_cache_and_obeys_lock() {
-        let root = std::env::temp_dir().join(format!("mroww-cache-test-{}-{}", std::process::id(),
-            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        let root = std::env::temp_dir().join(format!(
+            "mroww-cache-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
+        ));
         fs::create_dir(&root).unwrap();
         fs::write(root.join("keep"), b"keep").unwrap();
         #[cfg(unix)]

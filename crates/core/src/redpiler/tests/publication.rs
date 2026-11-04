@@ -57,17 +57,45 @@ fn piston_world() -> (
 #[test]
 fn explicit_publication_modes_select_piston_projection() {
     for (options, full) in [
-        (CompilerOptions { publication: Some(PublicationMode::All), ..Default::default() }, true),
-        (CompilerOptions { publication: Some(PublicationMode::Redstone), ..Default::default() }, false),
-        (CompilerOptions { publication: Some(PublicationMode::Io), ..Default::default() }, false),
-        (CompilerOptions { io_only: true, ..Default::default() }, false),
+        (
+            CompilerOptions {
+                publication: Some(PublicationMode::All),
+                ..Default::default()
+            },
+            true,
+        ),
+        (
+            CompilerOptions {
+                publication: Some(PublicationMode::Redstone),
+                ..Default::default()
+            },
+            false,
+        ),
+        (
+            CompilerOptions {
+                publication: Some(PublicationMode::Io),
+                ..Default::default()
+            },
+            false,
+        ),
+        (
+            CompilerOptions {
+                io_only: true,
+                ..Default::default()
+            },
+            false,
+        ),
     ] {
         let (mut world, lever, base, home, far, _, _, bounds) = piston_world();
         let original = [base, home, far].map(|pos| world.get_block(pos));
         let mut compiler = Compiler::default();
-        compiler.compile(&world, bounds, options, Vec::new(), Arc::new(TaskMonitor::default())).unwrap();
+        compiler
+            .compile(&world, bounds, options, Vec::new(), Arc::new(TaskMonitor::default()))
+            .unwrap();
         compiler.try_on_use_block(lever).unwrap();
-        for _ in 0..4 { compiler.tick().unwrap(); }
+        for _ in 0..4 {
+            compiler.tick().unwrap();
+        }
         compiler.try_flush(&mut world).unwrap();
         assert!(matches!(world.get_block(lever), Block::Lever { lever } if lever.powered));
         assert_eq!([base, home, far].map(|pos| world.get_block(pos)) != original, full);
@@ -79,7 +107,11 @@ fn explicit_publication_modes_select_piston_projection() {
 #[cfg(any(windows, target_os = "linux"))]
 fn llvm_wire_shapes_publish_and_reset_like_rust_in_each_mode() {
     for solid_cap in [false, true] {
-        for (publication, io_only) in [(Some(PublicationMode::All), false), (Some(PublicationMode::Redstone), false), (None, true)] {
+        for (publication, io_only) in [
+            (Some(PublicationMode::All), false),
+            (Some(PublicationMode::Redstone), false),
+            (None, true),
+        ] {
             let (mut rust_world, lever, base, home, far, _, _, bounds) = piston_world();
             let (mut llvm_world, _, _, _, _, _, _, _) = piston_world();
             let wire = far.offset(if solid_cap { BlockFace::Bottom } else { BlockFace::East });
@@ -92,9 +124,15 @@ fn llvm_wire_shapes_publish_and_reset_like_rust_in_each_mode() {
                     world.set_block(home, Block::Stone {});
                     world.set_block(far.offset(BlockFace::South), Block::Air);
                     for pos in [observer, cap_observer] {
-                        world.set_block(pos, Block::Observer { observer: mchprs_blocks::blocks::RedstoneObserver {
-                            facing: BlockFacing::West, powered: false,
-                        } });
+                        world.set_block(
+                            pos,
+                            Block::Observer {
+                                observer: mchprs_blocks::blocks::RedstoneObserver {
+                                    facing: BlockFacing::West,
+                                    powered: false,
+                                },
+                            },
+                        );
                     }
                     for pos in [wire.offset(BlockFace::Bottom), south.offset(BlockFace::Bottom), north] {
                         world.set_block(pos, Block::Stone {});
@@ -115,10 +153,35 @@ fn llvm_wire_shapes_publish_and_reset_like_rust_in_each_mode() {
             }
             let mut rust = Compiler::default();
             let mut llvm = Compiler::default();
-            rust.compile(&rust_world, bounds, CompilerOptions { publication, io_only, ..Default::default() }, vec![], Arc::new(TaskMonitor::default())).unwrap();
-            llvm.compile(&llvm_world, bounds, CompilerOptions { llvm: true, publication, io_only, ..Default::default() }, vec![], Arc::new(TaskMonitor::default())).unwrap();
+            rust.compile(
+                &rust_world,
+                bounds,
+                CompilerOptions {
+                    publication,
+                    io_only,
+                    ..Default::default()
+                },
+                vec![],
+                Arc::new(TaskMonitor::default()),
+            )
+            .unwrap();
+            llvm.compile(
+                &llvm_world,
+                bounds,
+                CompilerOptions {
+                    llvm: true,
+                    publication,
+                    io_only,
+                    ..Default::default()
+                },
+                vec![],
+                Arc::new(TaskMonitor::default()),
+            )
+            .unwrap();
             let mut side_change = false;
-            let Block::RedstoneWire { wire: initial } = rust_world.get_block(wire) else { unreachable!() };
+            let Block::RedstoneWire { wire: initial } = rust_world.get_block(wire) else {
+                unreachable!()
+            };
             for tick in 0..20 {
                 if [0, 8, 15].contains(&tick) {
                     rust.try_on_use_block(lever).unwrap();
@@ -126,17 +189,29 @@ fn llvm_wire_shapes_publish_and_reset_like_rust_in_each_mode() {
                 }
                 rust.tick().unwrap();
                 llvm.tick().unwrap();
-                assert_eq!(llvm.llvm_runtime.as_ref().unwrap().pending_entries().unwrap(),
-                    rust.runtime.as_ref().unwrap().pending_entries(), "pending ticks solid_cap={solid_cap} {publication:?} tick={tick}");
+                assert_eq!(
+                    llvm.llvm_runtime.as_ref().unwrap().pending_entries().unwrap(),
+                    rust.runtime.as_ref().unwrap().pending_entries(),
+                    "pending ticks solid_cap={solid_cap} {publication:?} tick={tick}"
+                );
                 rust.try_flush(&mut rust_world).unwrap();
                 llvm.try_flush(&mut llvm_world).unwrap();
                 if let Some(Block::RedstoneWire { wire: current }) = rust.runtime.as_ref().unwrap().project(wire) {
-                    side_change |= (current.north, current.south, current.east, current.west)
-                        != (initial.north, initial.south, initial.east, initial.west);
-                    assert_eq!(rust_world.get_block(wire), Block::RedstoneWire { wire: if io_only { initial } else { current } });
+                    side_change |=
+                        (current.north, current.south, current.east, current.west) != (initial.north, initial.south, initial.east, initial.west);
+                    assert_eq!(
+                        rust_world.get_block(wire),
+                        Block::RedstoneWire {
+                            wire: if io_only { initial } else { current }
+                        }
+                    );
                 }
                 for pos in [lever, base, home, far, wire, south, north.offset(BlockFace::Top), observer, cap_observer] {
-                    assert_eq!(llvm_world.get_block(pos), rust_world.get_block(pos), "{publication:?} io_only={io_only} tick={tick} at {pos:?}");
+                    assert_eq!(
+                        llvm_world.get_block(pos),
+                        rust_world.get_block(pos),
+                        "{publication:?} io_only={io_only} tick={tick} at {pos:?}"
+                    );
                 }
             }
             assert!(side_change, "fixture must exercise a wire-side change");
@@ -148,7 +223,10 @@ fn llvm_wire_shapes_publish_and_reset_like_rust_in_each_mode() {
             for pos in [lever, base, home, far, wire, south, north.offset(BlockFace::Top), observer, cap_observer] {
                 assert_eq!(llvm_world.get_block(pos), rust_world.get_block(pos), "reset at {pos:?}");
             }
-            assert_eq!(llvm_world.scheduler().iter_entries().collect::<Vec<_>>(), rust_world.scheduler().iter_entries().collect::<Vec<_>>());
+            assert_eq!(
+                llvm_world.scheduler().iter_entries().collect::<Vec<_>>(),
+                rust_world.scheduler().iter_entries().collect::<Vec<_>>()
+            );
         }
     }
 }
@@ -157,9 +235,18 @@ fn llvm_wire_shapes_publish_and_reset_like_rust_in_each_mode() {
 fn effects_can_be_drained_without_publishing_blocks() {
     let (mut world, lever, _, _, _, _, _, bounds) = piston_world();
     let note = lever.offset(BlockFace::North);
-    world.set_block(note, Block::NoteBlock { instrument: mchprs_blocks::blocks::Instrument::Harp, note: 1, powered: false });
+    world.set_block(
+        note,
+        Block::NoteBlock {
+            instrument: mchprs_blocks::blocks::Instrument::Harp,
+            note: 1,
+            powered: false,
+        },
+    );
     let mut compiler = Compiler::default();
-    compiler.compile(&world, bounds, CompilerOptions::default(), Vec::new(), Arc::new(TaskMonitor::default())).unwrap();
+    compiler
+        .compile(&world, bounds, CompilerOptions::default(), Vec::new(), Arc::new(TaskMonitor::default()))
+        .unwrap();
     compiler.try_on_use_block(lever).unwrap();
     assert_eq!(compiler.runtime.as_ref().unwrap().notes.len(), 1);
     compiler.flush_effects(&mut world);
@@ -198,21 +285,35 @@ fn assert_publication_matches_runtime(compiler: &Compiler, world: &PlotWorld, mo
 #[test]
 fn publication_mode_can_change_without_recompiling_or_advancing_execution() {
     for llvm in [false, true] {
-        if llvm && !cfg!(any(windows, target_os = "linux")) { continue; }
+        if llvm && !cfg!(any(windows, target_os = "linux")) {
+            continue;
+        }
         let (mut world, lever, base, home, far, comparator, lamp, bounds) = piston_world();
         let wire = lever.offset(BlockFace::North);
         world.set_block(wire.offset(BlockFace::Bottom), Block::Stone {});
         world.set_block(wire, Block::from_name("redstone_wire").unwrap());
         let mut compiler = Compiler::default();
         assert!(!compiler.set_publication_mode(PublicationMode::All));
-        compiler.compile(&world, bounds, CompilerOptions {
-            llvm, publication: Some(PublicationMode::Io), ..Default::default()
-        }, vec![], Arc::new(TaskMonitor::default())).unwrap();
+        compiler
+            .compile(
+                &world,
+                bounds,
+                CompilerOptions {
+                    llvm,
+                    publication: Some(PublicationMode::Io),
+                    ..Default::default()
+                },
+                vec![],
+                Arc::new(TaskMonitor::default()),
+            )
+            .unwrap();
         assert!(compiler.current_flags().unwrap().io_only);
         let program = compiler.cached_program().unwrap();
         let original = [base, home, far].map(|pos| world.get_block(pos));
         compiler.try_on_use_block(lever).unwrap();
-        for _ in 0..4 { compiler.tick().unwrap(); }
+        for _ in 0..4 {
+            compiler.tick().unwrap();
+        }
         compiler.try_flush(&mut world).unwrap();
         assert!(matches!(world.get_block(wire), Block::RedstoneWire { wire } if wire.power == 0));
         assert_eq!([base, home, far].map(|pos| world.get_block(pos)), original);
@@ -248,7 +349,10 @@ fn publication_mode_can_change_without_recompiling_or_advancing_execution() {
 
         compiler.set_publication_mode(PublicationMode::Io);
         compiler.try_flush(&mut world).unwrap();
-        for _ in 0..4 { compiler.tick().unwrap(); compiler.try_flush(&mut world).unwrap(); }
+        for _ in 0..4 {
+            compiler.tick().unwrap();
+            compiler.try_flush(&mut world).unwrap();
+        }
         compiler.set_publication_mode(PublicationMode::All);
         compiler.try_flush(&mut world).unwrap();
         assert_publication_matches_runtime(&compiler, &world, &[base, home, far, wire, lamp], comparator);
@@ -306,9 +410,18 @@ fn redstone_flush_then_reset_exports_active_motion() {
 fn flush_consumes_queued_note_once() {
     let (mut world, lever, _base, _home, _far, _comparator, _lamp, bounds) = piston_world();
     let note = lever.offset(BlockFace::North);
-    world.set_block(note, Block::NoteBlock { instrument: mchprs_blocks::blocks::Instrument::Harp, note: 1, powered: false });
+    world.set_block(
+        note,
+        Block::NoteBlock {
+            instrument: mchprs_blocks::blocks::Instrument::Harp,
+            note: 1,
+            powered: false,
+        },
+    );
     let mut compiler = Compiler::default();
-    compiler.compile(&world, bounds, CompilerOptions::default(), Vec::new(), Arc::new(TaskMonitor::default())).unwrap();
+    compiler
+        .compile(&world, bounds, CompilerOptions::default(), Vec::new(), Arc::new(TaskMonitor::default()))
+        .unwrap();
     compiler.try_on_use_block(lever).unwrap();
     compiler.try_on_use_block(lever).unwrap();
     compiler.try_on_use_block(lever).unwrap();
@@ -324,9 +437,27 @@ fn flush_consumes_queued_note_once() {
 fn llvm_note_effect_survives_failed_publication_and_is_acknowledged_once() {
     let (mut world, lever, _base, _home, _far, _comparator, _lamp, bounds) = piston_world();
     let note = lever.offset(BlockFace::North);
-    world.set_block(note, Block::NoteBlock { instrument: mchprs_blocks::blocks::Instrument::Harp, note: 1, powered: false });
+    world.set_block(
+        note,
+        Block::NoteBlock {
+            instrument: mchprs_blocks::blocks::Instrument::Harp,
+            note: 1,
+            powered: false,
+        },
+    );
     let mut compiler = Compiler::default();
-    compiler.compile(&world, bounds, CompilerOptions { llvm: true, ..Default::default() }, Vec::new(), Arc::new(TaskMonitor::default())).unwrap();
+    compiler
+        .compile(
+            &world,
+            bounds,
+            CompilerOptions {
+                llvm: true,
+                ..Default::default()
+            },
+            Vec::new(),
+            Arc::new(TaskMonitor::default()),
+        )
+        .unwrap();
     compiler.try_on_use_block(lever).unwrap();
     compiler.tick().unwrap();
     world.piston_state_mut().next_identity = u64::MAX;
@@ -335,11 +466,21 @@ fn llvm_note_effect_survives_failed_publication_and_is_acknowledged_once() {
     world.piston_state_mut().next_identity = 0;
     compiler.try_flush_complete(&mut world).unwrap();
     assert!(compiler.runtime.as_ref().unwrap().notes.is_empty());
-    compiler.llvm_runtime.as_ref().unwrap().sync_projection(compiler.runtime.as_mut().unwrap()).unwrap();
+    compiler
+        .llvm_runtime
+        .as_ref()
+        .unwrap()
+        .sync_projection(compiler.runtime.as_mut().unwrap())
+        .unwrap();
     assert!(compiler.runtime.as_ref().unwrap().notes.is_empty());
     compiler.try_on_use_block(lever).unwrap();
     compiler.try_on_use_block(lever).unwrap();
-    compiler.llvm_runtime.as_ref().unwrap().sync_projection(compiler.runtime.as_mut().unwrap()).unwrap();
+    compiler
+        .llvm_runtime
+        .as_ref()
+        .unwrap()
+        .sync_projection(compiler.runtime.as_mut().unwrap())
+        .unwrap();
     assert_eq!(compiler.runtime.as_ref().unwrap().notes.len(), 1);
 }
 
@@ -347,9 +488,18 @@ fn llvm_note_effect_survives_failed_publication_and_is_acknowledged_once() {
 fn failed_publication_retains_pending_note_for_reset() {
     let (mut world, lever, _base, _home, _far, _comparator, _lamp, bounds) = piston_world();
     let note = lever.offset(BlockFace::North);
-    world.set_block(note, Block::NoteBlock { instrument: mchprs_blocks::blocks::Instrument::Harp, note: 1, powered: false });
+    world.set_block(
+        note,
+        Block::NoteBlock {
+            instrument: mchprs_blocks::blocks::Instrument::Harp,
+            note: 1,
+            powered: false,
+        },
+    );
     let mut compiler = Compiler::default();
-    compiler.compile(&world, bounds, CompilerOptions::default(), Vec::new(), Arc::new(TaskMonitor::default())).unwrap();
+    compiler
+        .compile(&world, bounds, CompilerOptions::default(), Vec::new(), Arc::new(TaskMonitor::default()))
+        .unwrap();
     compiler.try_on_use_block(lever).unwrap();
     compiler.tick().unwrap();
     assert!(compiler.runtime.as_ref().unwrap().has_motions());

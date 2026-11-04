@@ -35,7 +35,9 @@ fn run(llvm: bool, ticks: u32, preparation: u32, index: usize) -> (Value, Value)
     for _ in 0..preparation {
         compiler.tick().unwrap();
     }
-    if index == 3 { compiler.try_on_use_block(cpu.origin + BlockPos::new(207, 10, 154)).unwrap(); }
+    if index == 3 {
+        compiler.try_on_use_block(cpu.origin + BlockPos::new(207, 10, 154)).unwrap();
+    }
     let start = Instant::now();
     for _ in 0..ticks {
         compiler.tick().unwrap();
@@ -68,7 +70,13 @@ fn main() {
     let mut results = Vec::new();
     let mut expected = None;
     for pair in 0..pairs {
-        let backends: &[bool] = if rust_only { &[false] } else if pair % 2 == 0 { &[false, true] } else { &[true, false] };
+        let backends: &[bool] = if rust_only {
+            &[false]
+        } else if pair % 2 == 0 {
+            &[false, true]
+        } else {
+            &[true, false]
+        };
         for &llvm in backends {
             let (mut result, output) = run(llvm, ticks, preparation, index);
             if let Some(expected) = &expected {

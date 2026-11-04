@@ -26,7 +26,9 @@ struct CompilePhases<'a> {
 
 impl<'a> CompilePhases<'a> {
     fn new(monitor: Option<&'a TaskMonitor>) -> Self {
-        if let Some(monitor) = monitor { monitor.set_phase("scratch snapshot"); }
+        if let Some(monitor) = monitor {
+            monitor.set_phase("scratch snapshot");
+        }
         let now = Instant::now();
         Self {
             monitor,
@@ -39,7 +41,9 @@ impl<'a> CompilePhases<'a> {
     }
 
     fn next(&mut self, phase: &'static str) {
-        if let Some(monitor) = self.monitor { monitor.set_phase(phase); }
+        if let Some(monitor) = self.monitor {
+            monitor.set_phase(phase);
+        }
         if self.enabled {
             eprintln!("Redpiler compile phase {}: {} ms", self.phase, self.started.elapsed().as_millis());
         }
@@ -49,7 +53,9 @@ impl<'a> CompilePhases<'a> {
     }
 
     fn detail(&mut self, detail: &'static str, item: usize) {
-        if let Some(monitor) = self.monitor { monitor.set_detail(detail, item); }
+        if let Some(monitor) = self.monitor {
+            monitor.set_detail(detail, item);
+        }
         self.detail = Some((detail, item));
     }
 }
@@ -88,10 +94,7 @@ pub(super) fn find_changed_links<K: Ord + Copy, V: PartialEq>(
     after: &std::collections::BTreeMap<K, V>,
 ) -> Vec<K> {
     let all_sources: std::collections::BTreeSet<_> = before.keys().chain(after.keys()).copied().collect();
-    all_sources
-        .into_iter()
-        .filter(|source| before.get(source) != after.get(source))
-        .collect()
+    all_sources.into_iter().filter(|source| before.get(source) != after.get(source)).collect()
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

@@ -10,7 +10,7 @@ use mchprs_core::{
         worldedit::{load_schematic, paste_clipboard},
     },
     redpiler::{Compiler, CompilerOptions, TaskMonitor},
-    world::{storage::Chunk},
+    world::storage::Chunk,
 };
 
 #[path = "../test_support/chungus.rs"]

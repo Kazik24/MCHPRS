@@ -117,7 +117,10 @@ fn compiled_bubblesort_load_reset_start_checkpoints() {
         (world, compiler, error, timed_out)
     });
     if timed_out {
-        println!("CPU_BUBBLESORT compile timed out after {timeout:?}; cancellation latency {:?}", cancellation_requested.unwrap().elapsed());
+        println!(
+            "CPU_BUBBLESORT compile timed out after {timeout:?}; cancellation latency {:?}",
+            cancellation_requested.unwrap().elapsed()
+        );
     }
     if let Err(error) = error {
         let rejected = match &error {
@@ -168,10 +171,27 @@ fn compiled_bubblesort_load_reset_start_checkpoints() {
         if cpus::CHECKPOINTS.contains(&tick) {
             let actual = cpus::checkpoint(&world, tick, &chat);
             let reference = &expected.checkpoints[checkpoint_index];
-            eprintln!("tick {tick} published scheduler={} native scheduler={}", actual.scheduler, reference.scheduler);
+            eprintln!(
+                "tick {tick} published scheduler={} native scheduler={}",
+                actual.scheduler, reference.scheduler
+            );
             assert_eq!(
-                (&actual.blocks, &actual.entities, &actual.pistons, &actual.chat, actual.messages, actual.lit_lamps),
-                (&reference.blocks, &reference.entities, &reference.pistons, &reference.chat, reference.messages, reference.lit_lamps),
+                (
+                    &actual.blocks,
+                    &actual.entities,
+                    &actual.pistons,
+                    &actual.chat,
+                    actual.messages,
+                    actual.lit_lamps
+                ),
+                (
+                    &reference.blocks,
+                    &reference.entities,
+                    &reference.pistons,
+                    &reference.chat,
+                    reference.messages,
+                    reference.lit_lamps
+                ),
                 "compiled CPU_BUBBLESORT checkpoint at tick {tick}"
             );
             checkpoint_index += 1;

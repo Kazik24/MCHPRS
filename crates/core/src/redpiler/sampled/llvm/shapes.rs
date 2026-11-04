@@ -13,7 +13,10 @@ pub(super) fn encode(p: &Program, t: &mut [Vec<u32>; AUX_TABLES]) -> Result<(), 
     }
     for range in &p.cell_shape_steps {
         let steps = match range {
-            Some(range) => p.shape_steps.get(range.clone()).ok_or(ScratchError { position: None, reason: "invalid shape program range" })?,
+            Some(range) => p.shape_steps.get(range.clone()).ok_or(ScratchError {
+                position: None,
+                reason: "invalid shape program range",
+            })?,
             None => &[],
         };
         t[53].extend([if range.is_some() { id(t[54].len() / 7)? } else { u32::MAX }, id(steps.len())?]);
@@ -33,7 +36,10 @@ pub(super) fn encode(p: &Program, t: &mut [Vec<u32>; AUX_TABLES]) -> Result<(), 
             for state in &step.states.ports {
                 let index = if let Some(map) = state {
                     if *map >= p.shape_maps.len() {
-                        return Err(ScratchError { position: None, reason: "invalid shape map reference" });
+                        return Err(ScratchError {
+                            position: None,
+                            reason: "invalid shape map reference",
+                        });
                     }
                     id(*map)?
                 } else {
@@ -53,14 +59,24 @@ pub(super) fn encode(p: &Program, t: &mut [Vec<u32>; AUX_TABLES]) -> Result<(), 
 mod tests {
     use super::*;
     use crate::redpiler::sampled::{routing::Local, shapes::ShapeStep};
-    use mchprs_blocks::{BlockPos, blocks::{Block, RedstoneWire}};
+    use mchprs_blocks::{
+        BlockPos,
+        blocks::{Block, RedstoneWire},
+    };
 
     fn wire_program() -> Program {
         let mut program = Program::new(
             vec![BlockPos::new(10, 10, 10)],
-            vec![Block::RedstoneWire { wire: RedstoneWire::default() }],
-            vec![], vec![[vec![], vec![]]], vec![], vec![], vec![],
-        ).unwrap();
+            vec![Block::RedstoneWire {
+                wire: RedstoneWire::default(),
+            }],
+            vec![],
+            vec![[vec![], vec![]]],
+            vec![],
+            vec![],
+            vec![],
+        )
+        .unwrap();
         program.prepare_projection();
         program
     }
@@ -88,7 +104,12 @@ mod tests {
         let mut program = wire_program();
         program.shape_maps.push(std::array::from_fn(|side| side as u8));
         program.shape_steps.push(ShapeStep {
-            node: 0, states: Local { axes: vec![], ports: vec![Some(0)] }, callbacks: vec![],
+            node: 0,
+            states: Local {
+                axes: vec![],
+                ports: vec![Some(0)],
+            },
+            callbacks: vec![],
         });
         program.shape_programs.insert(program.positions[0], 0..1);
         program.prepare_projection();

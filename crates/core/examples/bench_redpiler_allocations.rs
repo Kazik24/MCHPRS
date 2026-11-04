@@ -90,8 +90,14 @@ fn calibrate() {
     allocation.reserve_exact(257);
     black_box(allocation.as_mut_ptr());
     let measured = Snapshot::read().delta(before);
-    assert!(measured["alloc_calls"].as_u64().unwrap() > 0, "allocator counter did not observe calibration allocation");
-    assert!(measured["alloc_bytes"].as_u64().unwrap() >= 257, "allocator counter reported too few calibration bytes");
+    assert!(
+        measured["alloc_calls"].as_u64().unwrap() > 0,
+        "allocator counter did not observe calibration allocation"
+    );
+    assert!(
+        measured["alloc_bytes"].as_u64().unwrap() >= 257,
+        "allocator counter reported too few calibration bytes"
+    );
     drop(allocation);
 }
 
@@ -104,7 +110,12 @@ fn ram(world: &PlotWorld, cpu: cpus::Cpu) -> Vec<Option<u16>> {
 #[cfg(feature = "plot-bench")]
 fn staged_sections(world: &PlotWorld) -> usize {
     // Count dirty sections after flattening each chunk's section list.
-    world.get_chunks().iter().flat_map(|chunk| &chunk.sections).filter(|section| section.has_pending_block_changes()).count()
+    world
+        .get_chunks()
+        .iter()
+        .flat_map(|chunk| &chunk.sections)
+        .filter(|section| section.has_pending_block_changes())
+        .count()
 }
 
 fn main() {
@@ -157,7 +168,10 @@ fn main() {
     let staged = Value::Null;
 
     // try_reset always performs full publication before deactivating the sampled runtime.
-    assert!(!compiler.current_flags().unwrap().update, "reset requires the full fixture bounds when updates are enabled");
+    assert!(
+        !compiler.current_flags().unwrap().update,
+        "reset requires the full fixture bounds when updates are enabled"
+    );
     let reset_before = Snapshot::read();
     let reset_started = Instant::now();
     compiler.try_reset(&mut compiled, (cpu.origin, cpu.origin)).unwrap();
@@ -169,7 +183,11 @@ fn main() {
 
     let executable = std::env::current_exe().unwrap();
     let executable_sha256 = format!("{:x}", Sha256::digest(std::fs::read(executable).unwrap()));
-    let visibility = if cfg!(feature = "redpiler-full-publication") { "complete" } else { "redstone-only" };
+    let visibility = if cfg!(feature = "redpiler-full-publication") {
+        "complete"
+    } else {
+        "redstone-only"
+    };
     let artifact = json!({
         "fixture":cpu.schematic,"fixture_sha256":cpu.sha256,"ticks":TICKS,
         "publication_visibility":visibility,"output_validation":"final RAM compared after complete reset",
@@ -192,6 +210,10 @@ fn main() {
     });
     let destination = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/redpiler-bench-results");
     std::fs::create_dir_all(&destination).unwrap();
-    std::fs::write(destination.join("bubblesort-allocations.json"), serde_json::to_vec_pretty(&artifact).unwrap()).unwrap();
+    std::fs::write(
+        destination.join("bubblesort-allocations.json"),
+        serde_json::to_vec_pretty(&artifact).unwrap(),
+    )
+    .unwrap();
     eprintln!("BubbleSort {TICKS} ticks: kernel={kernel_time:?}, publication={publication_time:?}, full reset={reset_publication_time:?}");
 }

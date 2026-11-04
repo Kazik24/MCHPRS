@@ -238,15 +238,44 @@ fn token_move_distinguishes_dust_power_from_direct_observer_updates() {
     for direct in [false, true] {
         let mut program = test_program(
             vec![BlockPos::new(12, 10, 10), BlockPos::new(13, 10, 10)],
-            vec![Block::RedstoneWire { wire: RedstoneWire { power: 15, ..Default::default() } }, Block::from_name("observer").unwrap()],
-            vec![], vec![], vec![], vec![WatchedWire { wire: 0, watchers: vec![1] }],
-        ).unwrap();
-        program.tokens.push(super::compiler::PistonToken { block: Block::RedstoneBlock, position: Some(cell), cells: vec![cell] });
+            vec![
+                Block::RedstoneWire {
+                    wire: RedstoneWire {
+                        power: 15,
+                        ..Default::default()
+                    },
+                },
+                Block::from_name("observer").unwrap(),
+            ],
+            vec![],
+            vec![],
+            vec![],
+            vec![WatchedWire { wire: 0, watchers: vec![1] }],
+        )
+        .unwrap();
+        program.tokens.push(super::compiler::PistonToken {
+            block: Block::RedstoneBlock,
+            position: Some(cell),
+            cells: vec![cell],
+        });
         program.token_sources.push(vec![vec![(0, 0)]]);
-        program.set_move_steps(vec![vec![[vec![
-            MoveStep { node: 0, watcher: false, wire: true, wires: vec![] },
-            MoveStep { node: 1, watcher: direct, wire: false, wires: vec![0] },
-        ], vec![]]]]);
+        program.set_move_steps(vec![vec![[
+            vec![
+                MoveStep {
+                    node: 0,
+                    watcher: false,
+                    wire: true,
+                    wires: vec![],
+                },
+                MoveStep {
+                    node: 1,
+                    watcher: direct,
+                    wire: false,
+                    wires: vec![0],
+                },
+            ],
+            vec![],
+        ]]]);
         program.compile_movement_flips().unwrap();
         let mut runtime = program.start();
         runtime.set_token_pos(0, None);
@@ -952,7 +981,16 @@ fn torch_piston_watchers_follow_interpreter_notification_order() {
     world.set_block(torch, Block::RedstoneTorch { lit: true });
     world.set_block(torch.offset(BlockFace::Bottom), Block::Stone {});
     for pos in [west, east] {
-        world.set_block(pos, Block::Piston { piston: RedstonePiston { facing: BlockFacing::North, sticky: true, extended: false } });
+        world.set_block(
+            pos,
+            Block::Piston {
+                piston: RedstonePiston {
+                    facing: BlockFacing::North,
+                    sticky: true,
+                    extended: false,
+                },
+            },
+        );
     }
     let program = compile(&world, (BlockPos::new(10, 10, 10), BlockPos::new(22, 22, 22)), entry(&world)).unwrap();
     let source = program.component_indices[&torch];
@@ -961,7 +999,9 @@ fn torch_piston_watchers_follow_interpreter_notification_order() {
     crate::redstone::on_torch_state_change(&mut world, torch);
     let mut expected = Vec::new();
     for event in world.take_redstone_update_observations() {
-        if [east, west].contains(&event.pos) && !expected.contains(&event.pos) { expected.push(event.pos); }
+        if [east, west].contains(&event.pos) && !expected.contains(&event.pos) {
+            expected.push(event.pos);
+        }
     }
     assert_eq!(expected, vec![east, west]);
     assert_eq!(actual, expected);
@@ -987,9 +1027,26 @@ fn check_reactive_torch_source_fifo(llvm: bool) {
     for pos in [support, lower.offset(BlockFace::Top)] {
         world.set_block(pos, Block::Stone {});
     }
-    world.set_block(lever, Block::Lever { lever: Lever::new(LeverFace::Wall, BlockDirection::West, false) });
-    world.set_block(lower, Block::RedstoneWallTorch { lit: true, facing: BlockDirection::East });
-    world.set_block(upper, Block::RedstoneWallTorch { lit: true, facing: BlockDirection::West });
+    world.set_block(
+        lever,
+        Block::Lever {
+            lever: Lever::new(LeverFace::Wall, BlockDirection::West, false),
+        },
+    );
+    world.set_block(
+        lower,
+        Block::RedstoneWallTorch {
+            lit: true,
+            facing: BlockDirection::East,
+        },
+    );
+    world.set_block(
+        upper,
+        Block::RedstoneWallTorch {
+            lit: true,
+            facing: BlockDirection::West,
+        },
+    );
     let program = compile(&world, (BlockPos::new(10, 10, 10), BlockPos::new(22, 22, 22)), entry(&world)).unwrap();
     assert!(program.reactive[program.component_indices[&upper]]);
     assert!(!program.reactive[program.component_indices[&lower]]);
@@ -1003,7 +1060,11 @@ fn check_reactive_torch_source_fifo(llvm: bool) {
         } else {
             runtime.use_control(lever).unwrap();
         }
-        assert_eq!(runtime.pending_entries(), world.scheduler().iter_entries().collect::<Vec<_>>(), "phase {phase} after input");
+        assert_eq!(
+            runtime.pending_entries(),
+            world.scheduler().iter_entries().collect::<Vec<_>>(),
+            "phase {phase} after input"
+        );
         for tick in 0..8 {
             world.tick_interpreted();
             if let Some(native) = &mut native {
@@ -1015,7 +1076,11 @@ fn check_reactive_torch_source_fifo(llvm: bool) {
             for pos in [lower, upper] {
                 assert_eq!(runtime.project(pos), Some(world.get_block(pos)), "phase {phase} tick {tick} at {pos:?}");
             }
-            assert_eq!(runtime.pending_entries(), world.scheduler().iter_entries().collect::<Vec<_>>(), "phase {phase} tick {tick}");
+            assert_eq!(
+                runtime.pending_entries(),
+                world.scheduler().iter_entries().collect::<Vec<_>>(),
+                "phase {phase} tick {tick}"
+            );
         }
     }
 }
@@ -1027,18 +1092,31 @@ fn empty_shape_program_suppresses_manual_observer_fallback_after_reindexing() {
     let observer = cell.offset(BlockFace::North);
     let mut program = test_program(
         vec![observer],
-        vec![Block::Observer { observer: RedstoneObserver { facing: BlockFacing::South, powered: false } }],
+        vec![Block::Observer {
+            observer: RedstoneObserver {
+                facing: BlockFacing::South,
+                powered: false,
+            },
+        }],
         vec![],
         vec![],
         vec![],
         vec![],
-    ).unwrap();
-    program.tokens.push(super::compiler::PistonToken { block: Block::Stone {}, position: Some(cell), cells: vec![cell] });
+    )
+    .unwrap();
+    program.tokens.push(super::compiler::PistonToken {
+        block: Block::Stone {},
+        position: Some(cell),
+        cells: vec![cell],
+    });
     program.compile_movement_flips().unwrap();
     program.prepare_projection();
     let mut fallback = program.start();
     fallback.set_token_pos(0, None);
-    assert_eq!(fallback.pending_entries().into_iter().map(|entry| entry.pos).collect::<Vec<_>>(), vec![observer]);
+    assert_eq!(
+        fallback.pending_entries().into_iter().map(|entry| entry.pos).collect::<Vec<_>>(),
+        vec![observer]
+    );
 
     program.shape_programs.insert(cell, 0..0);
     program.prepare_projection();
@@ -1056,11 +1134,33 @@ fn empty_piston_shape_observers_follow_interpreter_fifo() {
     let lever = base.offset(BlockFace::West);
     let base_observer = base.offset(BlockFace::North);
     let head_observer = home.offset(BlockFace::North);
-    world.set_block(base, Block::Piston { piston: RedstonePiston { facing: BlockFacing::East, sticky: true, extended: false } });
+    world.set_block(
+        base,
+        Block::Piston {
+            piston: RedstonePiston {
+                facing: BlockFacing::East,
+                sticky: true,
+                extended: false,
+            },
+        },
+    );
     world.set_block(lever.offset(BlockFace::Bottom), Block::Stone {});
-    world.set_block(lever, Block::Lever { lever: Lever::new(LeverFace::Floor, BlockDirection::North, false) });
+    world.set_block(
+        lever,
+        Block::Lever {
+            lever: Lever::new(LeverFace::Floor, BlockDirection::North, false),
+        },
+    );
     for pos in [base_observer, head_observer] {
-        world.set_block(pos, Block::Observer { observer: RedstoneObserver { facing: BlockFacing::South, powered: false } });
+        world.set_block(
+            pos,
+            Block::Observer {
+                observer: RedstoneObserver {
+                    facing: BlockFacing::South,
+                    powered: false,
+                },
+            },
+        );
     }
     let program = compile(&world, (BlockPos::new(10, 10, 10), BlockPos::new(22, 22, 22)), entry(&world)).unwrap();
     let mut runtime = program.start();
@@ -1072,7 +1172,11 @@ fn empty_piston_shape_observers_follow_interpreter_fifo() {
         for pos in [base_observer, head_observer] {
             assert_eq!(runtime.project(pos), Some(world.get_block(pos)), "observer at {pos:?} after tick {tick}");
         }
-        assert_eq!(runtime.pending_entries(), world.scheduler().iter_entries().collect::<Vec<_>>(), "pending ticks after tick {tick}");
+        assert_eq!(
+            runtime.pending_entries(),
+            world.scheduler().iter_entries().collect::<Vec<_>>(),
+            "pending ticks after tick {tick}"
+        );
     }
 }
 
@@ -1088,15 +1192,56 @@ fn piston_payload_landing_updates_wire_shape_in_interpreter_order() {
     let lever = base.offset(BlockFace::West);
     let observer = wire_pos.offset(BlockFace::East);
     let cap_observer = observer.offset(BlockFace::Top);
-    for pos in [wire_pos.offset(BlockFace::Bottom), south.offset(BlockFace::Bottom), north, home, lever.offset(BlockFace::Bottom)] {
+    for pos in [
+        wire_pos.offset(BlockFace::Bottom),
+        south.offset(BlockFace::Bottom),
+        north,
+        home,
+        lever.offset(BlockFace::Bottom),
+    ] {
         world.set_block(pos, Block::Stone {});
     }
-    world.set_block(base, Block::Piston { piston: RedstonePiston { facing: BlockFacing::East, sticky: true, extended: false } });
-    world.set_block(lever, Block::Lever { lever: Lever::new(LeverFace::Floor, BlockDirection::North, false) });
-    world.set_block(observer, Block::Observer { observer: RedstoneObserver { facing: BlockFacing::West, powered: false } });
-    world.set_block(cap_observer, Block::Observer { observer: RedstoneObserver { facing: BlockFacing::West, powered: false } });
+    world.set_block(
+        base,
+        Block::Piston {
+            piston: RedstonePiston {
+                facing: BlockFacing::East,
+                sticky: true,
+                extended: false,
+            },
+        },
+    );
+    world.set_block(
+        lever,
+        Block::Lever {
+            lever: Lever::new(LeverFace::Floor, BlockDirection::North, false),
+        },
+    );
+    world.set_block(
+        observer,
+        Block::Observer {
+            observer: RedstoneObserver {
+                facing: BlockFacing::West,
+                powered: false,
+            },
+        },
+    );
+    world.set_block(
+        cap_observer,
+        Block::Observer {
+            observer: RedstoneObserver {
+                facing: BlockFacing::West,
+                powered: false,
+            },
+        },
+    );
     for pos in [wire_pos, south, north.offset(BlockFace::Top)] {
-        world.set_block(pos, Block::RedstoneWire { wire: RedstoneWire::default() });
+        world.set_block(
+            pos,
+            Block::RedstoneWire {
+                wire: RedstoneWire::default(),
+            },
+        );
     }
     for pos in [wire_pos, south, north.offset(BlockFace::Top)] {
         let wire = crate::redstone::wire::get_state_for_placement(&world, pos);
@@ -1110,20 +1255,40 @@ fn piston_payload_landing_updates_wire_shape_in_interpreter_order() {
         for tick in 0..8 {
             world.tick_interpreted();
             runtime.tick().unwrap();
-            assert_eq!(runtime.project(wire_pos), Some(world.get_block(wire_pos)), "wire shape after phase {phase} tick {tick}");
+            assert_eq!(
+                runtime.project(wire_pos),
+                Some(world.get_block(wire_pos)),
+                "wire shape after phase {phase} tick {tick}"
+            );
             // Official Java 1.21.5: the solid cap brakes the climb at landing,
             // then removing it restores Up without changing the wire's power.
             use mchprs_blocks::blocks::RedstoneWireSide;
             assert!(matches!(runtime.project(wire_pos), Some(Block::RedstoneWire { wire })
                 if wire.power == 0 && wire.north == if phase == 0 && tick >= 2 { RedstoneWireSide::Side } else { RedstoneWireSide::Up }));
-            assert_eq!(runtime.project(observer), Some(world.get_block(observer)), "observer state after phase {phase} tick {tick}");
-            assert_eq!(runtime.project(cap_observer), Some(world.get_block(cap_observer)), "cap observer state after phase {phase} tick {tick}");
-            for (pos, powered) in [(observer, if phase == 0 { (4..6).contains(&tick) } else { (2..4).contains(&tick) }),
-                (cap_observer, (2..4).contains(&tick))] {
-                assert!(matches!(runtime.project(pos), Some(Block::Observer { observer }) if observer.powered == powered),
-                    "Java observer at {pos:?} after phase {phase} tick {tick}");
+            assert_eq!(
+                runtime.project(observer),
+                Some(world.get_block(observer)),
+                "observer state after phase {phase} tick {tick}"
+            );
+            assert_eq!(
+                runtime.project(cap_observer),
+                Some(world.get_block(cap_observer)),
+                "cap observer state after phase {phase} tick {tick}"
+            );
+            for (pos, powered) in [
+                (observer, if phase == 0 { (4..6).contains(&tick) } else { (2..4).contains(&tick) }),
+                (cap_observer, (2..4).contains(&tick)),
+            ] {
+                assert!(
+                    matches!(runtime.project(pos), Some(Block::Observer { observer }) if observer.powered == powered),
+                    "Java observer at {pos:?} after phase {phase} tick {tick}"
+                );
             }
-            assert_eq!(runtime.pending_entries(), world.scheduler().iter_entries().collect::<Vec<_>>(), "pending ticks after phase {phase} tick {tick}");
+            assert_eq!(
+                runtime.pending_entries(),
+                world.scheduler().iter_entries().collect::<Vec<_>>(),
+                "pending ticks after phase {phase} tick {tick}"
+            );
         }
     }
 }
@@ -1982,14 +2147,26 @@ fn check_wire_power_observer(facing: mchprs_blocks::BlockFacing, powered: bool) 
     let lever = BlockPos::new(10, 10, 10);
     let wire = BlockPos::new(11, 10, 10);
     let observer_pos = BlockPos::new(11, 10, 9);
-    world.set_block(lever, Block::Lever { lever: Lever::new(LeverFace::Floor, BlockDirection::North, false) });
+    world.set_block(
+        lever,
+        Block::Lever {
+            lever: Lever::new(LeverFace::Floor, BlockDirection::North, false),
+        },
+    );
     world.set_block(lever.offset(BlockFace::Bottom), Block::Stone {});
     world.set_block(wire.offset(BlockFace::Bottom), Block::Stone {});
-    let Block::Observer { mut observer } = Block::from_name("observer").unwrap() else { unreachable!() };
+    let Block::Observer { mut observer } = Block::from_name("observer").unwrap() else {
+        unreachable!()
+    };
     observer.facing = facing;
     observer.powered = powered;
     world.set_block(observer_pos, Block::Observer { observer });
-    world.set_block(wire, Block::RedstoneWire { wire: RedstoneWire::default() });
+    world.set_block(
+        wire,
+        Block::RedstoneWire {
+            wire: RedstoneWire::default(),
+        },
+    );
     let placed = crate::redstone::wire::get_state_for_placement(&world, wire);
     world.set_block(wire, Block::RedstoneWire { wire: placed });
     let program = compile(&world, (BlockPos::new(5, 5, 5), BlockPos::new(16, 15, 15)), entry(&world)).unwrap();
@@ -1999,8 +2176,11 @@ fn check_wire_power_observer(facing: mchprs_blocks::BlockFacing, powered: bool) 
             crate::interaction::use_redstone(world.get_block(lever), &mut world, lever, None);
             runtime.use_control(lever).unwrap();
         }
-        world.tick_interpreted(); runtime.tick().unwrap();
-        if !powered { assert!(matches!(world.get_block(observer_pos), Block::Observer { observer } if !observer.powered)); }
+        world.tick_interpreted();
+        runtime.tick().unwrap();
+        if !powered {
+            assert!(matches!(world.get_block(observer_pos), Block::Observer { observer } if !observer.powered));
+        }
         assert_eq!(runtime.project(observer_pos), Some(world.get_block(observer_pos)), "tick {tick}");
     }
     assert!(matches!(world.get_block(observer_pos), Block::Observer { observer } if !observer.powered));
@@ -2986,32 +3166,60 @@ fn world_compiler_drives_empty_piston() {
 
 #[test]
 fn empty_piston_head_notifies_adjacent_quasi_powered_piston_immediately() {
-    let mut world=host();
-    let driver=BlockPos::new(10,10,10); let bud=BlockPos::new(9,10,9); let lever=BlockPos::new(10,10,11);
-    world.set_block(lever,Block::Lever { lever:Lever::new(LeverFace::Floor,BlockDirection::North,false) });
-    world.set_block(lever.offset(BlockFace::Bottom),Block::Stone {});
-    for (pos,facing) in [(driver,BlockFacing::North),(bud,BlockFacing::Down)] {
-        world.set_block(pos,Block::Piston { piston:RedstonePiston { facing,sticky:true,extended:false } });
+    let mut world = host();
+    let driver = BlockPos::new(10, 10, 10);
+    let bud = BlockPos::new(9, 10, 9);
+    let lever = BlockPos::new(10, 10, 11);
+    world.set_block(
+        lever,
+        Block::Lever {
+            lever: Lever::new(LeverFace::Floor, BlockDirection::North, false),
+        },
+    );
+    world.set_block(lever.offset(BlockFace::Bottom), Block::Stone {});
+    for (pos, facing) in [(driver, BlockFacing::North), (bud, BlockFacing::Down)] {
+        world.set_block(
+            pos,
+            Block::Piston {
+                piston: RedstonePiston {
+                    facing,
+                    sticky: true,
+                    extended: false,
+                },
+            },
+        );
     }
-    world.set_block(bud+BlockPos::new(0,2,0),Block::RedstoneBlock);
-    let program=compile(&world,(BlockPos::new(5,5,5),BlockPos::new(15,15,15)),entry(&world)).unwrap();
-    let mut runtime=program.start();
-    assert!(crate::redstone::piston::should_piston_extend(&world,BlockFacing::Down,bud));
-    crate::interaction::use_redstone(world.get_block(lever),&mut world,lever,None);
+    world.set_block(bud + BlockPos::new(0, 2, 0), Block::RedstoneBlock);
+    let program = compile(&world, (BlockPos::new(5, 5, 5), BlockPos::new(15, 15, 15)), entry(&world)).unwrap();
+    let mut runtime = program.start();
+    assert!(crate::redstone::piston::should_piston_extend(&world, BlockFacing::Down, bud));
+    crate::interaction::use_redstone(world.get_block(lever), &mut world, lever, None);
     runtime.use_control(lever).unwrap();
-    world.tick_interpreted(); runtime.tick().unwrap();
+    world.tick_interpreted();
+    runtime.tick().unwrap();
     assert!(matches!(world.get_block(bud),Block::Piston { piston } if piston.extended));
-    assert_eq!(runtime.project(bud),Some(world.get_block(bud)),"head notifications must run before motion landing");
-    for _ in 0..2 { world.tick_interpreted(); runtime.tick().unwrap(); }
-    world.set_block(bud+BlockPos::new(0,2,0),Block::Air);
-    let node=runtime.program.component_indices[&bud];
+    assert_eq!(
+        runtime.project(bud),
+        Some(world.get_block(bud)),
+        "head notifications must run before motion landing"
+    );
+    for _ in 0..2 {
+        world.tick_interpreted();
+        runtime.tick().unwrap();
+    }
+    world.set_block(bud + BlockPos::new(0, 2, 0), Block::Air);
+    let node = runtime.program.component_indices[&bud];
     // Withdraw quasi power without delivering the BUD's neighbor callback.
-    runtime.input_levels[node][0].active=0;
-    crate::interaction::use_redstone(world.get_block(lever),&mut world,lever,None);
+    runtime.input_levels[node][0].active = 0;
+    crate::interaction::use_redstone(world.get_block(lever), &mut world, lever, None);
     runtime.use_control(lever).unwrap();
-    world.tick_interpreted(); runtime.tick().unwrap();
-    assert!(matches!(world.get_block(bud),Block::MovingPiston { .. }));
-    assert!(runtime.piston_base_moving[runtime.program.piston_by_component[node].unwrap().get()-1],"head removal must notify the adjacent BUD immediately");
+    world.tick_interpreted();
+    runtime.tick().unwrap();
+    assert!(matches!(world.get_block(bud), Block::MovingPiston { .. }));
+    assert!(
+        runtime.piston_base_moving[runtime.program.piston_by_component[node].unwrap().get() - 1],
+        "head removal must notify the adjacent BUD immediately"
+    );
 }
 
 #[test]
@@ -3030,7 +3238,12 @@ fn check_joint_movement_sources(intermediate_source: bool) {
     for x in 8..=16 {
         let pos = BlockPos::new(x, 10 + x % 2, 10);
         world.set_block(pos.offset(BlockFace::Bottom), Block::Stone {});
-        world.set_block(pos, Block::RedstoneWire { wire: RedstoneWire::default() });
+        world.set_block(
+            pos,
+            Block::RedstoneWire {
+                wire: RedstoneWire::default(),
+            },
+        );
         positions.push(pos);
     }
     for x in if intermediate_source { vec![12, 16] } else { vec![16] } {
@@ -3039,20 +3252,43 @@ fn check_joint_movement_sources(intermediate_source: bool) {
         positions.push(pos);
     }
     let gates = [BlockPos::new(10, 11, 10), BlockPos::new(14, 11, 10)];
-    for pos in gates { world.set_block(pos, Block::Stone {}); }
+    for pos in gates {
+        world.set_block(pos, Block::Stone {});
+    }
     let initial = positions.iter().map(|&pos| world.get_block(pos)).collect();
     let mut program = test_program(positions, initial, vec![], vec![], vec![], vec![]).unwrap();
     for pos in gates {
-        program.tokens.push(compiler::PistonToken { block: Block::Stone {}, position: Some(pos), cells: vec![pos] });
+        program.tokens.push(compiler::PistonToken {
+            block: Block::Stone {},
+            position: Some(pos),
+            cells: vec![pos],
+        });
     }
     let components = program.positions.iter().enumerate().map(|(node, &pos)| (pos, node)).collect();
     let indexes = group_probe::ProbeIndexes::new(&components, &program.positions, &program.initial, &program.tokens, None).unwrap();
-    let groups = group_probe::run(&world, (BlockPos::new(5, 5, 5), BlockPos::new(20, 15, 15)), &entry(&world), &program, &indexes, None).unwrap();
+    let groups = group_probe::run(
+        &world,
+        (BlockPos::new(5, 5, 5), BlockPos::new(20, 15, 15)),
+        &entry(&world),
+        &program,
+        &indexes,
+        None,
+    )
+    .unwrap();
     let source = ArrangementSource::Component(program.positions.iter().position(|&pos| pos == BlockPos::new(16, 10, 11)).unwrap());
-    for pos in gates { world.set_block(pos, Block::Air); }
+    for pos in gates {
+        world.set_block(pos, Block::Air);
+    }
     let actual = crate::redpiler::scratch::discover_wire_sources(&world, &[program.positions[0]]).unwrap();
-    assert!(actual.iter().any(|input| input.source == BlockPos::new(16, 10, 11) && input.attenuation == 8));
-    let group = groups.groups.iter().find(|group| group.target == 0 && group.conditional_sources.contains(&source))
+    assert!(
+        actual
+            .iter()
+            .any(|input| input.source == BlockPos::new(16, 10, 11) && input.attenuation == 8)
+    );
+    let group = groups
+        .groups
+        .iter()
+        .find(|group| group.target == 0 && group.conditional_sources.contains(&source))
         .expect("jointly opened dust path must retain its newly discovered far source");
     assert_eq!(group.tokens, vec![0, 1]);
     assert!(group.inputs[0].iter().any(|&(input, attenuation)| input == source && attenuation == 8));
@@ -3065,12 +3301,33 @@ fn compressed_electrical_axes_preserve_physical_token_positions() {
     let upper = BlockPos::new(10, 12, 10);
     let lower = BlockPos::new(10, 11, 10);
     let concrete = Block::from_name("black_concrete").unwrap();
-    let mut program = test_program(vec![wire, BlockPos::new(11, 10, 10)],
-        vec![Block::RedstoneWire { wire: RedstoneWire::default() }, Block::RedstoneBlock], vec![], vec![], vec![], vec![]).unwrap();
-    program.tokens.push(compiler::PistonToken { block: concrete, position: Some(upper), cells: vec![upper, lower] });
+    let mut program = test_program(
+        vec![wire, BlockPos::new(11, 10, 10)],
+        vec![
+            Block::RedstoneWire {
+                wire: RedstoneWire::default(),
+            },
+            Block::RedstoneBlock,
+        ],
+        vec![],
+        vec![],
+        vec![],
+        vec![],
+    )
+    .unwrap();
+    program.tokens.push(compiler::PistonToken {
+        block: concrete,
+        position: Some(upper),
+        cells: vec![upper, lower],
+    });
     program.input_arrangements.push(super::program::InputArrangement {
-        target: 0, side: false, silent: false, tokens: vec![0], token_states: vec![vec![0, 0, 1]],
-        conditional_sources: vec![ArrangementSource::Component(1)], inputs: vec![vec![], vec![(ArrangementSource::Component(1), 0)]],
+        target: 0,
+        side: false,
+        silent: false,
+        tokens: vec![0],
+        token_states: vec![vec![0, 0, 1]],
+        conditional_sources: vec![ArrangementSource::Component(1)],
+        inputs: vec![vec![], vec![(ArrangementSource::Component(1), 0)]],
     });
     for invalid in [vec![0, 2, 2], vec![0, usize::MAX, 1], vec![1, 1, 1], vec![0, 1]] {
         let mut malformed = program.clone();
@@ -3088,7 +3345,9 @@ fn compressed_electrical_axes_preserve_physical_token_positions() {
         assert_eq!(runtime.token_digits[0], digit);
         assert_eq!(runtime.group_arrangements, vec![state]);
         assert!(matches!(runtime.project(wire), Some(Block::RedstoneWire { wire }) if wire.power == strength));
-        if let Some(pos) = position { assert_eq!(runtime.project(pos), Some(concrete)); }
+        if let Some(pos) = position {
+            assert_eq!(runtime.project(pos), Some(concrete));
+        }
     }
 }
 

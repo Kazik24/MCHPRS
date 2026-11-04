@@ -1,6 +1,12 @@
-use mchprs_blocks::{BlockFace, BlockPos, blocks::{Block, LeverFace}};
+use mchprs_blocks::{
+    BlockFace, BlockPos,
+    blocks::{Block, LeverFace},
+};
 use mchprs_core::{
-    plot::{PLOT_WIDTH, PlotWorld, worldedit::{load_schematic, paste_clipboard}},
+    plot::{
+        PLOT_WIDTH, PlotWorld,
+        worldedit::{load_schematic, paste_clipboard},
+    },
     redpiler::{Compiler, CompilerOptions, TaskMonitor},
     redstone,
     world::{World, storage::Chunk},
@@ -39,35 +45,70 @@ fn main() {
     let mut compiler = Compiler::default();
     let compile_start = Instant::now();
     if !interpreter {
-        compiler.compile(
-            &world,
-            bounds,
-            CompilerOptions { llvm, ..Default::default() },
-            world.scheduler().iter_entries().collect(),
-            Arc::new(TaskMonitor::default()),
-        ).unwrap();
+        compiler
+            .compile(
+                &world,
+                bounds,
+                CompilerOptions { llvm, ..Default::default() },
+                world.scheduler().iter_entries().collect(),
+                Arc::new(TaskMonitor::default()),
+            )
+            .unwrap();
     }
     let compile_seconds = compile_start.elapsed().as_secs_f64();
     for _ in 0..10_000 {
         for &lever in &levers {
-            if interpreter { toggle(&mut world, lever); } else { compiler.try_on_use_block(lever).unwrap(); }
+            if interpreter {
+                toggle(&mut world, lever);
+            } else {
+                compiler.try_on_use_block(lever).unwrap();
+            }
         }
-        if interpreter { world.tick_interpreted(); } else { compiler.tick().unwrap(); }
+        if interpreter {
+            world.tick_interpreted();
+        } else {
+            compiler.tick().unwrap();
+        }
     }
     let start = Instant::now();
     for _ in 0..iterations {
         for &lever in &levers {
-            if interpreter { toggle(&mut world, lever); } else { compiler.try_on_use_block(lever).unwrap(); }
+            if interpreter {
+                toggle(&mut world, lever);
+            } else {
+                compiler.try_on_use_block(lever).unwrap();
+            }
         }
-        if interpreter { world.tick_interpreted(); } else { compiler.tick().unwrap(); }
+        if interpreter {
+            world.tick_interpreted();
+        } else {
+            compiler.tick().unwrap();
+        }
     }
     let elapsed = start.elapsed().as_secs_f64();
-    if !interpreter { assert!(compiler.is_active()); }
-    println!("{{\"fixture\":\"{}\",\"backend\":\"{}\",\"inputs_per_tick\":{},\"ticks\":{},\"compile_seconds\":{compile_seconds},\"elapsed_seconds\":{elapsed},\"tps\":{}}}", if counter { "COUNTER_BASIC.schem" } else { "simple_and_gate.schem" }, if interpreter { "interpreter" } else if llvm { "llvm" } else { "rust" }, levers.len(), iterations, iterations as f64 / elapsed);
+    if !interpreter {
+        assert!(compiler.is_active());
+    }
+    println!(
+        "{{\"fixture\":\"{}\",\"backend\":\"{}\",\"inputs_per_tick\":{},\"ticks\":{},\"compile_seconds\":{compile_seconds},\"elapsed_seconds\":{elapsed},\"tps\":{}}}",
+        if counter { "COUNTER_BASIC.schem" } else { "simple_and_gate.schem" },
+        if interpreter {
+            "interpreter"
+        } else if llvm {
+            "llvm"
+        } else {
+            "rust"
+        },
+        levers.len(),
+        iterations,
+        iterations as f64 / elapsed
+    );
 }
 
 fn toggle(world: &mut PlotWorld, pos: BlockPos) {
-    let Block::Lever { mut lever } = world.get_block(pos) else { panic!("missing lever at {pos:?}") };
+    let Block::Lever { mut lever } = world.get_block(pos) else {
+        panic!("missing lever at {pos:?}")
+    };
     lever.powered = !lever.powered;
     world.set_block(pos, Block::Lever { lever });
     redstone::update_surrounding_blocks(world, pos);

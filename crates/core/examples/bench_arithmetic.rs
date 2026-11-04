@@ -1,5 +1,8 @@
 //! Native versus sampled Redpiler throughput on the frozen arithmetic fixtures.
-use mchprs_blocks::{BlockFace, BlockPos, blocks::{Block, LeverFace}};
+use mchprs_blocks::{
+    BlockFace, BlockPos,
+    blocks::{Block, LeverFace},
+};
 use mchprs_core::{
     plot::{
         PLOT_WIDTH, PlotWorld,
@@ -127,7 +130,13 @@ fn counter_reference_check() {
                         'M'
                     } else {
                         match world.get_block(at) {
-                            Block::Piston { piston } => if piston.extended { '0' } else { '1' },
+                            Block::Piston { piston } => {
+                                if piston.extended {
+                                    '0'
+                                } else {
+                                    '1'
+                                }
+                            }
                             _ => '?',
                         }
                     }
@@ -161,16 +170,28 @@ fn counter_reference_check() {
             for (bit, (actual, expected)) in memory.chars().zip(fields[2].chars()).enumerate() {
                 if actual != expected {
                     let report = format!("{label} tick {tick} memory bit {bit}: {actual} vs reference {expected}");
-                    if label == "native" { native_reference_divergence.get_or_insert(report); } else { compiled_reference_divergence.get_or_insert(report); }
+                    if label == "native" {
+                        native_reference_divergence.get_or_insert(report);
+                    } else {
+                        compiled_reference_divergence.get_or_insert(report);
+                    }
                 }
             }
             if dust != expected_dust {
                 let report = format!("{label} tick {tick} dust: {dust:?} vs reference {expected_dust:?}");
-                if label == "native" { native_reference_divergence.get_or_insert(report); } else { compiled_reference_divergence.get_or_insert(report); }
+                if label == "native" {
+                    native_reference_divergence.get_or_insert(report);
+                } else {
+                    compiled_reference_divergence.get_or_insert(report);
+                }
             }
             if repeaters != expected_repeaters {
                 let report = format!("{label} tick {tick} repeaters: {repeaters} vs reference {expected_repeaters}");
-                if label == "native" { native_reference_divergence.get_or_insert(report); } else { compiled_reference_divergence.get_or_insert(report); }
+                if label == "native" {
+                    native_reference_divergence.get_or_insert(report);
+                } else {
+                    compiled_reference_divergence.get_or_insert(report);
+                }
             }
             rows.push((memory, dust, repeaters));
         }
@@ -178,7 +199,10 @@ fn counter_reference_check() {
             native_compiled_divergence = Some(format!("tick {tick}: native={:?}; Redpiler={:?}", rows[0], rows[1]));
         }
     }
-    println!("COUNTER_BASIC_DIAGNOSTICS {}", serde_json::json!({"native_vs_reference":native_reference_divergence,"redpiler_vs_reference":compiled_reference_divergence,"native_vs_redpiler":native_compiled_divergence}));
+    println!(
+        "COUNTER_BASIC_DIAGNOSTICS {}",
+        serde_json::json!({"native_vs_reference":native_reference_divergence,"redpiler_vs_reference":compiled_reference_divergence,"native_vs_redpiler":native_compiled_divergence})
+    );
 }
 
 fn counter(output: &PathBuf, samples: usize, ticks: usize) {
@@ -360,15 +384,26 @@ fn adder(output: &PathBuf, samples: usize, operations: usize) {
                                     word | (value << bit)
                                 });
                         if actual != value {
-                            first_divergence.get_or_insert_with(|| format!("Redpiler case {} tick {tick} {port}: {actual} vs expected {value}", i % cases.len()));
+                            first_divergence
+                                .get_or_insert_with(|| format!("Redpiler case {} tick {tick} {port}: {actual} vs expected {value}", i % cases.len()));
                             if !continue_on_divergence {
                                 assert_eq!(actual, value, "Redpiler ADDER11BIT {} tick {tick} {port}", i % cases.len());
                             }
                         }
                         if native_actual != actual {
-                            first_divergence.get_or_insert_with(|| format!("native vs Redpiler case {} tick {tick} {port}: {native_actual} vs {actual}", i % cases.len()));
+                            first_divergence.get_or_insert_with(|| {
+                                format!(
+                                    "native vs Redpiler case {} tick {tick} {port}: {native_actual} vs {actual}",
+                                    i % cases.len()
+                                )
+                            });
                             if !continue_on_divergence {
-                                assert_eq!(native_actual, actual, "native vs Redpiler ADDER11BIT {} tick {tick} {port}", i % cases.len());
+                                assert_eq!(
+                                    native_actual,
+                                    actual,
+                                    "native vs Redpiler ADDER11BIT {} tick {tick} {port}",
+                                    i % cases.len()
+                                );
                             }
                         }
                     }
@@ -378,7 +413,11 @@ fn adder(output: &PathBuf, samples: usize, operations: usize) {
         let end_to_end_ns = overall_start.elapsed().as_nanos();
         assert!(active >= 512, "need >=512 active ticks");
         assert!(compiled.is_active());
-        let validation = if first_divergence.is_some() { "diverged" } else { "native and Redpiler sum_payload ticks 1-3; sum_repeater ticks 3-7" };
+        let validation = if first_divergence.is_some() {
+            "diverged"
+        } else {
+            "native and Redpiler sum_payload ticks 1-3; sum_repeater ticks 3-7"
+        };
         let row = serde_json::json!({"circuit":"ADDER11BIT","sample":sample+1,"operations":operations,"active_ticks":active,"compile_ns":compile_ns,"end_to_end_ns":end_to_end_ns,"native_tick_ns":native_ns,"compiled_tick_flush_ns":ns,"native_tps":active as f64*1e9/native_ns as f64,"compiled_tick_flush_tps":active as f64*1e9/ns as f64,"case_cycle":["2047+1","1023+1","0+0"],"first_divergence":first_divergence,"validation":validation});
         println!("{}", row);
         std::fs::write(output.join(format!("adder-{sample}.json")), serde_json::to_vec_pretty(&row).unwrap()).unwrap();

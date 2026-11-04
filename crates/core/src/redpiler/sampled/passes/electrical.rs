@@ -168,9 +168,18 @@ pub(in super::super) fn run<'a>(
     }
 
     for &pos in &wire_positions {
-        let observers: Vec<_> = crate::world::wire_cache::positions(pos).into_iter().filter_map(|at|
-            position_index.get(&at).copied().filter(|_| matches!(world.get_block(at), Block::Observer { .. }))).collect();
-        if observers.is_empty() { continue; }
+        let observers: Vec<_> = crate::world::wire_cache::positions(pos)
+            .into_iter()
+            .filter_map(|at| {
+                position_index
+                    .get(&at)
+                    .copied()
+                    .filter(|_| matches!(world.get_block(at), Block::Observer { .. }))
+            })
+            .collect();
+        if observers.is_empty() {
+            continue;
+        }
         let wire = position_index[&pos];
         if let Some(record) = watched_wires.iter_mut().find(|record| record.wire == wire) {
             record.watchers.extend(observers);

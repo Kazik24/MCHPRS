@@ -227,7 +227,10 @@ fn adder1bit_reference_manifest_arithmetic() {
                                     program.positions[step.node],
                                     step.watcher,
                                     step.wire,
-                                    program.movement_wires[step.wires.clone()].iter().map(|&node| program.positions[node]).collect::<Vec<_>>()
+                                    program.movement_wires[step.wires.clone()]
+                                        .iter()
+                                        .map(|&node| program.positions[node])
+                                        .collect::<Vec<_>>()
                                 ))
                                 .collect::<Vec<_>>()
                         );

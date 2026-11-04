@@ -250,7 +250,11 @@ impl super::LlvmRuntime {
             token_digits.push(if cell == u32::MAX {
                 0
             } else {
-                p.token_cells[token].iter().position(|&candidate| candidate == cell as usize).ok_or_else(invalid)? + 1
+                p.token_cells[token]
+                    .iter()
+                    .position(|&candidate| candidate == cell as usize)
+                    .ok_or_else(invalid)?
+                    + 1
             });
         }
         if s[piston_start..motion_start].iter().any(|&flags| flags > 15) {
@@ -282,7 +286,8 @@ impl super::LlvmRuntime {
         }
         let wire_sides = &s[sides_start..];
         for (node, &sides) in wire_sides.iter().enumerate() {
-            if sides > 255 || (0..4).any(|side| (sides >> (side * 2)) & 3 == 3)
+            if sides > 255
+                || (0..4).any(|side| (sides >> (side * 2)) & 3 == 3)
                 || (sides != 0 && !matches!(p.initial[node], Block::RedstoneWire { .. }))
             {
                 return Err(invalid());
@@ -318,7 +323,11 @@ impl super::LlvmRuntime {
                     Block::StoneButton { button }
                 }
                 Block::RedstoneLamp { .. } => Block::RedstoneLamp { lit: state != 0 },
-                Block::IronTrapdoor { facing, half, .. } => Block::IronTrapdoor { facing, half, powered: state != 0 },
+                Block::IronTrapdoor { facing, half, .. } => Block::IronTrapdoor {
+                    facing,
+                    half,
+                    powered: state != 0,
+                },
                 block if block.is_copper_bulb() => block.with_copper_bulb_state(state & 1 != 0, state & 2 != 0).ok_or_else(invalid)?,
                 Block::RedstoneComparator { mut comparator } => {
                     comparator.powered = state != 0;

@@ -43,16 +43,21 @@ fn run_sample(ticks: u32, sample: usize, llvm: bool) -> serde_json::Value {
     positions.sort_unstable_by_key(|pos| (pos.x, pos.y, pos.z));
     let mut compiler = Compiler::default();
     let start = Instant::now();
-    let result = compiler
-        .compile(
-            &compiled,
-            bounds,
-            CompilerOptions { llvm, publication:Some(mchprs_core::redpiler::PublicationMode::All), ..Default::default() },
-            compiled.scheduler().iter_entries().collect(),
-            Arc::new(TaskMonitor::default()),
-        );
+    let result = compiler.compile(
+        &compiled,
+        bounds,
+        CompilerOptions {
+            llvm,
+            publication: Some(mchprs_core::redpiler::PublicationMode::All),
+            ..Default::default()
+        },
+        compiled.scheduler().iter_entries().collect(),
+        Arc::new(TaskMonitor::default()),
+    );
     let compile_seconds = start.elapsed().as_secs_f64();
-    if let Err(error) = result { return serde_json::json!({"status":"compile_rejected","backend":if llvm {"llvm"} else {"rust"},"reason":error.to_string(),"compile_seconds":compile_seconds}); }
+    if let Err(error) = result {
+        return serde_json::json!({"status":"compile_rejected","backend":if llvm {"llvm"} else {"rust"},"reason":error.to_string(),"compile_seconds":compile_seconds});
+    }
     let mut native_time = Duration::ZERO;
     let mut compiled_time = Duration::ZERO;
     let mut publication_time = Duration::ZERO;
@@ -90,16 +95,28 @@ fn run_sample(ticks: u32, sample: usize, llvm: bool) -> serde_json::Value {
 }
 
 fn main() {
-    let llvm=std::env::args().any(|arg|arg=="--llvm");
-    let paired=std::env::args().any(|arg|arg=="--paired");
+    let llvm = std::env::args().any(|arg| arg == "--llvm");
+    let paired = std::env::args().any(|arg| arg == "--paired");
     let ticks: u32 = std::env::args().nth(1).map_or(512, |arg| arg.parse().expect("positive tick count"));
     let runs: usize = std::env::args().nth(2).map_or(3, |arg| arg.parse().expect("positive sample count"));
     assert!(ticks > 0 && runs > 0);
-    let output = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(if paired {"../../target/redpiler-bench-results/chungus-paired.json"} else if llvm {"../../target/redpiler-bench-results/chungus-llvm.json"} else {"../../target/redpiler-bench-results/chungus.json"});
+    let output = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(if paired {
+        "../../target/redpiler-bench-results/chungus-paired.json"
+    } else if llvm {
+        "../../target/redpiler-bench-results/chungus-llvm.json"
+    } else {
+        "../../target/redpiler-bench-results/chungus.json"
+    });
     std::fs::create_dir_all(output.parent().unwrap()).unwrap();
     let mut reports = Vec::new();
     for sample in 1..=runs {
-        let backends: &[bool] = if !paired { std::slice::from_ref(&llvm) } else if sample % 2 == 1 { &[false, true] } else { &[true, false] };
+        let backends: &[bool] = if !paired {
+            std::slice::from_ref(&llvm)
+        } else if sample % 2 == 1 {
+            &[false, true]
+        } else {
+            &[true, false]
+        };
         for &backend in backends {
             let report = run_sample(ticks, sample, backend);
             println!("Chungus sample {sample}: {report}");

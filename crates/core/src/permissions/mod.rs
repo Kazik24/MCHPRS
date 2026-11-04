@@ -189,7 +189,11 @@ impl PlayerPermissionsCache {
 
     #[cfg(test)]
     pub(crate) fn for_test_rank(nodes: &[&str], rank: Rank) -> Self {
-        Self { waveform_rank: Some(rank), valid_until: Some(Instant::now() + Duration::from_secs(30)), ..Self::for_test(nodes) }
+        Self {
+            waveform_rank: Some(rank),
+            valid_until: Some(Instant::now() + Duration::from_secs(30)),
+            ..Self::for_test(nodes)
+        }
     }
 
     /// Builds a cache from LuckPerms data already resolved on the Velocity
@@ -489,10 +493,13 @@ mod tests {
     fn redpiler_budgets_start_above_builder_and_keep_higher_ranks_unlimited() {
         let config = config();
         for (rank, expected) in [
-            (Rank::Player, Err(())), (Rank::Builder, Err(())),
+            (Rank::Player, Err(())),
+            (Rank::Builder, Err(())),
             (Rank::Advanced, Ok(Some(Duration::from_secs(30)))),
             (Rank::Expert, Ok(Some(Duration::from_secs(120)))),
-            (Rank::Engineer, Ok(None)), (Rank::Moderator, Ok(None)), (Rank::Admin, Ok(None)),
+            (Rank::Engineer, Ok(None)),
+            (Rank::Moderator, Ok(None)),
+            (Rank::Admin, Ok(None)),
         ] {
             let mut cache = PlayerPermissionsCache::resolve(vec![node("", &format!("group.{}", rank.group()), true)], vec![], &config, now());
             assert_eq!(cache.redpiler_compile_budget().map_err(|_| ()), expected, "{rank:?}");
@@ -503,7 +510,10 @@ mod tests {
         assert!(PlayerPermissionsCache::default().redpiler_compile_budget().is_err());
         let cache = PlayerPermissionsCache::resolve(
             vec![node("", "group.expert", true), node("", "commands.redpiler.compile", false)],
-            vec![node("expert", "commands.redpiler.*", true)], &config, now());
+            vec![node("expert", "commands.redpiler.*", true)],
+            &config,
+            now(),
+        );
         assert_eq!(cache.redpiler_compile_budget().unwrap(), Some(Duration::from_secs(120)));
         assert_eq!(cache.get_node_val("commands.redpiler.compile"), Some(0));
     }

@@ -4,30 +4,51 @@ mod cpu_support;
 
 use cpu_support::*;
 use mchprs_blocks::BlockPos;
-use mchprs_core::{plot::worldedit::load_schematic, redpiler::{Compiler, CompilerOptions, TaskMonitor}, world::World};
-use std::{fs::File, sync::Arc, time::{Duration, Instant}};
+use mchprs_core::{
+    plot::worldedit::load_schematic,
+    redpiler::{Compiler, CompilerOptions, TaskMonitor},
+    world::World,
+};
+use std::{
+    fs::File,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 fn main() {
     let cpu = CPUS[1];
     let expected = reference(cpu);
     let args: Vec<_> = std::env::args().skip(1).collect();
-    let runs = args.iter().find_map(|arg| arg.strip_prefix("--runs=").map(str::to_owned))
+    let runs = args
+        .iter()
+        .find_map(|arg| arg.strip_prefix("--runs=").map(str::to_owned))
         .map_or(3, |value| value.parse::<usize>().expect("--runs=N must be a positive integer"));
-    let game_ticks = args.iter().find_map(|arg| arg.strip_prefix("--ticks=").map(str::to_owned))
+    let game_ticks = args
+        .iter()
+        .find_map(|arg| arg.strip_prefix("--ticks=").map(str::to_owned))
         .map_or(512, |value| value.parse::<u32>().expect("--ticks=N must be a positive integer"));
     assert!(runs > 0);
     assert!(game_ticks > 0);
-    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../test_data").join(cpu.schematic);
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../test_data")
+        .join(cpu.schematic);
     let clip = load_schematic(File::open(path).unwrap()).unwrap();
-    let bounds = (cpu.origin, cpu.origin + BlockPos::new(clip.size_x as i32 - 1, clip.size_y as i32 - 1, clip.size_z as i32 - 1));
+    let bounds = (
+        cpu.origin,
+        cpu.origin + BlockPos::new(clip.size_x as i32 - 1, clip.size_y as i32 - 1, clip.size_z as i32 - 1),
+    );
     let mut reports = Vec::new();
 
     for run in 1..=runs {
         let mut native = load_cpu(cpu);
         let compiler_world = load_cpu(cpu);
         let ticks = compiler_world.scheduler().iter_entries().collect();
-        let timeout = Duration::from_secs(std::env::var("MCHPRS_REDPILER_COMPILE_TIMEOUT_SECS")
-            .ok().and_then(|seconds| seconds.parse().ok()).unwrap_or(300));
+        let timeout = Duration::from_secs(
+            std::env::var("MCHPRS_REDPILER_COMPILE_TIMEOUT_SECS")
+                .ok()
+                .and_then(|seconds| seconds.parse().ok())
+                .unwrap_or(300),
+        );
         let monitor = Arc::new(TaskMonitor::default());
         let worker_monitor = monitor.clone();
         let compile_started = Instant::now();
@@ -94,13 +115,23 @@ fn main() {
                     first_divergence = Some(serde_json::json!({"tick":tick,"first_pixel":pixel,"native":expected_screen,"compiled":actual_screen}));
                 }
             }
-            let reference_screen: Vec<ScreenFrame> = serde_json::from_slice(&std::fs::read(
-                std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../test_data/cpu-references/anpu_screen.json")
-            ).unwrap()).unwrap();
-            let expected_screen_trace = reference_screen.into_iter().take_while(|frame| frame.tick <= game_ticks).collect::<Vec<_>>();
+            let reference_screen: Vec<ScreenFrame> = serde_json::from_slice(
+                &std::fs::read(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../test_data/cpu-references/anpu_screen.json")).unwrap(),
+            )
+            .unwrap();
+            let expected_screen_trace = reference_screen
+                .into_iter()
+                .take_while(|frame| frame.tick <= game_ticks)
+                .collect::<Vec<_>>();
             assert_eq!(native_screens, expected_screen_trace, "native screen reference mismatch");
-            assert!(native_screens.len() >= 2 && compiled_screens.len() >= 2, "prefix must contain at least two distinct screen frames");
-            assert_eq!(native_checkpoints.len(), expected.checkpoints.iter().filter(|sample| sample.tick <= game_ticks).count());
+            assert!(
+                native_screens.len() >= 2 && compiled_screens.len() >= 2,
+                "prefix must contain at least two distinct screen frames"
+            );
+            assert_eq!(
+                native_checkpoints.len(),
+                expected.checkpoints.iter().filter(|sample| sample.tick <= game_ticks).count()
+            );
             let screen_output_parity = first_divergence.is_none();
             reports.push(serde_json::json!({
                 "run":run,"compile_seconds":compile.as_secs_f64(),"native_prefix_ticks":game_ticks,"native_tick_seconds":native_prefix.as_secs_f64(),
@@ -132,7 +163,14 @@ fn main() {
     }
     let output = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/redpiler-bench-results/anpu.json");
     std::fs::create_dir_all(output.parent().unwrap()).unwrap();
-    std::fs::write(&output, serde_json::to_vec_pretty(&serde_json::json!({"schema":1,"cpu":cpu.name,"fixture_sha256":cpu.sha256,"ticks_per_run":game_ticks,"runs":reports})).unwrap()).unwrap();
+    std::fs::write(
+        &output,
+        serde_json::to_vec_pretty(
+            &serde_json::json!({"schema":1,"cpu":cpu.name,"fixture_sha256":cpu.sha256,"ticks_per_run":game_ticks,"runs":reports}),
+        )
+        .unwrap(),
+    )
+    .unwrap();
     println!("wrote {}", output.display());
 }
 
@@ -151,15 +189,23 @@ fn native_prefix(cpu: Cpu, game_ticks: u32, expected: &Reference) -> (Duration, 
         elapsed += started.elapsed();
         collect_chat(&world, tick, &mut chat);
         if CHECKPOINTS.contains(&tick) {
-            assert_eq!(checkpoint(&world, tick, &chat), expected.checkpoints[checkpoint_count], "native reference mismatch at tick {tick}");
+            assert_eq!(
+                checkpoint(&world, tick, &chat),
+                expected.checkpoints[checkpoint_count],
+                "native reference mismatch at tick {tick}"
+            );
             checkpoint_count += 1;
         }
         collect_screen(&world, cpu, tick, &mut screens);
     }
-    let reference_screen: Vec<ScreenFrame> = serde_json::from_slice(&std::fs::read(
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../test_data/cpu-references/anpu_screen.json")
-    ).unwrap()).unwrap();
-    let expected_screen_trace = reference_screen.into_iter().take_while(|frame| frame.tick <= game_ticks).collect::<Vec<_>>();
+    let reference_screen: Vec<ScreenFrame> = serde_json::from_slice(
+        &std::fs::read(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../test_data/cpu-references/anpu_screen.json")).unwrap(),
+    )
+    .unwrap();
+    let expected_screen_trace = reference_screen
+        .into_iter()
+        .take_while(|frame| frame.tick <= game_ticks)
+        .collect::<Vec<_>>();
     assert_eq!(screens, expected_screen_trace, "native screen reference mismatch");
     assert!(screens.len() >= 2, "prefix must contain at least two distinct native screen frames");
     (elapsed, screens.len())

@@ -21,7 +21,10 @@ fn compile(world: &PlotWorld, bounds: (BlockPos, BlockPos)) -> Compiler {
     c.compile(
         world,
         bounds,
-        CompilerOptions { publication: Some(PublicationMode::All), ..Default::default() },
+        CompilerOptions {
+            publication: Some(PublicationMode::All),
+            ..Default::default()
+        },
         world.scheduler().iter_entries().collect(),
         Arc::new(TaskMonitor::default()),
     )

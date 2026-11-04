@@ -44,7 +44,11 @@ impl CompilerOptions {
         if self.io_only {
             PublicationMode::Io
         } else {
-            self.publication.unwrap_or(if cfg!(feature = "redpiler-full-publication") { PublicationMode::All } else { PublicationMode::Redstone })
+            self.publication.unwrap_or(if cfg!(feature = "redpiler-full-publication") {
+                PublicationMode::All
+            } else {
+                PublicationMode::Redstone
+            })
         }
     }
 

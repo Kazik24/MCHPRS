@@ -55,7 +55,10 @@ fn anpu_interpreter_prefix_matches_frozen_reference() {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../test_data/cpu-references/anpu_screen.json");
     let frozen: Vec<cpus::ScreenFrame> = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
     assert_eq!(screens, frozen.into_iter().take_while(|frame| frame.tick <= 4096).collect::<Vec<_>>());
-    eprintln!("ANPU interpreter matches frozen checkpoints and {} screen frames through tick 4096", screens.len());
+    eprintln!(
+        "ANPU interpreter matches frozen checkpoints and {} screen frames through tick 4096",
+        screens.len()
+    );
 }
 
 #[test]
@@ -82,7 +85,10 @@ fn anpu_ordered_pending_ticks_match_interpreter() {
             let first = actual.iter().zip(&expected).position(|(a, b)| a != b);
             panic!(
                 "ANPU pending ticks differ at tick {tick}: actual={} expected={} first={first:?} actual_first={:?} expected_first={:?}",
-                actual.len(), expected.len(), first.and_then(|index| actual.get(index)), first.and_then(|index| expected.get(index))
+                actual.len(),
+                expected.len(),
+                first.and_then(|index| actual.get(index)),
+                first.and_then(|index| expected.get(index))
             );
         }
         if tick < 218 {
@@ -102,9 +108,7 @@ fn anpu_piston_repeater_fifo_order_in_schematic_crop() {
     assert_eq!((crop.size_x, crop.size_y, crop.size_z), (25, 10, 12));
     let min = BlockPos::new(88, 49, 118);
     let max = min + BlockPos::new(crop.size_x as i32 - 1, crop.size_y as i32 - 1, crop.size_z as i32 - 1);
-    let in_crop = |pos: BlockPos| {
-        (min.x..=max.x).contains(&pos.x) && (min.y..=max.y).contains(&pos.y) && (min.z..=max.z).contains(&pos.z)
-    };
+    let in_crop = |pos: BlockPos| (min.x..=max.x).contains(&pos.x) && (min.y..=max.y).contains(&pos.y) && (min.z..=max.z).contains(&pos.z);
     let mut interpreter = cpus::load_cpu(cpu);
     let (_, mut compiler, _) = cpus::compile_cpu(cpus::load_cpu(cpu), cpu);
     cpus::click_cpu(&mut interpreter, cpu, cpu.start);
@@ -134,16 +138,15 @@ fn anpu_piston_repeater_fifo_order_in_schematic_crop() {
             .into_iter()
             .filter(|entry| in_crop(entry.pos))
             .collect();
-        let expected: Vec<_> = interpreter
-            .scheduler()
-            .iter_entries()
-            .filter(|entry| in_crop(entry.pos))
-            .collect();
+        let expected: Vec<_> = interpreter.scheduler().iter_entries().filter(|entry| in_crop(entry.pos)).collect();
         if actual != expected {
             let first = actual.iter().zip(&expected).position(|(a, b)| a != b);
             panic!(
                 "ANPU crop pending ticks differ at tick {tick}: actual={} expected={} first={first:?} actual_first={:?} expected_first={:?}",
-                actual.len(), expected.len(), first.and_then(|index| actual.get(index)), first.and_then(|index| expected.get(index)),
+                actual.len(),
+                expected.len(),
+                first.and_then(|index| actual.get(index)),
+                first.and_then(|index| expected.get(index)),
             );
         }
         if tick < 218 {
@@ -156,58 +159,107 @@ fn anpu_piston_repeater_fifo_order_in_schematic_crop() {
 #[test]
 #[ignore = "ANPU interpreter/sampled first-divergence diagnostic"]
 fn anpu_first_native_compiled_divergence() {
-    let cpu=cpus::CPUS[1];
-    let mut native=cpus::load_cpu(cpu);
-    let (_,mut compiler,_)=cpus::compile_cpu(cpus::load_cpu(cpu),cpu);
-    cpus::click_cpu(&mut native,cpu,cpu.start);
-    compiler.try_on_use_block(cpu.origin+cpu.start).unwrap();
-    let ticks=std::env::var("MCHPRS_ANPU_VERIFY_TICKS").ok().map_or(512,|s|s.parse().unwrap());
+    let cpu = cpus::CPUS[1];
+    let mut native = cpus::load_cpu(cpu);
+    let (_, mut compiler, _) = cpus::compile_cpu(cpus::load_cpu(cpu), cpu);
+    cpus::click_cpu(&mut native, cpu, cpu.start);
+    compiler.try_on_use_block(cpu.origin + cpu.start).unwrap();
+    let ticks = std::env::var("MCHPRS_ANPU_VERIFY_TICKS").ok().map_or(512, |s| s.parse().unwrap());
     let compare_wire_sides = std::env::var_os("MCHPRS_ANPU_VERIFY_WIRE_SIDES").is_some();
     let compare_pending = std::env::var_os("MCHPRS_ANPU_VERIFY_PENDING").is_some();
     let trace_pending = std::env::var_os("MCHPRS_ANPU_TRACE_PENDING").is_some();
     for tick in 0..=ticks {
-        let runtime=compiler.runtime.as_ref().unwrap();
+        let runtime = compiler.runtime.as_ref().unwrap();
         if trace_pending && tick == 149 {
             let nearby = |pos: BlockPos| (106..=112).contains(&pos.x) && (37..=39).contains(&pos.y) && (74..=76).contains(&pos.z);
-            eprintln!("INTERPRETER_MOTIONS {:?}", native.piston_state().motions.iter().filter(|motion| nearby(motion.pos)).collect::<Vec<_>>());
-            eprintln!("RUNTIME_MOTIONS {:?}", runtime.active_motions.iter().map(|&slot| &runtime.motions[slot])
-                .filter(|motion| nearby(runtime.program.projection_positions[motion.destination]))
-                .map(|motion| (runtime.program.pistons[motion.piston].base, runtime.program.projection_positions[motion.destination], motion.start, motion.landing, motion.extending)).collect::<Vec<_>>());
+            eprintln!(
+                "INTERPRETER_MOTIONS {:?}",
+                native
+                    .piston_state()
+                    .motions
+                    .iter()
+                    .filter(|motion| nearby(motion.pos))
+                    .collect::<Vec<_>>()
+            );
+            eprintln!(
+                "RUNTIME_MOTIONS {:?}",
+                runtime
+                    .active_motions
+                    .iter()
+                    .map(|&slot| &runtime.motions[slot])
+                    .filter(|motion| nearby(runtime.program.projection_positions[motion.destination]))
+                    .map(|motion| (
+                        runtime.program.pistons[motion.piston].base,
+                        runtime.program.projection_positions[motion.destination],
+                        motion.start,
+                        motion.landing,
+                        motion.extending
+                    ))
+                    .collect::<Vec<_>>()
+            );
         }
         if compare_pending {
             let actual = runtime.pending_entries();
             let expected: Vec<_> = native.scheduler().iter_entries().collect();
             if actual != expected {
                 let first = actual.iter().zip(&expected).position(|(a, b)| a != b);
-                panic!("ANPU pending divergence at tick {tick}: actual={} expected={} first={first:?} actual_first={:?} expected_first={:?}",
-                    actual.len(), expected.len(), first.and_then(|index| actual.get(index)), first.and_then(|index| expected.get(index)));
+                panic!(
+                    "ANPU pending divergence at tick {tick}: actual={} expected={} first={first:?} actual_first={:?} expected_first={:?}",
+                    actual.len(),
+                    expected.len(),
+                    first.and_then(|index| actual.get(index)),
+                    first.and_then(|index| expected.get(index))
+                );
             }
         }
-        let differences:Vec<_>=runtime.program.positions.iter().enumerate().filter_map(|(node,&pos)| {
-            let observed=native.get_block(pos);
-            let predicted=runtime.project(pos);
-            if let (Block::RedstoneWire { wire:a },Some(Block::RedstoneWire { wire:b }))=(observed,predicted) {
-                if a.power==b.power && (!compare_wire_sides || a == b) { return None; }
-            }
-            if predicted.is_none() && matches!(observed,Block::MovingPiston { .. }) { return None; }
-            if predicted==Some(observed) { return None; }
-            Some((node,pos,observed,predicted))
-        }).take(32).collect();
+        let differences: Vec<_> = runtime
+            .program
+            .positions
+            .iter()
+            .enumerate()
+            .filter_map(|(node, &pos)| {
+                let observed = native.get_block(pos);
+                let predicted = runtime.project(pos);
+                if let (Block::RedstoneWire { wire: a }, Some(Block::RedstoneWire { wire: b })) = (observed, predicted) {
+                    if a.power == b.power && (!compare_wire_sides || a == b) {
+                        return None;
+                    }
+                }
+                if predicted.is_none() && matches!(observed, Block::MovingPiston { .. }) {
+                    return None;
+                }
+                if predicted == Some(observed) {
+                    return None;
+                }
+                Some((node, pos, observed, predicted))
+            })
+            .take(32)
+            .collect();
         if !differences.is_empty() {
-            let roots=differences.iter().map(|&(node,_,_,_)|node).collect::<Vec<_>>();
-            let nodes=cone(&runtime.program,&roots);
-            let positions=nodes.iter().map(|&node|runtime.program.positions[node]).collect::<Vec<_>>();
-            let wire_positions=differences.iter().filter_map(|&(_,pos,block,_)|matches!(block,Block::RedstoneWire { .. }).then_some(pos)).collect::<Vec<_>>();
-            let discovered=crate::redpiler::scratch::discover_wire_sources(&native,&wire_positions).unwrap();
-            let sources=discovered.iter().map(|s|json!({"target":s.wire,"source":s.source,"attenuation":s.attenuation,
-                "interpreter":canonical(native.get_block(s.source)),"sampled":runtime.project(s.source).map(canonical)})).collect::<Vec<_>>();
-            let report=json!({"tick":tick,"sources":sources,"differences":differences.iter().map(|(node,pos,actual,predicted)|json!({"node":node,"pos":pos,"interpreter":format!("{actual:?}"),"sampled":format!("{predicted:?}")})).collect::<Vec<_>>(),
+            let roots = differences.iter().map(|&(node, _, _, _)| node).collect::<Vec<_>>();
+            let nodes = cone(&runtime.program, &roots);
+            let positions = nodes.iter().map(|&node| runtime.program.positions[node]).collect::<Vec<_>>();
+            let wire_positions = differences
+                .iter()
+                .filter_map(|&(_, pos, block, _)| matches!(block, Block::RedstoneWire { .. }).then_some(pos))
+                .collect::<Vec<_>>();
+            let discovered = crate::redpiler::scratch::discover_wire_sources(&native, &wire_positions).unwrap();
+            let sources = discovered
+                .iter()
+                .map(|s| {
+                    json!({"target":s.wire,"source":s.source,"attenuation":s.attenuation,
+                "interpreter":canonical(native.get_block(s.source)),"sampled":runtime.project(s.source).map(canonical)})
+                })
+                .collect::<Vec<_>>();
+            let report = json!({"tick":tick,"sources":sources,"differences":differences.iter().map(|(node,pos,actual,predicted)|json!({"node":node,"pos":pos,"interpreter":format!("{actual:?}"),"sampled":format!("{predicted:?}")})).collect::<Vec<_>>(),
                 "sampled":runtime_state(runtime,&nodes),"interpreter":native_state(&native,&positions)});
-            let path=std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/anpu-first-divergence.json");
-            std::fs::write(&path,serde_json::to_vec_pretty(&report).unwrap()).unwrap();
-            panic!("ANPU first block divergence at tick {tick}: {:?}; {}",differences[0],path.display());
+            let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/anpu-first-divergence.json");
+            std::fs::write(&path, serde_json::to_vec_pretty(&report).unwrap()).unwrap();
+            panic!("ANPU first block divergence at tick {tick}: {:?}; {}", differences[0], path.display());
         }
-        if trace_pending && tick == 217 { native.observe_redstone_updates(true); }
+        if trace_pending && tick == 217 {
+            native.observe_redstone_updates(true);
+        }
         native.tick_interpreted();
         if trace_pending && tick == 217 {
             for event in native.take_redstone_update_observations() {
@@ -237,14 +289,22 @@ fn anpu_rust_reset_continues_like_interpreter() {
     let interpreter_pending: Vec<_> = interpreter.scheduler().iter_entries().collect();
     if compiled_pending != interpreter_pending {
         let first = compiled_pending.iter().zip(&interpreter_pending).position(|(a, b)| a != b);
-        eprintln!("pending before reset: actual={} expected={} first={first:?} actual_first={:?} expected_first={:?}",
-            compiled_pending.len(), interpreter_pending.len(), first.and_then(|index| compiled_pending.get(index)),
-            first.and_then(|index| interpreter_pending.get(index)));
+        eprintln!(
+            "pending before reset: actual={} expected={} first={first:?} actual_first={:?} expected_first={:?}",
+            compiled_pending.len(),
+            interpreter_pending.len(),
+            first.and_then(|index| compiled_pending.get(index)),
+            first.and_then(|index| interpreter_pending.get(index))
+        );
     }
     compiler.try_reset(&mut restored, (cpu.origin, cpu.origin)).unwrap();
     for tick in 0..=128 {
         for &pos in &positions {
-            assert_eq!(restored.get_block(pos), interpreter.get_block(pos), "reset continuation tick {tick}, {pos:?}");
+            assert_eq!(
+                restored.get_block(pos),
+                interpreter.get_block(pos),
+                "reset continuation tick {tick}, {pos:?}"
+            );
         }
         let expected: Vec<_> = interpreter.scheduler().iter_entries().collect();
         let actual: Vec<_> = restored.scheduler().iter_entries().collect();
@@ -252,17 +312,36 @@ fn anpu_rust_reset_continues_like_interpreter() {
             let first = actual.iter().zip(&expected).position(|(a, b)| a != b);
             let counts = |entries: &[mchprs_world::TickEntry]| {
                 let mut counts = std::collections::HashMap::new();
-                for entry in entries { *counts.entry(entry.clone()).or_insert(0usize) += 1; }
+                for entry in entries {
+                    *counts.entry(entry.clone()).or_insert(0usize) += 1;
+                }
                 counts
             };
             let actual_counts = counts(&actual);
             let expected_counts = counts(&expected);
-            let missing: Vec<_> = expected_counts.iter().filter(|(entry, count)| actual_counts.get(*entry).copied().unwrap_or(0) < **count).take(8).collect();
-            let extra: Vec<_> = actual_counts.iter().filter(|(entry, count)| expected_counts.get(*entry).copied().unwrap_or(0) < **count).take(8).collect();
-            panic!("pending ticks at reset continuation tick {tick}: actual={} expected={} first={first:?} actual_first={:?} expected_first={:?} missing={missing:?} extra={extra:?}",
-                actual.len(), expected.len(), first.and_then(|index| actual.get(index)), first.and_then(|index| expected.get(index)));
+            let missing: Vec<_> = expected_counts
+                .iter()
+                .filter(|(entry, count)| actual_counts.get(*entry).copied().unwrap_or(0) < **count)
+                .take(8)
+                .collect();
+            let extra: Vec<_> = actual_counts
+                .iter()
+                .filter(|(entry, count)| expected_counts.get(*entry).copied().unwrap_or(0) < **count)
+                .take(8)
+                .collect();
+            panic!(
+                "pending ticks at reset continuation tick {tick}: actual={} expected={} first={first:?} actual_first={:?} expected_first={:?} missing={missing:?} extra={extra:?}",
+                actual.len(),
+                expected.len(),
+                first.and_then(|index| actual.get(index)),
+                first.and_then(|index| expected.get(index))
+            );
         }
-        assert_eq!(restored.command_output().collect::<Vec<_>>(), interpreter.command_output().collect::<Vec<_>>(), "command output at tick {tick}");
+        assert_eq!(
+            restored.command_output().collect::<Vec<_>>(),
+            interpreter.command_output().collect::<Vec<_>>(),
+            "command output at tick {tick}"
+        );
         if tick < 128 {
             interpreter.tick_interpreted();
             restored.tick_interpreted();
@@ -732,7 +811,10 @@ fn cpu_outputs_match_native(cpu_index: usize, publish_every_tick: bool) {
         assert!(quiet_native(&native) && quiet_compiled(&compiler));
     }
     let suffix = if publish_every_tick { "-full-publication" } else { "" };
-    let artifact = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(format!("../../target/redpiler-reference-cases/{}-output-acceptance{suffix}.json", cpu.name));
+    let artifact = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(format!(
+        "../../target/redpiler-reference-cases/{}-output-acceptance{suffix}.json",
+        cpu.name
+    ));
     std::fs::create_dir_all(artifact.parent().unwrap()).unwrap();
     std::fs::write(
         &artifact,

@@ -3,7 +3,6 @@ use crate::world::storage::Chunk;
 use mchprs_blocks::block_entities::SignalStrength;
 use mchprs_blocks::items::ItemStack;
 
-
 #[test]
 fn overlapping_stacks_use_one_source_and_restore_original_entities() {
     for air in [AirPolicy::Copy, AirPolicy::Ignore] {

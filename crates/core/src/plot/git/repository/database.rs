@@ -22,29 +22,46 @@ pub(super) struct RecoveryRecord<'a> {
 
 impl Repository {
     pub(super) fn object_fingerprints(&self, id: &str) -> Result<(String, String)> {
-        Ok(self.conn.query_row("SELECT content,execution FROM objects WHERE id=?1", [id], |r| Ok((r.get(0)?, r.get(1)?)))?)
+        Ok(self
+            .conn
+            .query_row("SELECT content,execution FROM objects WHERE id=?1", [id], |r| Ok((r.get(0)?, r.get(1)?)))?)
     }
 
     pub(super) fn recovery_rows(&self, page: usize) -> Result<Vec<(String, i64, String, String)>> {
-        Ok(self.conn.prepare("SELECT id,date,name,source FROM recoveries ORDER BY seq DESC LIMIT 11 OFFSET ?1")?
+        Ok(self
+            .conn
+            .prepare("SELECT id,date,name,source FROM recoveries ORDER BY seq DESC LIMIT 11 OFFSET ?1")?
             .query_map([((page - 1) * 10) as i64], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))?
             .collect::<rusqlite::Result<_>>()?)
     }
 
     pub(super) fn recovery_matches(&self, reference: &str) -> Result<Vec<(String, String, String)>> {
-        Ok(self.conn.prepare("SELECT id,snapshot,parent FROM recoveries WHERE id LIKE ?1 LIMIT 2")?
+        Ok(self
+            .conn
+            .prepare("SELECT id,snapshot,parent FROM recoveries WHERE id LIKE ?1 LIMIT 2")?
             .query_map([format!("{reference}%")], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
             .collect::<rusqlite::Result<_>>()?)
     }
 
     pub(super) fn insert_recovery(&self, record: RecoveryRecord<'_>) -> Result<()> {
-        self.conn.execute("INSERT INTO recoveries(id,snapshot,parent,author,name,date,source) VALUES(?1,?2,?3,?4,?5,?6,?7)",
-            params![record.id, record.snapshot, record.parent, record.author.to_string(), record.name, record.date, record.source])?;
+        self.conn.execute(
+            "INSERT INTO recoveries(id,snapshot,parent,author,name,date,source) VALUES(?1,?2,?3,?4,?5,?6,?7)",
+            params![
+                record.id,
+                record.snapshot,
+                record.parent,
+                record.author.to_string(),
+                record.name,
+                record.date,
+                record.source
+            ],
+        )?;
         Ok(())
     }
 
     pub(super) fn insert_checkout(&self, destination: &str, target: &str, before: &str) -> Result<()> {
-        self.conn.execute("INSERT INTO checkout VALUES(1,?1,?2,?3)", params![destination, target, before])?;
+        self.conn
+            .execute("INSERT INTO checkout VALUES(1,?1,?2,?3)", params![destination, target, before])?;
         Ok(())
     }
 
@@ -56,7 +73,16 @@ impl Repository {
     pub(super) fn insert_commit(&self, commit: CommitRecord<'_>) -> Result<()> {
         self.conn.execute(
             "INSERT INTO commits(id,parent,snapshot,author,name,date,message,message_fold) VALUES(?1,?2,?3,?4,?5,?6,?7,?8)",
-            params![commit.id, commit.parent, commit.snapshot, commit.author.to_string(), commit.name, commit.date, commit.message, commit.message.to_lowercase()],
+            params![
+                commit.id,
+                commit.parent,
+                commit.snapshot,
+                commit.author.to_string(),
+                commit.name,
+                commit.date,
+                commit.message,
+                commit.message.to_lowercase()
+            ],
         )?;
         Ok(())
     }
@@ -67,7 +93,10 @@ impl Repository {
     }
 
     pub(super) fn set_branch_tip(&self, branch: &str, tip: &str) -> Result<()> {
-        self.conn.execute("INSERT INTO branches VALUES(?1,?2) ON CONFLICT(name) DO UPDATE SET tip=excluded.tip", params![branch, tip])?;
+        self.conn.execute(
+            "INSERT INTO branches VALUES(?1,?2) ON CONFLICT(name) DO UPDATE SET tip=excluded.tip",
+            params![branch, tip],
+        )?;
         Ok(())
     }
 
@@ -77,9 +106,11 @@ impl Repository {
     }
 
     pub(super) fn checkout_record(&self) -> Result<(String, String, String)> {
-        Ok(self.conn.query_row("SELECT branch,commit_id,before_snapshot FROM checkout WHERE id=1", [], |row| {
-            Ok((row.get(0)?, row.get(1)?, row.get(2)?))
-        })?)
+        Ok(self
+            .conn
+            .query_row("SELECT branch,commit_id,before_snapshot FROM checkout WHERE id=1", [], |row| {
+                Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+            })?)
     }
 
     pub(super) fn commit_history_details(&self, id: &str) -> Result<(Option<String>, i64, String)> {
@@ -89,9 +120,11 @@ impl Repository {
     }
 
     pub(super) fn commit_details(&self, id: &str) -> Result<(String, i64, String, Option<String>)> {
-        Ok(self.conn.query_row("SELECT name,date,message,parent FROM commits WHERE id=?1", [id], |row| {
-            Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
-        })?)
+        Ok(self
+            .conn
+            .query_row("SELECT name,date,message,parent FROM commits WHERE id=?1", [id], |row| {
+                Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
+            })?)
     }
 
     pub(super) fn active_reference(&self) -> Result<String> {
@@ -99,16 +132,25 @@ impl Repository {
     }
 
     pub(super) fn branch_tip(&self, name: &str) -> Result<Option<String>> {
-        Ok(self.conn.query_row("SELECT tip FROM branches WHERE name=?1", [name], |row| row.get(0)).optional()?)
+        Ok(self
+            .conn
+            .query_row("SELECT tip FROM branches WHERE name=?1", [name], |row| row.get(0))
+            .optional()?)
     }
 
     pub(super) fn commit_matches(&self, reference: &str) -> Result<Vec<String>> {
         let mut query = self.conn.prepare("SELECT id FROM commits WHERE id LIKE ?1 LIMIT 2")?;
-        Ok(query.query_map([format!("{}%", reference.to_ascii_lowercase())], |row| row.get(0))?.collect::<rusqlite::Result<_>>()?)
+        Ok(query
+            .query_map([format!("{}%", reference.to_ascii_lowercase())], |row| row.get(0))?
+            .collect::<rusqlite::Result<_>>()?)
     }
 
     pub(super) fn branch_names(&self) -> Result<Vec<String>> {
-        Ok(self.conn.prepare("SELECT name FROM branches ORDER BY name")?.query_map([], |row| row.get(0))?.collect::<rusqlite::Result<_>>()?)
+        Ok(self
+            .conn
+            .prepare("SELECT name FROM branches ORDER BY name")?
+            .query_map([], |row| row.get(0))?
+            .collect::<rusqlite::Result<_>>()?)
     }
 
     pub(super) fn checkout_exists(&self) -> Result<bool> {
@@ -245,7 +287,6 @@ impl Repository {
         Ok(self.conn.query_row("SELECT snapshot FROM commits WHERE id=?1", [commit], |r| r.get(0))?)
     }
 
-
     pub(super) fn object_raw_size(&self, object: &str) -> Result<usize> {
         let prefix: Vec<u8> = self
             .conn
@@ -254,7 +295,6 @@ impl Repository {
         ensure!(size <= self.limits.snapshot, messages::GIT_OBJECT_SNAPSHOT_SIZE_LIMIT);
         Ok(size)
     }
-
 
     pub(super) fn load_object(&self, id: &str) -> Result<Snapshot> {
         let declared = self.object_raw_size(id)?;
@@ -296,7 +336,6 @@ impl Repository {
         Ok(())
     }
 
-
     pub(super) fn branch_tips(&self) -> Result<Vec<(String, String)>> {
         Ok(self
             .conn
@@ -304,7 +343,6 @@ impl Repository {
             .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
             .collect::<rusqlite::Result<_>>()?)
     }
-
 
     pub(super) fn history_rows(&self, all: bool, query: Option<&str>, offset: usize, limit: usize) -> Result<Vec<Value>> {
         let (active, tip) = self.head()?;
@@ -366,5 +404,4 @@ impl Repository {
             })
             .collect())
     }
-
 }

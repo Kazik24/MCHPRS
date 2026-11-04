@@ -1328,8 +1328,14 @@ mod security_tests {
         let options = CompilerOptions::parse("--io-only -u").unwrap();
         assert!(options.io_only && options.update);
         assert!(CompilerOptions::parse("--llvm").unwrap().llvm);
-        assert_eq!(CompilerOptions::parse("--publish-all").unwrap().publication, Some(crate::redpiler::PublicationMode::All));
-        assert_eq!(CompilerOptions::parse("--publish-redstone").unwrap().publication, Some(crate::redpiler::PublicationMode::Redstone));
+        assert_eq!(
+            CompilerOptions::parse("--publish-all").unwrap().publication,
+            Some(crate::redpiler::PublicationMode::All)
+        );
+        assert_eq!(
+            CompilerOptions::parse("--publish-redstone").unwrap().publication,
+            Some(crate::redpiler::PublicationMode::Redstone)
+        );
         let io = CompilerOptions::parse("--publish-io").unwrap();
         assert_eq!(io.publication, Some(crate::redpiler::PublicationMode::Io));
         assert!(io.io_only);
@@ -1343,13 +1349,33 @@ mod security_tests {
     fn redpiler_completion_offers_only_supported_compile_flags() {
         let nodes = declared_command_nodes();
         let redpiler = nodes.iter().find(|node| node.name == Some("redpiler")).unwrap();
-        let compile = redpiler.children.iter().map(|&id| &nodes[id as usize]).find(|node| node.name == Some("compile")).unwrap();
+        let compile = redpiler
+            .children
+            .iter()
+            .map(|&id| &nodes[id as usize])
+            .find(|node| node.name == Some("compile"))
+            .unwrap();
         let flags = &nodes[compile.children[0] as usize];
         assert_eq!(flags.name, Some("flags"));
         assert_eq!(flags.suggestions_type, Some("minecraft:ask_server"));
         for (text, expected) in [
-            ("/rp compile --", vec!["--publish-all", "--publish-redstone", "--publish-io", "--io-only", "--update", "--llvm"]),
-            ("/redpiler c -", vec!["--publish-all", "--publish-redstone", "--publish-io", "--io-only", "--update", "--llvm", "-i", "-u"]),
+            (
+                "/rp compile --",
+                vec!["--publish-all", "--publish-redstone", "--publish-io", "--io-only", "--update", "--llvm"],
+            ),
+            (
+                "/redpiler c -",
+                vec![
+                    "--publish-all",
+                    "--publish-redstone",
+                    "--publish-io",
+                    "--io-only",
+                    "--update",
+                    "--llvm",
+                    "-i",
+                    "-u",
+                ],
+            ),
             ("/rp publish ", vec!["all", "redstone", "io"]),
             ("/redpiler publish r", vec!["redstone"]),
             ("/rp compile --graph", vec![]),
@@ -1360,8 +1386,19 @@ mod security_tests {
         assert!(complete_redpiler(0, "/rp analyze ").is_none());
         assert!(complete_redpiler(0, "/rp inspect ").is_none());
         assert!(complete_redpiler(0, "/rp reset ").is_none());
-        let publish = redpiler.children.iter().map(|&id| &nodes[id as usize]).find(|node| node.name == Some("publish")).unwrap();
-        assert_eq!(publish.children.iter().map(|&id| nodes[id as usize].name.unwrap()).collect::<Vec<_>>(), ["all", "redstone", "io"]);
-        assert_eq!(native_command_permission("/rp", &["publish", "all"]).as_deref(), Some("commands.redpiler.compile"));
+        let publish = redpiler
+            .children
+            .iter()
+            .map(|&id| &nodes[id as usize])
+            .find(|node| node.name == Some("publish"))
+            .unwrap();
+        assert_eq!(
+            publish.children.iter().map(|&id| nodes[id as usize].name.unwrap()).collect::<Vec<_>>(),
+            ["all", "redstone", "io"]
+        );
+        assert_eq!(
+            native_command_permission("/rp", &["publish", "all"]).as_deref(),
+            Some("commands.redpiler.compile")
+        );
     }
 }

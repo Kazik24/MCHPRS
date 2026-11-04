@@ -63,17 +63,35 @@ fn paste_has_margin(world: &PlotWorld, first: BlockPos, last: BlockPos) -> bool 
 fn fitting_position(world: &PlotWorld, cb: &WorldEditClipboard, current: BlockPos) -> Option<BlockPos> {
     let mut coordinates = [0; 3];
     for (index, (plot, capacity, size, offset, current)) in [
-        (i64::from(world.x) * i64::from(PLOT_BLOCK_WIDTH), PLOT_BLOCK_WIDTH, cb.size_x, cb.offset_x, current.x),
+        (
+            i64::from(world.x) * i64::from(PLOT_BLOCK_WIDTH),
+            PLOT_BLOCK_WIDTH,
+            cb.size_x,
+            cb.offset_x,
+            current.x,
+        ),
         (0, PLOT_BLOCK_HEIGHT, cb.size_y, cb.offset_y, current.y),
-        (i64::from(world.z) * i64::from(PLOT_BLOCK_WIDTH), PLOT_BLOCK_WIDTH, cb.size_z, cb.offset_z, current.z),
-    ].into_iter().enumerate() {
-        if size == 0 || i64::from(size) > i64::from(capacity) { return None; }
+        (
+            i64::from(world.z) * i64::from(PLOT_BLOCK_WIDTH),
+            PLOT_BLOCK_WIDTH,
+            cb.size_z,
+            cb.offset_z,
+            current.z,
+        ),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        if size == 0 || i64::from(size) > i64::from(capacity) {
+            return None;
+        }
         // The paste must fit, and its player anchor must remain inside this plot.
         let margin = if index == 1 { 0 } else { HORIZONTAL_PASTE_MARGIN };
         let low = (plot + i64::from(offset) + margin).max(plot);
-        let high = (plot + i64::from(capacity) - margin - i64::from(size) + i64::from(offset))
-            .min(plot + i64::from(capacity) - 1);
-        if low > high { return None; }
+        let high = (plot + i64::from(capacity) - margin - i64::from(size) + i64::from(offset)).min(plot + i64::from(capacity) - 1);
+        if low > high {
+            return None;
+        }
         coordinates[index] = i32::try_from(i64::from(current).clamp(low, high)).ok()?;
     }
     Some(BlockPos::new(coordinates[0], coordinates[1], coordinates[2]))
@@ -174,8 +192,12 @@ mod tests {
 
     fn placement_clipboard() -> WorldEditClipboard {
         WorldEditClipboard {
-            offset_x: 7, offset_y: 5, offset_z: -4,
-            size_x: 20, size_y: 30, size_z: 40,
+            offset_x: 7,
+            offset_y: 5,
+            offset_z: -4,
+            size_x: 20,
+            size_y: 30,
+            size_z: 40,
             data: PalettedBitBuffer::new(20 * 30 * 40, 9),
             block_entities: Default::default(),
         }
@@ -193,7 +215,10 @@ mod tests {
         assert!(paste_has_margin(&world, first, last));
         assert!(Plot::in_plot_bounds(world.x, world.z, destination.x, destination.z));
         let help = paste_placement_help(&world, &cb, current);
-        assert_eq!(help["extra"][0]["click_event"]["command"], format!("/tp {} {} {}", destination.x, destination.y, destination.z));
+        assert_eq!(
+            help["extra"][0]["click_event"]["command"],
+            format!("/tp {} {} {}", destination.x, destination.y, destination.z)
+        );
         assert!(paste_placement_help(&world, &cb, destination).get("extra").is_none());
     }
 

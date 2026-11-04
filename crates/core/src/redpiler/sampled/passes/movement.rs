@@ -39,7 +39,8 @@ pub(in super::super) fn run(
                 crate::redstone::skipping_update_surrounding_blocks(w, cell, false);
                 for event in w.take_redstone_update_observations() {
                     if let Block::Observer { observer } = event.block
-                        && !event.direction.is_some_and(|direction| observer.facing == direction.into()) {
+                        && !event.direction.is_some_and(|direction| observer.facing == direction.into())
+                    {
                         continue;
                     }
                     if let Some(&index) = probe_indexes.components.get(&event.pos)

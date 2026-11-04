@@ -83,13 +83,19 @@ pub(super) fn sample(program: &mut Program, scratch: &mut ScratchWorld, monitor:
                     })?;
                     let states = Local {
                         axes: states.axes,
-                        ports: states.ports.into_iter().map(|state| state.map(|map| {
-                            *maps.entry(map).or_insert_with(|| {
-                                let index = program.shape_maps.len();
-                                program.shape_maps.push(map);
-                                index
+                        ports: states
+                            .ports
+                            .into_iter()
+                            .map(|state| {
+                                state.map(|map| {
+                                    *maps.entry(map).or_insert_with(|| {
+                                        let index = program.shape_maps.len();
+                                        program.shape_maps.push(map);
+                                        index
+                                    })
+                                })
                             })
-                        })).collect(),
+                            .collect(),
                     };
                     let mut callbacks = Vec::new();
                     crate::redstone::wire_update_notifications(pos, |at, direction, indirect| {
@@ -131,23 +137,45 @@ mod tests {
             world.set_block(pos, Block::Stone {});
         }
         for pos in [wire, upper_wire] {
-            world.set_block(pos, Block::RedstoneWire { wire: RedstoneWire::default() });
+            world.set_block(
+                pos,
+                Block::RedstoneWire {
+                    wire: RedstoneWire::default(),
+                },
+            );
         }
         let mut program = Program::new(
             vec![wire, upper_wire],
             vec![world.get_block(wire), world.get_block(upper_wire)],
-            vec![], vec![[vec![], vec![]]; 2], vec![], vec![], vec![],
-        ).unwrap();
-        program.tokens = vec![super::super::compiler::PistonToken {
-            block: Block::Stone {}, position: None, cells: vec![cap],
-        }; 2];
+            vec![],
+            vec![[vec![], vec![]]; 2],
+            vec![],
+            vec![],
+            vec![],
+        )
+        .unwrap();
+        program.tokens = vec![
+            super::super::compiler::PistonToken {
+                block: Block::Stone {},
+                position: None,
+                cells: vec![cap],
+            };
+            2
+        ];
         let mut scratch = ScratchWorld::from_world(
             &world,
             (BlockPos::new(9, 9, 9), BlockPos::new(22, 22, 22)),
-            super::super::ScratchEntry { scheduled: vec![], piston: world.piston_state().clone() },
-        ).unwrap();
+            super::super::ScratchEntry {
+                scheduled: vec![],
+                piston: world.piston_state().clone(),
+            },
+        )
+        .unwrap();
         sample(&mut program, &mut scratch, None).unwrap();
-        let step = program.shape_programs[&cap].clone().find(|&index| program.shape_steps[index].node == 0).unwrap();
+        let step = program.shape_programs[&cap]
+            .clone()
+            .find(|&index| program.shape_steps[index].node == 0)
+            .unwrap();
         let states = &program.shape_steps[step].states;
         assert_eq!(states.axes, vec![Axis::Token(0, 1), Axis::Token(1, 1)]);
         assert_ne!(states.ports[0], states.ports[1]);

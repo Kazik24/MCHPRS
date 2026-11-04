@@ -7,7 +7,6 @@ use std::thread::JoinHandle;
 #[cfg(test)]
 mod tests;
 
-
 pub(super) struct CompilationJob {
     /// Time the request started, including snapshot preparation.
     started: Instant,
@@ -109,10 +108,14 @@ impl Plot {
     }
 
     pub(super) fn start_automatic_redpiler(&mut self, options: CompilerOptions) {
-        let budget = self.players.iter()
-            .filter(|player| player.has_permission("commands.redpiler.compile")
-                && player.has_permission("commands.toggleautorp")
-                && player.can_edit_plot(self.owner, (self.world.x, self.world.z)))
+        let budget = self
+            .players
+            .iter()
+            .filter(|player| {
+                player.has_permission("commands.redpiler.compile")
+                    && player.has_permission("commands.toggleautorp")
+                    && player.can_edit_plot(self.owner, (self.world.x, self.world.z))
+            })
             .filter_map(|player| player.redpiler_compile_budget().ok())
             .max_by_key(|budget| budget.unwrap_or(Duration::MAX));
         if let Some(budget) = budget {
@@ -146,9 +149,11 @@ impl Plot {
             .map(|container| container.pos)
             .collect();
         let cacheable = open_barrels.is_empty();
-        let cached = self.redpiler_cache.as_ref().filter(|cache| {
-            cacheable && cache.options == options && cache.entry.matches(&self.world)
-        }).map(|cache| Arc::clone(&cache.program));
+        let cached = self
+            .redpiler_cache
+            .as_ref()
+            .filter(|cache| cacheable && cache.options == options && cache.entry.matches(&self.world))
+            .map(|cache| Arc::clone(&cache.program));
         if cached.is_none() {
             self.redpiler_cache = None;
         }
@@ -160,8 +165,15 @@ impl Plot {
         info!(plot_x = self.world.x, plot_z = self.world.z, snapshot_ms, ?options, "Redpiler started");
         self.scoreboard.set_redpiler_state(&self.players, RedpilerState::Compiling);
         self.scoreboard.set_redpiler_options(&self.players, &options);
-        let milestone = format!("Redpiler: snapshot ready ({} ms); {}", snapshot_ms,
-            if cached.is_some() { "reusing compiled circuit" } else { "compiling circuit" });
+        let milestone = format!(
+            "Redpiler: snapshot ready ({} ms); {}",
+            snapshot_ms,
+            if cached.is_some() {
+                "reusing compiled circuit"
+            } else {
+                "compiling circuit"
+            }
+        );
         for player in &self.players {
             player.send_raw_system_message(crate::player::diagnostic_component(&milestone).to_string());
         }
@@ -201,15 +213,20 @@ impl Plot {
 
     pub(super) fn poll_redpiler_compilation(&mut self) {
         if let Some(job) = &mut self.compilation
-            && job.monitor.budget_expired() && !job.budget_reported
+            && job.monitor.budget_expired()
+            && !job.budget_reported
         {
             job.budget_reported = true;
             let started = job.started;
-            let reason = format!("Compilation exceeded your {} second budget. Try a smaller circuit.", job.budget.unwrap().as_secs());
+            let reason = format!(
+                "Compilation exceeded your {} second budget. Try a smaller circuit.",
+                job.budget.unwrap().as_secs()
+            );
             self.reject_redpiler(started, &reason);
         }
         if let Some(job) = &mut self.compilation
-            && !job.worker.is_finished() && !job.monitor.cancelled()
+            && !job.worker.is_finished()
+            && !job.monitor.cancelled()
             && (job.last_progress.elapsed() >= Duration::from_secs(3)
                 || (job.monitor.phase_number() != job.last_phase && job.last_progress.elapsed() >= Duration::from_millis(250)))
         {
@@ -235,7 +252,10 @@ impl Plot {
         let output = match completed {
             Ok(output) => output,
             Err(_) => {
-                self.reject_redpiler(job.started, &messages::redpiler_failed_phase(&job.monitor.status(), messages::REDPILER_WORKER_FAILED));
+                self.reject_redpiler(
+                    job.started,
+                    &messages::redpiler_failed_phase(&job.monitor.status(), messages::REDPILER_WORKER_FAILED),
+                );
                 return;
             }
         };

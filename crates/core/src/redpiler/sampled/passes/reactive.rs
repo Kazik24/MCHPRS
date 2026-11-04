@@ -56,7 +56,9 @@ pub(in super::super) fn run(
                 let (mut rear, side) = inputs[node];
                 if let Some(input) = record.rear_override {
                     rear = override_level(input);
-                } else if rear < 15 && let Some(input) = record.far_override {
+                } else if rear < 15
+                    && let Some(input) = record.far_override
+                {
                     rear = override_level(input);
                 }
                 let (level, powered) = crate::redpiler::sampled::executor::compare(rear, side, comparator.mode);

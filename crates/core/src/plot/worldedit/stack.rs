@@ -1,7 +1,7 @@
 use super::{Plot, PlotWorld};
-use crate::plot::redstone_tools::{SelectionBounds, ToolCommand, ToolNotice};
 use crate::messages;
 use crate::player::Player;
+use crate::plot::redstone_tools::{SelectionBounds, ToolCommand, ToolNotice};
 use crate::plot::worldedit::{self, AirPolicy};
 use crate::world::World;
 use anyhow::{Context, Result, bail};

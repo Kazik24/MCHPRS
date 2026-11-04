@@ -18,8 +18,8 @@ mod tests;
 pub use crate::world::scheduler::{Queues, ScheduledBlockTick, TickScheduler};
 pub use compiler::{CompileError, CompileStatistics, Compiler, ExecutionError};
 pub use options::{CompilerOptions, PublicationMode};
-pub use task_monitor::TaskMonitor;
 pub(crate) use sampled::Program as CachedProgram;
+pub use task_monitor::TaskMonitor;
 
 pub(crate) fn initialize_llvm_cache() -> Result<(), String> {
     sampled::initialize_cache()

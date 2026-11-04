@@ -21,7 +21,10 @@ fn main() {
         .map_or(1, |pair| pair[1].parse::<usize>().expect("--iterations needs a positive integer"));
     assert!(iterations > 0);
     let selected = args.windows(2).find(|pair| pair[0] == "--cpu").map(|pair| pair[1].as_str());
-    let engine = args.windows(2).find(|pair| pair[0] == "--engine").map_or("interpreter", |pair| pair[1].as_str());
+    let engine = args
+        .windows(2)
+        .find(|pair| pair[0] == "--engine")
+        .map_or("interpreter", |pair| pair[1].as_str());
     assert!(matches!(engine, "interpreter" | "redpiler"), "unknown engine {engine}");
     let redpiler = engine == "redpiler";
     let output = args.windows(2).find(|pair| pair[0] == "--output").map(|pair| &pair[1]);

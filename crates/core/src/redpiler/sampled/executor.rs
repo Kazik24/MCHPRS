@@ -326,12 +326,17 @@ impl Runtime {
         if let Some(steps) = self.program.cell_shape_steps[cell].clone() {
             for index in steps {
                 let node = self.program.shape_steps[index].node;
-                if !self.consume_component_operation(node) { return; }
+                if !self.consume_component_operation(node) {
+                    return;
+                }
                 let step = &self.program.shape_steps[index];
                 if let Block::RedstoneWire { wire } = self.blocks[node] {
                     let map = step.states.select(|super::routing::Axis::Token(token, _)| self.token_digits[token]);
                     let Some(map) = map else {
-                        self.failure = Some(ScratchError { position: Some(position), reason: "invalid wire shape arrangement" });
+                        self.failure = Some(ScratchError {
+                            position: Some(position),
+                            reason: "invalid wire shape arrangement",
+                        });
                         return;
                     };
                     let map = &self.program.shape_maps[*map];
@@ -340,7 +345,9 @@ impl Runtime {
                         self.set_component(node, Block::RedstoneWire { wire: next });
                         for callback in 0..self.program.shape_steps[index].callbacks.len() {
                             let target = self.program.shape_steps[index].callbacks[callback];
-                            if !self.consume_component_operation(target) { return; }
+                            if !self.consume_component_operation(target) {
+                                return;
+                            }
                             // Shape callbacks may revisit a component after another callback changed it.
                             self.update(target);
                         }
@@ -803,7 +810,9 @@ impl Runtime {
 
     fn set_arrangement_contribution(&mut self, index: usize, target: usize, side: bool, value: u8) {
         let old = self.arrangement_contributions[index];
-        if old == value { return; }
+        if old == value {
+            return;
+        }
         self.arrangement_contributions[index] = value;
         self.input_levels[target][usize::from(side)].change(old, value, &mut self.input_histograms);
     }
@@ -835,7 +844,9 @@ impl Runtime {
 
     fn routed_values(&mut self, changed: Option<usize>) -> Result<Vec<(usize, u8)>, ScratchError> {
         let program = std::sync::Arc::clone(&self.program);
-        let Some(graph) = &program.routing else { return Ok(Vec::new()); };
+        let Some(graph) = &program.routing else {
+            return Ok(Vec::new());
+        };
         let readers: Vec<_> = changed.map_or_else(|| (0..graph.reader_count()).collect(), |token| graph.readers_for_token(token).to_vec());
         #[cfg(feature = "redpiler-trace")]
         if changed.is_some() {
@@ -846,10 +857,16 @@ impl Runtime {
         self.route_search.spent = 0;
         let mut updates = Vec::new();
         for reader in readers {
-            let values = graph.reader_sources(reader, |super::routing::Axis::Token(token, _)| self.token_digits[token], &mut self.route_search);
+            let values = graph.reader_sources(
+                reader,
+                |super::routing::Axis::Token(token, _)| self.token_digits[token],
+                &mut self.route_search,
+            );
             if changed.is_some() {
                 #[cfg(feature = "redpiler-trace")]
-                { self.routing_metrics[2] += self.route_search.spent as u64; }
+                {
+                    self.routing_metrics[2] += self.route_search.spent as u64;
+                }
                 self.tick_operations += self.route_search.spent;
                 self.operations += self.route_search.spent;
             }
@@ -865,35 +882,57 @@ impl Runtime {
 
     pub(super) fn initialize_routing(&mut self) {
         match self.routed_values(None) {
-            Ok(values) => for (index, attenuation) in values { self.routing_attenuations[index] = Some(attenuation); },
+            Ok(values) => {
+                for (index, attenuation) in values {
+                    self.routing_attenuations[index] = Some(attenuation);
+                }
+            }
             Err(error) => self.failure = Some(error),
         }
     }
 
     fn refresh_routing(&mut self, token: usize, switched: &mut Vec<usize>) {
-        if self.program.routing.as_ref().is_none_or(|graph| graph.readers_for_token(token).is_empty()) { return; }
+        if self
+            .program
+            .routing
+            .as_ref()
+            .is_none_or(|graph| graph.readers_for_token(token).is_empty())
+        {
+            return;
+        }
         let updates = match self.routed_values(Some(token)) {
             Ok(values) => values,
-            Err(error) => { self.failure = Some(error); return; }
+            Err(error) => {
+                self.failure = Some(error);
+                return;
+            }
         };
         for (index, attenuation) in updates {
             let old = self.routing_attenuations[index].unwrap_or(u8::MAX);
-            if old == attenuation { continue; }
+            if old == attenuation {
+                continue;
+            }
             let link = self.program.arrangement_links[index].clone();
             let strength = self.arrangement_output(link.source);
             if old != u8::MAX {
-                if !self.consume_component_operation(link.target) { return; }
+                if !self.consume_component_operation(link.target) {
+                    return;
+                }
                 self.routing_attenuations[index] = Some(u8::MAX);
                 self.set_arrangement_contribution(index, link.target, link.side, 0);
                 self.operations += 1;
             }
             if attenuation != u8::MAX {
-                if !self.consume_component_operation(link.target) { return; }
+                if !self.consume_component_operation(link.target) {
+                    return;
+                }
                 self.routing_attenuations[index] = Some(attenuation);
                 self.set_arrangement_contribution(index, link.target, link.side, strength.saturating_sub(attenuation));
                 self.operations += 1;
             }
-            if strength > old || strength > attenuation { self.updated_in_phase[link.target] = 0; }
+            if strength > old || strength > attenuation {
+                self.updated_in_phase[link.target] = 0;
+            }
             if !matches!(self.blocks[link.target], Block::Piston { .. }) && !self.switched[link.target] {
                 self.switched[link.target] = true;
                 switched.push(link.target);
@@ -956,17 +995,32 @@ impl Runtime {
 
     fn run_move_steps(&mut self, token: usize, cell: usize, arriving: bool, switched: &mut Vec<usize>, changed_wires: &mut Vec<usize>) {
         self.refresh_routing(token, switched);
-        if self.failure.is_some() { return; }
+        if self.failure.is_some() {
+            return;
+        }
         for &component in &self.program.token_piston_components[token] {
             self.updated_in_phase[component] = 0;
         }
-        let transitions = self.program.movement_cells.get(token).and_then(|cells| cells.get(cell)).cloned().unwrap_or(0..0);
+        let transitions = self
+            .program
+            .movement_cells
+            .get(token)
+            .and_then(|cells| cells.get(cell))
+            .cloned()
+            .unwrap_or(0..0);
         for index in transitions {
             let record = &self.program.movement_transitions[index];
             let before = self.group_arrangements[record.group];
-            let after = if arriving { before.checked_add(record.delta) } else { before.checked_sub(record.delta) };
+            let after = if arriving {
+                before.checked_add(record.delta)
+            } else {
+                before.checked_sub(record.delta)
+            };
             let Some(after) = after.filter(|&state| before < record.states && state < record.states) else {
-                self.failure = Some(ScratchError { position: self.program.tokens[token].position, reason: "invalid movement transition" });
+                self.failure = Some(ScratchError {
+                    position: self.program.tokens[token].position,
+                    reason: "invalid movement transition",
+                });
                 return;
             };
             let state = if arriving { after } else { before };
@@ -1135,12 +1189,32 @@ impl Runtime {
     }
 
     // shortcut: receiver signatures omit geometry-dependent fixed links, extend arrangement groups to all readers.
-    fn token_dependency_signature(&self, changed: usize, target: usize, position: Option<mchprs_blocks::BlockPos>) -> Result<Vec<(ArrangementSource, u8)>, ScratchError> {
+    fn token_dependency_signature(
+        &self,
+        changed: usize,
+        target: usize,
+        position: Option<mchprs_blocks::BlockPos>,
+    ) -> Result<Vec<(ArrangementSource, u8)>, ScratchError> {
         let token_position = |token: usize| if token == changed { position } else { self.token_positions[token] };
-        if let Some(graph) = &self.program.routing && let Some(reader) = graph.reader_for_component(target) {
-            return graph.reader_sources(reader, |super::routing::Axis::Token(token, _)| {
-                token_position(token).and_then(|pos| self.program.tokens[token].cells.iter().position(|&cell| cell == pos)).map_or(0, |cell| cell + 1)
-            }, &mut super::routing::Search::default()).map(|sources| sources.into_iter().filter_map(|((source, side), attenuation)| (!side).then_some((source, attenuation))).collect());
+        if let Some(graph) = &self.program.routing
+            && let Some(reader) = graph.reader_for_component(target)
+        {
+            return graph
+                .reader_sources(
+                    reader,
+                    |super::routing::Axis::Token(token, _)| {
+                        token_position(token)
+                            .and_then(|pos| self.program.tokens[token].cells.iter().position(|&cell| cell == pos))
+                            .map_or(0, |cell| cell + 1)
+                    },
+                    &mut super::routing::Search::default(),
+                )
+                .map(|sources| {
+                    sources
+                        .into_iter()
+                        .filter_map(|((source, side), attenuation)| (!side).then_some((source, attenuation)))
+                        .collect()
+                });
         }
         let mut result = Vec::new();
         let arrangements: Vec<_> = self.program.input_arrangements.iter().filter(|group| group.target == target).collect();
@@ -1406,10 +1480,17 @@ impl Runtime {
         if let Block::Observer { observer } = self.blocks[receiver] {
             // Dust power callbacks have no direction; only a powered observer may release.
             if observer.powered {
-                let tick = ScheduledComponentTick { component: receiver, block_type: Some(self.blocks[receiver].registry_id()) };
-                if !self.has_pending(tick) { self.schedule_tick(tick, 1, TickPriority::Normal); }
+                let tick = ScheduledComponentTick {
+                    component: receiver,
+                    block_type: Some(self.blocks[receiver].registry_id()),
+                };
+                if !self.has_pending(tick) {
+                    self.schedule_tick(tick, 1, TickPriority::Normal);
+                }
             }
-        } else { self.update_once(receiver); }
+        } else {
+            self.update_once(receiver);
+        }
     }
 
     pub(super) fn execute_output_program(&mut self, component: usize, powered: bool) {

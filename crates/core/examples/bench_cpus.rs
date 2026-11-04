@@ -45,7 +45,11 @@ fn run_sample(cpu: cpus::Cpu, ticks: u32, sample: usize, kernel_only: bool, llvm
     let mut native = cpus::load_cpu(cpu);
     let native_import = import.elapsed();
     let native_preparation = prepare_native(&mut native, cpu);
-    let run = if cpu.name == "zcore12b_sierpinski" { BlockPos::new(207, 10, 154) } else { cpu.start };
+    let run = if cpu.name == "zcore12b_sierpinski" {
+        BlockPos::new(207, 10, 154)
+    } else {
+        cpu.start
+    };
     let mut expected = vec![outputs(&native, cpu)];
     let mut native_ticks = Duration::ZERO;
     cpus::click_cpu(&mut native, cpu, run);
@@ -61,8 +65,17 @@ fn run_sample(cpu: cpus::Cpu, ticks: u32, sample: usize, kernel_only: bool, llvm
     let initial = cpus::load_cpu(cpu);
     let compiled_import = import.elapsed();
     let compilation = Instant::now();
-    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| cpus::compile_cpu_with_options(initial, cpu,
-        mchprs_core::redpiler::CompilerOptions { llvm, publication:full_publication.then_some(mchprs_core::redpiler::PublicationMode::All), ..Default::default() })));
+    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        cpus::compile_cpu_with_options(
+            initial,
+            cpu,
+            mchprs_core::redpiler::CompilerOptions {
+                llvm,
+                publication: full_publication.then_some(mchprs_core::redpiler::PublicationMode::All),
+                ..Default::default()
+            },
+        )
+    }));
     let (mut world, mut compiler, admission_wall) = match outcome {
         Ok(value) => value,
         Err(error) => {
@@ -210,7 +223,10 @@ fn main() {
     let mut results = Vec::new();
     for sample in 1..=runs {
         let mut result = run_sample(cpus::CPUS[index], ticks, sample, kernel_only, llvm);
-        result.as_object_mut().unwrap().insert("backend".into(), json!(if llvm { "llvm" } else { "rust" }));
+        result
+            .as_object_mut()
+            .unwrap()
+            .insert("backend".into(), json!(if llvm { "llvm" } else { "rust" }));
         eprintln!(
             "{name} sample {sample}: status={} native TPS={} kernel TPS={} compiled {} publication TPS={} compile ms={}",
             result["status"],
@@ -224,7 +240,11 @@ fn main() {
         result.as_object_mut().unwrap().insert("provenance".into(), provenance.clone());
         results.push(result);
         std::fs::write(
-            destination.join(format!("{name}-{}{}.json", if kernel_only { "kernel" } else { "production" }, if llvm { "-llvm" } else { "" })),
+            destination.join(format!(
+                "{name}-{}{}.json",
+                if kernel_only { "kernel" } else { "production" },
+                if llvm { "-llvm" } else { "" }
+            )),
             serde_json::to_vec_pretty(&results).unwrap(),
         )
         .unwrap();

@@ -1,4 +1,7 @@
-use super::{CompilerOptions, PublicationMode, TaskMonitor, sampled::{self, ExportKey, MovingPart, LlvmRuntime, Runtime, ScratchEntry, ScratchError}};
+use super::{
+    CompilerOptions, PublicationMode, TaskMonitor,
+    sampled::{self, ExportKey, LlvmRuntime, MovingPart, Runtime, ScratchEntry, ScratchError},
+};
 use crate::redstone;
 use crate::world::{World, for_each_block_mut_optimized};
 use mchprs_blocks::{BlockPos, block_entities::BlockEntity, blocks::Block};
@@ -28,10 +31,14 @@ impl std::fmt::Display for CompileError {
             }
             Self::UnsupportedComponents { first, total } => {
                 for (index, error) in first.iter().enumerate() {
-                    if index > 0 { f.write_str("; ")?; }
+                    if index > 0 {
+                        f.write_str("; ")?;
+                    }
                     if let Some(pos) = error.position {
                         write!(f, "{} at ({}, {}, {})", error.reason, pos.x, pos.y, pos.z)?;
-                    } else { f.write_str(error.reason)?; }
+                    } else {
+                        f.write_str(error.reason)?;
+                    }
                 }
                 if *total > first.len() {
                     write!(f, "; and {} other unsupported LLVM components", total - first.len())?;
@@ -57,17 +64,30 @@ impl CompileError {
             Some(messages::REDPILER_RETRY_RUST)
         } else if reason.starts_with("LLVM cannot compile during")
             || reason == "LLVM cannot import pending piston work; let it settle before compiling"
-            || matches!(reason, "scratch entry is mid-tick" | "scratch entry has queued piston work"
-                | "scratch entry has piston motion" | "scratch entry has pending movement work") {
+            || matches!(
+                reason,
+                "scratch entry is mid-tick"
+                    | "scratch entry has queued piston work"
+                    | "scratch entry has piston motion"
+                    | "scratch entry has pending movement work"
+            )
+        {
             Some(messages::REDPILER_RETRY_SETTLED)
-        } else if matches!(reason, "LLVM DLL ABI/version mismatch" | "LLVM DLL is missing a required export"
-            | "LLVM module is missing a required export" | "could not load LLVM DLL (set MCHPRS_LLVM_DLL)"
-            | "could not load LLVM module") {
+        } else if matches!(
+            reason,
+            "LLVM DLL ABI/version mismatch"
+                | "LLVM DLL is missing a required export"
+                | "LLVM module is missing a required export"
+                | "could not load LLVM DLL (set MCHPRS_LLVM_DLL)"
+                | "could not load LLVM module"
+        ) {
             Some(messages::REDPILER_REBUILD_LLVM)
         } else if reason.contains("outside compiled region") || reason.contains("outside captured boundary") {
             Some(messages::REDPILER_CAPTURE_WHOLE_CIRCUIT)
-        } else if matches!(reason, "invalid native Program descriptor" | "LLVM rejected the sampled Program"
-            | "LLVM state size rejected") {
+        } else if matches!(
+            reason,
+            "invalid native Program descriptor" | "LLVM rejected the sampled Program" | "LLVM state size rejected"
+        ) {
             Some(messages::REDPILER_INTERNAL_FAILURE_HELP)
         } else {
             None
@@ -109,7 +129,10 @@ impl CompileStatistics {
     pub fn chat_summary_lines(&self) -> Vec<String> {
         vec![format!(
             "Redpiler {} {} components; {} pending ticks; {:?}",
-            if self.cached { "reused" } else { "compiled" }, self.components, self.pending_ticks, self.duration
+            if self.cached { "reused" } else { "compiled" },
+            self.components,
+            self.pending_ticks,
+            self.duration
         )]
     }
 }
@@ -160,7 +183,9 @@ impl Compiler {
 
     /// Change visible publication without recompiling or advancing execution.
     pub fn set_publication_mode(&mut self, mode: PublicationMode) -> bool {
-        let Some(runtime) = self.runtime.as_mut() else { return false; };
+        let Some(runtime) = self.runtime.as_mut() else {
+            return false;
+        };
         if self.options.publication_mode() != mode {
             runtime.invalidate_publication();
         }
@@ -204,10 +229,17 @@ impl Compiler {
         }
         if options.llvm {
             let piston = world.piston_state();
-            if !piston.events.is_empty() || !piston.motions.is_empty() || !piston.movement_work.is_empty()
-                || piston.movement_cursor != 0 || piston.phase != AdvancePhase::BetweenTicks {
+            if !piston.events.is_empty()
+                || !piston.motions.is_empty()
+                || !piston.movement_work.is_empty()
+                || piston.movement_cursor != 0
+                || piston.phase != AdvancePhase::BetweenTicks
+            {
                 return Err(CompileError::Unsupported(ScratchError {
-                    position: piston.events.front().map(|event| event.pos)
+                    position: piston
+                        .events
+                        .front()
+                        .map(|event| event.pos)
                         .or_else(|| piston.motions.front().map(|motion| motion.pos))
                         .or_else(|| piston.movement_work.get(piston.movement_cursor).map(|&(pos, _)| pos)),
                     reason: match piston.phase {
@@ -228,7 +260,11 @@ impl Compiler {
             program
         } else {
             Arc::new(sampled::compile_program(world, bounds, entry, Some(&monitor)).map_err(|error| {
-                if monitor.cancelled() { CompileError::Cancelled } else { CompileError::Unsupported(error) }
+                if monitor.cancelled() {
+                    CompileError::Cancelled
+                } else {
+                    CompileError::Unsupported(error)
+                }
             })?)
         };
         if monitor.cancelled() {
@@ -245,7 +281,9 @@ impl Compiler {
             let mut llvm = LlvmRuntime::new((*program).clone(), &ticks).map_err(CompileError::Unsupported)?;
             llvm.initialize_tick(world.piston_state().logical_tick);
             Some(llvm)
-        } else { None };
+        } else {
+            None
+        };
         monitor.set_phase("initializing runtime");
         let runtime = sampled::start_shared_runtime(program, ticks, world.piston_state().clone()).map_err(CompileError::Unsupported)?;
         if monitor.cancelled() {
@@ -372,7 +410,8 @@ impl Compiler {
 
     fn publish<W: World>(&mut self, world: &mut W, io_only: bool, full: bool) -> Result<(), ExecutionError> {
         if let Some(llvm) = self.llvm_runtime.as_ref() {
-            llvm.sync_publication(self.runtime.as_mut().expect("LLVM publication projection missing")).map_err(ExecutionError)?;
+            llvm.sync_publication(self.runtime.as_mut().expect("LLVM publication projection missing"))
+                .map_err(ExecutionError)?;
         }
         self.runtime
             .as_mut()

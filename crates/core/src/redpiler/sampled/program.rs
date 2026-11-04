@@ -106,13 +106,20 @@ impl InputArrangement {
     }
 
     pub(super) fn radix(&self, axis: usize, physical: usize) -> usize {
-        self.token_states.get(axis).map_or(physical, |states| states.iter().copied().max().unwrap_or(0) + 1)
+        self.token_states
+            .get(axis)
+            .map_or(physical, |states| states.iter().copied().max().unwrap_or(0) + 1)
     }
 }
 
 fn valid_states(states: &[usize], physical: usize) -> bool {
-    states.len() == physical && states.first() == Some(&0)
-        && states.iter().copied().max().is_some_and(|max| max < physical && (0..=max).all(|digit| states.contains(&digit)))
+    states.len() == physical
+        && states.first() == Some(&0)
+        && states
+            .iter()
+            .copied()
+            .max()
+            .is_some_and(|max| max < physical && (0..=max).all(|digit| states.contains(&digit)))
 }
 
 #[derive(Clone, Copy)]
@@ -463,14 +470,19 @@ impl Program {
             if group.tokens.iter().any(|&token| !seen.insert(token)) {
                 return Err(invalid("duplicate token in movement group"));
             }
-            if !group.token_states.is_empty() && (group.token_states.len() != group.tokens.len()
-                || group.token_states.iter().zip(&group.tokens).any(|(states, &token)| !valid_states(states, self.tokens[token].cells.len() + 1))) {
+            if !group.token_states.is_empty()
+                && (group.token_states.len() != group.tokens.len()
+                    || group
+                        .token_states
+                        .iter()
+                        .zip(&group.tokens)
+                        .any(|(states, &token)| !valid_states(states, self.tokens[token].cells.len() + 1)))
+            {
                 return Err(invalid("invalid electrical token states"));
             }
-            let count = group
-                .tokens
-                .iter().enumerate()
-                .try_fold(1usize, |count, (axis, &token)| count.checked_mul(group.radix(axis, self.tokens[token].cells.len() + 1)));
+            let count = group.tokens.iter().enumerate().try_fold(1usize, |count, (axis, &token)| {
+                count.checked_mul(group.radix(axis, self.tokens[token].cells.len() + 1))
+            });
             if count != Some(group.inputs.len()) || group.inputs.len() > MAX_ARRANGEMENT_STATES {
                 return Err(invalid("invalid movement group dimensions"));
             }
@@ -534,9 +546,20 @@ impl Program {
         let mut links = Vec::new();
         let mut grouped: Vec<(Vec<usize>, Vec<Vec<usize>>, Vec<Vec<(usize, ArrangementSource, u8, bool, bool)>>)> = Vec::new();
         for input in &self.input_arrangements {
-            let states: Vec<_> = input.tokens.iter().enumerate().map(|(axis, &token)|
-                (0..=self.tokens[token].cells.len()).map(|digit| input.digit(axis, digit)).collect::<Vec<_>>()).collect();
-            let index = if let Some(index) = grouped.iter().position(|(tokens, mapping, _)| *tokens == input.tokens && *mapping == states) {
+            let states: Vec<_> = input
+                .tokens
+                .iter()
+                .enumerate()
+                .map(|(axis, &token)| {
+                    (0..=self.tokens[token].cells.len())
+                        .map(|digit| input.digit(axis, digit))
+                        .collect::<Vec<_>>()
+                })
+                .collect();
+            let index = if let Some(index) = grouped
+                .iter()
+                .position(|(tokens, mapping, _)| *tokens == input.tokens && *mapping == states)
+            {
                 index
             } else {
                 grouped.push((input.tokens.clone(), states, vec![Vec::new(); input.inputs.len()]));
@@ -625,7 +648,13 @@ impl Program {
                         reason: "movement transition capacity overflow",
                     })?;
                     let (depart, arrive) = tables[group][axis];
-                    self.movement_transitions.push(MovementTransition { group, delta, depart, arrive, states: axis_record.depart.len() });
+                    self.movement_transitions.push(MovementTransition {
+                        group,
+                        delta,
+                        depart,
+                        arrive,
+                        states: axis_record.depart.len(),
+                    });
                 }
                 cells.push(start..self.movement_transitions.len());
             }
@@ -871,7 +900,8 @@ impl Program {
         let mut stride = 1;
         let axes = tokens
             .iter()
-            .enumerate().map(|(index, &token)| {
+            .enumerate()
+            .map(|(index, &token)| {
                 let radix = states[index].iter().copied().max().unwrap_or(0) + 1;
                 let mut depart = vec![0..0; maps.len()];
                 let mut arrive = vec![0..0; maps.len()];
@@ -1265,17 +1295,34 @@ impl Program {
                 return Err(invalid("invalid movement plan cells"));
             }
             for (cell, range) in cells.iter().enumerate() {
-                let records = self.movement_transitions.get(range.clone()).ok_or_else(|| invalid("invalid movement plan range"))?;
+                let records = self
+                    .movement_transitions
+                    .get(range.clone())
+                    .ok_or_else(|| invalid("invalid movement plan range"))?;
                 let associations = &self.token_movement_groups[token];
                 if records.len() != associations.len() {
                     return Err(invalid("invalid movement plan length"));
                 }
                 for (record, &(group, axis)) in records.iter().zip(associations) {
-                    let axis = self.movement_groups.get(group).and_then(|g| g.axes.get(axis)).ok_or_else(|| invalid("invalid movement plan axis"))?;
-                    let depart = record.depart.checked_add(record.states).and_then(|end| self.movement_ranges.get(record.depart..end));
-                    let arrive = record.arrive.checked_add(record.states).and_then(|end| self.movement_ranges.get(record.arrive..end));
-                    if axis.token != token || record.group != group || axis.states[cell + 1].checked_mul(axis.stride) != Some(record.delta)
-                        || depart != Some(axis.depart.as_slice()) || arrive != Some(axis.arrive.as_slice()) {
+                    let axis = self
+                        .movement_groups
+                        .get(group)
+                        .and_then(|g| g.axes.get(axis))
+                        .ok_or_else(|| invalid("invalid movement plan axis"))?;
+                    let depart = record
+                        .depart
+                        .checked_add(record.states)
+                        .and_then(|end| self.movement_ranges.get(record.depart..end));
+                    let arrive = record
+                        .arrive
+                        .checked_add(record.states)
+                        .and_then(|end| self.movement_ranges.get(record.arrive..end));
+                    if axis.token != token
+                        || record.group != group
+                        || axis.states[cell + 1].checked_mul(axis.stride) != Some(record.delta)
+                        || depart != Some(axis.depart.as_slice())
+                        || arrive != Some(axis.arrive.as_slice())
+                    {
                         return Err(invalid("invalid movement plan transition"));
                     }
                 }
@@ -1336,7 +1383,10 @@ impl Program {
                 }
             }
         }
-        let notification_lists = self.source_watchers.iter().map(Vec::as_slice)
+        let notification_lists = self
+            .source_watchers
+            .iter()
+            .map(Vec::as_slice)
             .chain(self.home_watchers.iter().map(SmallVec::as_slice))
             .chain(self.reactive_neighbours.iter().map(Vec::as_slice));
         // These three tables are the runtime's component notification targets.
@@ -1487,7 +1537,11 @@ impl Program {
                 })
                 .collect(),
             arrangement_contributions: vec![0; self.arrangement_links.len()],
-            routing_attenuations: if self.routing.is_some() { vec![None; self.arrangement_links.len()] } else { Vec::new() },
+            routing_attenuations: if self.routing.is_some() {
+                vec![None; self.arrangement_links.len()]
+            } else {
+                Vec::new()
+            },
             route_search: super::routing::Search::default(),
             #[cfg(feature = "redpiler-trace")]
             routing_metrics: [0; 3],
@@ -1527,9 +1581,16 @@ impl Program {
             piston_head_moving: vec![false; self.pistons.len()],
             piston_base_moving: vec![false; self.pistons.len()],
             token_positions: self.tokens.iter().map(|t| t.position).collect(),
-            token_digits: self.tokens.iter().map(|token| {
-                token.position.and_then(|pos| token.cells.iter().position(|&cell| cell == pos)).map_or(0, |cell| cell + 1)
-            }).collect(),
+            token_digits: self
+                .tokens
+                .iter()
+                .map(|token| {
+                    token
+                        .position
+                        .and_then(|pos| token.cells.iter().position(|&cell| cell == pos))
+                        .map_or(0, |cell| cell + 1)
+                })
+                .collect(),
             group_arrangements: self
                 .movement_groups
                 .iter()

@@ -61,5 +61,4 @@ impl Plot {
         crate::redstone::command_block::update(&mut self.world, pos);
         self.players[player].send_system_message(messages::COMMAND_BLOCK_UPDATED);
     }
-
 }

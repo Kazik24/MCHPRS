@@ -174,19 +174,17 @@ pub(in super::super) fn run(
                 check_cancelled(monitor)?;
             }
             let block = ordering_probe.world().get_block(at);
-            let fixed_link_power = program.incoming[id]
-                .iter()
-                .filter_map(|&link| {
-                    let link = &program.links[link];
-                    let conditional = groups_by_target[id].iter().any(|&group| {
-                        let group = &program.input_arrangements[group];
-                        group.target == id && !group.side && group.conditional_sources.contains(&ArrangementSource::Component(link.source))
-                    });
-                    ((matches!(program.initial[link.source], Block::RedstoneBlock)
-                        || program.initial[link.source].pressure_plate_powered() == Some(true))
-                        && !conditional)
-                        .then_some(15u8.saturating_sub(link.attenuation))
+            let fixed_link_power = program.incoming[id].iter().filter_map(|&link| {
+                let link = &program.links[link];
+                let conditional = groups_by_target[id].iter().any(|&group| {
+                    let group = &program.input_arrangements[group];
+                    group.target == id && !group.side && group.conditional_sources.contains(&ArrangementSource::Component(link.source))
                 });
+                ((matches!(program.initial[link.source], Block::RedstoneBlock)
+                    || program.initial[link.source].pressure_plate_powered() == Some(true))
+                    && !conditional)
+                    .then_some(15u8.saturating_sub(link.attenuation))
+            });
             let arranged_link_power = links_by_target[id].iter().filter_map(|&index| {
                 let link = &program.arrangement_links[index];
                 let constant = match link.source {
@@ -202,18 +200,16 @@ pub(in super::super) fn run(
             let constant_power = fixed_link_power.chain(arranged_link_power).max().unwrap_or(0);
             #[cfg(test)]
             if program.positions.len() < 1000 {
-                let original_fixed_link_power = program.incoming[id]
-                    .iter()
-                    .filter_map(|&index| {
-                        let link = &program.links[index];
-                        let conditional = program.input_arrangements.iter().any(|group| {
-                            group.target == id && !group.side && group.conditional_sources.contains(&ArrangementSource::Component(link.source))
-                        });
-                        ((matches!(program.initial[link.source], Block::RedstoneBlock)
-                            || program.initial[link.source].pressure_plate_powered() == Some(true))
-                            && !conditional)
-                            .then_some(15u8.saturating_sub(link.attenuation))
+                let original_fixed_link_power = program.incoming[id].iter().filter_map(|&index| {
+                    let link = &program.links[index];
+                    let conditional = program.input_arrangements.iter().any(|group| {
+                        group.target == id && !group.side && group.conditional_sources.contains(&ArrangementSource::Component(link.source))
                     });
+                    ((matches!(program.initial[link.source], Block::RedstoneBlock)
+                        || program.initial[link.source].pressure_plate_powered() == Some(true))
+                        && !conditional)
+                        .then_some(15u8.saturating_sub(link.attenuation))
+                });
                 let original_arranged_link_power = program.arrangement_links.iter().enumerate().filter_map(|(index, link)| {
                     let constant = match link.source {
                         ArrangementSource::Token(_) => true,
@@ -628,9 +624,10 @@ impl SourceIndex {
 }
 
 fn reactive_torch_neighbours(program: &Program, source: usize) -> impl Iterator<Item = usize> + '_ {
-    program.reactive_neighbours[source].iter().copied().filter(|&target| {
-        matches!(program.initial[target], Block::RedstoneTorch { .. } | Block::RedstoneWallTorch { .. })
-    })
+    program.reactive_neighbours[source]
+        .iter()
+        .copied()
+        .filter(|&target| matches!(program.initial[target], Block::RedstoneTorch { .. } | Block::RedstoneWallTorch { .. }))
 }
 
 #[cfg(test)]

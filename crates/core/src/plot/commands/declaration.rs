@@ -256,7 +256,9 @@ pub(super) fn declared_command_nodes() -> Vec<Node<'static>> {
         // Reserved protocol node ID.
         Node::literal("reserved", &[]),
         // /redpiler compile [flags]
-        Node::argument("flags", Parser::String(2), &[]).executable().suggestions("minecraft:ask_server"),
+        Node::argument("flags", Parser::String(2), &[])
+            .executable()
+            .suggestions("minecraft:ask_server"),
         // gamemode alias, names, IDs and legacy shortcuts.
         Node::redirect("gm", 131),
         Node::literal("gamemode", &[132, 133, 134, 135, 136, 137, 161]),
@@ -344,7 +346,10 @@ pub(super) fn declared_command_nodes() -> Vec<Node<'static>> {
 
     let redpiler = nodes.iter().position(|node| node.name == Some("redpiler")).unwrap();
     let publish = nodes.len() as i32;
-    nodes.push(Node::literal("publish", Box::leak(vec![publish + 1, publish + 2, publish + 3].into_boxed_slice())));
+    nodes.push(Node::literal(
+        "publish",
+        Box::leak(vec![publish + 1, publish + 2, publish + 3].into_boxed_slice()),
+    ));
     for mode in ["all", "redstone", "io"] {
         nodes.push(Node::literal(mode, &[]).executable());
     }

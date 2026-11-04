@@ -10,13 +10,13 @@ use mchprs_blocks::BlockPos;
 use mchprs_blocks::block_entities::BlockEntity;
 use mchprs_blocks::blocks::Block;
 use mchprs_blocks::items::Item;
+use nbt::Value;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use rustc_hash::FxHashMap;
 use std::fs::{self, File};
 use std::io::{Cursor, Read};
 use std::path::Path;
-use nbt::Value;
 
 type Compound = std::collections::HashMap<String, nbt::Value>;
 const MAX_BLOCKS: u32 = 67_108_864;

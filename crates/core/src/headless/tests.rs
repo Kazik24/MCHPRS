@@ -96,7 +96,10 @@ fn compiled_session_requires_full_projection() {
 
 #[test]
 fn compiled_piston_projection_and_reset_match_native() {
-    use mchprs_blocks::{BlockDirection, BlockFacing, blocks::{Lever, LeverFace, RedstonePiston}};
+    use mchprs_blocks::{
+        BlockDirection, BlockFacing,
+        blocks::{Lever, LeverFace, RedstonePiston},
+    };
     let lever = BlockPos::new(15, 15, 15);
     let base = lever.offset(BlockFace::East);
     let home = base.offset(BlockFace::East);
@@ -106,8 +109,22 @@ fn compiled_piston_projection_and_reset_match_native() {
         max: BlockPos::new(22, 20, 20),
         blocks: vec![
             (lever.offset(BlockFace::Bottom), Block::Stone {}),
-            (lever, Block::Lever { lever: Lever::new(LeverFace::Floor, BlockDirection::North, false) }),
-            (base, Block::Piston { piston: RedstonePiston { facing: BlockFacing::East, sticky: true, extended: false } }),
+            (
+                lever,
+                Block::Lever {
+                    lever: Lever::new(LeverFace::Floor, BlockDirection::North, false),
+                },
+            ),
+            (
+                base,
+                Block::Piston {
+                    piston: RedstonePiston {
+                        facing: BlockFacing::East,
+                        sticky: true,
+                        extended: false,
+                    },
+                },
+            ),
             (home, Block::RedstoneBlock),
         ],
         entities: vec![],
@@ -121,14 +138,24 @@ fn compiled_piston_projection_and_reset_match_native() {
         compiled.use_block(lever).unwrap();
         for tick in 0..6 {
             for pos in [base, home, far] {
-                assert_eq!(compiled.get(pos).unwrap(), native.get(pos).unwrap(), "tick {tick}, reset {reset_at:?}, {pos:?}");
+                assert_eq!(
+                    compiled.get(pos).unwrap(),
+                    native.get(pos).unwrap(),
+                    "tick {tick}, reset {reset_at:?}, {pos:?}"
+                );
             }
             let native_changes: HashMap<_, _> = native.drain_changes().unwrap().into_iter().collect();
             let compiled_changes: HashMap<_, _> = compiled.drain_changes().unwrap().into_iter().collect();
             for pos in [base, home, far] {
-                assert_eq!(compiled_changes.get(&pos), native_changes.get(&pos), "changes at tick {tick}, reset {reset_at:?}, {pos:?}");
+                assert_eq!(
+                    compiled_changes.get(&pos),
+                    native_changes.get(&pos),
+                    "changes at tick {tick}, reset {reset_at:?}, {pos:?}"
+                );
             }
-            if reset_at == Some(tick) { compiled.reset().unwrap(); }
+            if reset_at == Some(tick) {
+                compiled.reset().unwrap();
+            }
             native.advance(1).unwrap();
             compiled.advance(1).unwrap();
         }
@@ -208,9 +235,13 @@ fn input_batch_validates_before_mutating_and_preserves_order() {
 fn unsupported_compile_keeps_the_headless_session_native() {
     let pos = BlockPos::new(21, 4, 30);
     let mut input = snapshot();
-    let block = Block::Piston { piston: mchprs_blocks::blocks::RedstonePiston {
-        facing: mchprs_blocks::BlockFacing::East, sticky: false, extended: false,
-    }};
+    let block = Block::Piston {
+        piston: mchprs_blocks::blocks::RedstonePiston {
+            facing: mchprs_blocks::BlockFacing::East,
+            sticky: false,
+            extended: false,
+        },
+    };
     input.blocks.push((pos, block));
     input.blocks.push((pos.offset(BlockFace::East), Block::Stone {}));
     let mut session = Session::new(input).unwrap();
