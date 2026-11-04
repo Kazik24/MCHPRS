@@ -152,16 +152,15 @@ Java parity checks use separate Minecraft Java 1.21.5 captures with matching geo
 
 ## Performance
 
-Measured Rust/LLVM simulation throughput:
+Approximate throughput in game ticks per second (TPS):
 
-- ZCore12B: about 1,810 TPS in Rust and 3,126 TPS with LLVM. Three alternating pairs of 5,000 ticks per backend; median paired speedup about 1.61x.
-- ANPU Pong: about 16,501 TPS in Rust and 26,525 TPS with LLVM. One pair of 5,000 ticks, about 1.61x.
+- **ZCore12B (fully instant):** Interpreter **119 TPS**; Rust backend **1,810 TPS**; LLVM backend **3,126 TPS**. Compilation: Rust **28.6 s**, LLVM **28.0 s**.
+- **ANPU Pong (piston used):** Interpreter **1,016 TPS**; Rust backend **16,501 TPS**; LLVM backend **26,525 TPS**. Compilation: Rust **16.6 s**, LLVM **16.8 s**.
+- **CHUNGUS Mandelbrot (fully non-instant):** Interpreter **~1,884 TPS**; Rust backend **16,468 TPS**; LLVM backend **27,673 TPS**. Compilation: Rust **95.9 s**, LLVM **98.0 s**.
+- **FPU: (fully instant, combinational)** Interpreter **200 TPS**; Rust backend **2,443 TPS**; LLVM backend **3,834 TPS (estimated)**. Compilation: Rust **7.4 s**, LLVM **not measured**.
+- **PC_COUNTER (fully instant counter)** Interpreter **680 TPS**; Rust backend **13,706 TPS**; LLVM backend **21,856 TPS**. Compilation: Rust **1.1 s**, LLVM **1.1 s**.
 
-This comparison covers two circuit builds, four pairs and eight timed backend runs. Measurements used a Ryzen 9 5950X on Windows x64, an optimized Rust build with fat LTO, and Clang/LLD for the native backend. Setup, snapshots, publication, reset, networking and clients are outside the kernel timer. Final screen hashes are checked, with separate long tests comparing state, scheduling, movement and interpreted continuation after reset.
-
-Interpreter benchmarks cover five builds: PM1 SORT, ANPU Pong, CPU BubbleSort, FPU and PC_COUNTER. Recorded active throughput is roughly 194, 1,016, 143, 376 and 1,179 TPS respectively. A separate optimization comparison covers two source variants, five workloads and 64 process runs.
-
-Results depend on the circuit, build and machine. The interpreter and LLVM measurements use different timing windows and settings, so they are not a direct speedup comparison. Short or partly idle workloads do not measure sustained CPU throughput, and kernel TPS does not include the cost of serving players.
+Recorded on a Ryzen 9 5950X, Windows x64, with optimized builds. Results span different revisions and workloads, so they are not direct speedup comparisons. Compiled TPS excludes publication and server overhead, which can substantially reduce throughput; short runs do not establish sustained performance.
 
 To run checks:
 
@@ -172,6 +171,8 @@ cargo test -p mchprs_core --lib normal_redstone_matches_interpreter --locked -- 
 cargo test -p mchprs_core --lib redstonedb_levers_match_interpreter --locked -- --nocapture
 cargo test -p mchprs_core --test cpu_references --release --locked frozen_reference -- --ignored --test-threads=1
 cargo bench -p mchprs_core --bench cpus -- --iterations 3
+cargo run -p mchprs_core --profile bench --locked --example bench_chungus --features redpiler-full-publication -- 128 1 --paired
+cargo run -p mchprs_core --profile bench --locked --example bench_pc_counter
 ```
 
 Long replays are run explicitly with `--ignored`. Keep frozen expectations when investigating failures.

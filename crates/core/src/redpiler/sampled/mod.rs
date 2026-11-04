@@ -15,6 +15,9 @@ mod executor;
 #[cfg(test)]
 #[path = "../tests/sampled/pm1_causal.rs"]
 mod pm1_causal;
+#[cfg(test)]
+#[path = "../tests/sampled/piston_bud_repro.rs"]
+mod piston_bud_repro;
 mod group_probe;
 #[cfg(test)]
 #[path = "../tests/sampled/incremental_input.rs"]

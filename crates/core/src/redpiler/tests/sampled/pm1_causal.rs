@@ -20,7 +20,7 @@ pub(super) fn record(tick: u64, phase: u64, message: String) {
         }
     });
 }
-fn trace(f: impl FnOnce()) -> Vec<Value> {
+pub(super) fn trace(f: impl FnOnce()) -> Vec<Value> {
     TRACE.with(|v| {
         assert!(v.borrow().is_none());
         *v.borrow_mut() = Some(vec![])

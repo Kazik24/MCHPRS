@@ -14,6 +14,112 @@ fn host() -> PlotWorld {
 }
 
 #[test]
+#[ignore = "known source-sampling FIFO bug with a separately powered glass wire branch"]
+fn peer_power_changes_wire_callback_fifo() {
+    use mchprs_blocks::blocks::{RedstoneRepeater, RedstoneWire};
+
+    let mut initial = host();
+    let source = BlockPos::new(22, 15, 19);
+    let peer = BlockPos::new(20, 15, 23);
+    let targets = [BlockPos::new(19, 15, 20), BlockPos::new(25, 15, 20)];
+    let mut wires = vec![BlockPos::new(20, 15, 22)];
+    for x in 20..=24 {
+        wires.extend([BlockPos::new(x, 15, 20), BlockPos::new(x, 16, 21)]);
+    }
+    for &at in &wires {
+        // Glass makes the upper lane receive power without feeding it back into the lower lane.
+        initial.set_block(at.offset(BlockFace::Bottom), if at.y == 16 { Block::Glass {} } else { Block::Stone {} });
+        initial.set_block(
+            at,
+            Block::RedstoneWire {
+                wire: RedstoneWire::default(),
+            },
+        );
+    }
+    for at in [source, peer] {
+        initial.set_block(at.offset(BlockFace::Bottom), Block::Stone {});
+        initial.set_block(
+            at,
+            Block::Lever {
+                lever: Lever::new(LeverFace::Floor, BlockDirection::North, false),
+            },
+        );
+    }
+    for (at, facing) in targets.into_iter().zip([BlockDirection::East, BlockDirection::West]) {
+        initial.set_block(at.offset(BlockFace::Bottom), Block::Stone {});
+        initial.set_block(
+            at,
+            Block::RedstoneRepeater {
+                repeater: RedstoneRepeater {
+                    facing,
+                    delay: 1,
+                    locked: false,
+                    powered: false,
+                },
+            },
+        );
+    }
+    for &at in &wires {
+        let wire = crate::redstone::wire::get_state_for_placement(&initial, at);
+        initial.set_block(at, Block::RedstoneWire { wire });
+    }
+    let program = compiler::compile(
+        &initial,
+        (BlockPos::new(17, 13, 17), BlockPos::new(27, 18, 27)),
+        ScratchEntry {
+            scheduled: vec![],
+            piston: initial.piston_state().clone(),
+        },
+    )
+    .unwrap();
+    for peer_on in [false, true] {
+        let mut world = initial.activation_snapshot();
+        let mut runtime = program.start();
+        for at in [peer, source].into_iter().filter(|&at| at != peer || peer_on) {
+            crate::interaction::use_redstone(world.get_block(at), &mut world, at, None);
+            runtime.use_control(at).unwrap();
+            assert_eq!(
+                runtime.pending_entries(),
+                world.scheduler().iter_entries().collect::<Vec<_>>(),
+                "setup control={at:?}, peer_on={peer_on}"
+            );
+            for _ in 0..4 {
+                world.tick_interpreted();
+                runtime.tick().unwrap();
+                assert_eq!(
+                    runtime.pending_entries(),
+                    world.scheduler().iter_entries().collect::<Vec<_>>(),
+                    "settling control={at:?}, peer_on={peer_on}"
+                );
+            }
+            if at == peer {
+                for target in targets {
+                    assert!(matches!(world.get_block(target), Block::RedstoneRepeater { repeater } if !repeater.powered));
+                }
+            }
+        }
+        assert!(world.scheduler().iter_entries().next().is_none());
+        assert!(runtime.pending_entries().is_empty());
+        for &at in &program.positions {
+            assert_eq!(runtime.project(at), Some(world.get_block(at)), "before falling edge: {at:?}");
+        }
+        world.observe_redstone_updates(true);
+        crate::interaction::use_redstone(world.get_block(source), &mut world, source, None);
+        runtime.use_control(source).unwrap();
+        let expected: Vec<_> = world.scheduler().iter_entries().collect();
+        let actual = runtime.pending_entries();
+        let callbacks: Vec<_> = world
+            .take_redstone_update_observations()
+            .into_iter()
+            .filter(|event| targets.contains(&event.pos))
+            .map(|event| (event.pos, event.input_on))
+            .collect();
+        eprintln!("peer_on={peer_on}: expected={expected:?}, actual={actual:?}, callbacks={callbacks:?}");
+        assert_eq!(actual, expected, "falling edge with peer_on={peer_on}");
+    }
+}
+
+#[test]
 fn compiled_observer_watching_lamp_rearms_for_lamp_off_transition() {
     let mut world = host();
     let bounds = (BlockPos::new(10, 10, 10), BlockPos::new(20, 20, 20));

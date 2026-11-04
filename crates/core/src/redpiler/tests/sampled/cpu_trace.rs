@@ -157,6 +157,55 @@ fn anpu_piston_repeater_fifo_order_in_schematic_crop() {
 }
 
 #[test]
+#[ignore = "capture the exact live ANPU torch transition with its original world and queue"]
+fn anpu_source_sampling_causal_diagnostic() {
+    let cpu = cpus::CPUS[1];
+    let mut world = cpus::load_cpu(cpu);
+    let source = BlockPos::new(100, 53, 124);
+    let targets = [BlockPos::new(92, 55, 124), BlockPos::new(108, 55, 124)];
+    cpus::click_cpu(&mut world, cpu, cpu.start);
+    for _ in 0..217 {
+        world.tick_interpreted();
+    }
+    for _ in 0..2000 {
+        let next = world.scheduler().this_tick_ref().iter().next().map(|(tick, _)| tick.pos);
+        if next != Some(source) {
+            world.picotick_advance(1);
+            continue;
+        }
+        let mut before = Vec::new();
+        for y in 49..=59 {
+            for z in 118..=130 {
+                for x in 85..=115 {
+                    let at = BlockPos::new(x, y, z);
+                    before.push((at, world.get_block(at).get_id()));
+                }
+            }
+        }
+        let pending: Vec<_> = world.scheduler().iter_entries().collect();
+        world.observe_redstone_updates(true);
+        let events = crate::redstone::instant_piston_tests::capture_all(|| world.picotick_advance(1));
+        assert!(
+            events
+                .iter()
+                .any(|event| event["kind"] == "scheduled_tick" && event["data"]["pos"] == json!(source))
+        );
+        let deliveries = world.take_redstone_update_observations();
+        let off: Vec<_> = deliveries
+            .iter()
+            .filter(|event| targets.contains(&event.pos) && event.input_on == Some((false, false)))
+            .map(|event| event.pos)
+            .collect();
+        assert_eq!(off, targets);
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../work/source-sampling-anpu-live-fall.json");
+        std::fs::write(&path, serde_json::to_vec(&json!({"before":before,"pending_before":pending,"events":events,"deliveries":deliveries.iter().map(|event|json!({"pos":event.pos,"block":event.block.get_id(),"input_on":event.input_on})).collect::<Vec<_>>(),"pending_after":world.scheduler().iter_entries().collect::<Vec<_>>() })).unwrap()).unwrap();
+        eprintln!("live source fall: off={off:?}, artifact={}", path.display());
+        return;
+    }
+    panic!("target torch was not the next operation");
+}
+
+#[test]
 #[ignore = "ANPU interpreter/sampled first-divergence diagnostic"]
 fn anpu_first_native_compiled_divergence() {
     let cpu = cpus::CPUS[1];
