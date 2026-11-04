@@ -42,6 +42,7 @@ struct State {
 
 fn state(world: &PlotWorld) -> State {
     let chunk = &world.chunks[0];
+    // Keep the deterministic y/z/x storage walk used by before/after comparisons.
     let blocks = (0..256)
         .flat_map(|y| (0..16).flat_map(move |z| (0..16).map(move |x| chunk.get_block(x, y, z))))
         .collect();

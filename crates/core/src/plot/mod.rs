@@ -220,6 +220,7 @@ impl Plot {
             self.timings.generate_report().map(|report| report.two_s)
         };
         let visual_update_rate = (self.world_send_rate.0 != 0).then(|| self.effective_send_rate());
+        // The sidebar lists only viewers allowed to read this repository.
         let git_readers = (0..self.players.len())
             .filter(|&player| self.git_access(player, "read"))
             .map(|player| self.players[player].uuid)
@@ -581,6 +582,7 @@ impl Plot {
         self.neighbor_views.remove_player(player.uuid);
         self.disable_empty_plot_history();
 
+        // Remove every remaining player's entity and optional small model for the departing client.
         let destroy_other_entities = CDestroyEntities {
             entity_ids: self
                 .players
@@ -1172,6 +1174,7 @@ impl Plot {
         let chunk_x_offset = x << PLOT_SCALE;
         let chunk_z_offset = z << PLOT_SCALE;
         let owner = database::get_plot_owner(x, z).map(|s| s.parse::<HyphenatedUUID>().unwrap().0);
+        // Save data stores chunks row-major; restore that order while assigning world coordinates.
         let mut chunks: Vec<Chunk> = plot_data
             .chunk_data
             .into_iter()

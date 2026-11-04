@@ -7,15 +7,15 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug executable 'mchprs'",
+            "name": "Debug executable 'mroww'",
             "cargo": {
                 "args": [
                     "build",
-                    "--bin=mchprs",
-                    "--package=mchprs"
+                    "--bin=mroww",
+                    "--package=mroww"
                 ],
                 "filter": {
-                    "name": "mchprs",
+                    "name": "mroww",
                     "kind": "bin"
                 }
             },
@@ -25,16 +25,16 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug unit tests in executable 'mchprs'",
+            "name": "Debug unit tests in executable 'mroww'",
             "cargo": {
                 "args": [
                     "test",
                     "--no-run",
-                    "--bin=mchprs",
-                    "--package=mchprs"
+                    "--bin=mroww",
+                    "--package=mroww"
                 ],
                 "filter": {
-                    "name": "mchprs",
+                    "name": "mroww",
                     "kind": "bin"
                 }
             },

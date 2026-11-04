@@ -23,6 +23,7 @@ import type { Signal, Trace, Viewport } from "./trace";
 import {
   colors,
   initialSession,
+  signalRow,
   moveRow,
   ungroupRows,
   parseSession,
@@ -377,20 +378,7 @@ export default function App() {
         ? rows.map((row) =>
             row.id === existing.id ? { ...row, enabled: !row.enabled } : row,
           )
-        : [
-            ...rows,
-            {
-              id: signal.id,
-              signalId: signal.id,
-              kind: "signal",
-              label: signal.name,
-              enabled: true,
-              color: colors[0],
-              height: 38,
-              guides: "none",
-              shortName: false,
-            },
-          ];
+        : [...rows, signalRow(signal)];
     });
   }
   function context(event: React.MouseEvent, rowId?: string) {

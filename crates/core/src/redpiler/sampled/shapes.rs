@@ -35,12 +35,10 @@ pub(super) fn sample(program: &mut Program, scratch: &mut ScratchWorld, monitor:
     program.shape_maps.clear();
     let mut maps = HashMap::new();
     let components: HashMap<_, _> = program.positions.iter().enumerate().map(|(i, &p)| (p, i)).collect();
-    let mut cells: Vec<_> = program
-        .tokens
-        .iter()
-        .flat_map(|t| t.cells.iter().copied())
-        .chain(program.pistons.iter().flat_map(|p| [p.base, p.home, p.far]))
-        .collect();
+    let token_cells = program.tokens.iter().flat_map(|token| token.cells.iter().copied());
+    let piston_cells = program.pistons.iter().flat_map(|piston| [piston.base, piston.home, piston.far]);
+    // Shape sampling needs both movable occupancy and piston anchor cells.
+    let mut cells: Vec<_> = token_cells.chain(piston_cells).collect();
     cells.sort_by_key(|p| (p.x, p.y, p.z));
     cells.dedup();
     for cell in cells {
@@ -60,6 +58,7 @@ pub(super) fn sample(program: &mut Program, scratch: &mut ScratchWorld, monitor:
                     });
                 }
                 Block::RedstoneWire { .. } if side != mchprs_blocks::BlockFace::Top => {
+                    // Only token axes within two blocks can change this wire's sampled shape.
                     let axes = program
                         .tokens
                         .iter()

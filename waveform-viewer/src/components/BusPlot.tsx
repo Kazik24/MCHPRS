@@ -56,6 +56,9 @@ export function BusPlot({
     );
   };
   const tick = hover ?? marker;
+  const markerX =
+    100 +
+    ((marker - viewport.start) / (viewport.end - viewport.start)) * 880;
   return (
     <div className="modal-backdrop" onClick={close}>
       <section
@@ -114,16 +117,8 @@ export function BusPlot({
           />
           {marker >= viewport.start && marker <= viewport.end && (
             <line
-              x1={
-                100 +
-                ((marker - viewport.start) / (viewport.end - viewport.start)) *
-                  880
-              }
-              x2={
-                100 +
-                ((marker - viewport.start) / (viewport.end - viewport.start)) *
-                  880
-              }
+              x1={markerX}
+              x2={markerX}
               y1="20"
               y2="270"
               stroke="#aaa"

@@ -3,6 +3,15 @@ use super::*;
 use std::io::Cursor;
 
 #[test]
+fn angles_truncate_to_byte_steps_and_wrap_at_a_full_turn() {
+    let mut encoded = Vec::new();
+    for angle in [0.0, 90.0, 180.0, 270.0, 360.0, -90.0, 450.0, 1.0] {
+        encoded.write_angle(angle);
+    }
+    assert_eq!(encoded, [0, 64, 128, 192, 0, 192, 64, 0]);
+}
+
+#[test]
 fn chunk_packets_use_fixed_daylight_without_block_lighting() {
     for sections in [0, 16] {
         let packet = CChunkData {

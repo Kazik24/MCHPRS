@@ -30,6 +30,13 @@ export interface CommandEvent {
   text: string;
   originalBytes: number;
 }
+
+export function commandEventText(event: CommandEvent): string {
+  return event.text +
+    (event.originalBytes > 0
+      ? ` [truncated; ${event.originalBytes} bytes originally]`
+      : "");
+}
 export function parseZeroTick(text: unknown): string | null {
   if (typeof text !== "string") return null;
   const value = text.trim() || "0";
@@ -46,7 +53,9 @@ export function tickLabel(trace: Trace, tick: number, zeroTick = "0"): string {
   ).toString();
 }
 export function compareSeq(a: number | string, b: number | string): number {
-  return BigInt(a) < BigInt(b) ? -1 : BigInt(a) > BigInt(b) ? 1 : 0;
+  const left = BigInt(a),
+    right = BigInt(b);
+  return left < right ? -1 : left > right ? 1 : 0;
 }
 export interface Viewport {
   start: number;

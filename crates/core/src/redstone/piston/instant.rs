@@ -43,6 +43,7 @@ pub(crate) fn candidate_retract(world: &impl World, piston: RedstonePiston, base
 
 fn power_positions(base: BlockPos, face: BlockFace) -> impl Iterator<Item = (BlockPos, BlockFace)> {
     let above = base.offset(BlockFace::Top);
+    // Keep native read order: other base sides, the base below, then the upper sides except down.
     NEIGHBORS
         .into_iter()
         .filter(move |&side| side != face)
@@ -264,6 +265,7 @@ mod tests {
         let (world, base, _) = cell();
         for face in NEIGHBORS {
             let actual = routes(&world, base, face).map(|route| (route.source.pos, route.side));
+            // Expected order mirrors the runtime iterator: base ring, base itself, and the upper ring.
             let expected: Vec<_> = NEIGHBORS
                 .into_iter()
                 .filter(|&side| side != face)

@@ -14,8 +14,7 @@ macro_rules! map(
 
 #[macro_export]
 macro_rules! nbt_unwrap_val {
-    // I'm not sure if path is the right type here.
-    // It works though!
+    // Accept qualified NBT variant constructors such as nbt::Value::Compound.
     ($e:expr, $p:path) => {
         match $e {
             Some($p(val)) => val,

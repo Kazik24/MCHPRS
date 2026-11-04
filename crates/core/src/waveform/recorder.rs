@@ -111,6 +111,7 @@ impl Recorder {
         }
     }
     pub fn replace(&mut self, probes: Vec<Probe>) {
+        // Cache each probe's stable index by position for later signal updates.
         self.index = probes.iter().enumerate().map(|(i, p)| (p.pos, i as u16)).collect();
         self.probes = probes;
     }
@@ -179,6 +180,7 @@ impl Recorder {
         }
         // Incoming power can travel through one neighboring solid block.
         static OFFSETS: Lazy<Vec<BlockPos>> = Lazy::new(|| {
+            // Enumerate the Manhattan-radius-2 offsets: choose X and Y, keep valid Z values, then build each offset.
             (-2i32..=2)
                 .flat_map(|x| {
                     (-2i32..=2).flat_map(move |y| {
@@ -189,6 +191,7 @@ impl Recorder {
                 })
                 .collect()
         });
+        // Translate the cached offsets around this position and keep only locations with probes.
         OFFSETS
             .iter()
             .map(|offset| BlockPos::new(pos.x + offset.x, pos.y + offset.y, pos.z + offset.z))

@@ -21,6 +21,7 @@ impl ItemStack {
         };
         let slots = container_ty.num_slots() as u32;
 
+        // Stay one item below the next strength's threshold: ss * 64 * slots / 14.
         let items_needed = match ss {
             0 => 0,
             15 => slots * 64,
@@ -76,7 +77,6 @@ macro_rules! items {
                         $from_id_pkey:ident: $from_id_pval:expr
                     ),*
                 },
-                $( max_stack: $max_stack:literal, )?
                 $( block: $block:literal, )?
             }
         ),*
@@ -127,18 +127,18 @@ macro_rules! items {
                     $(
                         $( Item::$name { .. } => $block, )?
                     )*
-                    _ => crate::generated::BLOCKS.iter().any(|b|b.0 == self.get_name())
+                    _ => crate::generated::BLOCKS.iter().any(|block| block.0 == self.get_name())
                 }
             }
 
-            pub fn max_stack_size(self)->u32 {
-                crate::generated::ITEMS.get(self.get_id() as usize).map_or(64,|i|i.1)
+            pub fn max_stack_size(self) -> u32 {
+                crate::generated::ITEMS.get(self.get_id() as usize).map_or(64, |item| item.1)
             }
         }
     }
 }
 
-// list of ids: https://github.com/PrismarineJS/minecraft-data/blob/master/data/pc/1.18/items.json
+// IDs below use the legacy 1.18 layout; generated mappings translate them to 1.21.5.
 items! {
     Compass {
         get_id: 795,
@@ -152,17 +152,14 @@ items! {
     Snowball {
         get_id: 780,
         from_id(_id): 780 => {},
-        max_stack: 16,
     },
     TotemOfUndying {
         get_id: 1010,
         from_id(_id): 1010 => {},
-        max_stack: 1,
     },
     MilkBucket {
         get_id: 782,
         from_id(_id): 782 => {},
-        max_stack: 1,
     },
     Stone {
         get_id: 1,

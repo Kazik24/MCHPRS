@@ -126,19 +126,16 @@ pub(in super::super) fn run(
     phases.detail("source selection/index preparation", 0);
     let selection_started = Instant::now();
     let source_index = SourceIndex::new(&program, monitor)?;
-    let output_sources: Vec<_> = program
-        .sources
-        .iter()
-        .copied()
-        .chain(program.repeaters.iter().map(|record| record.component))
-        .chain(program.initial.iter().enumerate().filter_map(|(index, block)| {
-            matches!(
-                block,
-                Block::RedstoneComparator { .. } | Block::Observer { .. } | Block::RedstoneTorch { .. } | Block::RedstoneWallTorch { .. }
-            )
-            .then_some(index)
-        }))
-        .collect();
+    let control_sources = program.sources.iter().copied();
+    let repeater_outputs = program.repeaters.iter().map(|record| record.component);
+    let other_outputs = program.initial.iter().enumerate().filter_map(|(index, block)| {
+        matches!(
+            block,
+            Block::RedstoneComparator { .. } | Block::Observer { .. } | Block::RedstoneTorch { .. } | Block::RedstoneWallTorch { .. }
+        )
+        .then_some(index)
+    });
+    let output_sources: Vec<_> = control_sources.chain(repeater_outputs).chain(other_outputs).collect();
     let racing_sources: std::collections::HashSet<_> = output_sources
         .iter()
         .copied()
@@ -177,7 +174,7 @@ pub(in super::super) fn run(
                 check_cancelled(monitor)?;
             }
             let block = ordering_probe.world().get_block(at);
-            let constant_power = program.incoming[id]
+            let fixed_link_power = program.incoming[id]
                 .iter()
                 .filter_map(|&link| {
                     let link = &program.links[link];
@@ -189,23 +186,23 @@ pub(in super::super) fn run(
                         || program.initial[link.source].pressure_plate_powered() == Some(true))
                         && !conditional)
                         .then_some(15u8.saturating_sub(link.attenuation))
-                })
-                .chain(links_by_target[id].iter().filter_map(|&index| {
-                    let link = &program.arrangement_links[index];
-                    let constant = match link.source {
-                        ArrangementSource::Token(_) => true,
-                        ArrangementSource::Component(node) => {
-                            matches!(program.initial[node], Block::RedstoneBlock) || program.initial[node].pressure_plate_powered() == Some(true)
-                        }
-                    };
-                    (link.target == id && !link.side && constant && link.active[loaded.group_arrangements[link.group]])
-                        .then_some(loaded.arrangement_contribution(index).2)
-                }))
-                .max()
-                .unwrap_or(0);
+                });
+            let arranged_link_power = links_by_target[id].iter().filter_map(|&index| {
+                let link = &program.arrangement_links[index];
+                let constant = match link.source {
+                    ArrangementSource::Token(_) => true,
+                    ArrangementSource::Component(node) => {
+                        matches!(program.initial[node], Block::RedstoneBlock) || program.initial[node].pressure_plate_powered() == Some(true)
+                    }
+                };
+                (link.target == id && !link.side && constant && link.active[loaded.group_arrangements[link.group]])
+                    .then_some(loaded.arrangement_contribution(index).2)
+            });
+            // Both iterators yield only constant, currently active input strengths.
+            let constant_power = fixed_link_power.chain(arranged_link_power).max().unwrap_or(0);
             #[cfg(test)]
             if program.positions.len() < 1000 {
-                let original = program.incoming[id]
+                let original_fixed_link_power = program.incoming[id]
                     .iter()
                     .filter_map(|&index| {
                         let link = &program.links[index];
@@ -216,19 +213,19 @@ pub(in super::super) fn run(
                             || program.initial[link.source].pressure_plate_powered() == Some(true))
                             && !conditional)
                             .then_some(15u8.saturating_sub(link.attenuation))
-                    })
-                    .chain(program.arrangement_links.iter().enumerate().filter_map(|(index, link)| {
-                        let constant = match link.source {
-                            ArrangementSource::Token(_) => true,
-                            ArrangementSource::Component(node) => {
-                                matches!(program.initial[node], Block::RedstoneBlock) || program.initial[node].pressure_plate_powered() == Some(true)
-                            }
-                        };
-                        (link.target == id && !link.side && constant && link.active[loaded.group_arrangements[link.group]])
-                            .then_some(loaded.arrangement_contribution(index).2)
-                    }))
-                    .max()
-                    .unwrap_or(0);
+                    });
+                let original_arranged_link_power = program.arrangement_links.iter().enumerate().filter_map(|(index, link)| {
+                    let constant = match link.source {
+                        ArrangementSource::Token(_) => true,
+                        ArrangementSource::Component(node) => {
+                            matches!(program.initial[node], Block::RedstoneBlock) || program.initial[node].pressure_plate_powered() == Some(true)
+                        }
+                    };
+                    (link.target == id && !link.side && constant && link.active[loaded.group_arrangements[link.group]])
+                        .then_some(loaded.arrangement_contribution(index).2)
+                });
+                // The reference path combines fixed and arranged constant inputs, then takes the strongest.
+                let original = original_fixed_link_power.chain(original_arranged_link_power).max().unwrap_or(0);
                 assert_eq!(constant_power, original);
             }
             let quiet = match block {

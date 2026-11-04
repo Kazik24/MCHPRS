@@ -13,6 +13,7 @@ use std::{fs::File, sync::Arc, time::Instant};
 use sha2::{Digest, Sha256};
 
 fn difference(reference: &mut PlotWorld, compiled: &mut PlotWorld, tick: u32, phase: &str) -> Option<serde_json::Value> {
+    // Combine both change queues, extract their positions, then sort and deduplicate below.
     let mut positions: Vec<_> = reference.take_block_changes().into_iter().chain(compiled.take_block_changes()).map(|(pos, _)| pos).collect();
     positions.sort_unstable_by_key(|pos| (pos.y, pos.z, pos.x));
     positions.dedup();
@@ -21,6 +22,7 @@ fn difference(reference: &mut PlotWorld, compiled: &mut PlotWorld, tick: u32, ph
         let actual = compiled.get_block(pos);
         (expected != actual).then_some((pos, expected, actual))
     }).collect();
+    // Merge block entities from both worlds, flatten chunk-local positions, then compare each unique world position.
     let mut positions: Vec<_> = reference.get_chunks().iter().chain(compiled.get_chunks())
         .flat_map(|chunk| chunk.block_entities.keys().map(move |pos|
             BlockPos::new(chunk.x * 16 + pos.x, pos.y, chunk.z * 16 + pos.z))).collect();
@@ -36,11 +38,14 @@ fn difference(reference: &mut PlotWorld, compiled: &mut PlotWorld, tick: u32, ph
     let expected: Vec<_> = reference.command_output().map(str::to_owned).collect();
     let actual: Vec<_> = compiled.command_output().map(str::to_owned).collect();
     if blocks.is_empty() && entities.is_empty() && expected == actual { return None; }
+    // Check aligned messages first and fall back to the first unmatched index when lengths differ.
     let first_message = expected.iter().zip(&actual).position(|(a, b)| a != b)
         .or_else(|| (expected.len() != actual.len()).then_some(expected.len().min(actual.len())));
     let at = blocks.first().map(|row| row.0).or_else(|| entities.first().map(|row| row.0));
+    // Expand the first mismatch to its six neighboring blocks for a compact local diagnostic.
     let neighbours: Vec<_> = at.into_iter().flat_map(|pos| BlockFace::values().map(move |face| pos.offset(face)))
         .map(|pos| serde_json::json!({"position":pos,"interpreter":format!("{:?}", reference.get_block(pos)),"compiled":format!("{:?}", compiled.get_block(pos))})).collect();
+    // Cap block detail to keep the saved diagnostic readable; the counts above retain full totals.
     Some(serde_json::json!({"tick":tick,"phase":phase,"block_difference_count":blocks.len(),
         "blocks":blocks.iter().take(32).map(|(pos,a,b)| serde_json::json!({"position":pos,"interpreter":format!("{a:?}"),"compiled":format!("{b:?}")})).collect::<Vec<_>>(),
         "entity_difference_count":entities.len(),"entities":entities.into_iter().take(32).collect::<Vec<_>>(),

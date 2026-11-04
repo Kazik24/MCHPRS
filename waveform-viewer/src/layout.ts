@@ -1,4 +1,4 @@
-import { initialSession, parseSession } from "./state.ts";
+import { initialSession, parseSession, signalRow } from "./state.ts";
 import type { Row } from "./state.ts";
 import type { Signal, Trace } from "./trace.ts";
 import { parseZeroTick, signalKey } from "./trace.ts";
@@ -116,7 +116,7 @@ export function decodeLayout(text: string, trace: Trace): Layout {
         row.bus?.members.includes(signalKey(signal)),
       );
       const row: Row = {
-        ...initialSession({ ...trace, signals: [signal] }).rows[0],
+        ...signalRow(signal),
         id: `signal:${signalKey(signal)}`,
         groupId: group?.id,
       };

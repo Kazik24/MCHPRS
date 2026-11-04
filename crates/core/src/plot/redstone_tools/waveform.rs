@@ -242,6 +242,7 @@ impl Plot {
         let words: Vec<_> = text[..start].split_whitespace().collect();
         let prefix = &text[start..];
         let mut choices: Vec<String> = if words.len() == 1 {
+            // Keep only actions this player is allowed to use in command completion.
             ACTIONS
                 .iter()
                 .copied()
@@ -255,6 +256,7 @@ impl Plot {
                 [_, "remove"] => self.world.waveform.probes.iter().map(|p| p.name.clone()).collect(),
                 [_, "on"] => {
                     let (_, limit) = self.players[player].waveform_limits().ok().unwrap_or((0, 0));
+                    // Suggested tick counts must fit the player's active recording limit.
                     [1, 20, 100, 1000, 10000, limit]
                         .into_iter()
                         .filter(|ticks| *ticks > 0 && *ticks <= limit)
@@ -264,6 +266,7 @@ impl Plot {
                 [_, "addbulk", _] => {
                     let (signals, _) = self.players[player].waveform_limits().ok().unwrap_or((0, 0));
                     let left = signals.saturating_sub(self.world.waveform.probes.len());
+                    // Keep suggested bulk sizes within the remaining signal quota.
                     [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, left]
                         .into_iter()
                         .filter(|bits| *bits > 0 && *bits <= left)
@@ -477,6 +480,7 @@ impl Plot {
                 self.begin_waveform_selection(player, name, bits)
             }
             ["remove", name] => {
+                // Keep active probes unchanged while preparing the replacement list.
                 let probes: Vec<_> = self.world.waveform.probes.iter().filter(|p| p.name != *name).cloned().collect();
                 if probes.len() == self.world.waveform.probes.len() {
                     return Err("No such probe; use /waveform list.".into());

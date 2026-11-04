@@ -112,6 +112,7 @@ export function formatBus(value: BusValue, settings: BusSettings): string {
   const mask = (1n << BigInt(width)) - 1n;
   const bits =
     (settings.inverted ? value.bits ^ mask : value.bits) & value.known & mask;
+  // Decimal cannot represent partial unknowns; show their bit positions instead.
   const radix =
     settings.radix === 10 && (value.known & mask) !== mask ? 2 : settings.radix;
   if (radix === 10)
@@ -119,6 +120,7 @@ export function formatBus(value: BusValue, settings: BusSettings): string {
   const size = radix === 16 ? 4 : radix === 8 ? 3 : 1;
   let result = "";
   for (let offset = 0; offset < width; offset += size) {
+    // A partial leading digit covers only the declared bits, not a full nibble.
     const digitMask =
       ((1n << BigInt(Math.min(size, width - offset))) - 1n) << BigInt(offset);
     result =

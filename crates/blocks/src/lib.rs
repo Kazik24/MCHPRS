@@ -148,10 +148,6 @@ impl BlockFace {
             _ => None,
         }
     }
-    // pub fn from_id(id: u32) -> BlockFace {
-
-    // }
-
     pub fn values() -> [BlockFace; 6] {
         use BlockFace::*;
         [Top, Bottom, North, South, East, West]

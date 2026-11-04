@@ -116,6 +116,7 @@ pub(crate) struct WireDiscovery {
 }
 #[cfg(test)]
 pub(crate) fn discovered_wire_strength(world: &impl World, discovery: &WireDiscovery, wire: BlockPos) -> u8 {
+    // Multiple connected sources contribute by their strongest attenuated level.
     discovery
         .sources
         .iter()
@@ -1352,7 +1353,7 @@ impl ScratchWorld {
             })
             .collect::<Result<Vec<_>, _>>()?;
         // Reuse one isolated snapshot per worker instead of copying the world for every probe.
-        let mut results = scratches
+        let worker_results: Vec<_> = scratches
             .into_par_iter()
             .map(|mut scratch| {
                 let mut results = Vec::new();
@@ -1377,10 +1378,9 @@ impl ScratchWorld {
                 }
                 results
             })
-            .collect::<Vec<_>>()
-            .into_iter()
-            .flatten()
-            .collect::<Vec<_>>();
+            .collect();
+        let mut results: Vec<_> = worker_results.into_iter().flatten().collect();
+        // Workers finish in arbitrary order; restore the caller's job order before returning.
         results.sort_unstable_by_key(|(index, _)| *index);
         results.into_iter().map(|(_, result)| result).collect()
     }

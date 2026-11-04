@@ -1211,7 +1211,8 @@ impl Program {
                 return Err(invalid("invalid captured token position"));
             }
         }
-        if self.shape_steps.iter().flat_map(|step| &step.states.ports).flatten().any(|&map| map >= self.shape_maps.len()) {
+        let mut shape_port_maps = self.shape_steps.iter().flat_map(|step| &step.states.ports).flatten();
+        if shape_port_maps.any(|&map| map >= self.shape_maps.len()) {
             return Err(invalid("invalid shape map reference"));
         }
         let valid_source = |source| match source {
@@ -1335,7 +1336,11 @@ impl Program {
                 }
             }
         }
-        for list in self.source_watchers.iter().map(Vec::as_slice).chain(self.home_watchers.iter().map(SmallVec::as_slice)).chain(self.reactive_neighbours.iter().map(Vec::as_slice)) {
+        let notification_lists = self.source_watchers.iter().map(Vec::as_slice)
+            .chain(self.home_watchers.iter().map(SmallVec::as_slice))
+            .chain(self.reactive_neighbours.iter().map(Vec::as_slice));
+        // These three tables are the runtime's component notification targets.
+        for list in notification_lists {
             if list.iter().any(|&node| node >= nodes) {
                 return Err(invalid("invalid notification reference"));
             }

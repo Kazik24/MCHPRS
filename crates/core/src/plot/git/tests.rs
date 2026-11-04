@@ -639,6 +639,7 @@ fn creation_and_concurrent_writes_obey_disk_quota_before_growing_files() {
             })
         })
         .collect();
+    // Count successful opens; the shared quota should admit exactly one contender.
     let admitted = handles.into_iter().map(|h| h.join().unwrap()).filter(|ok| *ok).count();
     assert_eq!(admitted, 1);
     let total: u64 = fs::read_dir(&simultaneous.0)

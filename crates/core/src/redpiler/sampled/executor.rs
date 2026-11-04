@@ -785,6 +785,7 @@ impl Runtime {
             .enumerate()
             .filter(|(_, link)| link.target == target && !link.side)
             .map(|(index, _)| self.arrangement_contributions[index]);
+        // Fixed and arrangement inputs combine by their strongest contribution.
         fixed.chain(arranged).max().unwrap_or(0)
     }
 

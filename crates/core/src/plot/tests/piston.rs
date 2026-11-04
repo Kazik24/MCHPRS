@@ -18,6 +18,7 @@ fn copy_saved(world: &mut PlotWorld) -> PlotWorld {
     };
     let bytes = bincode::serialize(&data).unwrap();
     let data: PlotData<PLOT_SECTIONS> = bincode::deserialize(&bytes).unwrap();
+    // Reconstruct the row-major save order as the world uses local x/z coordinates.
     let chunks = data
         .chunk_data
         .into_iter()
@@ -39,6 +40,7 @@ fn motion_removal_preserves_order_and_removes_all_legacy_duplicates() {
     // Test front, middle and back removal, then the legacy duplicate fallback.
     for x in [0, 31, 63, 1, 2] {
         let pos = BlockPos::new(x, 30, 40);
+        // Compare the remaining motion identities in order after removing this position.
         let expected: Vec<_> = w.piston_state.motions.iter().filter(|m| m.pos != pos).map(|m| m.identity).collect();
         w.remove_motions_at(pos);
         assert_eq!(w.piston_state.motions.iter().map(|m| m.identity).collect::<Vec<_>>(), expected);

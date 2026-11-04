@@ -111,9 +111,9 @@ impl ClientBoundPacket for CSpawnEntity {
         buf.write_double(self.x);
         buf.write_double(self.y);
         buf.write_double(self.z);
-        buf.write_byte(((self.pitch / 360f32 * 256f32) as i32 % 256) as i8);
-        buf.write_byte(((self.yaw / 360f32 * 256f32) as i32 % 256) as i8);
-        buf.write_byte(((self.yaw / 360f32 * 256f32) as i32 % 256) as i8);
+        buf.write_angle(self.pitch);
+        buf.write_angle(self.yaw);
+        buf.write_angle(self.yaw);
         buf.write_varint(self.data);
         buf.write_short(self.velocity_x);
         buf.write_short(self.velocity_y);
@@ -799,8 +799,8 @@ impl ClientBoundPacket for CEntityPositionAndRotation {
         buf.write_short(self.delta_x);
         buf.write_short(self.delta_y);
         buf.write_short(self.delta_z);
-        buf.write_byte(((self.yaw / 360f32 * 256f32) as i32 % 256) as i8);
-        buf.write_byte(((self.pitch / 360f32 * 256f32) as i32 % 256) as i8);
+        buf.write_angle(self.yaw);
+        buf.write_angle(self.pitch);
         buf.write_bool(self.on_ground);
         PacketEncoder::new(buf, 0x2f)
     }
@@ -817,8 +817,8 @@ impl ClientBoundPacket for CEntityRotation {
     fn encode(&self) -> PacketEncoder {
         let mut buf = Vec::new();
         buf.write_varint(self.entity_id);
-        buf.write_byte(((self.yaw / 360f32 * 256f32) as i32 % 256) as i8);
-        buf.write_byte(((self.pitch / 360f32 * 256f32) as i32 % 256) as i8);
+        buf.write_angle(self.yaw);
+        buf.write_angle(self.pitch);
         buf.write_bool(self.on_ground);
         PacketEncoder::new(buf, 0x31)
     }
@@ -991,7 +991,7 @@ impl ClientBoundPacket for CEntityHeadLook {
     fn encode(&self) -> PacketEncoder {
         let mut buf = Vec::new();
         buf.write_varint(self.entity_id);
-        buf.write_byte(((self.yaw / 360f32 * 256f32) as i32 % 256) as i8);
+        buf.write_angle(self.yaw);
         PacketEncoder::new(buf, 0x4c)
     }
 }

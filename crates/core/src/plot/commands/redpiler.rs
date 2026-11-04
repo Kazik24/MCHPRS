@@ -16,6 +16,7 @@ pub(in crate::plot) fn complete_redpiler(id: i32, text: &str) -> Option<CTabComp
         _ => return None,
     }
     let prefix = &text[start..];
+    // Offer only flags that match the current word and have not already been used.
     let matches = ["--publish-all", "--publish-redstone", "--io-only", "--update", "--llvm", "-i", "-u"]
         .into_iter()
         .filter(|flag| flag.starts_with(prefix) && !words[2..].contains(flag))

@@ -80,6 +80,8 @@ export function Waveform(props: Props) {
     row,
     y: rows.slice(0, index).reduce((n, item) => n + item.height, 0),
   }));
+  const rowAt = (y: number) =>
+    positions.find((item) => y >= item.y && y < item.y + item.row.height)?.row;
   const height = Math.max(
     rows.reduce((n, row) => n + row.height, 0),
     100,
@@ -350,9 +352,7 @@ export function Waveform(props: Props) {
     );
     if (props.snap) {
       const y = event.clientY - rect.top;
-      const row = positions.find(
-        (item) => y >= item.y && y < item.y + item.row.height,
-      )?.row;
+      const row = rowAt(y);
       const signal = row && props.signals.get(row.id);
       const changes =
         (row && props.buses.get(row.id)?.changes) ?? signal?.changes;
@@ -426,6 +426,7 @@ export function Waveform(props: Props) {
           <div className="row-labels" style={{ width: labelWidth }}>
             {positions.map(({ row, y }, index) => {
               const signal = props.signals.get(row.id);
+              const value = signal ? valueAt(signal, marker) : undefined;
               const bus = props.buses.get(row.id);
               const parent = row.groupId
                 ? props.buses.get(row.groupId)
@@ -518,9 +519,9 @@ export function Waveform(props: Props) {
                       {bus && row.bus
                         ? formatBus(valueAt(bus, marker), row.bus)
                         : signal
-                          ? valueAt(signal, marker) === null
+                          ? value === null
                             ? "X"
-                            : valueAt(signal, marker)
+                            : value
                               ? "1"
                               : "0"
                           : ""}
@@ -540,9 +541,7 @@ export function Waveform(props: Props) {
                 event.clientY - wave.current!.getBoundingClientRect().top;
               props.context(
                 event,
-                positions.find(
-                  (item) => y >= item.y && y < item.y + item.row.height,
-                )?.row.id,
+                rowAt(y)?.id,
               );
             }}
             onPointerDown={(event) => {
@@ -559,9 +558,7 @@ export function Waveform(props: Props) {
               if (!drag.current) {
                 const rect = wave.current!.getBoundingClientRect();
                 const y = event.clientY - rect.top;
-                const row = positions.find(
-                  (item) => y >= item.y && y < item.y + item.row.height,
-                )?.row;
+                const row = rowAt(y);
                 if (row?.bus) {
                   const bus = props.buses.get(row.id)!;
                   const tick =
@@ -608,9 +605,7 @@ export function Waveform(props: Props) {
                 );
                 const y =
                   event.clientY - wave.current!.getBoundingClientRect().top;
-                const row = positions.find(
-                  (item) => y >= item.y && y < item.y + item.row.height,
-                )?.row;
+                const row = rowAt(y);
                 if (row)
                   props.select(
                     row.id,

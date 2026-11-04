@@ -6,7 +6,7 @@ pub enum PublicationMode {
     Redstone,
 }
 
-#[derive(PartialEq, Eq, Debug)]
+#[derive(PartialEq, Eq, Debug, Default)]
 /// Options that control publication and reset behavior.
 pub struct CompilerOptions {
     /// Only flush visible outputs and controls, including lamps and copper bulbs.
@@ -17,17 +17,6 @@ pub struct CompilerOptions {
     pub publication: Option<PublicationMode>,
     /// Update all blocks in the input region after reset.
     pub update: bool,
-}
-
-impl Default for CompilerOptions {
-    fn default() -> Self {
-        Self {
-            io_only: false,
-            llvm: false,
-            publication: None,
-            update: false,
-        }
-    }
 }
 
 impl CompilerOptions {

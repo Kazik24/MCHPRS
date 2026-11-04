@@ -30,6 +30,7 @@ fn main() {
     paste_clipboard(&mut world, &clipboard, anchor, false);
     let max = start + BlockPos::new(clipboard.size_x as i32 - 1, clipboard.size_y as i32 - 1, clipboard.size_z as i32 - 1);
     let bounds = (start, max);
+    // Walk the pasted cuboid in X/Y/Z order and keep only lever blocks for repeated input toggles.
     let levers: Vec<_> = (start.x..=max.x)
         .flat_map(|x| (start.y..=max.y).flat_map(move |y| (start.z..=max.z).map(move |z| BlockPos::new(x, y, z))))
         .filter(|&pos| matches!(world.get_block(pos), Block::Lever { .. }))

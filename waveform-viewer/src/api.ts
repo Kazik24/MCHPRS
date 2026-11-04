@@ -191,6 +191,7 @@ export function connectWaveform(
     if (controller.signal.aborted) return;
     status(message, state);
     clearTimeout(timer);
+    // Retry-After accepts either seconds or an HTTP date; invalid values use backoff.
     const parsedRetryAfter = retryAfter
       ? /^\d+$/.test(retryAfter)
         ? Number(retryAfter)

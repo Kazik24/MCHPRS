@@ -312,6 +312,7 @@ pub fn collect_ram_from(cpu: Cpu, tick: u32, trace: &mut Vec<(u32, Vec<Option<u1
     if cpu.name != "cpu_bubblesort" {
         return;
     }
+    // Visit four RAM rows, decode twelve piston bits per row, and keep missing cells as None.
     let words = [7, 17, 27, 37]
         .into_iter()
         .flat_map(|y| (0..16).map(move |row| (y, row)))
@@ -340,6 +341,7 @@ pub fn reference(cpu: Cpu) -> Reference {
     let mut reference: Reference = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
     assert_eq!(reference.schema, 1);
     assert_eq!(reference.schematic_sha256, cpu.sha256);
+    // Limit this ordered tick list to the canonical reference checkpoints before comparing it.
     assert_eq!(
         reference
             .checkpoints

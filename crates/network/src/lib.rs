@@ -132,7 +132,7 @@ mod acknowledgement_tests {
     }
 }
 
-/// The minecraft protocol has these 4 different states.
+/// Connection phases, including acknowledgement barriers between protocol states.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum NetworkState {
     Handshake,

@@ -16,7 +16,7 @@ ENV CARGO_HOME=/var/cache/cargo \
     CARGO_TARGET_DIR=/app/target
 
 # The adjacent .dockerignore includes only build inputs, including optional
-# mc_data assets embedded by the 1.21.1 port. Runtime data/docs stay excluded.
+# pinned mc_data assets. Runtime data/docs stay excluded.
 COPY . ./
 RUN sed -i 's/pub const PLOT_SCALE: u32 = 4;/pub const PLOT_SCALE: u32 = 5;/' crates/core/src/plot/mod.rs \
     && grep -q '^pub const PLOT_SCALE: u32 = 5;' crates/core/src/plot/mod.rs

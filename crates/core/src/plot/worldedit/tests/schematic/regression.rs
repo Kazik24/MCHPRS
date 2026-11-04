@@ -520,6 +520,7 @@ fn spatial_order_sparse_varints_and_export_above_127() {
         "Palette".into(),
         Value::Compound(
             names
+                // Keep each state name paired with its sparse Sponge palette index.
                 .into_iter()
                 .zip([0, 127, 128, 16384])
                 .map(|(n, i)| (n.into(), Value::Int(i)))

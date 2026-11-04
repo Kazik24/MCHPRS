@@ -47,6 +47,7 @@ impl Diff {
         ensure!(from.plot == to.plot, messages::GIT_DIFFERENT_PLOTS);
         let a = from.fingerprints()?;
         let b = to.fingerprints()?;
+        // Both fingerprint lists use section order, so retain the indices that differ.
         let sections = a
             .sections
             .iter()

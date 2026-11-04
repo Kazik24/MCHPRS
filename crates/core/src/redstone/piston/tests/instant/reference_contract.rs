@@ -356,6 +356,7 @@ fn resource_contact(value: &Value, material: &str) -> ResourceContactState {
 }
 
 fn resource_observation(resource: &SharedResourceSpec, current: &BTreeMap<FixturePosition, Value>) -> SharedResourceObservation {
+    // Resolve the declared contacts and retain the one carrying this shared payload, if any.
     let selected: Vec<_> = resource
         .contacts
         .iter()
@@ -377,6 +378,7 @@ fn resource_observation(resource: &SharedResourceSpec, current: &BTreeMap<Fixtur
 }
 
 fn pending_ticks(snapshot: &Value) -> Vec<PendingTick> {
+    // Preserve scheduler iteration order while converting each serialized entry to source coordinates.
     snapshot["scheduled"]
         .as_array()
         .unwrap()
@@ -414,6 +416,7 @@ fn pending_deadlines(state: &Value, tick: u64, phase: AdvancePhase) -> Vec<Pendi
             let has_current_visit = match phase {
                 AdvancePhase::BetweenTicks => false,
                 AdvancePhase::ScheduledTicks | AdvancePhase::PistonEvents => true,
+                // Remaining movement work identifies motions that still get a visit in this tick.
                 AdvancePhase::MovingEntities => work.iter().enumerate().skip(cursor).any(|(_, item)| item[1].as_u64() == Some(identity)),
             };
             let first_visit_offset = if has_current_visit { 0 } else { 1 };
@@ -489,6 +492,7 @@ fn capture_fixture_episode(manifest: &Value, case: &Value, resource_specs: &[Sha
     assert!(initial["piston_state"]["events"].as_array().unwrap().is_empty());
     assert!(initial["piston_state"]["motions"].as_array().unwrap().is_empty());
 
+    // Normalize actions in manifest order so the comparison keeps the original input protocol.
     let actions: Vec<_> = case["actions"]
         .as_array()
         .unwrap()
@@ -706,6 +710,7 @@ fn semantic_boundaries(records: &[ComparisonRecord]) -> Vec<ComparisonRecord> {
 }
 
 fn compact_trace(record: &ComparisonRecord) -> String {
+    // Render only the first eight ordered observations; the suffix reports any omitted count.
     let operations: Vec<_> = record
         .ordered
         .iter()

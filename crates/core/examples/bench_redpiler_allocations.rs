@@ -103,6 +103,7 @@ fn ram(world: &PlotWorld, cpu: cpus::Cpu) -> Vec<Option<u16>> {
 
 #[cfg(feature = "plot-bench")]
 fn staged_sections(world: &PlotWorld) -> usize {
+    // Count dirty sections after flattening each chunk's section list.
     world.get_chunks().iter().flat_map(|chunk| &chunk.sections).filter(|section| section.has_pending_block_changes()).count()
 }
 

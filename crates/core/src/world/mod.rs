@@ -124,10 +124,10 @@ pub trait World {
     /// Returns None if the chunk does not exist in this world.
     fn get_chunk_mut(&mut self, x: i32, z: i32) -> Option<&mut Chunk>;
 
-    /// Schedules a tick in the world with `delay` and `pritority`
+    /// Schedules a tick in the world with the given delay and priority.
     fn schedule_tick(&mut self, pos: BlockPos, delay: u32, priority: TickPriority);
 
-    /// Schedules a tick in the world with `delay` and `pritority`
+    /// Schedules a half-tick in the world with the given delay and priority.
     fn schedule_half_tick(&mut self, pos: BlockPos, delay: u32, priority: TickPriority);
 
     /// Restore one handed-off entry verbatim, keeping duplicates, FIFO order
@@ -208,6 +208,7 @@ where
 fn section_bounds(first_pos: BlockPos, second_pos: BlockPos) -> impl Iterator<Item = (BlockPos, BlockPos)> {
     let first = first_pos.min(second_pos);
     let last = first_pos.max(second_pos);
+    // Visit X/Z chunk columns and Y sections, clipping each aligned 16-block cube to the selection.
     (first.x.div_euclid(16)..=last.x.div_euclid(16)).flat_map(move |chunk_x| {
         (first.z.div_euclid(16)..=last.z.div_euclid(16)).flat_map(move |chunk_z| {
             (first.y.div_euclid(16)..=last.y.div_euclid(16)).map(move |section_y| {

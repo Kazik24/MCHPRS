@@ -400,6 +400,11 @@ pub trait PacketEncoderExt: Write + Sized {
         self.write_f32::<BigEndian>(val).unwrap();
     }
 
+    /// One full turn occupies 256 steps; retain the low byte after truncation.
+    fn write_angle(&mut self, degrees: f32) {
+        self.write_byte(((degrees / 360.0 * 256.0) as i32 % 256) as i8);
+    }
+
     fn write_string(&mut self, n: usize, val: &str) {
         if val.len() > n * 4 + 3 {
             panic!("Tried to write string longer than the max length!");
@@ -420,7 +425,7 @@ pub trait PacketEncoderExt: Write + Sized {
         self.write_long(pos.as_raw());
     }
     fn write_bool(&mut self, val: bool) {
-        self.write_u8(val as u8).unwrap();
+        self.write_boolean(val);
     }
 
     fn write_nbt<T: Serialize>(&mut self, value: &T) {
@@ -507,10 +512,6 @@ impl PacketEncoder {
     }
 
     pub fn write_uncompressed(&self, mut w: impl Write) -> io::Result<()> {
-        // if let Some(data) = &self.unc_cache {
-        //     return &data;
-        // }
-
         let packet_id = PacketEncoder::varint(self.packet_id as i32);
         let length = PacketEncoder::varint((self.buffer.len() + packet_id.len()) as i32);
 
@@ -518,9 +519,6 @@ impl PacketEncoder {
         w.write_all(&length)?;
         w.write_all(&packet_id)?;
         w.write_all(&self.buffer)?;
-
-        // self.unc_cache = Some([&length[..], &packet_id[..], &self.buffer[..]].concat());
-        // return self.c_cache.as_ref().unwrap();
 
         Ok(())
     }

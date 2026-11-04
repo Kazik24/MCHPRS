@@ -1,7 +1,7 @@
 import { MaterialIcon } from "./MaterialIcon";
 import { Fragment, useState } from "react";
 import type { Trace, Viewport } from "../trace";
-import { tickLabel } from "../trace";
+import { commandEventText, tickLabel } from "../trace";
 
 interface Props {
   zeroTick: string;
@@ -141,10 +141,7 @@ export function CommandEvents({
             <div className="event-tooltip-message" key={event.seq}>
               <small>{event.position.join(", ")}</small>
               <div className="event-text">
-                {event.text}
-                {event.originalBytes > 0
-                  ? ` [truncated; ${event.originalBytes} bytes originally]`
-                  : ""}
+                {commandEventText(event)}
               </div>
             </div>
           ))}
@@ -164,15 +161,7 @@ export function CommandEvents({
             <MaterialIcon name="close" size={16} />
           </button>
           <div className="event-text">
-            {preview
-              .map(
-                (event) =>
-                  event.text +
-                  (event.originalBytes > 0
-                    ? ` [truncated; ${event.originalBytes} bytes originally]`
-                    : ""),
-              )
-              .join("\n")}
+            {preview.map(commandEventText).join("\n")}
           </div>
         </div>
       )}

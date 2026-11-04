@@ -44,6 +44,26 @@ pub trait ServerBoundPacket: Send {
     fn handle(self: Box<Self>, handler: &mut dyn ServerBoundPacketHandler, player_idx: usize);
 }
 
+macro_rules! empty_packet {
+    ($name:ident,$handler:ident) => {
+        pub struct $name;
+        impl ServerBoundPacket for $name {
+            fn decode<T: PacketDecoderExt>(_: &mut T) -> DecodeResult<Self> {
+                Ok(Self)
+            }
+            fn handle(self: Box<Self>, handler: &mut dyn ServerBoundPacketHandler, idx: usize) {
+                handler.$handler(*self, idx);
+            }
+        }
+    };
+}
+
+empty_packet!(SUnknown, handle_unknown);
+empty_packet!(SRequest, handle_request);
+empty_packet!(SLoginAcknowledged, handle_login_acknowledged);
+empty_packet!(SKnownPacks, handle_known_packs);
+empty_packet!(SConfigurationFinished, handle_configuration_finished);
+
 pub struct SLoginPluginResponse {
     pub message_id: i32,
     pub successful: bool,
@@ -69,8 +89,6 @@ impl ServerBoundPacket for SLoginPluginResponse {
         handler.handle_login_plugin_response(*self, idx);
     }
 }
-
-pub struct SUnknown;
 
 pub struct STeleportConfirm {
     pub id: i32,
@@ -149,16 +167,6 @@ impl ServerBoundPacket for SPickItemFromEntity {
     }
 }
 
-impl ServerBoundPacket for SUnknown {
-    fn decode<T: PacketDecoderExt>(_: &mut T) -> DecodeResult<Self> {
-        Ok(SUnknown)
-    }
-
-    fn handle(self: Box<Self>, handler: &mut dyn ServerBoundPacketHandler, player_idx: usize) {
-        handler.handle_unknown(*self, player_idx);
-    }
-}
-
 pub struct SHandshake {
     pub protocol_version: i32,
     pub server_address: String,
@@ -178,18 +186,6 @@ impl ServerBoundPacket for SHandshake {
 
     fn handle(self: Box<Self>, handler: &mut dyn ServerBoundPacketHandler, player_idx: usize) {
         handler.handle_handshake(*self, player_idx);
-    }
-}
-
-pub struct SRequest;
-
-impl ServerBoundPacket for SRequest {
-    fn decode<T: PacketDecoderExt>(_decoder: &mut T) -> DecodeResult<Self> {
-        Ok(SRequest)
-    }
-
-    fn handle(self: Box<Self>, handler: &mut dyn ServerBoundPacketHandler, player_idx: usize) {
-        handler.handle_request(*self, player_idx);
     }
 }
 
@@ -693,22 +689,6 @@ impl ServerBoundPacket for SUpdateSign {
     }
 }
 
-macro_rules! empty_packet {
-    ($name:ident,$handler:ident) => {
-        pub struct $name;
-        impl ServerBoundPacket for $name {
-            fn decode<T: PacketDecoderExt>(_: &mut T) -> DecodeResult<Self> {
-                Ok(Self)
-            }
-            fn handle(self: Box<Self>, handler: &mut dyn ServerBoundPacketHandler, idx: usize) {
-                handler.$handler(*self, idx);
-            }
-        }
-    };
-}
-empty_packet!(SLoginAcknowledged, handle_login_acknowledged);
-empty_packet!(SKnownPacks, handle_known_packs);
-empty_packet!(SConfigurationFinished, handle_configuration_finished);
 pub struct SChatCommand {
     pub message: String,
 }

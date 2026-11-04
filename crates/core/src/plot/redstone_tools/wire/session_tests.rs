@@ -79,6 +79,7 @@ fn staged_route(plot: &mut Plot) -> (BlockPos, BlockPos, Block) {
     assert_eq!(aim(&plot.world, &plot.players[0], 0.0, 90.0, Some(start), Plane::Horizontal), Some(end));
     let reads = snapshot(&plot.world, start, end);
     let path: Vec<_> = (start.x..=end.x).map(|x| BlockPos::new(x, 21, 35)).collect();
+    // Apply support blocks before dust, matching placement order for the route.
     let placements = path
         .iter()
         .skip(1)

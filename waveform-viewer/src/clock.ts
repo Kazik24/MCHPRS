@@ -18,6 +18,7 @@ export function sampleOnClock<T>(
     held = unknown,
     index = 0;
   for (const transition of clock.changes) {
+    // Same-tick data recorded after this clock edge belongs to a later sample.
     while (index < target.changes.length) {
       const change = target.changes[index];
       if (

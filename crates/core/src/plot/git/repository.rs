@@ -314,6 +314,7 @@ impl Repository {
     pub fn recoveries(&self, page: usize) -> Result<Value> {
         ensure!((1..=100_000).contains(&page), messages::GIT_INVALID_PAGE);
         let rows = self.recovery_rows(page)?;
+        // Render ten rows and keep the extra row only to decide whether to show Next.
         let mut extra: Vec<_> = rows
             .iter()
             .take(10)

@@ -87,11 +87,8 @@ pub(super) fn find_changed_links<K: Ord + Copy, V: PartialEq>(
     before: &std::collections::BTreeMap<K, V>,
     after: &std::collections::BTreeMap<K, V>,
 ) -> Vec<K> {
-    before
-        .keys()
-        .chain(after.keys())
-        .copied()
-        .collect::<std::collections::BTreeSet<_>>()
+    let all_sources: std::collections::BTreeSet<_> = before.keys().chain(after.keys()).copied().collect();
+    all_sources
         .into_iter()
         .filter(|source| before.get(source) != after.get(source))
         .collect()

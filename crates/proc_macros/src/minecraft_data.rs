@@ -145,6 +145,7 @@ pub fn blocks() -> Result<TokenStream, String> {
     let legacy_blocks: Vec<Block> = load("legacy_blocks.json", LEGACY_BLOCKS)?;
     let target = states(&blocks)?;
     let legacy = states(&legacy_blocks)?;
+    // Match by the complete property set, including defaults absent in legacy data.
     let index: HashMap<StateKey<'_>, u32> = target
         .iter()
         .enumerate()

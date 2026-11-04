@@ -54,6 +54,7 @@ impl Plot {
         let Some(session) = self.git.sessions.get_mut(&viewer.uuid).filter(|s| s.enabled) else {
             return;
         };
+        // Ignore markers outside this viewer's current chunk view distance.
         let wanted: HashMap<_, _> = markers
             .into_iter()
             .filter(|m| {

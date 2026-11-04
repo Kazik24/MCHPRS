@@ -26,6 +26,7 @@ export function busPlot(bus: Bus, settings: BusSettings, viewport: Viewport) {
   const max = known.reduce((a, b) => (a > b ? a : b));
   const x = (tick: number) =>
     100 + ((tick - viewport.start) / (viewport.end - viewport.start)) * 880;
+  // Scale the ratio as bigint before conversion; a 1024-bit value exceeds Number.
   const y = (value: bigint) =>
     min === max
       ? 145

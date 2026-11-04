@@ -44,6 +44,7 @@ impl Plot {
                 let pages = cache.map_or(0, |cache| cache.page_count());
                 (1..=pages).map(|page| page.to_string()).collect()
             }
+            // Search supports both block names and the separate page flag.
             ToolCommand::Find => mchprs_blocks::generated::BLOCKS
                 .iter()
                 .map(|definition| definition.0.to_owned())

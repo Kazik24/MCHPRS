@@ -219,6 +219,7 @@ fn electrical_states(program: &Program, indexes: &ProbeIndexes<'_>, tokens: &[us
 }
 
 fn placements(tokens: &[usize], axes: &[Vec<usize>], mut arrangement: usize) -> Vec<(usize, usize)> {
+    // Decode the flat arrangement index into one selected position for each token axis.
     tokens
         .iter()
         .zip(axes).map(|(&token, states)| {

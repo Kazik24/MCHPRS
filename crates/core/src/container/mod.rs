@@ -144,6 +144,7 @@ pub(crate) fn barrel_facing(yaw: f32, pitch: f32) -> mchprs_blocks::BlockFacing 
 }
 
 pub(crate) fn comparator_strength(slots: &[Option<ItemStack>]) -> u8 {
+    // Sum each occupied stack's fraction of its maximum size, then scale by the total slot count.
     let fullness: f32 = slots.iter().flatten().map(|item| item.count as f32 / max_count(item) as f32).sum();
     let scaled_fullness = (fullness / slots.len() as f32 * 14.0).floor() as u8;
     let occupied_bonus = u8::from(slots.iter().any(Option::is_some));
@@ -197,6 +198,7 @@ pub(crate) fn inventory_slots(entries: &[InventoryEntry], count: usize) -> Vec<O
 }
 
 pub(crate) fn inventory_entries(slots: &[Option<ItemStack>]) -> Vec<InventoryEntry> {
+    // Persist occupied slots in index order, encoding each stack's item identity and optional NBT.
     slots
         .iter()
         .enumerate()

@@ -1,5 +1,5 @@
 import type { CommandEvent, Trace, Value } from "./trace";
-import { compareSeq } from "./trace.ts";
+import { commandEventText, compareSeq } from "./trace.ts";
 
 export function toVcd(trace: Trace): string {
   const lines = [
@@ -46,7 +46,7 @@ export function toVcd(trace: Trace): string {
     const text = group
       .map(
         (event) =>
-          `(${event.position.join(", ")}) ${event.text}${event.originalBytes > 0 ? ` [truncated; ${event.originalBytes} bytes originally]` : ""}`,
+          `(${event.position.join(", ")}) ${commandEventText(event)}`,
       )
       .join("\n");
     const escaped = [...text]

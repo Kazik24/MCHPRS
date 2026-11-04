@@ -1,0 +1,1709 @@
+{
+  "blocks": [
+    [
+      {
+        "x": 151,
+        "y": 9,
+        "z": 124
+      },
+      6042
+    ],
+    [
+      {
+        "x": 152,
+        "y": 9,
+        "z": 124
+      },
+      6042
+    ],
+    [
+      {
+        "x": 153,
+        "y": 9,
+        "z": 124
+      },
+      6042
+    ],
+    [
+      {
+        "x": 154,
+        "y": 9,
+        "z": 124
+      },
+      6042
+    ],
+    [
+      {
+        "x": 155,
+        "y": 9,
+        "z": 124
+      },
+      6042
+    ],
+    [
+      {
+        "x": 156,
+        "y": 9,
+        "z": 124
+      },
+      13751
+    ],
+    [
+      {
+        "x": 157,
+        "y": 9,
+        "z": 124
+      },
+      13751
+    ],
+    [
+      {
+        "x": 158,
+        "y": 9,
+        "z": 124
+      },
+      13751
+    ],
+    [
+      {
+        "x": 155,
+        "y": 9,
+        "z": 125
+      },
+      6042
+    ],
+    [
+      {
+        "x": 140,
+        "y": 9,
+        "z": 126
+      },
+      6042
+    ],
+    [
+      {
+        "x": 141,
+        "y": 9,
+        "z": 126
+      },
+      12203
+    ],
+    [
+      {
+        "x": 142,
+        "y": 9,
+        "z": 126
+      },
+      12203
+    ],
+    [
+      {
+        "x": 143,
+        "y": 9,
+        "z": 126
+      },
+      12203
+    ],
+    [
+      {
+        "x": 144,
+        "y": 9,
+        "z": 126
+      },
+      12203
+    ],
+    [
+      {
+        "x": 145,
+        "y": 9,
+        "z": 126
+      },
+      12203
+    ],
+    [
+      {
+        "x": 146,
+        "y": 9,
+        "z": 126
+      },
+      12203
+    ],
+    [
+      {
+        "x": 147,
+        "y": 9,
+        "z": 126
+      },
+      12203
+    ],
+    [
+      {
+        "x": 148,
+        "y": 9,
+        "z": 126
+      },
+      12203
+    ],
+    [
+      {
+        "x": 149,
+        "y": 9,
+        "z": 126
+      },
+      12203
+    ],
+    [
+      {
+        "x": 150,
+        "y": 9,
+        "z": 126
+      },
+      12203
+    ],
+    [
+      {
+        "x": 151,
+        "y": 9,
+        "z": 126
+      },
+      12203
+    ],
+    [
+      {
+        "x": 152,
+        "y": 9,
+        "z": 126
+      },
+      12203
+    ],
+    [
+      {
+        "x": 153,
+        "y": 9,
+        "z": 126
+      },
+      12203
+    ],
+    [
+      {
+        "x": 154,
+        "y": 9,
+        "z": 126
+      },
+      6042
+    ],
+    [
+      {
+        "x": 155,
+        "y": 9,
+        "z": 126
+      },
+      6042
+    ],
+    [
+      {
+        "x": 151,
+        "y": 9,
+        "z": 128
+      },
+      6042
+    ],
+    [
+      {
+        "x": 152,
+        "y": 9,
+        "z": 128
+      },
+      6042
+    ],
+    [
+      {
+        "x": 153,
+        "y": 9,
+        "z": 128
+      },
+      6042
+    ],
+    [
+      {
+        "x": 154,
+        "y": 9,
+        "z": 128
+      },
+      6042
+    ],
+    [
+      {
+        "x": 155,
+        "y": 9,
+        "z": 128
+      },
+      6042
+    ],
+    [
+      {
+        "x": 156,
+        "y": 9,
+        "z": 128
+      },
+      13751
+    ],
+    [
+      {
+        "x": 157,
+        "y": 9,
+        "z": 128
+      },
+      13751
+    ],
+    [
+      {
+        "x": 158,
+        "y": 9,
+        "z": 128
+      },
+      13751
+    ],
+    [
+      {
+        "x": 155,
+        "y": 9,
+        "z": 129
+      },
+      6042
+    ],
+    [
+      {
+        "x": 151,
+        "y": 10,
+        "z": 124
+      },
+      13751
+    ],
+    [
+      {
+        "x": 152,
+        "y": 10,
+        "z": 124
+      },
+      13576
+    ],
+    [
+      {
+        "x": 153,
+        "y": 10,
+        "z": 124
+      },
+      2036
+    ],
+    [
+      {
+        "x": 154,
+        "y": 10,
+        "z": 124
+      },
+      2076
+    ],
+    [
+      {
+        "x": 155,
+        "y": 10,
+        "z": 124
+      },
+      10032
+    ],
+    [
+      {
+        "x": 156,
+        "y": 10,
+        "z": 124
+      },
+      3904
+    ],
+    [
+      {
+        "x": 157,
+        "y": 10,
+        "z": 124
+      },
+      3895
+    ],
+    [
+      {
+        "x": 158,
+        "y": 10,
+        "z": 124
+      },
+      3886
+    ],
+    [
+      {
+        "x": 155,
+        "y": 10,
+        "z": 125
+      },
+      2072
+    ],
+    [
+      {
+        "x": 141,
+        "y": 10,
+        "z": 126
+      },
+      3904
+    ],
+    [
+      {
+        "x": 142,
+        "y": 10,
+        "z": 126
+      },
+      3895
+    ],
+    [
+      {
+        "x": 143,
+        "y": 10,
+        "z": 126
+      },
+      3886
+    ],
+    [
+      {
+        "x": 144,
+        "y": 10,
+        "z": 126
+      },
+      3877
+    ],
+    [
+      {
+        "x": 145,
+        "y": 10,
+        "z": 126
+      },
+      3868
+    ],
+    [
+      {
+        "x": 146,
+        "y": 10,
+        "z": 126
+      },
+      3859
+    ],
+    [
+      {
+        "x": 147,
+        "y": 10,
+        "z": 126
+      },
+      3850
+    ],
+    [
+      {
+        "x": 148,
+        "y": 10,
+        "z": 126
+      },
+      3841
+    ],
+    [
+      {
+        "x": 149,
+        "y": 10,
+        "z": 126
+      },
+      3832
+    ],
+    [
+      {
+        "x": 150,
+        "y": 10,
+        "z": 126
+      },
+      3823
+    ],
+    [
+      {
+        "x": 151,
+        "y": 10,
+        "z": 126
+      },
+      3814
+    ],
+    [
+      {
+        "x": 152,
+        "y": 10,
+        "z": 126
+      },
+      3805
+    ],
+    [
+      {
+        "x": 153,
+        "y": 10,
+        "z": 126
+      },
+      3796
+    ],
+    [
+      {
+        "x": 154,
+        "y": 10,
+        "z": 126
+      },
+      12203
+    ],
+    [
+      {
+        "x": 155,
+        "y": 10,
+        "z": 126
+      },
+      2035
+    ],
+    [
+      {
+        "x": 151,
+        "y": 10,
+        "z": 128
+      },
+      13751
+    ],
+    [
+      {
+        "x": 152,
+        "y": 10,
+        "z": 128
+      },
+      13576
+    ],
+    [
+      {
+        "x": 153,
+        "y": 10,
+        "z": 128
+      },
+      2036
+    ],
+    [
+      {
+        "x": 154,
+        "y": 10,
+        "z": 128
+      },
+      2076
+    ],
+    [
+      {
+        "x": 155,
+        "y": 10,
+        "z": 128
+      },
+      10032
+    ],
+    [
+      {
+        "x": 156,
+        "y": 10,
+        "z": 128
+      },
+      3904
+    ],
+    [
+      {
+        "x": 157,
+        "y": 10,
+        "z": 128
+      },
+      3895
+    ],
+    [
+      {
+        "x": 158,
+        "y": 10,
+        "z": 128
+      },
+      3886
+    ],
+    [
+      {
+        "x": 155,
+        "y": 10,
+        "z": 129
+      },
+      2072
+    ],
+    [
+      {
+        "x": 151,
+        "y": 11,
+        "z": 124
+      },
+      3622
+    ],
+    [
+      {
+        "x": 152,
+        "y": 11,
+        "z": 124
+      },
+      13751
+    ],
+    [
+      {
+        "x": 153,
+        "y": 11,
+        "z": 124
+      },
+      13751
+    ],
+    [
+      {
+        "x": 154,
+        "y": 11,
+        "z": 124
+      },
+      6042
+    ],
+    [
+      {
+        "x": 155,
+        "y": 11,
+        "z": 124
+      },
+      6042
+    ],
+    [
+      {
+        "x": 155,
+        "y": 11,
+        "z": 125
+      },
+      6042
+    ],
+    [
+      {
+        "x": 140,
+        "y": 11,
+        "z": 126
+      },
+      6042
+    ],
+    [
+      {
+        "x": 155,
+        "y": 11,
+        "z": 126
+      },
+      13584
+    ],
+    [
+      {
+        "x": 140,
+        "y": 11,
+        "z": 127
+      },
+      13754
+    ],
+    [
+      {
+        "x": 144,
+        "y": 11,
+        "z": 127
+      },
+      13754
+    ],
+    [
+      {
+        "x": 148,
+        "y": 11,
+        "z": 127
+      },
+      13754
+    ],
+    [
+      {
+        "x": 151,
+        "y": 11,
+        "z": 128
+      },
+      3622
+    ],
+    [
+      {
+        "x": 152,
+        "y": 11,
+        "z": 128
+      },
+      13751
+    ],
+    [
+      {
+        "x": 153,
+        "y": 11,
+        "z": 128
+      },
+      13751
+    ],
+    [
+      {
+        "x": 154,
+        "y": 11,
+        "z": 128
+      },
+      6042
+    ],
+    [
+      {
+        "x": 155,
+        "y": 11,
+        "z": 128
+      },
+      6042
+    ],
+    [
+      {
+        "x": 155,
+        "y": 11,
+        "z": 129
+      },
+      6042
+    ],
+    [
+      {
+        "x": 140,
+        "y": 12,
+        "z": 122
+      },
+      13754
+    ],
+    [
+      {
+        "x": 142,
+        "y": 12,
+        "z": 122
+      },
+      6042
+    ],
+    [
+      {
+        "x": 144,
+        "y": 12,
+        "z": 122
+      },
+      13754
+    ],
+    [
+      {
+        "x": 146,
+        "y": 12,
+        "z": 122
+      },
+      6042
+    ],
+    [
+      {
+        "x": 148,
+        "y": 12,
+        "z": 122
+      },
+      13754
+    ],
+    [
+      {
+        "x": 150,
+        "y": 12,
+        "z": 122
+      },
+      6042
+    ],
+    [
+      {
+        "x": 140,
+        "y": 12,
+        "z": 123
+      },
+      13754
+    ],
+    [
+      {
+        "x": 142,
+        "y": 12,
+        "z": 123
+      },
+      13751
+    ],
+    [
+      {
+        "x": 144,
+        "y": 12,
+        "z": 123
+      },
+      13754
+    ],
+    [
+      {
+        "x": 146,
+        "y": 12,
+        "z": 123
+      },
+      13751
+    ],
+    [
+      {
+        "x": 148,
+        "y": 12,
+        "z": 123
+      },
+      13754
+    ],
+    [
+      {
+        "x": 150,
+        "y": 12,
+        "z": 123
+      },
+      13751
+    ],
+    [
+      {
+        "x": 140,
+        "y": 12,
+        "z": 124
+      },
+      13754
+    ],
+    [
+      {
+        "x": 142,
+        "y": 12,
+        "z": 124
+      },
+      13751
+    ],
+    [
+      {
+        "x": 144,
+        "y": 12,
+        "z": 124
+      },
+      13754
+    ],
+    [
+      {
+        "x": 146,
+        "y": 12,
+        "z": 124
+      },
+      13751
+    ],
+    [
+      {
+        "x": 148,
+        "y": 12,
+        "z": 124
+      },
+      13754
+    ],
+    [
+      {
+        "x": 150,
+        "y": 12,
+        "z": 124
+      },
+      13751
+    ],
+    [
+      {
+        "x": 152,
+        "y": 12,
+        "z": 124
+      },
+      13751
+    ],
+    [
+      {
+        "x": 153,
+        "y": 12,
+        "z": 124
+      },
+      3786
+    ],
+    [
+      {
+        "x": 140,
+        "y": 12,
+        "z": 125
+      },
+      6042
+    ],
+    [
+      {
+        "x": 142,
+        "y": 12,
+        "z": 125
+      },
+      13751
+    ],
+    [
+      {
+        "x": 144,
+        "y": 12,
+        "z": 125
+      },
+      6042
+    ],
+    [
+      {
+        "x": 146,
+        "y": 12,
+        "z": 125
+      },
+      13751
+    ],
+    [
+      {
+        "x": 148,
+        "y": 12,
+        "z": 125
+      },
+      6042
+    ],
+    [
+      {
+        "x": 150,
+        "y": 12,
+        "z": 125
+      },
+      13751
+    ],
+    [
+      {
+        "x": 140,
+        "y": 12,
+        "z": 126
+      },
+      13754
+    ],
+    [
+      {
+        "x": 142,
+        "y": 12,
+        "z": 126
+      },
+      13751
+    ],
+    [
+      {
+        "x": 144,
+        "y": 12,
+        "z": 126
+      },
+      13754
+    ],
+    [
+      {
+        "x": 146,
+        "y": 12,
+        "z": 126
+      },
+      13751
+    ],
+    [
+      {
+        "x": 148,
+        "y": 12,
+        "z": 126
+      },
+      13754
+    ],
+    [
+      {
+        "x": 150,
+        "y": 12,
+        "z": 126
+      },
+      13751
+    ],
+    [
+      {
+        "x": 155,
+        "y": 12,
+        "z": 126
+      },
+      12203
+    ],
+    [
+      {
+        "x": 140,
+        "y": 12,
+        "z": 127
+      },
+      3622
+    ],
+    [
+      {
+        "x": 142,
+        "y": 12,
+        "z": 127
+      },
+      13751
+    ],
+    [
+      {
+        "x": 144,
+        "y": 12,
+        "z": 127
+      },
+      3622
+    ],
+    [
+      {
+        "x": 146,
+        "y": 12,
+        "z": 127
+      },
+      13751
+    ],
+    [
+      {
+        "x": 148,
+        "y": 12,
+        "z": 127
+      },
+      3622
+    ],
+    [
+      {
+        "x": 150,
+        "y": 12,
+        "z": 127
+      },
+      13751
+    ],
+    [
+      {
+        "x": 140,
+        "y": 12,
+        "z": 128
+      },
+      6042
+    ],
+    [
+      {
+        "x": 142,
+        "y": 12,
+        "z": 128
+      },
+      13751
+    ],
+    [
+      {
+        "x": 144,
+        "y": 12,
+        "z": 128
+      },
+      6042
+    ],
+    [
+      {
+        "x": 146,
+        "y": 12,
+        "z": 128
+      },
+      13751
+    ],
+    [
+      {
+        "x": 148,
+        "y": 12,
+        "z": 128
+      },
+      6042
+    ],
+    [
+      {
+        "x": 150,
+        "y": 12,
+        "z": 128
+      },
+      13751
+    ],
+    [
+      {
+        "x": 152,
+        "y": 12,
+        "z": 128
+      },
+      13751
+    ],
+    [
+      {
+        "x": 153,
+        "y": 12,
+        "z": 128
+      },
+      3786
+    ],
+    [
+      {
+        "x": 140,
+        "y": 12,
+        "z": 129
+      },
+      13754
+    ],
+    [
+      {
+        "x": 142,
+        "y": 12,
+        "z": 129
+      },
+      13751
+    ],
+    [
+      {
+        "x": 144,
+        "y": 12,
+        "z": 129
+      },
+      13754
+    ],
+    [
+      {
+        "x": 146,
+        "y": 12,
+        "z": 129
+      },
+      13751
+    ],
+    [
+      {
+        "x": 148,
+        "y": 12,
+        "z": 129
+      },
+      13754
+    ],
+    [
+      {
+        "x": 150,
+        "y": 12,
+        "z": 129
+      },
+      13751
+    ],
+    [
+      {
+        "x": 140,
+        "y": 10,
+        "z": 126
+      },
+      5926
+    ]
+  ],
+  "final_target": {
+    "interpreter": "Air",
+    "rust": "Air"
+  },
+  "interpreter_trace": [
+    {
+      "base": 2036,
+      "event": null,
+      "extended": true,
+      "far": 10032,
+      "front": 2076,
+      "main": true,
+      "main_sources": [
+        {
+          "x": 153,
+          "y": 11,
+          "z": 124
+        }
+      ],
+      "phase": "ScheduledTicks",
+      "pos": {
+        "x": 153,
+        "y": 10,
+        "z": 124
+      },
+      "powered": true,
+      "quasi": true,
+      "quasi_sources": [
+        {
+          "x": 153,
+          "y": 12,
+          "z": 124
+        }
+      ],
+      "stage": "Sample",
+      "tick": 1
+    },
+    {
+      "base": 2035,
+      "event": null,
+      "extended": true,
+      "far": 10032,
+      "front": 2072,
+      "main": true,
+      "main_sources": [
+        {
+          "x": 154,
+          "y": 10,
+          "z": 126
+        }
+      ],
+      "phase": "ScheduledTicks",
+      "pos": {
+        "x": 155,
+        "y": 10,
+        "z": 126
+      },
+      "powered": true,
+      "quasi": false,
+      "quasi_sources": [],
+      "stage": "Sample",
+      "tick": 1
+    },
+    {
+      "base": 2036,
+      "event": null,
+      "extended": true,
+      "far": 10032,
+      "front": 2076,
+      "main": true,
+      "main_sources": [
+        {
+          "x": 153,
+          "y": 11,
+          "z": 124
+        }
+      ],
+      "phase": "ScheduledTicks",
+      "pos": {
+        "x": 153,
+        "y": 10,
+        "z": 124
+      },
+      "powered": true,
+      "quasi": true,
+      "quasi_sources": [
+        {
+          "x": 153,
+          "y": 12,
+          "z": 124
+        }
+      ],
+      "stage": "Sample",
+      "tick": 1
+    },
+    {
+      "base": 2035,
+      "event": null,
+      "extended": true,
+      "far": 10032,
+      "front": 2072,
+      "main": false,
+      "main_sources": [],
+      "phase": "ScheduledTicks",
+      "pos": {
+        "x": 155,
+        "y": 10,
+        "z": 126
+      },
+      "powered": false,
+      "quasi": false,
+      "quasi_sources": [],
+      "stage": "Sample",
+      "tick": 1
+    },
+    {
+      "base": 2035,
+      "event": {
+        "action": "Retract",
+        "facing": "North",
+        "pos": {
+          "x": 155,
+          "y": 10,
+          "z": 126
+        },
+        "sticky": true
+      },
+      "extended": true,
+      "far": 10032,
+      "front": 2072,
+      "main": false,
+      "main_sources": [],
+      "phase": "ScheduledTicks",
+      "pos": {
+        "x": 155,
+        "y": 10,
+        "z": 126
+      },
+      "powered": false,
+      "quasi": false,
+      "quasi_sources": [],
+      "stage": "Request",
+      "tick": 1
+    },
+    {
+      "base": 2035,
+      "event": {
+        "action": "Retract",
+        "facing": "North",
+        "pos": {
+          "x": 155,
+          "y": 10,
+          "z": 126
+        },
+        "sticky": true
+      },
+      "extended": true,
+      "far": 10032,
+      "front": 2072,
+      "main": false,
+      "main_sources": [],
+      "phase": "PistonEvents",
+      "pos": {
+        "x": 155,
+        "y": 10,
+        "z": 126
+      },
+      "powered": false,
+      "quasi": false,
+      "quasi_sources": [],
+      "stage": "Accept",
+      "tick": 1
+    },
+    {
+      "base": 2036,
+      "event": null,
+      "extended": true,
+      "far": 0,
+      "front": 2076,
+      "main": true,
+      "main_sources": [
+        {
+          "x": 153,
+          "y": 11,
+          "z": 124
+        }
+      ],
+      "phase": "PistonEvents",
+      "pos": {
+        "x": 153,
+        "y": 10,
+        "z": 124
+      },
+      "powered": true,
+      "quasi": true,
+      "quasi_sources": [
+        {
+          "x": 153,
+          "y": 12,
+          "z": 124
+        }
+      ],
+      "stage": "Sample",
+      "tick": 1
+    },
+    {
+      "base": 2036,
+      "event": null,
+      "extended": true,
+      "far": 0,
+      "front": 2076,
+      "main": true,
+      "main_sources": [
+        {
+          "x": 153,
+          "y": 11,
+          "z": 124
+        }
+      ],
+      "phase": "PistonEvents",
+      "pos": {
+        "x": 153,
+        "y": 10,
+        "z": 124
+      },
+      "powered": true,
+      "quasi": true,
+      "quasi_sources": [
+        {
+          "x": 153,
+          "y": 12,
+          "z": 124
+        }
+      ],
+      "stage": "Sample",
+      "tick": 1
+    },
+    {
+      "base": 2036,
+      "event": null,
+      "extended": true,
+      "far": 0,
+      "front": 2076,
+      "main": true,
+      "main_sources": [
+        {
+          "x": 153,
+          "y": 11,
+          "z": 124
+        }
+      ],
+      "phase": "PistonEvents",
+      "pos": {
+        "x": 153,
+        "y": 10,
+        "z": 124
+      },
+      "powered": true,
+      "quasi": true,
+      "quasi_sources": [
+        {
+          "x": 153,
+          "y": 12,
+          "z": 124
+        }
+      ],
+      "stage": "Sample",
+      "tick": 1
+    },
+    {
+      "base": 2036,
+      "event": null,
+      "extended": true,
+      "far": 0,
+      "front": 2076,
+      "main": true,
+      "main_sources": [
+        {
+          "x": 153,
+          "y": 11,
+          "z": 124
+        }
+      ],
+      "phase": "PistonEvents",
+      "pos": {
+        "x": 153,
+        "y": 10,
+        "z": 124
+      },
+      "powered": true,
+      "quasi": true,
+      "quasi_sources": [
+        {
+          "x": 153,
+          "y": 12,
+          "z": 124
+        }
+      ],
+      "stage": "Sample",
+      "tick": 1
+    },
+    {
+      "base": 2036,
+      "event": null,
+      "extended": true,
+      "far": 0,
+      "front": 2076,
+      "main": true,
+      "main_sources": [
+        {
+          "x": 153,
+          "y": 11,
+          "z": 124
+        }
+      ],
+      "phase": "PistonEvents",
+      "pos": {
+        "x": 153,
+        "y": 10,
+        "z": 124
+      },
+      "powered": true,
+      "quasi": true,
+      "quasi_sources": [
+        {
+          "x": 153,
+          "y": 12,
+          "z": 124
+        }
+      ],
+      "stage": "Sample",
+      "tick": 1
+    },
+    {
+      "base": 2036,
+      "event": null,
+      "extended": true,
+      "far": 0,
+      "front": 2076,
+      "main": true,
+      "main_sources": [
+        {
+          "x": 153,
+          "y": 11,
+          "z": 124
+        }
+      ],
+      "phase": "PistonEvents",
+      "pos": {
+        "x": 153,
+        "y": 10,
+        "z": 124
+      },
+      "powered": true,
+      "quasi": true,
+      "quasi_sources": [
+        {
+          "x": 153,
+          "y": 12,
+          "z": 124
+        }
+      ],
+      "stage": "Sample",
+      "tick": 1
+    },
+    {
+      "base": 2036,
+      "event": null,
+      "extended": true,
+      "far": 0,
+      "front": 2076,
+      "main": true,
+      "main_sources": [
+        {
+          "x": 153,
+          "y": 11,
+          "z": 124
+        }
+      ],
+      "phase": "PistonEvents",
+      "pos": {
+        "x": 153,
+        "y": 10,
+        "z": 124
+      },
+      "powered": true,
+      "quasi": true,
+      "quasi_sources": [
+        {
+          "x": 153,
+          "y": 12,
+          "z": 124
+        }
+      ],
+      "stage": "Sample",
+      "tick": 1
+    },
+    {
+      "base": 2036,
+      "event": null,
+      "extended": true,
+      "far": 0,
+      "front": 2076,
+      "main": true,
+      "main_sources": [
+        {
+          "x": 153,
+          "y": 11,
+          "z": 124
+        }
+      ],
+      "phase": "PistonEvents",
+      "pos": {
+        "x": 153,
+        "y": 10,
+        "z": 124
+      },
+      "powered": true,
+      "quasi": true,
+      "quasi_sources": [
+        {
+          "x": 153,
+          "y": 12,
+          "z": 124
+        }
+      ],
+      "stage": "Sample",
+      "tick": 1
+    },
+    {
+      "base": 2036,
+      "event": null,
+      "extended": true,
+      "far": 0,
+      "front": 2076,
+      "main": true,
+      "main_sources": [
+        {
+          "x": 153,
+          "y": 11,
+          "z": 124
+        }
+      ],
+      "phase": "PistonEvents",
+      "pos": {
+        "x": 153,
+        "y": 10,
+        "z": 124
+      },
+      "powered": true,
+      "quasi": true,
+      "quasi_sources": [
+        {
+          "x": 153,
+          "y": 12,
+          "z": 124
+        }
+      ],
+      "stage": "Sample",
+      "tick": 1
+    },
+    {
+      "base": 2110,
+      "event": {
+        "action": "Retract",
+        "facing": "North",
+        "pos": {
+          "x": 155,
+          "y": 10,
+          "z": 126
+        },
+        "sticky": true
+      },
+      "extended": null,
+      "far": 0,
+      "front": 2110,
+      "main": false,
+      "main_sources": [],
+      "phase": "PistonEvents",
+      "pos": {
+        "x": 155,
+        "y": 10,
+        "z": 126
+      },
+      "powered": false,
+      "quasi": false,
+      "quasi_sources": [],
+      "stage": "Applied",
+      "tick": 1
+    }
+  ],
+  "max": {
+    "x": 158,
+    "y": 12,
+    "z": 129
+  },
+  "min": {
+    "x": 140,
+    "y": 9,
+    "z": 122
+  },
+  "observed": {
+    "differences": [
+      {
+        "interpreter": "Piston { piston: RedstonePiston { facing: East, sticky: true, extended: true } }",
+        "pos": {
+          "x": 153,
+          "y": 10,
+          "z": 124
+        },
+        "rust": "MovingPiston { moving: RedstoneMovingPiston { facing: East, sticky: true } }"
+      },
+      {
+        "interpreter": "PistonHead { head: RedstonePistonHead { facing: East, sticky: true, short: false } }",
+        "pos": {
+          "x": 154,
+          "y": 10,
+          "z": 124
+        },
+        "rust": "MovingPiston { moving: RedstoneMovingPiston { facing: East, sticky: true } }"
+      },
+      {
+        "interpreter": "MovingPiston { moving: RedstoneMovingPiston { facing: North, sticky: true } }",
+        "pos": {
+          "x": 155,
+          "y": 10,
+          "z": 125
+        },
+        "rust": "Air"
+      },
+      {
+        "interpreter": "Piston { piston: RedstonePiston { facing: East, sticky: true, extended: true } }",
+        "pos": {
+          "x": 153,
+          "y": 10,
+          "z": 128
+        },
+        "rust": "MovingPiston { moving: RedstoneMovingPiston { facing: East, sticky: true } }"
+      },
+      {
+        "interpreter": "PistonHead { head: RedstonePistonHead { facing: East, sticky: true, short: false } }",
+        "pos": {
+          "x": 154,
+          "y": 10,
+          "z": 128
+        },
+        "rust": "MovingPiston { moving: RedstoneMovingPiston { facing: East, sticky: true } }"
+      },
+      {
+        "interpreter": "RedstoneBlock",
+        "pos": {
+          "x": 155,
+          "y": 10,
+          "z": 128
+        },
+        "rust": "Air"
+      },
+      {
+        "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 15 } }",
+        "pos": {
+          "x": 156,
+          "y": 10,
+          "z": 128
+        },
+        "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }"
+      },
+      {
+        "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 14 } }",
+        "pos": {
+          "x": 157,
+          "y": 10,
+          "z": 128
+        },
+        "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }"
+      },
+      {
+        "interpreter": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 13 } }",
+        "pos": {
+          "x": 158,
+          "y": 10,
+          "z": 128
+        },
+        "rust": "RedstoneWire { wire: RedstoneWire { north: None, south: None, east: Side, west: Side, power: 0 } }"
+      }
+    ],
+    "global_tick": 10,
+    "relative_tick": 1
+  },
+  "pending": [
+    {
+      "block_type": 262,
+      "pos": {
+        "x": 140,
+        "y": 10,
+        "z": 126
+      },
+      "tick_priority": "Normal",
+      "ticks_left": 1
+    }
+  ],
+  "stage": 9
+}

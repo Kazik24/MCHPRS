@@ -1,4 +1,4 @@
-import type { Trace, Viewport } from "./trace";
+import type { Signal, Trace, Viewport } from "./trace";
 import { parseZeroTick } from "./trace.ts";
 import type { BusSettings } from "./bus";
 
@@ -36,21 +36,25 @@ export interface Session {
   altMarker: number | null;
 }
 
+export function signalRow(signal: Signal): Row {
+  return {
+    id: signal.id,
+    signalId: signal.id,
+    kind: "signal",
+    label: signal.name,
+    enabled: true,
+    color: colors[0],
+    height: 38,
+    guides: "none",
+    shortName: false,
+  };
+}
+
 export function initialSession(trace: Trace): Session {
   return {
     clock: null,
     zeroTick: "0",
-    rows: trace.signals.slice(0, 12).map((signal) => ({
-      id: signal.id,
-      signalId: signal.id,
-      kind: "signal",
-      label: signal.name,
-      enabled: true,
-      color: colors[0],
-      height: 38,
-      guides: "none",
-      shortName: false,
-    })),
+    rows: trace.signals.slice(0, 12).map(signalRow),
     viewport:
       trace.tickOrigin === undefined
         ? { start: 320, end: 576 }

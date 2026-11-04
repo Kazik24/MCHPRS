@@ -30,6 +30,9 @@ fn canonical(block: Block) -> String {
     )
 }
 
+#[path = "pm1_slice.rs"]
+mod pm1_slice;
+
 #[test]
 #[ignore = "ANPU interpreter oracle check against frozen checkpoints and screen transitions"]
 fn anpu_interpreter_prefix_matches_frozen_reference() {

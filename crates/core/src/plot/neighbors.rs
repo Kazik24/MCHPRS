@@ -184,6 +184,7 @@ fn disk_snapshots(root: &Path, request: &Request, cache: &mut Cache) -> anyhow::
     let has_database = root.parent().is_some_and(|world| world.join("plots.db").exists());
     let claimed = has_database && super::database::is_claimed(request.plot.0, request.plot.1).unwrap_or(false);
     let version = Version::Saved(stamp.is_some(), stamp.clone().or(template_stamp.clone()), claimed);
+    // Requests can include coordinates from adjacent plots; this reader owns only one plot.
     let chunks: Vec<_> = request
         .chunks
         .iter()

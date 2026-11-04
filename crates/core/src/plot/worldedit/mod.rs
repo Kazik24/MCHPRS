@@ -801,7 +801,10 @@ pub(in crate::plot) fn capture_positions(world: &mut PlotWorld, positions: impl 
 
 /// Bound retained undo/redo across repeated commands, including redstone stacks.
 pub(in crate::plot) fn trim_history(player: &mut Player) {
-    let entries = |history: &[WorldEditUndo]| -> u64 { history.iter().flat_map(|undo| &undo.clipboards).map(|cb| cb.data.entries() as u64).sum() };
+    let entries = |history: &[WorldEditUndo]| -> u64 {
+        let clipboards = history.iter().flat_map(|undo| &undo.clipboards);
+        clipboards.map(|clipboard| clipboard.data.entries() as u64).sum()
+    };
     let mut blocks = entries(&player.worldedit_undo) + entries(&player.worldedit_redo);
     while blocks > crate::config::CONFIG.worldedit_history_blocks {
         let history = if !player.worldedit_undo.is_empty() {

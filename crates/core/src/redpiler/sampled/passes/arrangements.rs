@@ -14,7 +14,7 @@ pub(in super::super) fn run(
 
     phases.next("piston arrangement discovery");
     check_cancelled(monitor)?;
-    let discovery = crate::redpiler::sampled::group_probe::run(world, bounds, &entry, &program, &probe_indexes, monitor)?;
+    let discovery = crate::redpiler::sampled::group_probe::run(world, bounds, entry, program, probe_indexes, monitor)?;
     program.input_arrangements = discovery.groups;
     let mut routing = discovery.routing;
 

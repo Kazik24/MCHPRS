@@ -375,6 +375,7 @@ impl MinecraftServer {
                     self.running_plots.len()
                 );
                 for plot in self.running_plots.iter().skip((page - 1) * 10).take(10) {
+                    // List names whose current plot matches this row; preserve map iteration order.
                     let names = self
                         .online_players
                         .values()
@@ -427,6 +428,7 @@ impl MinecraftServer {
                 error!("Could not load plot {},{}: {}. Original save preserved.", x, z, reason);
                 // Drop the sender before draining: no player can be queued after this point.
                 self.handle_plot_unload(x, z);
+                // Preserve queued arrivals for the failure response and report diagnostics while draining.
                 let players = initial_player.into_iter().chain(queued.try_iter().filter_map(|message| match message {
                     PrivMessage::PlayerEnterPlot(player) => Some(player),
                     PrivMessage::Diagnostics(sender, _) => {

@@ -308,12 +308,13 @@ pub fn read_untrusted_slot<T: PacketDecoderExt>(r: &mut T) -> DecodeResult<Optio
 fn item_names() -> &'static Vec<String> {
     static NAMES: OnceLock<Vec<String>> = OnceLock::new();
     NAMES.get_or_init(|| {
-        serde_json::from_str::<Value>(include_str!("../../../../mc_data/1.21.5/items.json"))
-            .unwrap()
+        let items: Value = serde_json::from_str(include_str!("../../../../mc_data/1.21.5/items.json")).unwrap();
+        // Array order is the registry ID order used by slot decoding.
+        items
             .as_array()
             .unwrap()
             .iter()
-            .map(|v| v["name"].as_str().unwrap().to_owned())
+            .map(|item| item["name"].as_str().unwrap().to_owned())
             .collect()
     })
 }

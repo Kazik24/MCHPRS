@@ -125,6 +125,7 @@ impl PlotWorld {
         for (pos, progress) in entities {
             world.register_motion(pos, progress);
         }
+        // Requeue restored repeating command blocks after all block entities are loaded.
         let repeating: Vec<_> = world
             .chunks
             .iter()

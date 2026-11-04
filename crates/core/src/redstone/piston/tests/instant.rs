@@ -463,6 +463,7 @@ fn episode(m: &Value, c: &Value, r: u32, mode: &str, capture: bool) -> Value {
             return;
         }
         let cells: Vec<_> = watch.iter().map(|&p| cell(w, p)).collect();
+        // Retain each watch index so the sample stores only cells changed since the prior boundary.
         let changes: Vec<_> = cells
             .iter()
             .enumerate()
@@ -587,6 +588,7 @@ fn bit(v: &Value) -> Option<u16> {
 }
 
 fn applied(t: &Value) -> Vec<&Value> {
+    // Flatten callback lists across samples, then keep only accepted piston events.
     t["samples"]
         .as_array()
         .unwrap()
@@ -772,6 +774,7 @@ fn adder_inhibition_changes_dust_connections_before_pending_target_validation() 
         let t = episode(&m, &protocol, 0, "pico", true);
         let pos = |p: [i32; 3]| json!(ORIGIN + BlockPos::new(p[0], p[1], p[2]));
         let tick = t["start_tick"].as_u64().unwrap() + 1;
+        // Compare enqueue, inhibition, and validation only among callbacks in the target tick.
         let entries: Vec<_> = t["samples"]
             .as_array()
             .unwrap()
@@ -963,6 +966,7 @@ fn supplied_nanotick_counterexample_has_one_public_nano_cohort_of_skew() {
     for r in [0, 90, 180, 270] {
         let t = episode(&m, &named_case(&m, "falling"), r, "nano", true);
         let executed = |cohort| {
+            // Preserve callback order while extracting event executions from one operation cohort.
             let sample = t["samples"]
                 .as_array()
                 .unwrap()

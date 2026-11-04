@@ -112,6 +112,7 @@ impl Plot {
         let started = Instant::now();
         let entry = EntryVersion::capture(&self.world);
         let mut world = self.world.activation_snapshot();
+        // Close open barrels in the staged snapshot so their notifications and ticks agree.
         let open_barrels: HashSet<_> = self
             .players
             .iter()

@@ -676,7 +676,8 @@ impl Plot {
             self.clear_git_inspection(player);
         }
         let now = Instant::now();
-        let expired: Vec<_> = self
+        // Remove sessions when they expire or their viewer loses the required access.
+        let expired_sessions: Vec<_> = self
             .git
             .sessions
             .iter()
@@ -690,7 +691,7 @@ impl Plot {
             })
             .map(|(uuid, _)| *uuid)
             .collect();
-        for uuid in expired {
+        for uuid in expired_sessions {
             self.remove_git_session(uuid);
         }
         self.git
@@ -746,6 +747,7 @@ impl Plot {
         self.reset_redpiler().context("could not export active compiled state")?;
         self.close_all_containers();
         let coords = snapshot.plot;
+        // Snapshot chunks are row-major; decode each index to its local x/z coordinates.
         self.world.chunks = snapshot
             .data
             .chunk_data
@@ -961,6 +963,7 @@ fn completion(words: &[&str], prefix: &str, branches: &[String], commits: &[Stri
         values.extend(["from", "to"]);
     }
     let prefix = prefix.to_ascii_lowercase();
+    // Filter first so unrelated references do not consume the 100-result cap.
     values
         .into_iter()
         .filter(|value| value.to_ascii_lowercase().starts_with(&prefix))

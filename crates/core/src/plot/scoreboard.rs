@@ -139,6 +139,7 @@ fn git_line(head: Option<&str>, restoring: bool, recovery: bool) -> String {
 }
 
 fn visible_lines(lines: &[String], git_read: bool) -> Vec<&str> {
+    // The last row contains repository status, so hide only that row without read access.
     lines
         .iter()
         .enumerate()

@@ -79,12 +79,14 @@ pub(crate) fn detail(world: &impl World, pos: BlockPos, stage: Stage, event: Opt
             powered
         };
         let front = facing.into();
+        // Keep powered non-front neighbors as world positions for the main actuator input.
         let main_sources: Vec<_> = super::NEIGHBORS
             .into_iter()
             .filter(|&face| face != front && super::powered(world, pos, face))
             .map(|face| pos.offset(face))
             .collect();
         let above = pos.offset(BlockFace::Top);
+        // The quasi-connectivity scan uses the same neighbor order one block above the base.
         let quasi_sources: Vec<_> = super::NEIGHBORS
             .into_iter()
             .filter(|&face| super::powered(world, above, face))

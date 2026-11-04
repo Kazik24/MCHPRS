@@ -77,6 +77,7 @@ pub(in crate::plot) fn reconcile_markers(
     max_changes: usize,
 ) -> bool {
     let started = Instant::now();
+    // Spend the per-update budget on stale markers before adding or changing markers.
     let removed: Vec<_> = markers
         .keys()
         .filter(|pos| !wanted.contains_key(pos))
@@ -122,6 +123,7 @@ pub(in crate::plot) fn clear_markers(viewer: &impl PacketSender, markers: &mut H
 
 /// Returns whether the overlay needs rebuilding after a client chunk unload.
 pub(in crate::plot) fn unload_markers(viewer: &impl PacketSender, markers: &mut HashMap<BlockPos, (i32, u8)>, chunk_x: i32, chunk_z: i32) -> bool {
+    // A chunk unload removes only that chunk's marker entities and triggers a later rebuild.
     let positions: Vec<_> = markers
         .keys()
         .filter(|pos| pos.x >> 4 == chunk_x && pos.z >> 4 == chunk_z)

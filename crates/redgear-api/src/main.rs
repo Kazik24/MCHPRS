@@ -45,10 +45,8 @@ fn block_string(block: Block) -> String {
     if props.is_empty() {
         return format!("minecraft:{name}");
     }
-    format!(
-        "minecraft:{name}[{}]",
-        props.iter().map(|(k, v)| format!("{k}={v}")).collect::<Vec<_>>().join(",")
-    )
+    let properties: Vec<_> = props.iter().map(|(key, value)| format!("{key}={value}")).collect();
+    format!("minecraft:{name}[{}]", properties.join(","))
 }
 
 fn changes(items: Vec<(BlockPos, u32)>, origin: BlockPos) -> Value {
@@ -71,6 +69,20 @@ fn changes(items: Vec<(BlockPos, u32)>, origin: BlockPos) -> Value {
         })
         .collect();
     json!({"states":states,"changes":changes})
+}
+
+fn baseline(session: &Session, size: [i32; 3], origin: BlockPos) -> Result<Vec<(BlockPos, u32)>, String> {
+    let mut items = Vec::new();
+    for x in 0..size[0] {
+        for y in 0..size[1] {
+            for z in 0..size[2] {
+                let pos = origin + BlockPos::new(x, y, z);
+                let block = session.get(pos).map_err(|error| error.to_string())?;
+                items.push((pos, block.get_id()));
+            }
+        }
+    }
+    Ok(items)
 }
 
 impl Connection {
@@ -110,15 +122,7 @@ impl Connection {
                 let (mut session, dims) =
                     Session::from_sponge_schematic(&bytes, MAX_CELLS as u32).map_err(|e| format!("invalid schematic: {e:#}"))?;
                 let origin = BlockPos::new(4, 4, 4);
-                let mut baseline = Vec::new();
-                for x in 0..dims[0] as i32 {
-                    for y in 0..dims[1] as i32 {
-                        for z in 0..dims[2] as i32 {
-                            let p = origin + BlockPos::new(x, y, z);
-                            baseline.push((p, Block::get_id(session.get(p).map_err(|e| e.to_string())?)));
-                        }
-                    }
-                }
+                let baseline = baseline(&session, dims.map(|dimension| dimension as i32), origin)?;
                 if serde_json::to_vec(&changes(baseline, origin)).map_err(|e| e.to_string())?.len() + 64 > MAX_MESSAGE as usize {
                     return Err("full baseline exceeds response limit".into());
                 }
@@ -180,24 +184,15 @@ impl Connection {
             }
             "project" => {
                 let s = self.session.as_mut().ok_or("no session")?;
-                let mut items = Vec::new();
-                match request["kind"].as_str() {
-                    Some("changes") => items = s.drain_changes().map_err(|e| e.to_string())?,
+                let items = match request["kind"].as_str() {
+                    Some("changes") => s.drain_changes().map_err(|e| e.to_string())?,
                     Some("baseline") => {
                         // Baseline owns the change stream through this point.
                         s.drain_changes().map_err(|e| e.to_string())?;
-                        for x in 0..self.size[0] {
-                            for y in 0..self.size[1] {
-                                for z in 0..self.size[2] {
-                                    let p = self.origin + BlockPos::new(x, y, z);
-                                    let block = s.get(p).map_err(|e| e.to_string())?;
-                                    items.push((p, Block::get_id(block)));
-                                }
-                            }
-                        }
+                        baseline(s, self.size, self.origin)?
                     }
                     _ => return Err("invalid projection kind".into()),
-                }
+                };
                 let mut result = changes(items, self.origin);
                 result["tick"] = json!(s.ticks());
                 Ok(result)

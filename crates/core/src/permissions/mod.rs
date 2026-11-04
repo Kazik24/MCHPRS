@@ -195,6 +195,7 @@ impl PlayerPermissionsCache {
         let plotsquared_compat = config.is_some_and(|config| config.plotsquared_compat);
         let mchprs_permissions = config.is_some_and(|config| config.mchprs_permissions);
         let redstonefun_ranks = config.is_some_and(|config| config.redstonefun_ranks);
+        // Strip group metadata here; these remaining nodes are the effective permissions matched locally.
         let nodes = permissions
             .into_iter()
             .filter(|(permission, _)| {
@@ -259,6 +260,7 @@ impl PlayerPermissionsCache {
     /// Numeric limits are ordinary boolean nodes such as mchprs.history.limit.200.
     /// Only effective positive nodes count, so exact denials and expiry apply.
     pub fn numeric_limit(&self, prefix: &str) -> Option<usize> {
+        // Parse candidate suffixes, keep grants, and return the greatest matching limit.
         self.nodes
             .iter()
             .filter_map(|node| {
@@ -275,6 +277,7 @@ impl PlayerPermissionsCache {
         if self.valid_until.is_some_and(|deadline| Instant::now() >= deadline) {
             return None;
         }
+        // Ignore expired or non-matching nodes, then choose the strongest match; deny wins a tie.
         self.nodes
             .iter()
             .filter(|n| (n.expiry == 0 || n.expiry > time) && n.matches(name))
@@ -317,11 +320,13 @@ impl PlayerPermissionsCache {
         for node in groups.into_iter().filter(|n| n.applies(config, time)) {
             grouped.entry(node.group.clone()).or_default().push(node);
         }
+        // Separate denied group roots from positive roots before walking inherited group nodes.
         let denied: HashSet<_> = users
             .iter()
             .filter(|n| !n.value)
             .filter_map(|n| n.permission.strip_prefix("group.").map(str::to_owned))
             .collect();
+        // Positive memberships seed traversal with depth zero and their original expiry.
         let mut roots: VecDeque<_> = users
             .iter()
             .filter(|n| n.value)
@@ -381,6 +386,7 @@ impl PlayerPermissionsCache {
             let Some(nodes) = grouped.get(&name) else {
                 continue;
             };
+            // Use the greatest positive weight node to rank this group's inherited permissions.
             let weight = nodes
                 .iter()
                 .filter(|n| n.value)
@@ -409,6 +415,7 @@ impl PlayerPermissionsCache {
         }
         if config.redstonefun_ranks {
             let rank = visited.keys().filter_map(|group| Rank::from_group(group)).max().unwrap_or_default();
+            // Parse positive prefix nodes as priority, scope, and text; the highest-priority value wins.
             let prefix = grouped
                 .get(rank.group())
                 .into_iter()

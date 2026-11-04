@@ -273,9 +273,6 @@ select {
   user-select: none;
   padding-right: 12px;
 }
-.wave-label.selected {
-  background: #50272a;
-}
 .wave-label.group-child {
   padding-left: 30px;
   background: #ffffff04;
@@ -292,9 +289,6 @@ select {
   bottom: 50%;
   width: 10px;
   border-bottom: 1px solid #777;
-}
-.wave-label.group-child.selected {
-  background: #50272a;
 }
 .wave-label.group-child .row-name {
   text-align: left;
@@ -324,6 +318,8 @@ select {
   color: #ccc !important;
   font-family: var(--font-mono);
 }
+.wave-label.selected,
+.wave-label.group-child.selected,
 .wave-label.group.selected {
   background: #50272a;
 }
@@ -340,11 +336,10 @@ select {
 .wave-label.bus .row-name {
   text-align: left;
 }
-.bus-tooltip {
+.bus-tooltip,
+.event-tooltip {
   position: fixed;
   z-index: 100;
-  width: min(520px, calc(100vw - 16px));
-  max-height: min(640px, calc(100vh - 16px));
   overflow: hidden;
   padding: 10px 12px;
   border: 1px solid #77444a;
@@ -352,6 +347,10 @@ select {
   background: #252526;
   box-shadow: 0 4px 16px #0009;
   pointer-events: none;
+}
+.bus-tooltip {
+  width: min(520px, calc(100vw - 16px));
+  max-height: min(640px, calc(100vh - 16px));
   overflow-wrap: anywhere;
 }
 .bus-preview-value {
@@ -690,17 +689,8 @@ select {
 }
 
 .event-tooltip {
-  position: fixed;
-  z-index: 100;
   width: 360px;
   max-height: 240px;
-  overflow: hidden;
-  padding: 10px 12px;
-  border: 1px solid #77444a;
-  border-radius: 4px;
-  background: #252526;
-  box-shadow: 0 4px 16px #0009;
-  pointer-events: none;
 }
 .event-tooltip-message {
   margin-top: 8px;

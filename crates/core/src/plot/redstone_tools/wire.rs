@@ -651,6 +651,7 @@ impl Plot {
                     }
                 }
             }
+            // Keep only markers that the viewer can currently see before reconciling the overlay.
             let wanted: HashMap<_, _> = session
                 .wanted
                 .iter()
@@ -731,6 +732,7 @@ fn aim(world: &PlotWorld, player: &Player, yaw: f32, pitch: f32, start: Option<B
     let axis = axis?;
     let start = start?;
     let support = [f64::from(start.x) + 0.5, f64::from(start.y) - 0.5, f64::from(start.z) + 0.5];
+    // Use eye-to-support distance as the fallback, bounded to a valid ray length.
     let reach = origin
         .iter()
         .zip(support)

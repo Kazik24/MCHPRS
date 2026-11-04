@@ -1,0 +1,487 @@
+[
+  {
+    "tick": 10,
+    "phase": "PistonEvents",
+    "stage": "Sample",
+    "pos": {
+      "x": 153,
+      "y": 10,
+      "z": 124
+    },
+    "base": 2036,
+    "extended": true,
+    "powered": true,
+    "main": true,
+    "quasi": true,
+    "main_sources": [
+      {
+        "x": 153,
+        "y": 11,
+        "z": 124
+      }
+    ],
+    "quasi_sources": [
+      {
+        "x": 153,
+        "y": 12,
+        "z": 124
+      }
+    ],
+    "front": 2076,
+    "far": 10032,
+    "event": null
+  },
+  {
+    "tick": 10,
+    "phase": "PistonEvents",
+    "stage": "Sample",
+    "pos": {
+      "x": 155,
+      "y": 10,
+      "z": 126
+    },
+    "base": 2035,
+    "extended": true,
+    "powered": true,
+    "main": true,
+    "quasi": false,
+    "main_sources": [
+      {
+        "x": 154,
+        "y": 10,
+        "z": 126
+      }
+    ],
+    "quasi_sources": [],
+    "front": 2072,
+    "far": 10032,
+    "event": null
+  },
+  {
+    "tick": 10,
+    "phase": "PistonEvents",
+    "stage": "Sample",
+    "pos": {
+      "x": 153,
+      "y": 10,
+      "z": 124
+    },
+    "base": 2036,
+    "extended": true,
+    "powered": true,
+    "main": true,
+    "quasi": true,
+    "main_sources": [
+      {
+        "x": 153,
+        "y": 11,
+        "z": 124
+      }
+    ],
+    "quasi_sources": [
+      {
+        "x": 153,
+        "y": 12,
+        "z": 124
+      }
+    ],
+    "front": 2076,
+    "far": 10032,
+    "event": null
+  },
+  {
+    "tick": 10,
+    "phase": "PistonEvents",
+    "stage": "Sample",
+    "pos": {
+      "x": 155,
+      "y": 10,
+      "z": 126
+    },
+    "base": 2035,
+    "extended": true,
+    "powered": false,
+    "main": false,
+    "quasi": false,
+    "main_sources": [],
+    "quasi_sources": [],
+    "front": 2072,
+    "far": 10032,
+    "event": null
+  },
+  {
+    "tick": 10,
+    "phase": "PistonEvents",
+    "stage": "Request",
+    "pos": {
+      "x": 155,
+      "y": 10,
+      "z": 126
+    },
+    "base": 2035,
+    "extended": true,
+    "powered": false,
+    "main": false,
+    "quasi": false,
+    "main_sources": [],
+    "quasi_sources": [],
+    "front": 2072,
+    "far": 10032,
+    "event": {
+      "pos": {
+        "x": 155,
+        "y": 10,
+        "z": 126
+      },
+      "sticky": true,
+      "facing": "North",
+      "action": "Retract"
+    }
+  },
+  {
+    "tick": 10,
+    "phase": "PistonEvents",
+    "stage": "Accept",
+    "pos": {
+      "x": 155,
+      "y": 10,
+      "z": 126
+    },
+    "base": 2035,
+    "extended": true,
+    "powered": false,
+    "main": false,
+    "quasi": false,
+    "main_sources": [],
+    "quasi_sources": [],
+    "front": 2072,
+    "far": 10032,
+    "event": {
+      "pos": {
+        "x": 155,
+        "y": 10,
+        "z": 126
+      },
+      "sticky": true,
+      "facing": "North",
+      "action": "Retract"
+    }
+  },
+  {
+    "tick": 10,
+    "phase": "PistonEvents",
+    "stage": "Sample",
+    "pos": {
+      "x": 153,
+      "y": 10,
+      "z": 124
+    },
+    "base": 2036,
+    "extended": true,
+    "powered": true,
+    "main": true,
+    "quasi": true,
+    "main_sources": [
+      {
+        "x": 153,
+        "y": 11,
+        "z": 124
+      }
+    ],
+    "quasi_sources": [
+      {
+        "x": 153,
+        "y": 12,
+        "z": 124
+      }
+    ],
+    "front": 2076,
+    "far": 0,
+    "event": null
+  },
+  {
+    "tick": 10,
+    "phase": "PistonEvents",
+    "stage": "Sample",
+    "pos": {
+      "x": 153,
+      "y": 10,
+      "z": 124
+    },
+    "base": 2036,
+    "extended": true,
+    "powered": true,
+    "main": true,
+    "quasi": true,
+    "main_sources": [
+      {
+        "x": 153,
+        "y": 11,
+        "z": 124
+      }
+    ],
+    "quasi_sources": [
+      {
+        "x": 153,
+        "y": 12,
+        "z": 124
+      }
+    ],
+    "front": 2076,
+    "far": 0,
+    "event": null
+  },
+  {
+    "tick": 10,
+    "phase": "PistonEvents",
+    "stage": "Sample",
+    "pos": {
+      "x": 153,
+      "y": 10,
+      "z": 124
+    },
+    "base": 2036,
+    "extended": true,
+    "powered": true,
+    "main": true,
+    "quasi": true,
+    "main_sources": [
+      {
+        "x": 153,
+        "y": 11,
+        "z": 124
+      }
+    ],
+    "quasi_sources": [
+      {
+        "x": 153,
+        "y": 12,
+        "z": 124
+      }
+    ],
+    "front": 2076,
+    "far": 0,
+    "event": null
+  },
+  {
+    "tick": 10,
+    "phase": "PistonEvents",
+    "stage": "Sample",
+    "pos": {
+      "x": 153,
+      "y": 10,
+      "z": 124
+    },
+    "base": 2036,
+    "extended": true,
+    "powered": true,
+    "main": true,
+    "quasi": true,
+    "main_sources": [
+      {
+        "x": 153,
+        "y": 11,
+        "z": 124
+      }
+    ],
+    "quasi_sources": [
+      {
+        "x": 153,
+        "y": 12,
+        "z": 124
+      }
+    ],
+    "front": 2076,
+    "far": 0,
+    "event": null
+  },
+  {
+    "tick": 10,
+    "phase": "PistonEvents",
+    "stage": "Sample",
+    "pos": {
+      "x": 153,
+      "y": 10,
+      "z": 124
+    },
+    "base": 2036,
+    "extended": true,
+    "powered": true,
+    "main": true,
+    "quasi": true,
+    "main_sources": [
+      {
+        "x": 153,
+        "y": 11,
+        "z": 124
+      }
+    ],
+    "quasi_sources": [
+      {
+        "x": 153,
+        "y": 12,
+        "z": 124
+      }
+    ],
+    "front": 2076,
+    "far": 0,
+    "event": null
+  },
+  {
+    "tick": 10,
+    "phase": "PistonEvents",
+    "stage": "Sample",
+    "pos": {
+      "x": 153,
+      "y": 10,
+      "z": 124
+    },
+    "base": 2036,
+    "extended": true,
+    "powered": true,
+    "main": true,
+    "quasi": true,
+    "main_sources": [
+      {
+        "x": 153,
+        "y": 11,
+        "z": 124
+      }
+    ],
+    "quasi_sources": [
+      {
+        "x": 153,
+        "y": 12,
+        "z": 124
+      }
+    ],
+    "front": 2076,
+    "far": 0,
+    "event": null
+  },
+  {
+    "tick": 10,
+    "phase": "PistonEvents",
+    "stage": "Sample",
+    "pos": {
+      "x": 153,
+      "y": 10,
+      "z": 124
+    },
+    "base": 2036,
+    "extended": true,
+    "powered": true,
+    "main": true,
+    "quasi": true,
+    "main_sources": [
+      {
+        "x": 153,
+        "y": 11,
+        "z": 124
+      }
+    ],
+    "quasi_sources": [
+      {
+        "x": 153,
+        "y": 12,
+        "z": 124
+      }
+    ],
+    "front": 2076,
+    "far": 0,
+    "event": null
+  },
+  {
+    "tick": 10,
+    "phase": "PistonEvents",
+    "stage": "Sample",
+    "pos": {
+      "x": 153,
+      "y": 10,
+      "z": 124
+    },
+    "base": 2036,
+    "extended": true,
+    "powered": true,
+    "main": true,
+    "quasi": true,
+    "main_sources": [
+      {
+        "x": 153,
+        "y": 11,
+        "z": 124
+      }
+    ],
+    "quasi_sources": [
+      {
+        "x": 153,
+        "y": 12,
+        "z": 124
+      }
+    ],
+    "front": 2076,
+    "far": 0,
+    "event": null
+  },
+  {
+    "tick": 10,
+    "phase": "PistonEvents",
+    "stage": "Sample",
+    "pos": {
+      "x": 153,
+      "y": 10,
+      "z": 124
+    },
+    "base": 2036,
+    "extended": true,
+    "powered": true,
+    "main": true,
+    "quasi": true,
+    "main_sources": [
+      {
+        "x": 153,
+        "y": 11,
+        "z": 124
+      }
+    ],
+    "quasi_sources": [
+      {
+        "x": 153,
+        "y": 12,
+        "z": 124
+      }
+    ],
+    "front": 2076,
+    "far": 0,
+    "event": null
+  },
+  {
+    "tick": 10,
+    "phase": "PistonEvents",
+    "stage": "Applied",
+    "pos": {
+      "x": 155,
+      "y": 10,
+      "z": 126
+    },
+    "base": 2110,
+    "extended": null,
+    "powered": false,
+    "main": false,
+    "quasi": false,
+    "main_sources": [],
+    "quasi_sources": [],
+    "front": 2110,
+    "far": 0,
+    "event": {
+      "pos": {
+        "x": 155,
+        "y": 10,
+        "z": 126
+      },
+      "sticky": true,
+      "facing": "North",
+      "action": "Retract"
+    }
+  }
+]

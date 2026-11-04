@@ -479,6 +479,7 @@ impl Plot {
         match names {
             Ok(names) => {
                 let prefix = prefix.to_lowercase();
+                // Filter before capping so matching names fill the 100-result response.
                 response.matches = names
                     .into_iter()
                     .filter(|name| name.to_lowercase().starts_with(&prefix) && name != &actor.username)
@@ -512,6 +513,7 @@ impl Plot {
         match super::database::warp_names() {
             Ok(names) => {
                 let prefix = prefix.to_ascii_lowercase();
+                // Apply the prefix before the cap to keep suggestions useful for long lists.
                 response.matches = names
                     .into_iter()
                     .filter(|name| name.to_ascii_lowercase().starts_with(&prefix))

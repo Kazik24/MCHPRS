@@ -26,7 +26,6 @@ pub enum RotateAmt {
 trait BlockTransform {
     fn rotate(&mut self, amt: crate::blocks::RotateAmt) {
         match amt {
-            // ez
             RotateAmt::Rotate90 => self.rotate90(),
             RotateAmt::Rotate180 => {
                 self.rotate90();
@@ -84,12 +83,7 @@ impl BlockTransform for BlockDirection {
     }
 
     fn rotate90(&mut self) {
-        *self = match self {
-            BlockDirection::North => BlockDirection::East,
-            BlockDirection::East => BlockDirection::South,
-            BlockDirection::South => BlockDirection::West,
-            BlockDirection::West => BlockDirection::North,
-        }
+        *self = BlockDirection::rotate(*self);
     }
 }
 impl BlockTransform for BlockFacing {
@@ -108,17 +102,18 @@ impl BlockTransform for BlockFacing {
         }
     }
     fn rotate90(&mut self) {
-        *self = match self {
-            Self::North => Self::East,
-            Self::East => Self::South,
-            Self::South => Self::West,
-            Self::West => Self::North,
-            _ => *self,
-        }
+        *self = BlockFacing::rotate(*self);
     }
 }
 
 impl Block {
+    #[inline]
+    fn boolean_property(self, values: &[u8]) -> Option<bool> {
+        // Generated tables use MAX for an absent property, distinct from false.
+        let value = *values.get(self.get_id() as usize)?;
+        (value != u8::MAX).then_some(value != 0)
+    }
+
     fn definition(self) -> Option<&'static (&'static str, u32, u32, u32, u32)> {
         let index = *crate::generated::STATE_TO_BLOCK_INDEX.get(self.get_id() as usize)?;
         crate::generated::BLOCKS.get(index as usize)
@@ -132,38 +127,32 @@ impl Block {
 
     #[inline]
     pub fn lit(self) -> Option<bool> {
-        let value = *crate::generated::STATE_LIT.get(self.get_id() as usize)?;
-        (value != u8::MAX).then_some(value != 0)
+        self.boolean_property(crate::generated::STATE_LIT)
     }
 
     #[inline]
     pub fn powered(self) -> Option<bool> {
-        let value = *crate::generated::STATE_POWERED.get(self.get_id() as usize)?;
-        (value != u8::MAX).then_some(value != 0)
+        self.boolean_property(crate::generated::STATE_POWERED)
     }
 
     #[inline]
     pub fn conditional(self) -> Option<bool> {
-        let value = *crate::generated::STATE_CONDITIONAL.get(self.get_id() as usize)?;
-        (value != u8::MAX).then_some(value != 0)
+        self.boolean_property(crate::generated::STATE_CONDITIONAL)
     }
 
     #[inline]
     pub fn eye(self) -> Option<bool> {
-        let value = *crate::generated::STATE_EYE.get(self.get_id() as usize)?;
-        (value != u8::MAX).then_some(value != 0)
+        self.boolean_property(crate::generated::STATE_EYE)
     }
 
     #[inline]
     pub fn open(self) -> Option<bool> {
-        let value = *crate::generated::STATE_OPEN.get(self.get_id() as usize)?;
-        (value != u8::MAX).then_some(value != 0)
+        self.boolean_property(crate::generated::STATE_OPEN)
     }
 
     #[inline]
     pub fn waterlogged(self) -> Option<bool> {
-        let value = *crate::generated::STATE_WATERLOGGED.get(self.get_id() as usize)?;
-        (value != u8::MAX).then_some(value != 0)
+        self.boolean_property(crate::generated::STATE_WATERLOGGED)
     }
 
     #[inline]
@@ -180,22 +169,12 @@ impl Block {
 
     #[inline]
     pub fn upper_half(self) -> Option<bool> {
-        let value = *crate::generated::STATE_HALF.get(self.get_id() as usize)?;
-        (value != u8::MAX).then_some(value != 0)
+        self.boolean_property(crate::generated::STATE_HALF)
     }
 
     #[inline]
     pub fn facing(self) -> Option<crate::BlockFace> {
-        use crate::BlockFace;
-        match *crate::generated::STATE_FACING.get(self.get_id() as usize)? {
-            0 => Some(BlockFace::Bottom),
-            1 => Some(BlockFace::Top),
-            2 => Some(BlockFace::North),
-            3 => Some(BlockFace::South),
-            4 => Some(BlockFace::West),
-            5 => Some(BlockFace::East),
-            _ => None,
-        }
+        crate::BlockFace::try_from_id(*crate::generated::STATE_FACING.get(self.get_id() as usize)? as u32)
     }
 
     pub fn is_copper_bulb(self) -> bool {
@@ -602,7 +581,6 @@ macro_rules! blocks {
                     ),*
                     $(,)?
                 },
-                get_name: $get_name:expr,
                 $( solid: $solid:literal, )?
                 $( transparent: $transparent:literal, )?
                 $( cube: $cube:literal, )?
@@ -732,7 +710,10 @@ macro_rules! blocks {
                             },
                         )*
                     )*
-                    _ => crate::generated::BLOCKS.iter().find(|b| b.0 == name.trim_start_matches("minecraft:")).map(|b|Self::Unknown{id:b.4}),
+                    _ => crate::generated::BLOCKS
+                        .iter()
+                        .find(|block| block.0 == name.trim_start_matches("minecraft:"))
+                        .map(|block| Self::Unknown { id: block.4 }),
                 }
             }
 
@@ -748,12 +729,19 @@ macro_rules! blocks {
                     return;
                 }
                 let definition = self.definition();
-                if let Self::Unknown{id}=self {
-                    let block=definition;
-                    if let Some(block)=block {
-                        let mut wanted:HashMap<&str,&str>=crate::generated::STATE_PROPERTIES[*id as usize].iter().copied().collect();
+                if let Self::Unknown { id } = self {
+                    if let Some(block) = definition {
+                        let mut wanted: HashMap<&str, &str> = crate::generated::STATE_PROPERTIES[*id as usize].iter().copied().collect();
                         wanted.extend(props);
-                        if let Some(state)=(block.2..=block.3).find(|i|crate::generated::STATE_PROPERTIES[*i as usize].iter().all(|(k,v)|wanted.get(k)==Some(v))) {*id=state;}
+                        // A state ID identifies the complete property set; retain unchanged properties.
+                        let state = (block.2..=block.3).find(|&state| {
+                            crate::generated::STATE_PROPERTIES[state as usize]
+                                .iter()
+                                .all(|(key, value)| wanted.get(key) == Some(value))
+                        });
+                        if let Some(state) = state {
+                            *id = state;
+                        }
                     }
                     return;
                 }
@@ -776,7 +764,12 @@ macro_rules! blocks {
             }
 
             pub fn properties(&self) -> HashMap<&'static str, String> {
-                if let Self::Unknown{id}=self {return crate::generated::STATE_PROPERTIES.get(*id as usize).map_or_else(HashMap::new,|p|p.iter().map(|(k,v)|(*k,(*v).to_owned())).collect());}
+                if let Self::Unknown { id } = self {
+                    let Some(properties) = crate::generated::STATE_PROPERTIES.get(*id as usize) else {
+                        return HashMap::new();
+                    };
+                    return properties.iter().map(|(key, value)| (*key, (*value).to_owned())).collect();
+                }
                 let mut props = HashMap::new();
                 match self {
                     $(
@@ -798,9 +791,16 @@ macro_rules! blocks {
             }
 
             pub fn rotate(&mut self, amt: RotateAmt) {
-                if self.transform_new_sign(|model| model.rotate(amt)) { return; }
+                if self.transform_new_sign(|model| model.rotate(amt)) {
+                    return;
+                }
                 if let Self::Sign { rotation, .. } = self {
-                    let delta = match amt { RotateAmt::Rotate90 => 4, RotateAmt::Rotate180 => 8, RotateAmt::Rotate270 => 12 };
+                    // Standing signs use sixteen rotation steps per full turn.
+                    let delta = match amt {
+                        RotateAmt::Rotate90 => 4,
+                        RotateAmt::Rotate180 => 8,
+                        RotateAmt::Rotate270 => 12,
+                    };
                     *rotation = (*rotation + delta) & 15;
                     return;
                 }
@@ -823,9 +823,14 @@ macro_rules! blocks {
             }
 
             pub fn flip(&mut self, dir: FlipDirection) {
-                if self.transform_new_sign(|model| model.flip(dir)) { return; }
+                if self.transform_new_sign(|model| model.flip(dir)) {
+                    return;
+                }
                 if let Self::Sign { rotation, .. } = self {
-                    *rotation = match dir { FlipDirection::FlipX => (16 - *rotation) & 15, FlipDirection::FlipZ => (24 - *rotation) & 15 };
+                    *rotation = match dir {
+                        FlipDirection::FlipX => (16 - *rotation) & 15,
+                        FlipDirection::FlipZ => (24 - *rotation) & 15,
+                    };
                     return;
                 }
                 match self {
@@ -849,18 +854,8 @@ macro_rules! blocks {
     }
 }
 
-// list of block states: https://github.com/PrismarineJS/minecraft-data/blob/master/data/pc/1.18/blocks.json
+// IDs below use the legacy 1.18 layout; generated mappings translate them to 1.21.5.
 blocks! {
-    // Stone {
-    //     get_id: 1,
-    //     from_id(_id): 1 => {},
-    //     from_names(_name): {
-    //         "stone" => {}
-    //     },
-    //     get_name: "stone",
-    //     solid: true,
-    //     cube: true,
-    // },
     #simple Stone(1, "stone"),
     #simple Bedrock(33, "bedrock"),
     #simple TNT(1487, "tnt"),
@@ -997,7 +992,6 @@ blocks! {
         from_names(_name): {
             "air" => {}
         },
-        get_name: "air",
     },
 
     Glass {
@@ -1006,7 +1000,6 @@ blocks! {
         from_names(_name): {
             "glass" => {}
         },
-        get_name: "glass",
         transparent: true,
         cube: true,
     },
@@ -1016,7 +1009,6 @@ blocks! {
         from_names(_name): {
             "glowstone" => {}
         },
-        get_name: "glowstone",
         transparent: true,
         cube: true,
     },
@@ -1047,7 +1039,6 @@ blocks! {
                 wire: Default::default()
             }
         },
-        get_name: "redstone_wire",
     },
     WallSign {
         props: {
@@ -1106,17 +1097,6 @@ blocks! {
                 facing: Default::default()
             }
         },
-        get_name: match sign_type.0 {
-            0 => "oak_wall_sign",
-            1 => "spruce_wall_sign",
-            2 => "birch_wall_sign",
-            3 => "acacia_wall_sign",
-            4 => "jungle_wall_sign",
-            5 => "dark_oak_wall_sign",
-            6 => "crimson_wall_sign",
-            7 => "warped_wall_sign",
-            _ => "invalid_wall_sign"
-        },
     },
     Lever {
         props: {
@@ -1141,7 +1121,6 @@ blocks! {
                 lever: Default::default()
             }
         },
-        get_name: "lever",
     },
     StoneButton {
         props: {
@@ -1162,7 +1141,6 @@ blocks! {
                 button: Default::default()
             }
         },
-        get_name: "stone_button",
     },
     Sign {
         props: {
@@ -1221,17 +1199,6 @@ blocks! {
                 rotation: 0
             }
         },
-        get_name: match sign_type.0 {
-            0 => "oak_sign",
-            1 => "spruce_sign",
-            2 => "birch_sign",
-            3 => "acacia_sign",
-            4 => "jungle_sign",
-            5 => "dark_oak_sign",
-            6 => "crimson_sign",
-            7 => "warped_sign",
-            _ => "invalid_sign"
-        },
     },
     RedstoneTorch {
         props: {
@@ -1251,7 +1218,6 @@ blocks! {
                 lit: true
             }
         },
-        get_name: "redstone_torch",
     },
     RedstoneWallTorch {
         props: {
@@ -1270,7 +1236,6 @@ blocks! {
                 facing: Default::default()
             }
         },
-        get_name: "redstone_wall_torch",
     },
     RedstoneRepeater {
         props: {
@@ -1297,7 +1262,6 @@ blocks! {
                 repeater: Default::default()
             }
         },
-        get_name: "repeater",
     },
     RedstoneLamp {
         props: {
@@ -1317,7 +1281,6 @@ blocks! {
                 lit: false
             }
         },
-        get_name: "redstone_lamp",
         solid: true,
         cube: true,
     },
@@ -1340,7 +1303,6 @@ blocks! {
                 direction: Default::default()
             }
         },
-        get_name: "tripwire_hook",
     },
     RedstoneComparator {
         props: {
@@ -1365,7 +1327,6 @@ blocks! {
                 comparator: Default::default()
             }
         },
-        get_name: "comparator",
     },
     RedstoneBlock {
         get_id: 6932,
@@ -1373,7 +1334,6 @@ blocks! {
         from_names(_name): {
             "redstone_block" => {}
         },
-        get_name: "redstone_block",
         transparent: true,
         cube: true,
     },
@@ -1399,7 +1359,6 @@ blocks! {
                 observer: Default::default()
             }
         },
-        get_name: "observer",
         transparent: true,
         cube: true,
     },
@@ -1436,7 +1395,6 @@ blocks! {
                 piston: RedstonePiston{ sticky: true, ..Default::default() }
             }
         },
-        get_name: if piston.sticky { "sticky_piston" } else { "piston" },
         solid: false,
         transparent: true,
         cube: true,
@@ -1459,7 +1417,6 @@ blocks! {
                 head: Default::default()
             }
         },
-        get_name: "piston_head",
         solid: false,
         transparent: true,
         cube: true,
@@ -1481,7 +1438,6 @@ blocks! {
                 moving: Default::default()
             }
         },
-        get_name: "moving_piston",
         solid: false,
         transparent: true,
         cube: true,
@@ -1500,7 +1456,6 @@ blocks! {
                 pickles: 1
             }
         },
-        get_name: "sea_pickle",
     },
     Target {
         get_id: 16014,
@@ -1508,7 +1463,6 @@ blocks! {
         from_names(_name): {
             "target" => {}
         },
-        get_name: "target",
         solid: true,
         cube: true,
     },
@@ -1526,7 +1480,6 @@ blocks! {
                 powered: false
             }
         },
-        get_name: "stone_pressure_plate",
     },
     Cake {
         props: {
@@ -1542,7 +1495,6 @@ blocks! {
                 bites: 0
             }
         },
-        get_name: "cake",
     },
     Chest {
         props: {
@@ -1556,7 +1508,6 @@ blocks! {
         from_names(_name): {
             "chest" => { chest: Chest::default() }
         },
-        get_name: "chest",
         transparent: true,
     },
     Barrel {
@@ -1573,7 +1524,6 @@ blocks! {
         from_names(_name): {
             "barrel" => { facing: BlockFacing::North, open: false }
         },
-        get_name: "barrel",
         solid: true,
         cube: true,
     },
@@ -1588,7 +1538,6 @@ blocks! {
         from_names(_name): {
             "hopper" => { enabled: true, facing: HopperFacing::Down }
         },
-        get_name: "hopper",
         transparent: true,
         cube: true,
     },
@@ -1598,7 +1547,6 @@ blocks! {
         from_names(_name): {
             "sandstone" => {}
         },
-        get_name: "sandstone",
         solid: true,
         cube: true,
     },
@@ -1608,7 +1556,6 @@ blocks! {
         from_names(_name): {
             "coal_block" => {}
         },
-        get_name: "coal_block",
         solid: true,
         cube: true,
     },
@@ -1623,7 +1570,6 @@ blocks! {
         from_names(_name): {
             "furnace" => { facing: BlockDirection::North, lit: false }
         },
-        get_name: "furnace",
         solid: true,
         cube: true,
     },
@@ -1633,7 +1579,6 @@ blocks! {
         from_names(_name): {
             "quartz_block" => {}
         },
-        get_name: "quartz_block",
         solid: true,
         cube: true,
     },
@@ -1643,7 +1588,6 @@ blocks! {
         from_names(_name): {
             "smooth_quartz" => {}
         },
-        get_name: "smooth_quartz",
         solid: true,
         cube: true,
     },
@@ -1653,7 +1597,6 @@ blocks! {
         from_names(_name): {
             "smooth_stone_slab" => {}
         },
-        get_name: "smooth_stone_slab[type=top]",
         transparent: true,
         cube: true,
     },
@@ -1663,7 +1606,6 @@ blocks! {
         from_names(_name): {
             "quartz_slab" => {}
         },
-        get_name: "quartz_slab",
         transparent: true,
         cube: true,
     },
@@ -1684,10 +1626,6 @@ blocks! {
                 level: 3
             }
         },
-        get_name: match level {
-            0 => "cauldron",
-            _ => "water_cauldron"
-        },
         transparent: true,
         cube: false,
     },
@@ -1705,7 +1643,6 @@ blocks! {
                 level: 0
             }
         },
-        get_name: "composter",
         transparent: true,
         cube: true,
     },
@@ -1735,24 +1672,6 @@ blocks! {
             "green_concrete" => { color: BlockColorVariant::Green },
             "red_concrete" => { color: BlockColorVariant::Red },
             "black_concrete" => { color: BlockColorVariant::Black }
-        },
-        get_name: match color {
-            BlockColorVariant::White => "white_concrete",
-            BlockColorVariant::Orange => "orange_concrete",
-            BlockColorVariant::Magenta => "magenta_concrete",
-            BlockColorVariant::LightBlue => "light_blue_concrete",
-            BlockColorVariant::Yellow => "yellow_concrete",
-            BlockColorVariant::Lime => "lime_concrete",
-            BlockColorVariant::Pink => "pink_concrete",
-            BlockColorVariant::Gray => "gray_concrete",
-            BlockColorVariant::LightGray => "light_gray_concrete",
-            BlockColorVariant::Cyan => "cyan_concrete",
-            BlockColorVariant::Purple => "purple_concrete",
-            BlockColorVariant::Blue => "blue_concrete",
-            BlockColorVariant::Brown => "brown_concrete",
-            BlockColorVariant::Green => "green_concrete",
-            BlockColorVariant::Red => "red_concrete",
-            BlockColorVariant::Black => "black_concrete",
         },
         solid: true,
         cube: true,
@@ -1784,24 +1703,6 @@ blocks! {
             "red_stained_glass" => { color: BlockColorVariant::Red },
             "black_stained_glass" => { color: BlockColorVariant::Black }
         },
-        get_name: match color {
-            BlockColorVariant::White => "white_stained_glass",
-            BlockColorVariant::Orange => "orange_stained_glass",
-            BlockColorVariant::Magenta => "magenta_stained_glass",
-            BlockColorVariant::LightBlue => "light_blue_stained_glass",
-            BlockColorVariant::Yellow => "yellow_stained_glass",
-            BlockColorVariant::Lime => "lime_stained_glass",
-            BlockColorVariant::Pink => "pink_stained_glass",
-            BlockColorVariant::Gray => "gray_stained_glass",
-            BlockColorVariant::LightGray => "light_gray_stained_glass",
-            BlockColorVariant::Cyan => "cyan_stained_glass",
-            BlockColorVariant::Purple => "purple_stained_glass",
-            BlockColorVariant::Blue => "blue_stained_glass",
-            BlockColorVariant::Brown => "brown_stained_glass",
-            BlockColorVariant::Green => "green_stained_glass",
-            BlockColorVariant::Red => "red_stained_glass",
-            BlockColorVariant::Black => "black_stained_glass",
-        },
         transparent: true,
         cube: true,
     },
@@ -1811,7 +1712,6 @@ blocks! {
         from_names(_name): {
             "terracotta" => {}
         },
-        get_name: "terracotta",
         solid: true,
         cube: true,
     },
@@ -1841,24 +1741,6 @@ blocks! {
             "green_terracotta" => { color: BlockColorVariant::Green },
             "red_terracotta" => { color: BlockColorVariant::Red },
             "black_terracotta" => { color: BlockColorVariant::Black }
-        },
-        get_name: match color {
-            BlockColorVariant::White => "white_terracotta",
-            BlockColorVariant::Orange => "orange_terracotta",
-            BlockColorVariant::Magenta => "magenta_terracotta",
-            BlockColorVariant::LightBlue => "light_blue_terracotta",
-            BlockColorVariant::Yellow => "yellow_terracotta",
-            BlockColorVariant::Lime => "lime_terracotta",
-            BlockColorVariant::Pink => "pink_terracotta",
-            BlockColorVariant::Gray => "gray_terracotta",
-            BlockColorVariant::LightGray => "light_gray_terracotta",
-            BlockColorVariant::Cyan => "cyan_terracotta",
-            BlockColorVariant::Purple => "purple_terracotta",
-            BlockColorVariant::Blue => "blue_terracotta",
-            BlockColorVariant::Brown => "brown_terracotta",
-            BlockColorVariant::Green => "green_terracotta",
-            BlockColorVariant::Red => "red_terracotta",
-            BlockColorVariant::Black => "black_terracotta",
         },
         solid: true,
         cube: true,
@@ -1890,24 +1772,6 @@ blocks! {
             "red_wool" => { color: BlockColorVariant::Red },
             "black_wool" => { color: BlockColorVariant::Black }
         },
-        get_name: match color {
-            BlockColorVariant::White => "white_wool",
-            BlockColorVariant::Orange => "orange_wool",
-            BlockColorVariant::Magenta => "magenta_wool",
-            BlockColorVariant::LightBlue => "light_blue_wool",
-            BlockColorVariant::Yellow => "yellow_wool",
-            BlockColorVariant::Lime => "lime_wool",
-            BlockColorVariant::Pink => "pink_wool",
-            BlockColorVariant::Gray => "gray_wool",
-            BlockColorVariant::LightGray => "light_gray_wool",
-            BlockColorVariant::Cyan => "cyan_wool",
-            BlockColorVariant::Purple => "purple_wool",
-            BlockColorVariant::Blue => "blue_wool",
-            BlockColorVariant::Brown => "brown_wool",
-            BlockColorVariant::Green => "green_wool",
-            BlockColorVariant::Red => "red_wool",
-            BlockColorVariant::Black => "black_wool",
-        },
         solid: true,
         cube: true,
     },
@@ -1936,7 +1800,6 @@ blocks! {
                 powered: false
             }
         },
-        get_name: "iron_trapdoor",
     },
     NoteBlock {
         props: {
@@ -1963,7 +1826,6 @@ blocks! {
                 powered: false
             }
         },
-        get_name: "note_block",
         solid: true,
         cube: true,
     },
@@ -1973,7 +1835,6 @@ blocks! {
         from_names(_name): {
             "clay" => {}
         },
-        get_name: "clay",
         solid: true,
         cube: true,
     },
@@ -1983,7 +1844,6 @@ blocks! {
         from_names(_name): {
             "gold_block" => {}
         },
-        get_name: "gold_block",
         solid: true,
         cube: true,
     },
@@ -1993,7 +1853,6 @@ blocks! {
         from_names(_name): {
             "packed_ice" => {}
         },
-        get_name: "packed_ice",
         solid: true,
         cube: true,
     },
@@ -2003,7 +1862,6 @@ blocks! {
         from_names(_name): {
             "bone_block" => {}
         },
-        get_name: "bone_block",
         solid: true,
         cube: true,
     },
@@ -2013,7 +1871,6 @@ blocks! {
         from_names(_name): {
             "iron_block" => {}
         },
-        get_name: "iron_block",
         solid: true,
         cube: true,
     },
@@ -2023,7 +1880,6 @@ blocks! {
         from_names(_name): {
             "soul_sand" => {}
         },
-        get_name: "soul_sand",
         solid: true,
         cube: true,
     },
@@ -2033,7 +1889,6 @@ blocks! {
         from_names(_name): {
             "pumpkin" => {}
         },
-        get_name: "pumpkin",
         solid: true,
         cube: true,
     },
@@ -2043,7 +1898,6 @@ blocks! {
         from_names(_name): {
             "emerald_block" => {}
         },
-        get_name: "emerald_block",
         solid: true,
         cube: true,
     },
@@ -2053,7 +1907,6 @@ blocks! {
         from_names(_name): {
             "hay_block" => {}
         },
-        get_name: "hay_block",
         solid: true,
         cube: true,
     },
@@ -2063,7 +1916,6 @@ blocks! {
         from_names(_name): {
             "sand" => {}
         },
-        get_name: "sand",
         solid: true,
         cube: true,
     },
@@ -2074,7 +1926,6 @@ blocks! {
         get_id: id,
         from_id(id): _ => { id: id },
         from_names(name): {},
-        get_name: crate::generated::BLOCKS.iter().find(|b| id >= b.2 && id <= b.3).map_or("unknown",|b|b.0),
         solid: true,
         cube: true,
     }

@@ -347,6 +347,7 @@ impl Player {
     pub(crate) fn entity_equipment_packet(&self) -> PacketEncoder {
         CEntityEquipment {
             entity_id: self.entity_id as i32,
+            // Map the six protocol equipment slots to inventory indexes; small models hide armor.
             equipment: [36 + self.selected_slot as usize, 45, 8, 7, 6, 5]
                 .into_iter()
                 .enumerate()

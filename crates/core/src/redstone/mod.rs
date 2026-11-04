@@ -485,6 +485,7 @@ mod tests {
             let file = File::open(path).unwrap();
             let clipboard = load_schematic(file).unwrap();
 
+            // Rebuild chunk coordinates from the flattened empty-plot data before pasting the fixture.
             let chunks: Vec<Chunk> = empty_plot()
                 .chunk_data
                 .into_iter()

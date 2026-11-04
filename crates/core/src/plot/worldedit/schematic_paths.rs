@@ -146,6 +146,7 @@ fn filter_schematic_names(names: &[String], query: &str) -> Vec<String> {
         })
         .collect();
     matches.sort();
+    // Keep the best-ranked matches after the complete candidate list is sorted.
     matches.into_iter().take(256).map(|(_, _, _, name)| name).collect()
 }
 

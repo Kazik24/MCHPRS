@@ -106,6 +106,7 @@ impl TimingsMonitor {
 
         let average = |seconds: usize| {
             let samples = records.len().min(seconds * SAMPLES_PER_SECOND);
+            // Convert the newest sample window to ticks per second for each display period.
             let ticks: u64 = records.iter().take(samples).map(|&ticks| u64::from(ticks)).sum();
             ticks as f32 / samples as f32 * SAMPLES_PER_SECOND as f32
         };

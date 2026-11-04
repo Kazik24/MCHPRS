@@ -69,6 +69,7 @@ fn transparent_stair_is_rejected_but_conducting_stair_connects_both_ways() {
 #[test]
 fn new_staircase_supports_are_opaque_and_work_in_both_directions() {
     let path: Vec<_> = (0..=3).map(|d| BlockPos::new(20 + d, 20 + d, 20)).collect();
+    // Check the planned staircase in both traversal directions.
     for path in [path.clone(), path.iter().rev().copied().collect()] {
         let plan = candidate(&path, &[]).unwrap_or_else(|e| panic!("{e}"));
         let supports: Vec<_> = plan
@@ -202,6 +203,7 @@ fn new_supports_sample_passive_start_material_and_preserve_color() {
             color: mchprs_blocks::BlockColorVariant::Blue,
         },
     ] {
+        // Only the first support starts with the sampled passive material.
         let blocks: Vec<_> = path
             .iter()
             .enumerate()
@@ -967,6 +969,7 @@ fn astar_matches_exhaustive_tiny_world_oracle_for_every_obstacle_layout() {
         .filter(|p| *p != start && *p != end)
         .collect();
     for mask in 0u32..1 << cells.len() {
+        // Each bit chooses whether its corresponding non-endpoint cell is an obstacle.
         let obstacles: Vec<_> = cells
             .iter()
             .enumerate()

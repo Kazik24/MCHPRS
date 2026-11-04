@@ -198,15 +198,18 @@ pub(in super::super) fn run(
                 nodes.retain(|node| seen.insert(*node));
                 edges[usize::from(arrival)] = nodes
                     .iter()
-                    .map(|&node| crate::redpiler::sampled::program::MoveStepSpec {
-                        node,
-                        watcher: watchers.contains(&node),
-                        wire: watched_by_node[node].is_some(),
-                        wires: nodes
+                    .map(|&node| {
+                        let notifying_wires = nodes
                             .iter()
                             .copied()
                             .filter(|&wire| watched_by_node[wire].is_some_and(|index| program.watched_wires[index].watchers.contains(&node)))
-                            .collect(),
+                            .collect();
+                        crate::redpiler::sampled::program::MoveStepSpec {
+                            node,
+                            watcher: watchers.contains(&node),
+                            wire: watched_by_node[node].is_some(),
+                            wires: notifying_wires,
+                        }
                     })
                     .collect();
             }

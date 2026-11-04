@@ -224,6 +224,7 @@ fn command_block_automatic_repeat_and_pending_ticks_survive_restart() {
     advance(&mut world, 2);
     let ticks = world.scheduler().iter_entries().collect::<Vec<_>>();
     let state = world.piston_state.clone();
+    // Rebuild chunk coordinates from the row-major order used by plot saves.
     let chunks = world
         .chunks
         .iter_mut()

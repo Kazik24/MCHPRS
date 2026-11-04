@@ -7,7 +7,23 @@ import {
   nextEdge,
   parseZeroTick,
   tickLabel,
+  commandEventText,
 } from "./trace.ts";
+
+test("command output includes truncation details only when bytes were omitted", () => {
+  const event = {
+    tick: 1,
+    seq: "1",
+    position: [0, 0, 0] as [number, number, number],
+    text: "hello",
+    originalBytes: 0,
+  };
+  assert.equal(commandEventText(event), "hello");
+  assert.equal(
+    commandEventText({ ...event, originalBytes: 100 }),
+    "hello [truncated; 100 bytes originally]",
+  );
+});
 
 const signal = {
   id: "a",

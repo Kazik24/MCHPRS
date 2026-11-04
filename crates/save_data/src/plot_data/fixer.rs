@@ -1,11 +1,5 @@
-//! The goal of this module is to make upgrading to newer version of mchprs
-//! easier by providing automatic conversion from old world data.
-//!
-//! Eventually this module might help recover currupted plot data.
-//!
-//! In the future it might be nice to have this as an optional dependency or
-//! seperate download. As our save format changes in the future, the fixer
-//! module may become quite big.
+//! Migrate supported plot formats using frozen historical layouts.
+//! Validate converted data before saving, and keep a backup of the original.
 
 use super::{PlotData, PlotLoadError};
 use crate::plot_data::VERSION;

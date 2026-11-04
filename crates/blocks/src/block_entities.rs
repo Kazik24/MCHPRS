@@ -19,6 +19,7 @@ pub struct InventoryEntry {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SignBlockEntity {
+    /// JSON text components; field order is part of the bincode save format.
     pub rows: [String; 4],
     pub back_rows: [String; 4],
     pub waxed: bool,
@@ -127,9 +128,8 @@ impl ContainerType {
     pub fn num_slots(self) -> u8 {
         match self {
             ContainerType::Furnace => 3,
-            ContainerType::Barrel => 27,
+            ContainerType::Barrel | ContainerType::Chest => 27,
             ContainerType::Hopper => 5,
-            ContainerType::Chest => 27,
         }
     }
 
@@ -137,9 +137,8 @@ impl ContainerType {
         // Minecraft 1.21.5 minecraft:menu registry (official generated report).
         match self {
             ContainerType::Furnace => 14,
-            ContainerType::Barrel => 2,
+            ContainerType::Barrel | ContainerType::Chest => 2,
             ContainerType::Hopper => 16,
-            ContainerType::Chest => 2,
         }
     }
 }
@@ -150,10 +149,9 @@ pub struct MovingPistonEntity {
     pub extending: bool,
     /// Direction that the piston pushes
     pub facing: BlockFace,
-    /// How far the block has been moved. Starts at 0.0, and increments by 0.5 each tick.
-    /// If the value is 1.0 or higher at the start of a tick (before incrementing), then the block transforms into the stored blockState.
-    /// Serialized/interpolated progress. Exact simulation progress is stored in PistonMotion.
-    pub progress: u8, // 0 => 0.0, 127 => 0.5, 255 => 1.0
+    /// Encoded interpolation progress: 0 = start, 127 = half-step, 255 = complete.
+    /// Exact simulation progress and completion timing live in PistonMotion.
+    pub progress: u8,
     /// true if the block represents the piston head itself, false if it represents a block being pushed.
     pub source: bool,
     /// The moving block represented by this block entity.
@@ -304,7 +302,8 @@ pub enum BlockEntity {
     },
     Container {
         comparator_override: u8,
-        inventory: ThinVec<InventoryEntry>, //reducing size of overall BlockEntity (to 16 bytes from 32 bytes when using Vec)
+        // Keep sparse inventories to one pointer in this enum.
+        inventory: ThinVec<InventoryEntry>,
         ty: ContainerType,
     },
     Sign(Box<SignBlockEntity>),
@@ -386,10 +385,11 @@ impl BlockEntity {
 
             fullness_sum += count as f32 / max_stack as f32;
         }
+        // A nonempty inventory contributes one level, plus fourteen scaled by fullness.
+        let nonempty_bonus = if fullness_sum > 0.0 { 1.0 } else { 0.0 };
+        let comparator_override = (nonempty_bonus + (fullness_sum / num_slots as f32) * 14.0).floor().min(15.0) as u8;
         Ok(BlockEntity::Container {
-            comparator_override: (if fullness_sum > 0.0 { 1.0 } else { 0.0 } + (fullness_sum / num_slots as f32) * 14.0)
-                .floor()
-                .min(15.0) as u8,
+            comparator_override,
             inventory,
             ty,
         })
@@ -530,15 +530,18 @@ impl BlockEntity {
             BlockEntity::CommandBlock(entity) => Some(entity.to_nbt()),
             BlockEntity::Sign(sign) => Some({
                 let text = |rows: &[String; 4], color: &str, glow: bool| {
+                    let messages = rows.iter().map(|row| mchprs_network::text::from_json(row)).collect();
                     Value::Compound(map! {
-                        "messages"=>mchprs_network::text::list(rows.iter().map(|s|mchprs_network::text::from_json(s)).collect()),
-                        "color"=>Value::String(color.into()),"has_glowing_text"=>Value::Byte(glow as i8)
+                        "messages" => mchprs_network::text::list(messages),
+                        "color" => Value::String(color.into()),
+                        "has_glowing_text" => Value::Byte(glow as i8)
                     })
                 };
                 nbt::Blob::with_content(map! {
-                    "front_text"=>text(&sign.rows,&sign.front_color,sign.front_glow),
-                    "back_text"=>text(&sign.back_rows,&sign.back_color,sign.back_glow),
-                    "is_waxed"=>Value::Byte(sign.waxed as i8),"id"=>Value::String("minecraft:sign".into())
+                    "front_text" => text(&sign.rows, &sign.front_color, sign.front_glow),
+                    "back_text" => text(&sign.back_rows, &sign.back_color, sign.back_glow),
+                    "is_waxed" => Value::Byte(sign.waxed as i8),
+                    "id" => Value::String("minecraft:sign".into())
                 })
             }),
             BlockEntity::Comparator { output_strength } => Some({
@@ -572,9 +575,13 @@ impl BlockEntity {
                 })
             }),
             BlockEntity::MovingPiston(mp) => Some({
+                let properties = crate::generated::STATE_PROPERTIES[mp.block_state as usize]
+                    .iter()
+                    .map(|(name, value)| ((*name).to_owned(), Value::String((*value).to_owned())))
+                    .collect();
                 let block_state = map! {
-                    "Name" => Value::String(format!("minecraft:{}",Block::from_id(mp.block_state).get_name())),
-                    "Properties" => Value::Compound(crate::generated::STATE_PROPERTIES[mp.block_state as usize].iter().map(|(k,v)|((*k).to_owned(),Value::String((*v).to_owned()))).collect()),
+                    "Name" => Value::String(format!("minecraft:{}", Block::from_id(mp.block_state).get_name())),
+                    "Properties" => Value::Compound(properties),
                 };
                 nbt::Blob::with_content(map! {
                     "id" => Value::String(MovingPistonEntity::ID.into()),

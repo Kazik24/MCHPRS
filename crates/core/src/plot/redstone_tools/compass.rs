@@ -190,6 +190,7 @@ fn compass_destination(eye: PlayerPos, yaw: f32, pitch: f32, scale: f64, read: &
                         continue;
                     };
                     let offset = [pos.x - hit.origin[0], pos.y + 0.9 * scale - hit.origin[1], pos.z - hit.origin[2]];
+                    // Project along the ray, then score how far the candidate sits from it.
                     let projection: f64 = offset.iter().zip(hit.direction).map(|(a, b)| a * b).sum();
                     // Keep alternatives on the visible side, rather than finding
                     // an empty room behind the block that stopped the ray.
