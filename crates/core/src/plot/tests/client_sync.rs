@@ -281,35 +281,53 @@ fn rejected_circuit_compile_keeps_the_open_container_in_native_mode() {
 }
 
 #[test]
-fn unpowered_pressure_plate_compiles_and_hands_off_on_player_contact() {
-    let (mut plot, _peer) = fixture(false);
-    let plate = BlockPos::new(34, 20, 34);
-    let outside = PlayerPos::new(33.5, 20.0, 34.5);
-    let on_plate = PlayerPos::new(34.5, 20.0, 34.5);
-    plot.world.set_block(plate.offset(BlockFace::Bottom), Block::Stone {});
-    plot.world.set_block(plate, Block::StonePressurePlate { powered: false });
-    let wire = plate.offset(BlockFace::East);
-    plot.world.set_block(wire.offset(BlockFace::Bottom), Block::Stone {});
-    plot.world.set_block(wire, Block::from_name("redstone_wire").unwrap());
-    plot.start_redpiler_with_budget(CompilerOptions::default(), None);
-    plot.wait_for_redpiler();
-    assert!(plot.redpiler.is_active());
-    plot.players[0].on_ground = true;
+#[cfg(any(windows, target_os = "linux"))]
+fn unpowered_pressure_plate_stays_compiled_on_player_contact() {
+    for llvm in [false, true] {
+        for io_only in [false, true] {
+            let (mut plot, _peer) = fixture(false);
+            let plate = BlockPos::new(34, 20, 34);
+            let outside = PlayerPos::new(33.5, 20.0, 34.5);
+            let on_plate = PlayerPos::new(34.5, 20.0, 34.5);
+            plot.world.set_block(plate.offset(BlockFace::Bottom), Block::Stone {});
+            plot.world.set_block(plate, Block::StonePressurePlate { powered: false });
+            let wire = plate.offset(BlockFace::East);
+            plot.world.set_block(wire.offset(BlockFace::Bottom), Block::Stone {});
+            plot.world.set_block(wire, Block::from_name("redstone_wire").unwrap());
+            plot.start_redpiler_with_budget(
+                CompilerOptions {
+                    llvm,
+                    io_only,
+                    publication: Some(crate::redpiler::PublicationMode::All),
+                    ..Default::default()
+                },
+                None,
+            );
+            plot.wait_for_redpiler();
+            assert!(plot.redpiler.is_active());
+            plot.players[0].on_ground = true;
 
-    plot.players[0].pos = outside;
-    plot.on_player_move(0, outside, on_plate);
-    assert_eq!(plot.world.get_block(plate).pressure_plate_powered(), Some(true));
-    assert!(!plot.redpiler.is_active(), "plate input hands execution back to the interpreter");
-    assert!(matches!(plot.world.get_block(wire), Block::RedstoneWire { wire } if wire.power == 15));
-    plot.players[0].pos = outside;
-    plot.on_player_move(0, on_plate, outside);
+            plot.players[0].pos = on_plate;
+            plot.on_player_move(0, outside, on_plate);
+            assert_eq!(plot.world.get_block(plate).pressure_plate_powered(), Some(true));
+            assert!(plot.redpiler.is_active(), "player contact is a compiled input");
+            if !io_only {
+                assert!(matches!(plot.world.get_block(wire), Block::RedstoneWire { wire } if wire.power == 15));
+            }
+            plot.players[0].pos = outside;
+            plot.on_player_move(0, on_plate, outside);
 
-    assert_eq!(
-        plot.world.get_block(plate).pressure_plate_powered(),
-        Some(false),
-        "rejected compilation must leave pressure plate handling with the interpreter"
-    );
-    assert!(matches!(plot.world.get_block(wire), Block::RedstoneWire { wire } if wire.power == 0));
+            assert_eq!(
+                plot.world.get_block(plate).pressure_plate_powered(),
+                Some(false),
+                "leaving the plate must release the compiled input"
+            );
+            if !io_only {
+                assert!(matches!(plot.world.get_block(wire), Block::RedstoneWire { wire } if wire.power == 0));
+            }
+            assert!(plot.redpiler.is_active());
+        }
+    }
 }
 
 fn placement(pos: BlockPos, sequence: i32) -> SPlayerBlockPlacemnt {

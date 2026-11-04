@@ -152,7 +152,7 @@ impl LlvmRuntime {
         }
         let library = Library::load()?;
         let api = unsafe { (library.api_descriptor)() };
-        if api.abi_version != ABI_VERSION || api.descriptor_bytes != 16 || api.semantic_version != 22 {
+        if api.abi_version != ABI_VERSION || api.descriptor_bytes != 16 || api.semantic_version != 25 {
             return Err(ScratchError {
                 position: None,
                 reason: "LLVM DLL ABI/version mismatch",
@@ -250,6 +250,22 @@ impl LlvmRuntime {
 
     pub(in crate::redpiler) fn accepts_control(&self, pos: BlockPos) -> bool {
         self.sources.iter().any(|(source, _)| *source == pos)
+    }
+
+    pub(in crate::redpiler) fn set_pressure_plate(&mut self, pos: BlockPos, powered: bool) -> Result<(), ScratchError> {
+        let Some((_, source)) = self.sources.iter().find(|(source_pos, _)| *source_pos == pos).filter(|_| {
+            self.positions
+                .iter()
+                .zip(&self.initial)
+                .any(|(&at, block)| at == pos && block.pressure_plate_powered().is_some())
+        }) else {
+            return Err(ScratchError {
+                position: Some(pos),
+                reason: "pressure plate is not a compiled input",
+            });
+        };
+        let status = unsafe { (self.library.set_input)(self.state.as_mut_ptr().cast(), *source, u8::from(powered)) };
+        self.call_status(status)
     }
 
     pub(super) fn sync_commands(&self, runtime: &mut super::Runtime) -> Result<(), ScratchError> {
@@ -367,6 +383,9 @@ impl LlvmRuntime {
     pub(in crate::redpiler) fn accepts_control(&self, _: BlockPos) -> bool {
         false
     }
+    pub(in crate::redpiler) fn set_pressure_plate(&mut self, _: BlockPos, _: bool) -> Result<(), ScratchError> {
+        unreachable!()
+    }
     pub(in crate::redpiler) fn pending_entries(&self) -> Result<Vec<TickEntry>, ScratchError> {
         unreachable!()
     }
@@ -436,6 +455,7 @@ struct Library {
     destroy: unsafe extern "C" fn(*mut c_void),
     tick: unsafe extern "C" fn(*mut c_void) -> u32,
     use_control: unsafe extern "C" fn(*mut c_void, u32) -> u32,
+    set_input: unsafe extern "C" fn(*mut c_void, u32, u8) -> u32,
     read_state: unsafe extern "C" fn(*const c_void, *mut u8, u32) -> u32,
     pending_count: unsafe extern "C" fn(*const c_void) -> u32,
     read_pending: unsafe extern "C" fn(*const c_void, *mut NativePendingTick, u32) -> u32,
@@ -488,6 +508,7 @@ impl Library {
                 destroy: symbol(handle, b"ne_destroy\0")?,
                 tick: symbol(handle, b"ne_tick\0")?,
                 use_control: symbol(handle, b"ne_use_control\0")?,
+                set_input: symbol(handle, b"ne_set_input\0")?,
                 read_state: symbol(handle, b"ne_read_state\0")?,
                 pending_count: symbol(handle, b"ne_pending_count\0")?,
                 read_pending: symbol(handle, b"ne_read_pending\0")?,
@@ -526,6 +547,7 @@ struct Library {
     destroy: unsafe extern "C" fn(*mut c_void),
     tick: unsafe extern "C" fn(*mut c_void) -> u32,
     use_control: unsafe extern "C" fn(*mut c_void, u32) -> u32,
+    set_input: unsafe extern "C" fn(*mut c_void, u32, u8) -> u32,
     read_state: unsafe extern "C" fn(*const c_void, *mut u8, u32) -> u32,
     pending_count: unsafe extern "C" fn(*const c_void) -> u32,
     read_pending: unsafe extern "C" fn(*const c_void, *mut NativePendingTick, u32) -> u32,
@@ -581,6 +603,7 @@ impl Library {
                 destroy: symbol(handle, b"ne_destroy\0")?,
                 tick: symbol(handle, b"ne_tick\0")?,
                 use_control: symbol(handle, b"ne_use_control\0")?,
+                set_input: symbol(handle, b"ne_set_input\0")?,
                 read_state: symbol(handle, b"ne_read_state\0")?,
                 pending_count: symbol(handle, b"ne_pending_count\0")?,
                 read_pending: symbol(handle, b"ne_read_pending\0")?,

@@ -269,7 +269,15 @@ impl Plot {
         }
 
         if self.redpiler.is_active() {
+            if self.redpiler_handoff_failed {
+                cancel(self);
+                return;
+            }
             let block = self.world.get_block(block_pos);
+            if block.pressure_plate_powered().is_some() && item_in_hand.is_none() {
+                cancel(self);
+                return;
+            }
             let lever_or_button = matches!(block, Block::Lever { .. } | Block::StoneButton { .. });
             if lever_or_button && !self.players[player].crouching {
                 if !self.players[player].can_build_action("interact", self.owner, (self.world.x, self.world.z)) {
@@ -277,8 +285,16 @@ impl Plot {
                     cancel(self);
                     return;
                 }
-                self.redpiler.on_use_block(block_pos);
-                self.redpiler.flush(&mut self.world);
+                if let Err(error) = self
+                    .redpiler
+                    .try_on_use_block(block_pos)
+                    .and_then(|_| self.redpiler.try_flush(&mut self.world))
+                {
+                    self.auto_redpiler = false;
+                    self.fallback_redpiler(&error.to_string());
+                    cancel(self);
+                    return;
+                }
                 crate::sound::control_used(&mut self.world, block_pos, block, self.players[player].uuid);
                 self.world.flush_block_changes();
                 return;

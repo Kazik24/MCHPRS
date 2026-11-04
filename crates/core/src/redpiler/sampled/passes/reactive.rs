@@ -134,6 +134,7 @@ pub(in super::super) fn run(
                 adjacent(front).into_iter().chain([front]).collect()
             }
             Block::Lever { .. } | Block::StoneButton { .. } => update_footprint(pos, program.initial[node]),
+            block if block.pressure_plate_powered().is_some() => update_footprint(pos, block),
             _ => Vec::new(),
         };
         for at in footprint {

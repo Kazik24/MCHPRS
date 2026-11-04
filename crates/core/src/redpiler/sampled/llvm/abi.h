@@ -60,6 +60,7 @@ MCHPRS_NATIVE_EXPORT uint32_t ne_import_tick(void *memory, uint32_t component, u
 MCHPRS_NATIVE_EXPORT void ne_destroy(void *memory);
 MCHPRS_NATIVE_EXPORT uint32_t ne_tick(void *memory);
 MCHPRS_NATIVE_EXPORT uint32_t ne_use_control(void *memory, uint32_t source_index);
+MCHPRS_NATIVE_EXPORT uint32_t ne_set_input(void *memory, uint32_t source_index, uint8_t powered);
 MCHPRS_NATIVE_EXPORT uint32_t ne_read_state(const void *memory, uint8_t *out, uint32_t count);
 MCHPRS_NATIVE_EXPORT uint32_t ne_pending_count(const void *memory);
 MCHPRS_NATIVE_EXPORT uint32_t ne_read_pending(const void *memory, MchprsNativePendingTick *out, uint32_t count);

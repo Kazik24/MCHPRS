@@ -596,14 +596,15 @@ static uint32_t valid_program(const MchprsNativeProgramDescriptor *program, cons
     }
     const uint32_t *source = (const uint32_t *)(blob + program->source_offset);
     for (uint32_t i = 0; i < program->source_count; ++i)
-        if (source[i] >= program->component_count || (component[source[i]].kind != 0u && component[source[i]].kind != 1u)) return 0u;
+        if (source[i] >= program->component_count
+            || (component[source[i]].kind != 0u && component[source[i]].kind != 1u && component[source[i]].kind != 11u)) return 0u;
     return 1u;
 }
 
 static size_t align8(size_t value) { return (value + 7u) & ~(size_t)7u; }
 
 MchprsNativeApiDescriptor ne_api_descriptor(void) {
-    MchprsNativeApiDescriptor value = {3u, 16u, 22u};
+    MchprsNativeApiDescriptor value = {3u, 16u, 25u};
     return value;
 }
 
@@ -777,12 +778,12 @@ uint32_t ne_tick(void *memory) {
     return result;
 }
 
-uint32_t ne_use_control(void *memory, uint32_t source_index) {
+uint32_t ne_set_input(void *memory, uint32_t source_index, uint8_t powered) {
     NEEngine *engine = (NEEngine *)memory;
     if (!engine || engine->error || source_index >= engine->program->source_count) return NE_INVALID;
     uint32_t component = sources(engine)[source_index];
     uint8_t kind = components(engine)[component].kind;
-    uint8_t powered = kind == 0u ? (uint8_t)!engine->component_state[component] : 1u;
+    if ((kind != 0u && kind != 1u && kind != 11u) || powered > 1u) return NE_INVALID;
     if (engine->component_state[component] == powered) return NE_OK;
     engine->phase++;
     if (!engine->phase) { engine->phase = 1u; for (uint32_t i = 0; i < engine->program->component_count; ++i) engine->updated[i] = 0u; }
@@ -793,6 +794,15 @@ uint32_t ne_use_control(void *memory, uint32_t source_index) {
     }
     uint32_t result = execute_output(engine, component, powered);
     return result ? result : notify(engine, component, 1u, 1u);
+}
+
+uint32_t ne_use_control(void *memory, uint32_t source_index) {
+    NEEngine *engine = (NEEngine *)memory;
+    if (!engine || engine->error || source_index >= engine->program->source_count) return NE_INVALID;
+    uint32_t component = sources(engine)[source_index];
+    uint8_t kind = components(engine)[component].kind;
+    if (kind == 11u) return NE_OK;
+    return ne_set_input(memory, source_index, kind == 0u ? (uint8_t)!engine->component_state[component] : 1u);
 }
 
 uint32_t ne_read_state(const void *memory, uint8_t *out, uint32_t count) {

@@ -1,5 +1,44 @@
 use super::*;
 
+#[test]
+#[cfg(any(windows, target_os = "linux"))]
+fn compiled_plate_inputs_remain_active_and_validate_the_batch_before_mutation() {
+    let pos = BlockPos::new(21, 4, 30);
+    let lamp = pos.offset(BlockFace::Top);
+    for llvm in [false, true] {
+        let mut input = snapshot();
+        input.min = BlockPos::new(20, 3, 29);
+        input.blocks = vec![
+            (pos.offset(BlockFace::Bottom), Block::Stone {}),
+            (pos, Block::StonePressurePlate { powered: false }),
+            (lamp, Block::RedstoneLamp { lit: false }),
+        ];
+        let mut session = Session::new(input).unwrap();
+        session.compile(CompilerOptions { llvm, ..Default::default() }).unwrap();
+        assert!(
+            session
+                .advance_with_inputs(1, &[Input::Plate(pos, true), Input::Plate(BlockPos::new(20, 4, 30), true)])
+                .is_err()
+        );
+        assert_eq!(session.ticks(), 0);
+        assert_eq!(session.get(pos).unwrap().pressure_plate_powered(), Some(false));
+        session
+            .advance_with_inputs(21, &[Input::Plate(pos, true), Input::Plate(pos, true)])
+            .unwrap();
+        assert_eq!(
+            session.get(pos).unwrap().pressure_plate_powered(),
+            Some(true),
+            "plates must not acquire the button release timer"
+        );
+        assert_eq!(session.get(lamp).unwrap(), Block::RedstoneLamp { lit: true });
+        assert!(session.compiler.is_active());
+        session.advance_with_inputs(4, &[Input::Plate(pos, false)]).unwrap();
+        assert_eq!(session.get(pos).unwrap().pressure_plate_powered(), Some(false));
+        assert_eq!(session.get(lamp).unwrap(), Block::RedstoneLamp { lit: false });
+        assert!(session.compiler.is_active());
+    }
+}
+
 fn snapshot() -> Snapshot {
     Snapshot {
         min: BlockPos::new(20, 4, 30),

@@ -16,7 +16,7 @@ struct Fixture {
 }
 
 fn saved_fixture() -> Fixture {
-    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs/redpiler-regressions/2026-11-04/pm1-piston-slice.json.gz");
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../scraps/redpiler-regressions/2026-11-04/pm1-piston-slice.json.gz");
     serde_json::from_reader(flate2::read::GzDecoder::new(std::fs::File::open(path).unwrap())).unwrap()
 }
 

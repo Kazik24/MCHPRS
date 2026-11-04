@@ -509,8 +509,6 @@ impl Runtime {
 
     fn run_piston_events(&mut self) {
         while let Some((index, event)) = self.piston_events.pop_front() {
-            #[cfg(test)]
-            let (index, event) = super::pm1_causal::select_event(self, index, event);
             let extending = event == PistonEvent::Extend;
             let piston = self.program.pistons[index];
             if !self.consume_operation(piston.base) {
@@ -1858,6 +1856,11 @@ impl Runtime {
             });
         };
         match self.blocks[source] {
+            block if block.pressure_plate_powered().is_some() => {
+                if block.pressure_plate_powered() == Some(powered) {
+                    return Ok(());
+                }
+            }
             Block::Lever { lever } if lever.powered != powered => {}
             Block::StoneButton { button } if button.powered != powered => {}
             Block::Lever { .. } | Block::StoneButton { .. } => return Ok(()),
@@ -1865,6 +1868,9 @@ impl Runtime {
         }
         self.begin_phase();
         match self.blocks[source] {
+            block if block.pressure_plate_powered().is_some() => {
+                self.set_component(source, block.with_pressure_plate_power(powered).unwrap());
+            }
             Block::Lever { mut lever } => {
                 lever.powered = powered;
                 self.set_component(source, Block::Lever { lever });
@@ -2061,8 +2067,22 @@ impl Runtime {
         match self.blocks[self.program.sources[source]] {
             Block::Lever { lever } => self.set_input(source, !lever.powered),
             Block::StoneButton { .. } => self.set_input(source, true),
+            block if block.pressure_plate_powered().is_some() => Ok(()),
             _ => unreachable!(),
         }
+    }
+
+    pub(crate) fn set_pressure_plate(&mut self, pos: mchprs_blocks::BlockPos, powered: bool) -> Result<(), ScratchError> {
+        let source = self
+            .program
+            .sources
+            .iter()
+            .position(|&source| self.program.positions[source] == pos && self.blocks[source].pressure_plate_powered().is_some())
+            .ok_or(ScratchError {
+                position: Some(pos),
+                reason: "pressure plate is not a compiled input",
+            })?;
+        self.set_input(source, powered)
     }
 
     pub(crate) fn projected_blocks(&self) -> Vec<(mchprs_blocks::BlockPos, Block)> {

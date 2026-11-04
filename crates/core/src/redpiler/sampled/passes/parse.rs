@@ -55,8 +55,10 @@ pub(in super::super) fn run(context: &Context<'_, impl World>, phases: &mut Comp
                         sources.push(positions.len());
                         positions.push(pos);
                     }
-                    // Player contact resets Redpiler before changing a pressure plate.
-                    block if block.pressure_plate_powered().is_some() => positions.push(pos),
+                    block if block.pressure_plate_powered().is_some() => {
+                        sources.push(positions.len());
+                        positions.push(pos);
+                    }
                     block if block.is_command_block() => positions.push(pos),
                     Block::RedstoneWire { .. }
                     | Block::RedstoneLamp { .. }

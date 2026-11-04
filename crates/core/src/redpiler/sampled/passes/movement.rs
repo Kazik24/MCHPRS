@@ -122,9 +122,10 @@ pub(in super::super) fn run(
             }
         }
         // Controls also notify observers of their support, even if that block's state stays unchanged.
-        let support = matches!(program.initial[source], Block::Lever { .. } | Block::StoneButton { .. })
-            .then(|| crate::interaction::attachment_support(program.initial[source], pos).map(|(support, _)| support))
-            .flatten();
+        let support = (matches!(program.initial[source], Block::Lever { .. } | Block::StoneButton { .. })
+            || program.initial[source].pressure_plate_powered().is_some())
+        .then(|| crate::interaction::attachment_support(program.initial[source], pos).map(|(support, _)| support))
+        .flatten();
         for observed in std::iter::once(pos).chain(support) {
             if let Some(observers) = observers_by_target.get(&observed) {
                 watchers.extend(

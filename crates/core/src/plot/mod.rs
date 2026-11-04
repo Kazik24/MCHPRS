@@ -11,6 +11,9 @@ mod client_test_utils;
 mod command_block;
 pub mod commands;
 #[cfg(test)]
+#[path = "tests/redpiler_fallback.rs"]
+mod redpiler_fallback_tests;
+#[cfg(test)]
 #[path = "tests/redpiler_notes.rs"]
 mod redpiler_notes_tests;
 use redstone_tools::compass;
@@ -110,6 +113,8 @@ pub struct Plot {
     /// In-flight compilation owns a snapshot; the live plot stays on this thread.
     compilation: Option<redpiler_compilation::CompilationJob>,
     redpiler_cache: Option<redpiler_compilation::CompilationCache>,
+    /// A failed export keeps compiler ownership until an explicit successful reset.
+    redpiler_handoff_failed: bool,
 
     // Thread communication
     message_receiver: BusReader<BroadcastMessage>,
@@ -274,7 +279,7 @@ impl Plot {
     }
 
     fn tick(&mut self) -> bool {
-        if self.compiling_redpiler() {
+        if self.compiling_redpiler() || self.redpiler_handoff_failed {
             return false;
         }
 
@@ -282,13 +287,8 @@ impl Plot {
         if self.redpiler.is_active() {
             if let Err(error) = self.redpiler.tick_with_world(&mut self.world) {
                 tracing::error!(%error, "sampled execution failed");
-                if let Err(export_error) = self.reset_redpiler() {
-                    tracing::error!(%export_error, "compiled state export failed; keeping compiler ownership");
-                    for player in &self.players {
-                        player.send_error_message(&format!("Compiled state could not be returned to native simulation: {export_error}"));
-                    }
-                }
                 self.auto_redpiler = false;
+                self.fallback_redpiler(&error.to_string());
                 return false;
             }
         } else {
@@ -376,10 +376,28 @@ impl Plot {
     }
 
     fn set_pressure_plate(&mut self, pos: BlockPos, powered: bool) {
+        let Some(current) = self.world.get_block(pos).pressure_plate_powered() else {
+            warn!("Block at {} is not a pressure plate", pos);
+            return;
+        };
+        if current == powered {
+            return;
+        }
         if self.redpiler.is_active() {
-            if let Err(error) = self.reset_redpiler() {
-                tracing::error!(%error, "cannot hand off compiled state for a pressure-plate input");
+            if self.redpiler_handoff_failed {
                 return;
+            }
+            match self
+                .redpiler
+                .try_set_pressure_plate(pos, powered)
+                .and_then(|_| self.redpiler.try_flush(&mut self.world))
+            {
+                Ok(()) => return,
+                Err(error) => {
+                    self.auto_redpiler = false;
+                    self.fallback_redpiler(&error.to_string());
+                    return;
+                }
             }
         }
 
@@ -570,7 +588,38 @@ impl Plot {
             // reseting redpiler could cause a large amount of block updates
             self.reset_timings();
         }
+        self.redpiler_handoff_failed = false;
         Ok(())
+    }
+
+    /// Automatic handoffs explain the cause; explicit resets and saves remain quiet.
+    fn fallback_redpiler(&mut self, reason: &str) -> bool {
+        if !self.redpiler.is_active() {
+            return true;
+        }
+        if self.redpiler_handoff_failed {
+            return false;
+        }
+        warn!(%reason, "Redpiler falling back to interpreter");
+        let message = messages::redpiler_fallback(reason);
+        for player in &self.players {
+            player.send_raw_system_message(crate::player::diagnostic_component(&message).to_string());
+        }
+        if let Err(error) = self.reset_redpiler() {
+            error!(%error, "compiled state export failed; keeping compiler ownership");
+            self.redpiler_handoff_failed = true;
+            self.auto_redpiler = false;
+            self.tps = Tps::Limited(0);
+            self.sleep_time = sleep_time_for_tps(self.tps);
+            self.timings.set_tps(self.tps);
+            self.update_render_mode();
+            self.reset_timings();
+            for player in &self.players {
+                player.send_error_message(&messages::redpiler_handoff_failed(&error));
+            }
+            return false;
+        }
+        true
     }
 
     fn destroy_entity(&mut self, entity_id: u32) {
@@ -1256,6 +1305,7 @@ impl Plot {
             redpiler: Default::default(),
             compilation: None,
             redpiler_cache: None,
+            redpiler_handoff_failed: false,
             timings: TimingsMonitor::new(tps),
             owner,
             async_rt: Plot::create_async_rt(),

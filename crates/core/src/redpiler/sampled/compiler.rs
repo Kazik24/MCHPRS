@@ -309,6 +309,7 @@ fn update_footprint(pos: BlockPos, block: Block) -> Vec<BlockPos> {
             neighbours(pos).into_iter().chain(neighbours(pos.offset(support))).collect()
         }
         Block::Piston { .. } => neighbours(pos).to_vec(),
+        block if block.pressure_plate_powered().is_some() => neighbours(pos).into_iter().chain(neighbours(pos.offset(BlockFace::Bottom))).collect(),
         Block::RedstoneTorch { .. } | Block::RedstoneWallTorch { .. } => {
             let mut positions = Vec::new();
             crate::redstone::surrounding_notifications(pos, |target, _, _| positions.push(target));

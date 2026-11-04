@@ -13,6 +13,7 @@ pub fn with_client(mut world: PlotWorld, player: Player, tps: Tps) -> Plot {
         redpiler: Default::default(),
         compilation: None,
         redpiler_cache: None,
+        redpiler_handoff_failed: false,
         message_receiver: bus::Bus::new(4).add_rx(),
         message_sender,
         priv_message_receiver,

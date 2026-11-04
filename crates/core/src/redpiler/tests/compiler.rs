@@ -8,6 +8,116 @@ use mchprs_world::{AdvancePhase, TickEntry, TickPriority};
 use std::sync::Arc;
 
 #[test]
+#[cfg(any(windows, target_os = "linux"))]
+fn compiled_pressure_plate_edges_match_native_for_both_backends_and_publication_modes() {
+    use mchprs_blocks::blocks::RedstoneObserver;
+    let plate = BlockPos::new(15, 15, 15);
+    let wire = plate.offset(BlockFace::East);
+    let lamp = wire.offset(BlockFace::East);
+    let observer = plate.offset(BlockFace::West);
+    let observed_lamp = observer.offset(BlockFace::West);
+    let bounds = (BlockPos::new(10, 10, 10), BlockPos::new(20, 20, 20));
+    for name in ["stone_pressure_plate", "oak_pressure_plate", "polished_blackstone_pressure_plate"] {
+        for initially_powered in [false, true] {
+            let make = || {
+                let (mut world, old_button, old_lamp, _) = button_world(ButtonFace::Floor, BlockDirection::North);
+                world.set_block(old_button, Block::Air);
+                world.set_block(old_lamp, Block::Air);
+                world.set_block(plate, Block::from_name(name).unwrap().with_pressure_plate_power(false).unwrap());
+                world.set_block(wire.offset(BlockFace::Bottom), Block::Stone {});
+                world.set_block(wire, Block::from_name("redstone_wire").unwrap());
+                world.set_block(lamp, Block::RedstoneLamp { lit: false });
+                world.set_block(
+                    observer,
+                    Block::Observer {
+                        observer: RedstoneObserver {
+                            facing: BlockFacing::East,
+                            powered: false,
+                        },
+                    },
+                );
+                world.set_block(observed_lamp, Block::RedstoneLamp { lit: false });
+                if initially_powered {
+                    let block = world.get_block(plate);
+                    crate::redstone::set_pressure_plate(&mut world, plate, block, true);
+                }
+                for _ in 0..6 {
+                    world.tick_interpreted();
+                }
+                world
+            };
+            for llvm in [false, true] {
+                for io_only in [false, true] {
+                    let mut native = make();
+                    let mut compiled = make();
+                    let mut compiler = Compiler::default();
+                    compiler
+                        .compile(
+                            &compiled,
+                            bounds,
+                            CompilerOptions {
+                                llvm,
+                                io_only,
+                                publication: Some(PublicationMode::All),
+                                ..Default::default()
+                            },
+                            compiled.scheduler().iter_entries().collect(),
+                            Default::default(),
+                        )
+                        .unwrap();
+                    // Activation transfers scheduled work to the compiler.
+                    compiled.clear_scheduled_ticks();
+                    assert!(compiler.accepts_control(plate));
+                    compiler.try_on_use_block(plate).unwrap();
+                    compiler.try_flush(&mut compiled).unwrap();
+                    assert_eq!(compiled.get_block(plate), native.get_block(plate), "right-click must not press a plate");
+                    for tick in 0..=30 {
+                        let edge = match tick {
+                            0 | 1 => Some(!initially_powered),
+                            5 => Some(initially_powered),
+                            9 => Some(!initially_powered),
+                            _ => None,
+                        };
+                        if let Some(powered) = edge {
+                            if native.get_block(plate).pressure_plate_powered() != Some(powered) {
+                                let block = native.get_block(plate);
+                                crate::redstone::set_pressure_plate(&mut native, plate, block, powered);
+                            }
+                            compiler.try_set_pressure_plate(plate, powered).unwrap();
+                            compiler.try_flush(&mut compiled).unwrap();
+                        }
+                        for pos in [plate, lamp, observed_lamp]
+                            .into_iter()
+                            .chain((!io_only).then_some(wire))
+                            .chain((!io_only).then_some(observer))
+                        {
+                            assert_eq!(
+                                compiled.get_block(pos),
+                                native.get_block(pos),
+                                "{name} initial={initially_powered} llvm={llvm} io={io_only} tick={tick} {pos:?}"
+                            );
+                        }
+                        assert!(compiler.is_active());
+                        native.tick_interpreted();
+                        compiler.tick().unwrap();
+                        compiler.try_flush(&mut compiled).unwrap();
+                    }
+                    compiler.try_reset(&mut compiled, bounds).unwrap();
+                    for pos in [plate, wire, lamp, observer, observed_lamp] {
+                        assert_eq!(compiled.get_block(pos), native.get_block(pos));
+                    }
+                    assert_eq!(
+                        compiled.scheduler().iter_entries().collect::<Vec<_>>(),
+                        native.scheduler().iter_entries().collect::<Vec<_>>(),
+                        "{name} initial={initially_powered} llvm={llvm} io={io_only} reset pending work"
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
 fn compile_error_recovery_matches_the_failure_type() {
     for (reason, hint) in [
         ("LLVM does not support command blocks", Some("without --llvm")),

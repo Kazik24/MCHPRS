@@ -245,7 +245,7 @@ pub(crate) struct Program {
     pub(super) component_indices: HashMap<BlockPos, usize>,
     /// initial component blocks, parallel to `positions` by component index.
     pub(super) initial: Vec<Block>,
-    /// component indices of external input sources such as levers and buttons.
+    /// component indices of external lever, button and pressure-plate inputs.
     pub(super) sources: Vec<usize>,
     /// per component, slicing `operations` for its two output transitions.
     pub(super) output_programs: Vec<[std::ops::Range<usize>; 2]>,
@@ -1017,8 +1017,8 @@ impl Program {
             if !unique_sources.insert(source) {
                 return Err(invalid("sampled program source is duplicated"));
             }
-            if !matches!(block, Block::Lever { .. } | Block::StoneButton { .. }) {
-                return Err(invalid("sampled program source is not a lever or button"));
+            if !matches!(block, Block::Lever { .. } | Block::StoneButton { .. }) && block.pressure_plate_powered().is_none() {
+                return Err(invalid("sampled program source is not a lever, button or pressure plate"));
             }
         }
         let mut repeater_components = std::collections::HashSet::new();

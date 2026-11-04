@@ -426,6 +426,17 @@ impl Compiler {
         self.runtime.as_mut().expect("compiler inactive").use_control(pos).map_err(ExecutionError)
     }
 
+    pub fn try_set_pressure_plate(&mut self, pos: BlockPos, powered: bool) -> Result<(), ExecutionError> {
+        if let Some(runtime) = self.llvm_runtime.as_mut() {
+            return runtime.set_pressure_plate(pos, powered).map_err(ExecutionError);
+        }
+        self.runtime
+            .as_mut()
+            .expect("compiler inactive")
+            .set_pressure_plate(pos, powered)
+            .map_err(ExecutionError)
+    }
+
     pub(crate) fn accepts_control(&self, pos: BlockPos) -> bool {
         self.runtime.as_ref().is_some_and(|runtime| runtime.accepts_control(pos))
             || self.llvm_runtime.as_ref().is_some_and(|runtime| runtime.accepts_control(pos))

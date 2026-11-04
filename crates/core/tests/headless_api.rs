@@ -5,6 +5,34 @@ use mchprs_blocks::{
 use mchprs_core::headless::{CompilerOptions, Input, Session, Snapshot};
 
 #[test]
+fn host_keeps_pressure_plate_contact_in_the_compiled_session() {
+    let pos = BlockPos::new(5, 5, 5);
+    let mut session = Session::new(Snapshot {
+        min: BlockPos::new(2, 2, 2),
+        max: BlockPos::new(8, 8, 8),
+        blocks: vec![
+            (pos.offset(mchprs_blocks::BlockFace::Bottom), Block::Stone {}),
+            (pos, Block::StonePressurePlate { powered: false }),
+            (pos.offset(mchprs_blocks::BlockFace::Top), Block::RedstoneLamp { lit: false }),
+        ],
+        entities: vec![],
+        ticks: vec![],
+    })
+    .unwrap();
+    session.compile(CompilerOptions::default()).unwrap();
+    session.advance_with_inputs(21, &[Input::Plate(pos, true)]).unwrap();
+    assert_eq!(session.get(pos).unwrap().pressure_plate_powered(), Some(true));
+    assert!(session.pending_ticks().is_err(), "compiled ownership must be retained");
+    session.advance_with_inputs(4, &[Input::Plate(pos, false)]).unwrap();
+    assert_eq!(session.get(pos).unwrap().pressure_plate_powered(), Some(false));
+    assert_eq!(
+        session.get(pos.offset(mchprs_blocks::BlockFace::Top)).unwrap(),
+        Block::RedstoneLamp { lit: false }
+    );
+    assert!(session.pending_ticks().is_err());
+}
+
+#[test]
 fn host_runs_a_compiled_lever_with_only_the_public_api() {
     let pos = BlockPos::new(5, 5, 5);
     let mut session = Session::new(Snapshot {

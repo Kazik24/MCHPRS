@@ -568,6 +568,8 @@ catalog! {
         redpiler_progress(elapsed: impl Display, status: &str) = "Redpiler compiling ({elapsed}s): {status}";
         redpiler_publication(mode: &str) = "Redpiler publication: {mode}";
         redpiler_rejected(elapsed: Duration, reason: &str) = "Redpiler could not start ({elapsed:.1?}):\n{reason}";
+        redpiler_fallback(reason: &str) = "Redpiler is switching to Interpreter: {reason}.";
+        redpiler_handoff_failed(error: impl Display) = "Could not switch to Interpreter: {error}. Compiled state was kept and simulation is paused. Use /rp reset before resuming.";
         redpiler_failed_phase(status: &str, reason: impl Display) = "Stopped during {status}.\n{reason}";
         redpiler_block_failure(block: &str, position: impl Display, reason: &str) = "{block} at {position}: {reason}";
         redpiler_unsupported_block(block: &str, position: impl Display) = "Unsupported block: {block} at {position}.";

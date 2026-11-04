@@ -317,6 +317,7 @@ impl Plot {
                 });
             }
             self.redpiler = output.compiler;
+            self.redpiler_handoff_failed = false;
             let state = if self.redpiler.current_flags().is_some_and(|options| options.llvm) {
                 RedpilerState::RunningLlvm
             } else {

@@ -2468,7 +2468,7 @@ fn program_construction_rejects_malformed_records() {
     );
     assert_reason(
         make(positions.clone(), initial.clone(), vec![1], vec![[vec![], vec![]]], links.clone()),
-        "sampled program source is not a lever or button",
+        "sampled program source is not a lever, button or pressure plate",
     );
     assert_reason(
         make(positions.clone(), initial.clone(), vec![0], vec![], links.clone()),

@@ -35,7 +35,7 @@ pub(super) struct Context<'a, W: World> {
 pub(super) struct Inventory {
     /// scanned component world positions; each position's vector index is its component ID.
     pub(super) positions: Vec<BlockPos>,
-    /// component IDs of external lever/button input sources.
+    /// component IDs of external lever/button/pressure-plate input sources.
     sources: Vec<usize>,
     /// discovered repeater metadata keyed by each record's component ID.
     repeaters: Vec<RepeaterRecord>,

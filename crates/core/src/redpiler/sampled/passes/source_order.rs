@@ -180,17 +180,14 @@ pub(in super::super) fn run(
                     let group = &program.input_arrangements[group];
                     group.target == id && !group.side && group.conditional_sources.contains(&ArrangementSource::Component(link.source))
                 });
-                ((matches!(program.initial[link.source], Block::RedstoneBlock)
-                    || program.initial[link.source].pressure_plate_powered() == Some(true))
-                    && !conditional)
-                    .then_some(15u8.saturating_sub(link.attenuation))
+                (matches!(program.initial[link.source], Block::RedstoneBlock) && !conditional).then_some(15u8.saturating_sub(link.attenuation))
             });
             let arranged_link_power = links_by_target[id].iter().filter_map(|&index| {
                 let link = &program.arrangement_links[index];
                 let constant = match link.source {
                     ArrangementSource::Token(_) => true,
                     ArrangementSource::Component(node) => {
-                        matches!(program.initial[node], Block::RedstoneBlock) || program.initial[node].pressure_plate_powered() == Some(true)
+                        matches!(program.initial[node], Block::RedstoneBlock)
                     }
                 };
                 (link.target == id && !link.side && constant && link.active[loaded.group_arrangements[link.group]])
@@ -205,16 +202,13 @@ pub(in super::super) fn run(
                     let conditional = program.input_arrangements.iter().any(|group| {
                         group.target == id && !group.side && group.conditional_sources.contains(&ArrangementSource::Component(link.source))
                     });
-                    ((matches!(program.initial[link.source], Block::RedstoneBlock)
-                        || program.initial[link.source].pressure_plate_powered() == Some(true))
-                        && !conditional)
-                        .then_some(15u8.saturating_sub(link.attenuation))
+                    (matches!(program.initial[link.source], Block::RedstoneBlock) && !conditional).then_some(15u8.saturating_sub(link.attenuation))
                 });
                 let original_arranged_link_power = program.arrangement_links.iter().enumerate().filter_map(|(index, link)| {
                     let constant = match link.source {
                         ArrangementSource::Token(_) => true,
                         ArrangementSource::Component(node) => {
-                            matches!(program.initial[node], Block::RedstoneBlock) || program.initial[node].pressure_plate_powered() == Some(true)
+                            matches!(program.initial[node], Block::RedstoneBlock)
                         }
                     };
                     (link.target == id && !link.side && constant && link.active[loaded.group_arrangements[link.group]])
@@ -225,6 +219,7 @@ pub(in super::super) fn run(
                 assert_eq!(constant_power, original);
             }
             let quiet = match block {
+                block if block.pressure_plate_powered().is_some() => block.with_pressure_plate_power(false).unwrap(),
                 Block::Lever { mut lever } => {
                     lever.powered = false;
                     Block::Lever { lever }
@@ -329,6 +324,9 @@ pub(in super::super) fn run(
             let flip_started = Instant::now();
             w.observe_redstone_updates(true);
             match w.get_block(pos) {
+                block if block.pressure_plate_powered().is_some_and(|was_powered| was_powered != powered) => {
+                    crate::redstone::set_pressure_plate(w, pos, block, powered);
+                }
                 Block::Lever { lever } if lever.powered != powered => {
                     crate::interaction::use_redstone(w.get_block(pos), w, pos, None);
                 }
@@ -432,6 +430,7 @@ pub(in super::super) fn run(
         sampling.entry_state_walks += 1;
         let comparison = if output_index >= source_count
             || program.initial.iter().any(|block| match block {
+                block if block.pressure_plate_powered().is_some() => block.pressure_plate_powered() == Some(true),
                 Block::Lever { lever } => lever.powered,
                 Block::StoneButton { button } => button.powered,
                 Block::RedstoneRepeater { repeater } => repeater.powered || repeater.locked,

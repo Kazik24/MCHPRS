@@ -417,6 +417,19 @@ fn opaque_simple_blocks_have_the_same_flags_as_iron() {
 }
 
 #[test]
+fn binary_pressure_plate_geometry_matches_stone_for_every_registry_state() {
+    let stone = Block::StonePressurePlate { powered: false };
+    for id in 0..crate::generated::STATE_PROPERTIES.len() as u32 {
+        let plate = Block::from_id(id);
+        if plate.pressure_plate_powered().is_some() {
+            assert_eq!(plate.is_solid(), stone.is_solid(), "{id}");
+            assert_eq!(plate.is_cube(), stone.is_cube(), "{id}");
+            assert_eq!(plate.is_transparent(), stone.is_transparent(), "{id}");
+        }
+    }
+}
+
+#[test]
 fn repeater_id_test() {
     let original = Block::RedstoneRepeater {
         repeater: RedstoneRepeater::new(3, BlockDirection::West, true, false),
@@ -607,6 +620,7 @@ macro_rules! blocks {
             #[inline]
             pub fn is_solid(self) -> bool {
                 if self.is_copper_bulb() { return false; }
+                if self.pressure_plate_powered().is_some() { return false; }
                 if let Some(slab_type) = self.slab_type() {
                     return slab_type == SlabType::Double;
                 }
@@ -640,6 +654,7 @@ macro_rules! blocks {
 
             #[inline]
             pub fn is_cube(self) -> bool {
+                if self.pressure_plate_powered().is_some() { return false; }
                 if let Some(slab_type) = self.slab_type() {
                     return slab_type != SlabType::Bottom;
                 }

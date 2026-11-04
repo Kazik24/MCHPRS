@@ -238,7 +238,7 @@ impl Session {
                 ),
                 Input::Plate(_, _) => block.pressure_plate_powered().is_some(),
             };
-            let supported = supported && (!self.compiler.is_active() || matches!(input, Input::Use(_)) && self.compiler.accepts_control(pos));
+            let supported = supported && (!self.compiler.is_active() || self.compiler.accepts_control(pos));
             if !supported {
                 bail!("unsupported input at {pos}");
             }
@@ -287,10 +287,18 @@ impl Session {
             bail!("not a pressure plate at {pos}");
         }
         if self.compiler.is_active() {
-            self.failed = true;
-            bail!("pressure plate inputs are unsupported in compiled mode at {pos}");
+            if let Err(error) = self
+                .compiler
+                .try_set_pressure_plate(pos, powered)
+                .and_then(|_| self.compiler.try_flush_complete(&mut self.world))
+            {
+                self.failed = true;
+                bail!("compiled pressure plate input failed: {error}");
+            }
         } else {
-            redstone::set_pressure_plate(&mut self.world, pos, block, powered);
+            if block.pressure_plate_powered() != Some(powered) {
+                redstone::set_pressure_plate(&mut self.world, pos, block, powered);
+            }
         }
         Ok(())
     }
