@@ -150,11 +150,7 @@ fn default_redpiler_blocks_plot_edits_but_keeps_controls_active() {
             mode: 0,
         }
     };
-    mchprs_network::packets::serverbound::ServerBoundPacketHandler::handle_container_click(
-        &mut plot,
-        click,
-        0,
-    );
+    mchprs_network::packets::serverbound::ServerBoundPacketHandler::handle_container_click(&mut plot, click, 0);
     let Some(BlockEntity::Container { inventory, .. }) = plot.world.get_block_entity(chest) else {
         panic!("chest disappeared")
     };
@@ -904,4 +900,3 @@ fn teleport_fences_movement_and_edits_until_destination_view_is_queued() {
     assert_eq!(ids[ids.len() - 2..], [0x08, 0x04]);
     assert_eq!(blocks, [(target, Block::Air.get_id())]);
 }
-                                  

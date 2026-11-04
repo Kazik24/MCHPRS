@@ -200,7 +200,9 @@ fn activation_waits_for_poll_and_preserves_imported_deadlines() {
 #[test]
 fn executed_plot_reuses_exported_state_and_keeps_pending_ticks_once() {
     for llvm in [false, true] {
-        if llvm && !cfg!(any(windows, target_os = "linux")) { continue; }
+        if llvm && !cfg!(any(windows, target_os = "linux")) {
+            continue;
+        }
         let (mut plot, _peer) = fixture(false);
         let button = BlockPos::new(34, 21, 32);
         plot.world.set_block(button.offset(mchprs_blocks::BlockFace::Bottom), Block::Stone {});
@@ -232,7 +234,8 @@ fn executed_plot_reuses_exported_state_and_keeps_pending_ticks_once() {
 fn exported_entry_rejects_host_changes_but_allows_draining_command_messages() {
     let (mut plot, _peer) = fixture(false);
     plot.world.command_messages.push(crate::chat_commands::ChatCommand {
-        recipient: crate::chat_commands::Recipient::All, message: "already published".into(),
+        recipient: crate::chat_commands::Recipient::All,
+        message: "already published".into(),
     });
     let entry = EntryVersion::capture(&plot.world);
     plot.world.command_messages.clear();

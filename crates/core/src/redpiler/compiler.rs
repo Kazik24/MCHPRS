@@ -227,7 +227,10 @@ impl Compiler {
         }
         options.io_only = options.publication_mode() == PublicationMode::Io;
         if !cached.is_active() || options.update || options.llvm != cached.options.llvm {
-            return Err(CompileError::Unsupported(ScratchError { position: None, reason: "incompatible executor checkpoint" }));
+            return Err(CompileError::Unsupported(ScratchError {
+                position: None,
+                reason: "incompatible executor checkpoint",
+            }));
         }
         let runtime = cached.runtime.as_mut().unwrap();
         runtime.refresh_command_output_state(world);

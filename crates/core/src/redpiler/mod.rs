@@ -1,6 +1,9 @@
 //! Sampled compiled redstone execution.
 
 #[cfg(test)]
+#[path = "tests/cache.rs"]
+mod cache_tests;
+#[cfg(test)]
 #[path = "tests/classic_fuzz.rs"]
 mod classic_fuzz_tests;
 mod compiler;
@@ -14,9 +17,6 @@ mod task_monitor;
 #[cfg(test)]
 #[path = "tests/compiler.rs"]
 mod tests;
-#[cfg(test)]
-#[path = "tests/cache.rs"]
-mod cache_tests;
 
 pub use crate::world::scheduler::{Queues, ScheduledBlockTick, TickScheduler};
 pub use compiler::{CompileError, CompileStatistics, Compiler, ExecutionError};

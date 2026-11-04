@@ -677,13 +677,15 @@ fn compiled_plot_rejects_a_wire_plan_prepared_before_compilation() {
     plot.owner = Some(plot.players[0].uuid);
     plot.players[0].set_test_permissions(&["*"]);
     let (start, end, old) = staged_route(&mut plot);
-    plot.redpiler.compile(
-        &plot.world,
-        (BlockPos::new(26, 18, 33), BlockPos::new(36, 24, 38)),
-        Default::default(),
-        vec![],
-        Default::default(),
-    ).unwrap();
+    plot.redpiler
+        .compile(
+            &plot.world,
+            (BlockPos::new(26, 18, 33), BlockPos::new(36, 24, 38)),
+            Default::default(),
+            vec![],
+            Default::default(),
+        )
+        .unwrap();
     assert!(plot.use_wire_tool(0, 0, 0.0, 90.0));
     assert!(plot.redpiler.is_active());
     assert_eq!(plot.world.get_block(start), old);

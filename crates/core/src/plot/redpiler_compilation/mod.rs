@@ -78,7 +78,9 @@ impl EntryVersion {
     }
 
     fn command_output(world: &PlotWorld) -> Option<(Instant, usize, usize, bool)> {
-        world.command_block_output_state().map(|state| (state.window, state.count, state.bytes, state.limited))
+        world
+            .command_block_output_state()
+            .map(|state| (state.window, state.count, state.bytes, state.limited))
     }
 
     fn matches(&self, world: &PlotWorld) -> bool {
@@ -210,7 +212,14 @@ impl Plot {
                 let mut compiler = Compiler::default();
                 let result = match cached {
                     Some(CompilationCache { suspended: Some(saved), .. }) => compiler.resume_cached(&world, options, worker_monitor, saved),
-                    cache => compiler.compile_cached(&world, world.get_corners(), options, ticks, worker_monitor, cache.map(|cache| cache.program)),
+                    cache => compiler.compile_cached(
+                        &world,
+                        world.get_corners(),
+                        options,
+                        ticks,
+                        worker_monitor,
+                        cache.map(|cache| cache.program),
+                    ),
                 };
                 CompilationResult { world, compiler, result }
             });
