@@ -12,7 +12,7 @@ env:
   CARGO_PROFILE_TEST_DEBUG: '0'
 
 concurrency:
-  group: test-${{ github.ref }}
+  group: test-ci-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:

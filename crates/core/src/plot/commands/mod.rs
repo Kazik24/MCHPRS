@@ -1322,7 +1322,10 @@ mod security_tests {
             Some("commands.redpiler.compile")
         );
         assert_eq!(native_command_permission("/rp", &["reset"]).as_deref(), Some("commands.redpiler.reset"));
-        assert_eq!(native_command_permission("/rp", &["off", "--clear"]).as_deref(), Some("commands.redpiler.reset"));
+        assert_eq!(
+            native_command_permission("/rp", &["off", "--clear"]).as_deref(),
+            Some("commands.redpiler.reset")
+        );
         for flag in ["-O3", "--optimize", "--graph", "--export-json"] {
             assert!(CompilerOptions::parse(flag).is_err(), "retired option {flag} must be rejected");
         }
@@ -1401,8 +1404,16 @@ mod security_tests {
             ["all", "redstone", "io"]
         );
         for command in ["reset", "off"] {
-            let node = redpiler.children.iter().map(|&id| &nodes[id as usize]).find(|node| node.name == Some(command)).unwrap();
-            assert_eq!(node.children.iter().map(|&id| nodes[id as usize].name.unwrap()).collect::<Vec<_>>(), ["--clear"]);
+            let node = redpiler
+                .children
+                .iter()
+                .map(|&id| &nodes[id as usize])
+                .find(|node| node.name == Some(command))
+                .unwrap();
+            assert_eq!(
+                node.children.iter().map(|&id| nodes[id as usize].name.unwrap()).collect::<Vec<_>>(),
+                ["--clear"]
+            );
         }
         assert_eq!(
             native_command_permission("/rp", &["publish", "all"]).as_deref(),

@@ -60,8 +60,7 @@ fn build_directory(cache: &Cache, key: &str, generation: u64) -> PathBuf {
 
 fn build_name(name: &str) -> bool {
     let (key, generation) = name.split_once('-').map_or((name, None), |(key, generation)| (key, Some(generation)));
-    key.len() == 64 && key.bytes().all(|byte| byte.is_ascii_hexdigit())
-        && generation.is_none_or(|generation| generation.parse::<u64>().is_ok())
+    key.len() == 64 && key.bytes().all(|byte| byte.is_ascii_hexdigit()) && generation.is_none_or(|generation| generation.parse::<u64>().is_ok())
 }
 
 fn validate_build_directory(path: &Path) -> io::Result<()> {
@@ -89,7 +88,9 @@ impl Cache {
         let mut deferred = 0;
         for entry in fs::read_dir(&self.path).map_err(|error| error.to_string())? {
             let entry = entry.map_err(|error| error.to_string())?;
-            if entry.file_name() == ".owner" { continue; }
+            if entry.file_name() == ".owner" {
+                continue;
+            }
             let path = entry.path();
             if !entry.file_name().to_str().is_some_and(build_name) {
                 deferred += 1;
@@ -111,7 +112,9 @@ impl Cache {
                 }
             }
         }
-        Ok(format!("LLVM cache invalidated: {removed} artifact directories removed, {deferred} entries deferred (in use or unrecognized). New modules will rebuild; custom MCHPRS_LLVM_DLL files are untouched."))
+        Ok(format!(
+            "LLVM cache invalidated: {removed} artifact directories removed, {deferred} entries deferred (in use or unrecognized). New modules will rebuild; custom MCHPRS_LLVM_DLL files are untouched."
+        ))
     }
 }
 
@@ -260,7 +263,10 @@ pub(super) fn module_path(monitor: Option<&TaskMonitor>) -> Result<ModulePath, S
     validate_owned_root(&cache.path).map_err(|error| error.to_string())?;
     if let Some(path) = module.path.as_ref().filter(|path| path.is_file()) {
         validate_build_directory(path.parent().unwrap()).map_err(|error| error.to_string())?;
-        return Ok(ModulePath { path: path.clone(), _guard: Some(module) });
+        return Ok(ModulePath {
+            path: path.clone(),
+            _guard: Some(module),
+        });
     }
     #[cfg(windows)]
     let clang = executable("clang.exe", "MCHPRS_LLVM_CLANG")?;
@@ -353,8 +359,11 @@ mod tests {
     use super::*;
 
     fn temp_root(label: &str) -> PathBuf {
-        std::env::temp_dir().join(format!("mroww-cache-{label}-{}-{}", std::process::id(),
-            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()))
+        std::env::temp_dir().join(format!(
+            "mroww-cache-{label}-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
+        ))
     }
 
     #[test]
