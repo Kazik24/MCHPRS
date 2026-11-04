@@ -672,6 +672,29 @@ fn completed_refusal_stays_visible_when_clicked_again() {
 }
 
 #[test]
+fn compiled_plot_rejects_a_wire_plan_prepared_before_compilation() {
+    let (mut plot, _peer) = fixture(false);
+    plot.owner = Some(plot.players[0].uuid);
+    plot.players[0].set_test_permissions(&["*"]);
+    let (start, end, old) = staged_route(&mut plot);
+    plot.redpiler.compile(
+        &plot.world,
+        (BlockPos::new(26, 18, 33), BlockPos::new(36, 24, 38)),
+        Default::default(),
+        vec![],
+        Default::default(),
+    ).unwrap();
+    assert!(plot.use_wire_tool(0, 0, 0.0, 90.0));
+    assert!(plot.redpiler.is_active());
+    assert_eq!(plot.world.get_block(start), old);
+    assert_eq!(plot.world.get_block(end), Block::Air);
+    assert!(plot.players[0].worldedit_undo.is_empty());
+    let session = plot.players[0].redstone_tools.wire.as_ref().unwrap();
+    assert!(session.plan.is_some());
+    assert_eq!(session.notice.as_deref(), Some(messages::WIRE_UNSUPPORTED));
+}
+
+#[test]
 fn cursor_movement_keeps_pending_marker_storage_bounded() {
     let mut session = Session::new(0);
     session.start = Some(BlockPos::new(20, 20, 20));

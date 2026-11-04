@@ -71,6 +71,100 @@ fn compiled_projection_waits_for_visual_deadline() {
 }
 
 #[test]
+fn default_redpiler_blocks_plot_edits_but_keeps_controls_active() {
+    use mchprs_blocks::block_entities::{BlockEntity, ContainerType, InventoryEntry};
+    use mchprs_blocks::blocks::{ButtonFace, Lever, LeverFace, StoneButton};
+
+    let (mut plot, mut peer) = fixture(false);
+    plot.owner = Some(plot.players[0].uuid);
+    plot.players[0].set_test_permissions(&["*"]);
+    let lever = BlockPos::new(34, 21, 32);
+    let button = BlockPos::new(36, 21, 32);
+    for pos in [lever, button] {
+        plot.world.set_block(pos.offset(BlockFace::Bottom), Block::Stone {});
+    }
+    plot.world.set_block(
+        lever,
+        Block::Lever {
+            lever: Lever::new(LeverFace::Floor, mchprs_blocks::BlockDirection::North, false),
+        },
+    );
+    plot.world.set_block(
+        button,
+        Block::StoneButton {
+            button: StoneButton::new(ButtonFace::Floor, mchprs_blocks::BlockDirection::North, false),
+        },
+    );
+    let chest = BlockPos::new(32, 20, 36);
+    plot.world.set_block(chest, Block::from_name("chest").unwrap());
+    let chest_contents = vec![InventoryEntry {
+        id: Item::Sandstone {}.get_id(),
+        slot: 0,
+        count: 1,
+        nbt: None,
+    }];
+    plot.world.set_block_entity(
+        chest,
+        BlockEntity::Container {
+            comparator_override: 0,
+            inventory: chest_contents.clone().into(),
+            ty: ContainerType::Chest,
+        },
+    );
+
+    plot.start_redpiler_with_budget(CompilerOptions::default(), None);
+    plot.wait_for_redpiler();
+    assert!(plot.redpiler.is_active());
+    assert!(!plot.redpiler.current_flags().unwrap().io_only);
+
+    let support = BlockPos::new(32, 20, 32);
+    let placed = support.offset(BlockFace::Top);
+    plot.handle_player_block_placement(placement(support, 1), 0);
+    let (_, blocks) = episode(&mut peer, false, 1);
+    assert_eq!(blocks.last(), Some(&(placed, Block::Air.get_id())));
+    assert_eq!(plot.world.get_block(placed), Block::Air);
+    assert!(plot.redpiler.is_active());
+
+    plot.handle_player_digging(digging(support, 0, 2), 0);
+    let (_, blocks) = episode(&mut peer, false, 2);
+    assert!(blocks.contains(&(support, Block::Sandstone {}.get_id())));
+    assert_eq!(plot.world.get_block(support), Block::Sandstone {});
+    assert!(plot.redpiler.is_active());
+
+    for (sequence, pos) in [(3, lever), (4, button)] {
+        assert!(plot.redpiler.accepts_control(pos));
+        plot.handle_player_block_placement(placement(pos, sequence), 0);
+        let (ids, _) = episode(&mut peer, false, sequence);
+        assert!(!ids.contains(&0x72), "active control input should not be rejected");
+        assert!(plot.redpiler.is_active());
+    }
+
+    plot.players[0].open_container(chest, &chest_contents, ContainerType::Chest);
+    let click = {
+        let menu = plot.players[0].open_container.as_ref().unwrap();
+        SContainerClick {
+            window_id: menu.window_id as i32,
+            state_id: menu.state_id,
+            slot: 0,
+            button: 0,
+            mode: 0,
+        }
+    };
+    mchprs_network::packets::serverbound::ServerBoundPacketHandler::handle_container_click(
+        &mut plot,
+        click,
+        0,
+    );
+    let Some(BlockEntity::Container { inventory, .. }) = plot.world.get_block_entity(chest) else {
+        panic!("chest disappeared")
+    };
+    assert_eq!(inventory.len(), 1);
+    assert_eq!(inventory[0].id, Item::Sandstone {}.get_id());
+    assert!(plot.players[0].open_container.is_none());
+    assert!(plot.redpiler.is_active());
+}
+
+#[test]
 fn idle_interpreter_skips_empty_batches_and_resumes_scheduled_work() {
     for tps in [Tps::Unlimited, Tps::Limited(1_000_000), Tps::Limited(20)] {
         let (mut plot, _peer) = fixture(false);
@@ -810,3 +904,4 @@ fn teleport_fences_movement_and_edits_until_destination_view_is_queued() {
     assert_eq!(ids[ids.len() - 2..], [0x08, 0x04]);
     assert_eq!(blocks, [(target, Block::Air.get_id())]);
 }
+                                  

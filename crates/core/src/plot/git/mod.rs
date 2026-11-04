@@ -359,6 +359,9 @@ impl Plot {
             _ => "read",
         };
         ensure!(self.git_access(player, action), messages::GIT_PERMISSION_DENIED);
+        if action == "checkout" {
+            ensure!(!self.redpiler.is_active(), messages::PLOT_CANNOT_INTERACTED_WHILE_REDPILER_ACTIVE);
+        }
         let actor = self.players[player].uuid;
         if args != ["inspect"] && (args.first() != Some(&"diff") || args.get(1) != Some(&"inspect")) {
             self.hide_git(player, false);

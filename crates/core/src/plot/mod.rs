@@ -541,7 +541,15 @@ impl Plot {
         self.timings.reset_timings();
     }
 
-    /// Redpiler needs to reset implicitly in the case of any block changes done by a player. This can be
+    /// Player edits must not silently stop a running simulation or change its compiled circuit.
+    fn prepare_block_edit(&mut self) -> Result<(), String> {
+        if self.redpiler.is_active() {
+            return Err(messages::PLOT_CANNOT_INTERACTED_WHILE_REDPILER_ACTIVE.into());
+        }
+        self.reset_redpiler().map_err(|error| error.to_string())
+    }
+
+    /// Export compiled state for an explicit reset, save, or other lifecycle transition.
     fn reset_redpiler(&mut self) -> Result<(), crate::redpiler::ExecutionError> {
         if self.compiling_redpiler() {
             self.cancel_redpiler_compilation();
@@ -552,7 +560,8 @@ impl Plot {
         if self.redpiler.is_active() {
             debug!("Resetting redpiler");
             let bounds = self.world.get_corners();
-            self.redpiler.try_reset(&mut self.world, bounds)?;
+            self.redpiler_cache = self.redpiler.try_suspend(&mut self.world, bounds)?
+                .map(|compiler| redpiler_compilation::CompilationCache::exported(&self.world, compiler));
             self.scoreboard.set_redpiler_state(&self.players, RedpilerState::Stopped);
             self.scoreboard.set_redpiler_options(&self.players, &Default::default());
 

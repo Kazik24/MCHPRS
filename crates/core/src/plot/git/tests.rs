@@ -9,6 +9,27 @@ use serde_json::json;
 use sha2::{Digest, Sha256};
 use std::fs;
 
+#[test]
+fn git_world_restores_require_an_explicit_redpiler_reset() {
+    let (mut plot, _peer) = crate::plot::client_sync_tests::fixture(false);
+    plot.owner = Some(plot.players[0].uuid);
+    plot.players[0].set_test_permissions(&["*"]);
+    plot.redpiler.compile(
+        &plot.world,
+        (BlockPos::new(30, 19, 30), BlockPos::new(36, 23, 36)),
+        Default::default(),
+        vec![],
+        Default::default(),
+    ).unwrap();
+    for action in ["checkout", "restore", "recover", "rebase"] {
+        let error = plot.git_command(0, &[action, "HEAD"]).unwrap_err();
+        assert_eq!(error.to_string(), messages::PLOT_CANNOT_INTERACTED_WHILE_REDPILER_ACTIVE);
+        assert!(plot.redpiler.is_active());
+        assert!(!plot.git.locked);
+        assert!(plot.git.pending.is_none());
+    }
+}
+
 struct TempRoot(PathBuf);
 impl TempRoot {
     fn new() -> Self {

@@ -19,8 +19,6 @@ use std::path::PathBuf;
 use std::time::Instant;
 use tracing::{error, warn};
 
-pub(super) const ERROR_IO_ONLY: &str = messages::PLOT_CANNOT_INTERACTED_WHILE_REDPILER_ACTIVE;
-
 fn relative_movement(old: PlayerPos, new: PlayerPos) -> Option<[i16; 3]> {
     // Quantize endpoints rather than each step, so discarded fractions do not accumulate.
     let encode = |coordinate: f64| (coordinate * 4096.0 + 0.5).floor();
@@ -260,7 +258,6 @@ impl Plot {
                     self.players[player].worldedit_set_second_position(block_pos);
                 }
                 cancel(self);
-                // FIXME The client's off-hand follow-up can still reach normal placement handling and reset the Redpiler.
                 return;
             }
         }
@@ -285,21 +282,13 @@ impl Plot {
                 crate::sound::control_used(&mut self.world, block_pos, block, self.players[player].uuid);
                 self.world.flush_block_changes();
                 return;
-            } else {
-                match self.redpiler.current_flags() {
-                    Some(flags) if flags.io_only => {
-                        self.players[player].send_error_message(ERROR_IO_ONLY);
-                        cancel(self);
-                        return;
-                    }
-                    _ => {}
-                }
-                if let Err(error) = self.reset_redpiler() {
-                    self.players[player].send_error_message(&error.to_string());
-                    cancel(self);
-                    return;
-                }
             }
+        }
+
+        if let Err(error) = self.prepare_block_edit() {
+            self.players[player].send_error_message(&error);
+            cancel(self);
+            return;
         }
 
         self.close_open_container(player);
@@ -393,17 +382,8 @@ impl Plot {
                 return;
             }
 
-            match self.redpiler.current_flags() {
-                Some(flags) if flags.io_only => {
-                    self.players[player].send_error_message(ERROR_IO_ONLY);
-                    self.send_block_change(block_pos, block.get_id());
-                    return;
-                }
-                _ => {}
-            }
-
-            if let Err(error) = self.reset_redpiler() {
-                self.players[player].send_error_message(&error.to_string());
+            if let Err(error) = self.prepare_block_edit() {
+                self.players[player].send_error_message(&error);
                 self.send_block_change(block_pos, block.get_id());
                 return;
             }
@@ -993,6 +973,10 @@ impl ServerBoundPacketHandler for Plot {
             return;
         }
         let mut sign = (**sign).clone();
+        if let Err(error) = self.prepare_block_edit() {
+            self.players[player].send_error_message(&error);
+            return;
+        }
         let updated = packet.lines.map(|line| json!({ "text": line }).to_string());
         if packet.front {
             sign.rows = updated;

@@ -8,6 +8,54 @@ use mchprs_network::test_support::read_frame;
 use mchprs_network::{BlockActionAcknowledgement, PlayerPacketSender, test_support::connection};
 
 #[test]
+fn compiled_plots_reject_worldedit_and_stacking_until_explicit_reset() {
+    use crate::redpiler::{CompilerOptions, PublicationMode};
+
+    for publication in [None, Some(PublicationMode::All), Some(PublicationMode::Io)] {
+        let (mut plot, _peer) = crate::plot::client_sync_tests::fixture(false);
+        plot.owner = Some(plot.players[0].uuid);
+        plot.players[0].set_test_permissions(&["*"]);
+        let source = BlockPos::new(32, 20, 32);
+        plot.players[0].first_position = Some(source);
+        plot.players[0].second_position = Some(source);
+        plot.handle_command(0, "//copy", vec![]);
+        plot.handle_command(0, "//set", vec!["stone"]);
+        let undo_count = plot.players[0].worldedit_undo.len();
+        assert_eq!(plot.world.get_block(source), Block::Stone {});
+        plot.redpiler.compile(
+            &plot.world,
+            (BlockPos::new(30, 19, 30), BlockPos::new(38, 23, 38)),
+            CompilerOptions { publication, ..Default::default() },
+            vec![],
+            Default::default(),
+        ).unwrap();
+
+        for (command, args) in [
+            ("//set", vec!["glass"]),
+            ("//paste", vec![]),
+            ("//undo", vec![]),
+            ("//stack", vec!["1", "east"]),
+            ("/rs", vec!["east", "1"]),
+        ] {
+            plot.handle_command(0, command, args);
+            assert!(plot.redpiler.is_active(), "{command} stopped Redpiler");
+            assert_eq!(plot.world.get_block(source), Block::Stone {}, "{command}");
+            assert_eq!(plot.world.get_block(source.offset(mchprs_blocks::BlockFace::East)), Block::Air, "{command}");
+            assert_eq!(plot.players[0].worldedit_undo.len(), undo_count, "{command}");
+            assert!(plot.players[0].worldedit_redo.is_empty(), "{command}");
+        }
+        // Copying and selecting do not modify the compiled circuit.
+        plot.handle_command(0, "//copy", vec![]);
+        assert!(plot.redpiler.is_active());
+        assert_eq!(plot.players[0].worldedit_clipboard.as_ref().unwrap().data.get_entry(0), Block::Stone {}.get_id());
+        plot.handle_command(0, "/rp", vec!["reset"]);
+        assert!(!plot.redpiler.is_active());
+        plot.handle_command(0, "//set", vec!["glass"]);
+        assert_eq!(plot.world.get_block(source), Block::Glass {});
+    }
+}
+
+#[test]
 fn rejected_paste_offers_a_teleport_that_makes_the_same_clipboard_fit() {
     let (mut plot, mut peer) = crate::plot::client_sync_tests::fixture(false);
     plot.owner = Some(plot.players[0].uuid);

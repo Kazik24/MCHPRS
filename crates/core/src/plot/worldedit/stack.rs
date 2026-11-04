@@ -192,7 +192,7 @@ impl Plot {
             return Ok(());
         }
 
-        self.reset_redpiler()?;
+        self.prepare_block_edit().map_err(anyhow::Error::msg)?;
         let destinations: Vec<_> = destinations.iter().map(|area| (area.start, area.end)).collect();
         let undo = worldedit::stack_prepared(&mut self.world, bounds.start, bounds.end, &destinations, request.air);
         let player = &mut self.players[player];

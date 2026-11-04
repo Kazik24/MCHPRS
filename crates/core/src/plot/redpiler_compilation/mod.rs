@@ -28,6 +28,19 @@ pub(super) struct CompilationCache {
     entry: EntryVersion,
     options: CompilerOptions,
     program: Arc<CachedProgram>,
+    /// Present after reset: the executor already represents the exported world state.
+    suspended: Option<Compiler>,
+}
+
+impl CompilationCache {
+    pub(super) fn exported(world: &PlotWorld, compiler: Compiler) -> Self {
+        Self {
+            entry: EntryVersion::capture(world),
+            options: compiler.current_flags().unwrap().clone(),
+            program: compiler.cached_program().unwrap(),
+            suspended: Some(compiler),
+        }
+    }
 }
 
 struct CompilationResult {
@@ -47,6 +60,9 @@ struct EntryVersion {
     ticks: Vec<TickEntry>,
     /// Complete piston state detects partial-tick changes without requiring new equality traits.
     pistons: Vec<u8>,
+    cursed: bool,
+    /// Queue draining is harmless; changed rate-limit accounting requires a new capture.
+    command_output: Option<(Instant, usize, usize, bool)>,
 }
 
 impl EntryVersion {
@@ -56,7 +72,13 @@ impl EntryVersion {
             chunks: world.chunks.iter().map(Chunk::circuit_snapshot_version).collect(),
             ticks: world.to_be_ticked.iter_entries().collect(),
             pistons: bincode::serialize(&world.piston_state).expect("piston state serializes to memory"),
+            cursed: world.is_cursed,
+            command_output: Self::command_output(world),
         }
+    }
+
+    fn command_output(world: &PlotWorld) -> Option<(Instant, usize, usize, bool)> {
+        world.command_block_output_state().map(|state| (state.window, state.count, state.bytes, state.limited))
     }
 
     fn matches(&self, world: &PlotWorld) -> bool {
@@ -64,6 +86,8 @@ impl EntryVersion {
             && self.chunks.iter().copied().eq(world.chunks.iter().map(Chunk::circuit_snapshot_version))
             && self.ticks.iter().cloned().eq(world.to_be_ticked.iter_entries())
             && self.pistons == bincode::serialize(&world.piston_state).expect("piston state serializes to memory")
+            && self.cursed == world.is_cursed
+            && self.command_output == Self::command_output(world)
     }
 }
 
@@ -151,12 +175,8 @@ impl Plot {
         let cacheable = open_barrels.is_empty();
         let cached = self
             .redpiler_cache
-            .as_ref()
-            .filter(|cache| cacheable && cache.options == options && cache.entry.matches(&self.world))
-            .map(|cache| Arc::clone(&cache.program));
-        if cached.is_none() {
-            self.redpiler_cache = None;
-        }
+            .take()
+            .filter(|cache| cacheable && cache.options == options && cache.entry.matches(&self.world));
         let job_options = options.clone();
         let snapshot_ms = started.elapsed().as_millis();
         let monitor = Arc::new(TaskMonitor::with_deadline(budget.map(|budget| started + budget)));
@@ -188,7 +208,10 @@ impl Plot {
                 }
                 let ticks = world.to_be_ticked.iter_entries().collect();
                 let mut compiler = Compiler::default();
-                let result = compiler.compile_cached(&world, world.get_corners(), options, ticks, worker_monitor, cached);
+                let result = match cached {
+                    Some(CompilationCache { suspended: Some(saved), .. }) => compiler.resume_cached(&world, options, worker_monitor, saved),
+                    cache => compiler.compile_cached(&world, world.get_corners(), options, ticks, worker_monitor, cache.map(|cache| cache.program)),
+                };
                 CompilationResult { world, compiler, result }
             });
         match worker {
@@ -275,6 +298,7 @@ impl Plot {
                     entry: job.entry,
                     options: job.options,
                     program,
+                    suspended: None,
                 });
             }
             self.redpiler = output.compiler;

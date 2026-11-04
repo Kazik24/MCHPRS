@@ -198,6 +198,56 @@ fn activation_waits_for_poll_and_preserves_imported_deadlines() {
 }
 
 #[test]
+fn executed_plot_reuses_exported_state_and_keeps_pending_ticks_once() {
+    for llvm in [false, true] {
+        if llvm && !cfg!(any(windows, target_os = "linux")) { continue; }
+        let (mut plot, _peer) = fixture(false);
+        let button = BlockPos::new(34, 21, 32);
+        plot.world.set_block(button.offset(mchprs_blocks::BlockFace::Bottom), Block::Stone {});
+        plot.world.set_block(button, Block::from_name("stone_button").unwrap());
+        let options = CompilerOptions { llvm, ..Default::default() };
+        plot.start_redpiler_with_budget(options.clone(), None);
+        plot.wait_for_redpiler();
+        assert!(!plot.redpiler.stats().unwrap().cached);
+        let program = plot.redpiler.cached_program().unwrap();
+        plot.redpiler.try_on_use_block(button).unwrap();
+        plot.redpiler.tick().unwrap();
+        plot.reset_redpiler().unwrap();
+        let pending: Vec<_> = plot.world.scheduler().iter_entries().collect();
+        assert_eq!(pending.len(), 1);
+        assert!(matches!(plot.world.get_block(button), Block::StoneButton { button } if button.powered));
+        assert!(plot.redpiler_cache.as_ref().unwrap().suspended.is_some());
+
+        plot.start_redpiler_with_budget(options, None);
+        plot.wait_for_redpiler();
+        assert!(plot.redpiler.stats().unwrap().cached);
+        assert!(Arc::ptr_eq(&program, &plot.redpiler.cached_program().unwrap()));
+        assert!(plot.world.scheduler().iter_entries().next().is_none());
+        plot.reset_redpiler().unwrap();
+        assert_eq!(plot.world.scheduler().iter_entries().collect::<Vec<_>>(), pending);
+    }
+}
+
+#[test]
+fn exported_entry_rejects_host_changes_but_allows_draining_command_messages() {
+    let (mut plot, _peer) = fixture(false);
+    plot.world.command_messages.push(crate::chat_commands::ChatCommand {
+        recipient: crate::chat_commands::Recipient::All, message: "already published".into(),
+    });
+    let entry = EntryVersion::capture(&plot.world);
+    plot.world.command_messages.clear();
+    assert!(entry.matches(&plot.world));
+    plot.world.command_output_count += 1;
+    assert!(!entry.matches(&plot.world));
+    let entry = EntryVersion::capture(&plot.world);
+    plot.world.command_output_limits_enabled = !plot.world.command_output_limits_enabled;
+    assert!(!entry.matches(&plot.world));
+    let entry = EntryVersion::capture(&plot.world);
+    plot.world.is_cursed = !plot.world.is_cursed;
+    assert!(!entry.matches(&plot.world));
+}
+
+#[test]
 fn unchanged_plot_reuses_program_but_edits_and_pending_work_recompile() {
     let (mut plot, _peer) = fixture(false);
     let pos = BlockPos::new(34, 20, 34);

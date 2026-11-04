@@ -31,8 +31,8 @@ impl Plot {
         if !old.is_command_block() {
             return;
         }
-        if let Err(error) = self.reset_redpiler() {
-            self.players[player].send_error_message(&error.to_string());
+        if let Err(error) = self.prepare_block_edit() {
+            self.players[player].send_error_message(&error);
             return;
         }
         let name = match packet.mode {

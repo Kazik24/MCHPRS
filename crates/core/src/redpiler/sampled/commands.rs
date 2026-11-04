@@ -99,6 +99,12 @@ impl CommandBlockHost for Runtime {
 }
 
 impl Runtime {
+    pub(in crate::redpiler) fn refresh_command_output_state(&mut self, world: &impl crate::world::World) {
+        if self.command_output_state.is_some() {
+            self.command_output_state = world.command_block_output_state();
+        }
+    }
+
     pub(in crate::redpiler) fn queued_command_outputs(&self) -> usize {
         self.command_output_state.as_ref().map_or(0, |state| state.queued)
     }

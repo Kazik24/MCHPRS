@@ -121,7 +121,7 @@ pub struct CompileStatistics {
     pub pending_ticks: usize,
     /// elapsed compile time.
     pub duration: Duration,
-    /// Whether the immutable sampled program was reused.
+    /// Whether a prepared program or an exported executor checkpoint was reused.
     pub cached: bool,
 }
 
@@ -207,6 +207,44 @@ impl Compiler {
 
     pub(crate) fn cached_program(&self) -> Option<Arc<sampled::Program>> {
         self.runtime.as_ref().map(Runtime::shared_program)
+    }
+
+    /// Resume an executor only after its owner verifies the exported world is unchanged.
+    pub(crate) fn resume_cached<W: World>(
+        &mut self,
+        world: &W,
+        mut options: CompilerOptions,
+        monitor: Arc<TaskMonitor>,
+        mut cached: Self,
+    ) -> Result<(), CompileError> {
+        if self.is_active() {
+            return Err(CompileError::AlreadyActive);
+        }
+        let started = Instant::now();
+        monitor.set_phase("restoring exported executor");
+        if monitor.cancelled() {
+            return Err(CompileError::Cancelled);
+        }
+        options.io_only = options.publication_mode() == PublicationMode::Io;
+        if !cached.is_active() || options.update || options.llvm != cached.options.llvm {
+            return Err(CompileError::Unsupported(ScratchError { position: None, reason: "incompatible executor checkpoint" }));
+        }
+        let runtime = cached.runtime.as_mut().unwrap();
+        runtime.refresh_command_output_state(world);
+        runtime.invalidate_publication();
+        if let Some(native) = cached.llvm_runtime.as_mut() {
+            native.acknowledge_effects(runtime.queued_command_outputs());
+        }
+        let statistics = cached.statistics.as_mut().unwrap();
+        statistics.pending_ticks = runtime.pending_entries().len();
+        statistics.duration = started.elapsed();
+        statistics.cached = true;
+        cached.options = options;
+        if monitor.cancelled() {
+            return Err(CompileError::Cancelled);
+        }
+        *self = cached;
+        Ok(())
     }
 
     pub(crate) fn compile_cached<W: World>(
@@ -322,19 +360,10 @@ impl Compiler {
     }
 
     pub fn try_reset<W: World>(&mut self, world: &mut W, bounds: (BlockPos, BlockPos)) -> Result<(), ExecutionError> {
-        if self.runtime.is_some() {
-            self.publish(world, false, true)?;
-            let runtime = self.runtime.as_ref().unwrap();
-            #[cfg(feature = "redpiler-trace")]
-            runtime.log_routing_metrics();
-            let pending = runtime.pending_entries();
-            self.runtime = None;
-            self.llvm_runtime = None;
-            for entry in pending {
-                world.restore_scheduled_tick(entry);
-            }
-            self.exported_motions.clear();
-        }
+        self.export_for_reset(world)?;
+        self.runtime = None;
+        self.llvm_runtime = None;
+        self.exported_motions.clear();
         if self.options.update {
             let (first_pos, second_pos) = bounds;
             for_each_block_mut_optimized(world, first_pos, second_pos, |world, pos| {
@@ -343,6 +372,30 @@ impl Compiler {
             });
         }
         self.options = Default::default();
+        Ok(())
+    }
+
+    /// Export reset state while retaining all topology, execution and publication bookkeeping.
+    pub(crate) fn try_suspend<W: World>(&mut self, world: &mut W, bounds: (BlockPos, BlockPos)) -> Result<Option<Self>, ExecutionError> {
+        if !self.is_active() || self.options.update {
+            self.try_reset(world, bounds)?;
+            return Ok(None);
+        }
+        self.export_for_reset(world)?;
+        Ok(Some(std::mem::take(self)))
+    }
+
+    fn export_for_reset<W: World>(&mut self, world: &mut W) -> Result<(), ExecutionError> {
+        if self.runtime.is_some() {
+            self.publish(world, false, true)?;
+            let runtime = self.runtime.as_ref().unwrap();
+            #[cfg(feature = "redpiler-trace")]
+            runtime.log_routing_metrics();
+            let pending = runtime.pending_entries();
+            for entry in pending {
+                world.restore_scheduled_tick(entry);
+            }
+        }
         Ok(())
     }
 

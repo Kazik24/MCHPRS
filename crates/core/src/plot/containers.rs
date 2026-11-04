@@ -96,16 +96,10 @@ impl Plot {
             self.close_open_container(player_idx);
             return;
         }
-        if self.redpiler.is_active() {
-            if self.redpiler.current_flags().is_some_and(|flags| flags.io_only) {
-                self.players[player_idx].send_error_message(super::packet_handlers::ERROR_IO_ONLY);
-                self.close_open_container(player_idx);
-                return;
-            }
-            if let Err(error) = self.reset_redpiler() {
-                self.players[player_idx].send_error_message(&error.to_string());
-                return;
-            }
+        if let Err(error) = self.prepare_block_edit() {
+            self.players[player_idx].send_error_message(&error);
+            self.close_open_container(player_idx);
+            return;
         }
         let Some(BlockEntity::Container { inventory, ty, .. }) = self.world.get_block_entity(pos) else {
             return;
