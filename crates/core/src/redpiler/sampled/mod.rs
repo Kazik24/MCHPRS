@@ -12,6 +12,9 @@ mod compiler;
 #[path = "../tests/sampled/cpu_trace.rs"]
 mod cpu_trace;
 mod executor;
+#[cfg(test)]
+#[path = "../tests/sampled/pm1_causal.rs"]
+mod pm1_causal;
 mod group_probe;
 #[cfg(test)]
 #[path = "../tests/sampled/incremental_input.rs"]

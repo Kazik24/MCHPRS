@@ -7,6 +7,8 @@ use std::num::NonZeroUsize;
 #[cfg(any(test, feature = "redpiler-trace"))]
 macro_rules! runtime_trace {
     ($runtime:expr, $($args:tt)*) => {{
+        #[cfg(test)]
+        super::pm1_causal::record($runtime.motion_time, $runtime.phase, format!($($args)*));
         #[cfg(all(not(test), feature = "redpiler-trace"))]
         tracing::trace!(target: "mchprs_core::redpiler", tick = $runtime.motion_time, phase = $runtime.phase, $($args)*);
     }};
@@ -16,7 +18,7 @@ macro_rules! runtime_trace {
 macro_rules! runtime_trace_enabled {
     ($runtime:expr) => {{
         #[cfg(test)]
-        { false }
+        { super::pm1_causal::enabled() }
         #[cfg(all(not(test), feature = "redpiler-trace"))]
         { tracing::enabled!(target: "mchprs_core::redpiler", tracing::Level::TRACE) }
     }};
@@ -507,6 +509,8 @@ impl Runtime {
 
     fn run_piston_events(&mut self) {
         while let Some((index, event)) = self.piston_events.pop_front() {
+            #[cfg(test)]
+            let (index, event) = super::pm1_causal::select_event(self, index, event);
             let extending = event == PistonEvent::Extend;
             let piston = self.program.pistons[index];
             if !self.consume_operation(piston.base) {
