@@ -23,7 +23,6 @@ pub(in crate::plot) fn complete_redpiler(id: i32, text: &str) -> Option<CTabComp
             "-u",
         ],
         Some(&"publish") if words.len() == 2 => &["all", "redstone", "io"],
-        Some(&"reset" | &"r" | &"off") if words.len() == 2 => &["--clear"],
         _ => return None,
     };
     let prefix = &text[start..];
@@ -108,11 +107,12 @@ mod tests {
                 .unwrap();
 
             plot.players[0].set_test_permissions(&[]);
-            plot.handle_command(0, "/rp", vec![command, "--clear"]);
+            plot.handle_command(0, "/rp", vec![command]);
             assert!(plot.redpiler.is_active(), "{command} bypassed reset permission");
             plot.players[0].set_test_permissions(&["commands.redpiler.reset"]);
             for args in [
                 vec![command, "--bad"],
+                vec![command, "--clear"],
                 vec![command, "--clear", "--clear"],
                 vec![command, "--clear", "extra"],
             ] {
@@ -128,9 +128,17 @@ mod tests {
             plot.redpiler
                 .compile(&plot.world, bounds, CompilerOptions::default(), vec![], Default::default())
                 .unwrap();
-            plot.handle_command(0, "/rp", vec![command, "--clear"]);
+            plot.players[0].set_test_permissions(&[]);
+            plot.handle_command(0, "/rp", vec!["clear"]);
+            assert!(plot.redpiler.is_active(), "clear bypassed reset permission");
+            plot.players[0].set_test_permissions(&["commands.redpiler.reset"]);
+            for args in [vec!["clear", "--clear"], vec!["clear", "extra"]] {
+                plot.handle_command(0, "/rp", args);
+                assert!(plot.redpiler.is_active(), "invalid clear arguments stopped execution");
+            }
+            plot.handle_command(0, "/rp", vec!["clear"]);
             assert!(!plot.redpiler.is_active());
-            assert!(plot.redpiler_cache.is_none(), "{command} --clear retained the warm checkpoint");
+            assert!(plot.redpiler_cache.is_none(), "clear retained the warm checkpoint");
         }
     }
 
@@ -141,7 +149,7 @@ mod tests {
         plot.players[0].set_test_permissions(&["commands.redpiler.reset"]);
         plot.start_redpiler_with_budget(CompilerOptions::default(), None);
         assert!(plot.compilation.is_some());
-        plot.handle_command(0, "/rp", vec!["off", "--clear"]);
+        plot.handle_command(0, "/rp", vec!["clear"]);
         assert!(!plot.compiling_redpiler());
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
         while plot.compilation.is_some() {
@@ -184,20 +192,16 @@ impl Plot {
                 }
                 self.start_redpiler_with_budget(options, budget);
             }
-            "reset" | "r" | "off" => {
-                let clear = match args {
-                    [] => false,
-                    ["--clear"] => true,
-                    _ => {
-                        self.players[player].send_error_message(messages::REDPILER_RESET_USAGE);
-                        return;
-                    }
-                };
+            "reset" | "r" | "off" | "clear" => {
+                if !args.is_empty() {
+                    self.players[player].send_error_message(messages::REDPILER_RESET_USAGE);
+                    return;
+                }
                 if let Err(error) = self.reset_redpiler() {
                     self.players[player].send_error_message(&error.to_string());
                     return;
                 }
-                if clear {
+                if command == "clear" {
                     self.clear_redpiler_cache();
                     self.players[player].send_system_message(messages::REDPILER_PLOT_CACHE_CLEARED);
                     match crate::redpiler::clear_llvm_cache() {

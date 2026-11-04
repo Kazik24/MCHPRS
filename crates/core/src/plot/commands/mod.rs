@@ -784,7 +784,7 @@ fn native_command_permission(command: &str, args: &[&str]) -> Option<String> {
             "redpiler.{}",
             match args.first().copied() {
                 Some("c" | "compile") => "compile",
-                Some("r" | "reset" | "off") => "reset",
+                Some("r" | "reset" | "off" | "clear") => "reset",
                 Some("publish") => "compile",
                 _ => "help",
             }
@@ -1322,7 +1322,9 @@ mod security_tests {
             Some("commands.redpiler.compile")
         );
         assert_eq!(native_command_permission("/rp", &["reset"]).as_deref(), Some("commands.redpiler.reset"));
-        assert_eq!(native_command_permission("/rp", &["off", "--clear"]).as_deref(), Some("commands.redpiler.reset"));
+        for command in ["off", "clear"] {
+            assert_eq!(native_command_permission("/rp", &[command]).as_deref(), Some("commands.redpiler.reset"));
+        }
         for flag in ["-O3", "--optimize", "--graph", "--export-json"] {
             assert!(CompilerOptions::parse(flag).is_err(), "retired option {flag} must be rejected");
         }
@@ -1380,16 +1382,15 @@ mod security_tests {
             ("/rp publish ", vec!["all", "redstone", "io"]),
             ("/redpiler publish r", vec!["redstone"]),
             ("/rp compile --graph", vec![]),
-            ("/rp reset ", vec!["--clear"]),
-            ("/redpiler off --c", vec!["--clear"]),
-            ("/rp r --clear", vec!["--clear"]),
         ] {
             let response = complete_redpiler(42, text).unwrap();
             assert_eq!(response.matches.iter().map(|m| m.match_.as_str()).collect::<Vec<_>>(), expected);
         }
         assert!(complete_redpiler(0, "/rp analyze ").is_none());
         assert!(complete_redpiler(0, "/rp inspect ").is_none());
-        assert!(complete_redpiler(0, "/rp reset --clear ").is_none());
+        for command in ["reset", "r", "off", "clear"] {
+            assert!(complete_redpiler(0, &format!("/rp {command} ")).is_none());
+        }
         let publish = redpiler
             .children
             .iter()
@@ -1400,9 +1401,9 @@ mod security_tests {
             publish.children.iter().map(|&id| nodes[id as usize].name.unwrap()).collect::<Vec<_>>(),
             ["all", "redstone", "io"]
         );
-        for command in ["reset", "off"] {
+        for command in ["reset", "off", "clear"] {
             let node = redpiler.children.iter().map(|&id| &nodes[id as usize]).find(|node| node.name == Some(command)).unwrap();
-            assert_eq!(node.children.iter().map(|&id| nodes[id as usize].name.unwrap()).collect::<Vec<_>>(), ["--clear"]);
+            assert!(node.children.is_empty());
         }
         assert_eq!(
             native_command_permission("/rp", &["publish", "all"]).as_deref(),

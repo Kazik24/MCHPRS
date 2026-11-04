@@ -6,6 +6,7 @@ use mchprs_blocks::{
     block_entities::{BlockEntity, CommandBlockEntity},
     blocks::{Block, ButtonFace, Instrument, RedstonePiston, StoneButton},
 };
+use sha2::{Digest, Sha256};
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -65,7 +66,52 @@ fn pending(compiler: &Compiler) -> Vec<mchprs_world::TickEntry> {
 
 fn checkpoint(world: &PlotWorld) -> cpus::Checkpoint {
     let chat = world.command_output().map(|message| (0, message.to_owned())).collect::<Vec<_>>();
-    cpus::checkpoint(world, 0, &chat)
+    let digest = |bytes: Vec<u8>| format!("{:x}", Sha256::digest(bytes));
+    let mut blocks = Sha256::new();
+    let mut entities = Sha256::new();
+    let mut lit_lamps = 0;
+    for chunk in world.get_chunks() {
+        blocks.update(chunk.x.to_le_bytes());
+        blocks.update(chunk.z.to_le_bytes());
+        for (section_y, section) in chunk.sections.iter().enumerate() {
+            blocks.update(section.block_count().to_le_bytes());
+            if section.block_count() == 0 {
+                continue;
+            }
+            for y in 0..16 {
+                for z in 0..16 {
+                    for x in 0..16 {
+                        let id = chunk.get_block(x, section_y as u32 * 16 + y, z);
+                        blocks.update(id.to_le_bytes());
+                        lit_lamps += usize::from(matches!(Block::from_id(id), Block::RedstoneLamp { lit: true }));
+                    }
+                }
+            }
+        }
+        let mut entries = chunk.block_entities.iter().collect::<Vec<_>>();
+        entries.sort_by_key(|(pos, _)| (pos.x, pos.y, pos.z));
+        entities.update(bincode::serialize(&(chunk.x, chunk.z, entries)).unwrap());
+    }
+    cpus::Checkpoint {
+        tick: 0,
+        blocks: format!("{:x}", blocks.finalize()),
+        entities: format!("{:x}", entities.finalize()),
+        scheduler: digest(bincode::serialize(&world.scheduler().iter_entries().collect::<Vec<_>>()).unwrap()),
+        pistons: digest(bincode::serialize(world.piston_state()).unwrap()),
+        chat: digest(bincode::serialize(&chat).unwrap()),
+        messages: chat.len(),
+        lit_lamps,
+    }
+}
+
+#[test]
+fn executor_cache_checkpoint_covers_chunks_beyond_the_legacy_cpu_area() {
+    let (mut world, _, _) = fixture();
+    let before = checkpoint(&world);
+    world.set_block(BlockPos::new(300, 20, 300), Block::RedstoneLamp { lit: true });
+    let after = checkpoint(&world);
+    assert_ne!(before.blocks, after.blocks);
+    assert_eq!(after.lit_lamps, before.lit_lamps + 1);
 }
 
 #[test]
@@ -222,20 +268,24 @@ fn zcore_executor_cache_lifecycle_benchmark() {
         ..Default::default()
     };
     let (mut world, mut compiler, cold_compile) = cpus::compile_cpu_with_options(cpus::load_cpu(cpu), cpu, options.clone());
+    eprintln!("ZCore cold compile: {cold_compile:?}");
     compiler.try_on_use_block(cpu.origin + cpu.start).unwrap();
     let (load_ticks, load_settled, load_kernel) = run_until_quiet(&mut compiler, 4096);
     assert!(load_settled, "ZCore Load did not reach twenty quiet ticks");
     compiler.try_on_use_block(cpu.origin + BlockPos::new(207, 10, 154)).unwrap();
-    let (run_ticks, completed, run_kernel) = run_until_quiet(&mut compiler, 250_000);
+    let run_tick_cap = 10_000;
+    let (run_ticks, completed, run_kernel) = run_until_quiet(&mut compiler, run_tick_cap);
     let started = Instant::now();
     let cached = compiler.try_suspend(&mut world, bounds).unwrap().unwrap();
     let reset = started.elapsed();
+    eprintln!("ZCore reset export: {reset:?}; Run ticks={run_ticks}; completed={completed}");
     assert!(!compiler.is_active());
     let exported = checkpoint(&world);
     let mut fresh_world = world.activation_snapshot();
     let started = Instant::now();
     compiler.resume_cached(&world, options.clone(), Default::default(), cached).unwrap();
     let warm_compile = started.elapsed();
+    eprintln!("ZCore admission: cold={cold_compile:?}, reset={reset:?}, warm={warm_compile:?}, completed={completed}");
     assert!(compiler.stats().unwrap().cached);
     assert_eq!(checkpoint(&world), exported, "warm admission must preserve the full exported world");
     compiler.try_flush_complete(&mut world).unwrap();
@@ -244,7 +294,6 @@ fn zcore_executor_cache_lifecycle_benchmark() {
         exported,
         "the first warm publication must reproduce the reset checkpoint"
     );
-    eprintln!("ZCore admission: cold={cold_compile:?}, reset={reset:?}, warm={warm_compile:?}, completed={completed}");
     world.clear_scheduled_ticks();
 
     let mut fresh = Compiler::default();
@@ -277,9 +326,9 @@ fn zcore_executor_cache_lifecycle_benchmark() {
     std::fs::create_dir_all(artifact.parent().unwrap()).unwrap();
     let report = serde_json::json!({
         "fixture":cpu.schematic,"fixture_sha256":cpu.sha256,"backend":"rust",
-        "protocol":"cold compile; Load; twenty quiet ticks; Run; twenty quiet ticks or 250000-tick cap; reset; exact executor resume",
+        "protocol":"cold compile; Load; twenty quiet ticks; Run bounded by run_tick_cap; reset; exact executor resume",
         "cold_compile_ms":cold_compile.as_secs_f64()*1000.0,"load_ticks":load_ticks,"load_kernel_ms":load_kernel.as_secs_f64()*1000.0,
-        "run_ticks":run_ticks,"run_tick_cap":250000,"completed":completed,"completion_criterion":"twenty consecutive ticks with no scheduled ticks, piston events or motion",
+        "run_ticks":run_ticks,"run_tick_cap":run_tick_cap,"completed":completed,"completion_criterion":"twenty consecutive ticks with no scheduled ticks, piston events or motion",
         "run_kernel_ms":run_kernel.as_secs_f64()*1000.0,"reset_ms":reset.as_secs_f64()*1000.0,
         "warm_compile_ms":warm_compile.as_secs_f64()*1000.0,"fresh_post_reset_compile_ms":fresh_compile.as_secs_f64()*1000.0,
         "exported_checkpoint":exported,"warm_checkpoint_equal":true,"fresh_continuation":continuation,

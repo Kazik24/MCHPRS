@@ -219,7 +219,7 @@ editors with both compile and automatic-compilation permissions; an unauthorized
 visitor cannot raise the budget.
 
 `/rp off` is an alias for `/rp reset`; both use `mchprs.commands.redpiler.reset`.
-Their optional `--clear` flag uses the same permission and clears this plot's
+`/rp clear` uses the same permission and clears this plot's
 warm checkpoint plus the process-shared owned LLVM artifact cache. Active
 executors on other plots and custom `MCHPRS_LLVM_DLL` files are retained.
 

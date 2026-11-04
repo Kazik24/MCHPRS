@@ -353,14 +353,13 @@ pub(super) fn declared_command_nodes() -> Vec<Node<'static>> {
     for mode in ["all", "redstone", "io"] {
         nodes.push(Node::literal(mode, &[]).executable());
     }
-    let reset = nodes[redpiler].children.iter().copied().find(|&id| nodes[id as usize].name == Some("reset")).unwrap();
     let clear = nodes.len() as i32;
-    nodes.push(Node::literal("--clear", &[]).executable());
-    nodes[reset as usize].children = Box::leak(vec![clear].into_boxed_slice());
+    nodes.push(Node::literal("clear", &[]).executable());
     let off = nodes.len() as i32;
-    nodes.push(Node::literal("off", Box::leak(vec![clear].into_boxed_slice())).executable());
+    nodes.push(Node::literal("off", &[]).executable());
     let mut redpiler_children = nodes[redpiler].children.to_vec();
     redpiler_children.push(publish);
+    redpiler_children.push(clear);
     redpiler_children.push(off);
     nodes[redpiler].children = Box::leak(redpiler_children.into_boxed_slice());
 
