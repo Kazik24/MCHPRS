@@ -16,8 +16,8 @@ pub(super) fn declared_command_nodes() -> Vec<Node<'static>> {
     let mut nodes = vec![
         // Root Node
         Node::root(&[
-            1, 2, 7, 8, 10, 12, 14, 15, 16, 17, 18, 19, 20, 22, 25, 27, 29, 31, 42, 44, 48, 55, 56, 58, 60, 61, 62, 69, 70, 77, 78, 80, 86, 96, 101,
-            106, 107, 108, 109, 110, 111, 113, 115, 119, 126, 130, 131, 138, 139, 140, 141, 142, 146, 153, 154, 157, 158, 167,
+            1, 2, 7, 8, 10, 12, 14, 15, 16, 17, 18, 19, 20, 22, 25, 27, 29, 31, 32, 42, 44, 48, 55, 56, 58, 60, 61, 62, 69, 70, 77, 78, 80, 86, 96,
+            101, 106, 107, 108, 109, 110, 111, 113, 115, 119, 126, 130, 131, 138, 139, 140, 141, 142, 146, 153, 154, 157, 158, 167,
         ]),
         // /stop
         Node::literal("stop", &[]).executable(),
@@ -86,7 +86,7 @@ pub(super) fn declared_command_nodes() -> Vec<Node<'static>> {
         // /p auto
         Node::literal("auto", &[]).executable(),
         // /p a
-        Node::redirect("a", 5),
+        Node::redirect("a", 33),
         // /p middle
         Node::literal("middle", &[]).executable(),
         // /p visit
@@ -185,8 +185,8 @@ pub(super) fn declared_command_nodes() -> Vec<Node<'static>> {
         Node::literal("piston_anim", &[84]).executable(),
         Node::argument("mode", Parser::String(0), &[]).executable(),
         Node::redirect("bisdon_anim", 87).executable(),
-        // 90–99: /help and its topic suggestions
-        Node::literal("help", &[91, 92, 93, 94, 95, 96, 97, 98, 99]).executable(),
+        // /help and its topic suggestions
+        Node::literal("help", &[87, 88, 89, 90, 91, 92, 93, 94, 95]).executable(),
         Node::argument("topic", Parser::String(0), &[]).executable(),
         Node::literal("plots", &[]).executable(),
         Node::literal("tps", &[]).executable(),
@@ -430,6 +430,45 @@ pub static DECLARE_COMMANDS: Lazy<PacketEncoder> = Lazy::new(|| {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn help_suggestions_are_help_topics_and_selection_is_visible() {
+        let nodes = declared_command_nodes();
+        let root_names: Vec<_> = nodes[0].children.iter().map(|&id| nodes[id as usize].name.unwrap()).collect();
+        assert!(root_names.contains(&"/sel"));
+        let help = nodes.iter().find(|node| node.name == Some("help")).unwrap();
+        let topics: Vec<_> = help
+            .children
+            .iter()
+            .map(|&id| &nodes[id as usize])
+            .filter(|node| node.flags & 3 == 1)
+            .map(|node| node.name.unwrap())
+            .collect();
+        assert_eq!(
+            topics,
+            [
+                "plots",
+                "tps",
+                "we",
+                "schematics",
+                "pistons",
+                "rewind",
+                "chat",
+                "redpiler",
+                "visual",
+                "waveform"
+            ]
+        );
+        assert!(topics.iter().all(|topic| crate::plot::help::page(Some(topic)).is_some()));
+        let plot = nodes.iter().find(|node| node.name == Some("plot")).unwrap();
+        let auto = plot
+            .children
+            .iter()
+            .map(|&id| &nodes[id as usize])
+            .find(|node| node.name == Some("a"))
+            .unwrap();
+        assert_eq!(nodes[auto.redirect_node.unwrap() as usize].name, Some("auto"));
+    }
 
     #[test]
     fn load_filename_uses_greedy_string_for_nested_paths() {

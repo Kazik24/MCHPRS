@@ -607,43 +607,60 @@ fn teleport_resets_observers_relative_movement_base() {
 }
 
 #[test]
-fn redpiler_flag_suggestions_reach_the_chat_client() {
-    use std::io::Read;
-
+fn command_suggestions_reply_to_rapid_typing_backspace_and_empty_results() {
     for compressed in [false, true] {
         let (mut plot, mut peer) = fixture(compressed);
-        plot.players[0].set_test_permissions(&["mchprs.access.commands"]);
-        let text = "/rp c --";
-        plot.handle_tab_complete(
-            STabComplete {
-                transaction_id: 42,
-                text: text.into(),
-            },
-            0,
-        );
-        let (id, mut frame) = read_frame(&mut peer, compressed).unwrap();
-        assert_eq!(id, 0x0f);
-        assert_eq!(frame.read_varint().unwrap(), 42);
-        assert_eq!(frame.read_varint().unwrap(), text.rfind(' ').unwrap() as i32 + 1);
-        assert_eq!(frame.read_varint().unwrap(), 2);
-        assert_eq!(frame.read_varint().unwrap(), 6);
-        for expected in ["--publish-all", "--publish-redstone", "--publish-io", "--io-only", "--update", "--llvm"] {
-            assert_eq!(frame.read_string().unwrap(), expected);
-            assert!(!frame.read_bool().unwrap());
-        }
-        assert_eq!(frame.position() as usize, frame.get_ref().len());
-
-        for transaction_id in 43..53 {
+        plot.players[0].set_test_permissions(&["*"]);
+        let publish = &["--publish-all", "--publish-redstone", "--publish-io"][..];
+        let flags = &["--publish-all", "--publish-redstone", "--publish-io", "--io-only", "--update", "--llvm"][..];
+        let requests: &[(&str, i32, i32, &[&str])] = &[
+            ("/rp c --", 6, 2, flags),
+            ("/rp c --p", 6, 3, publish),
+            ("/rp c --pu", 6, 4, publish),
+            ("/rp c --p", 6, 3, publish),
+            ("/rp c --z", 6, 3, &[]),
+            ("/wire p", 6, 1, &["plane"]),
+            ("/wire ", 6, 0, &["free", "off", "plane"]),
+            ("/unknown 🐈", 11, 0, &[]),
+            ("/rp c --", 6, 2, flags),
+        ];
+        for (index, &(text, ..)) in requests.iter().enumerate() {
             plot.handle_tab_complete(
                 STabComplete {
-                    transaction_id,
+                    transaction_id: index as i32 + 42,
                     text: text.into(),
                 },
                 0,
             );
         }
-        peer.set_nonblocking(true).unwrap();
-        assert_eq!(peer.read(&mut [0]).unwrap_err().kind(), std::io::ErrorKind::WouldBlock);
+        for (index, &(_, start, length, matches)) in requests.iter().enumerate() {
+            let (id, mut frame) = read_frame(&mut peer, compressed).unwrap();
+            assert_eq!(id, 0x0f);
+            assert_eq!(frame.read_varint().unwrap(), index as i32 + 42);
+            assert_eq!(frame.read_varint().unwrap(), start);
+            assert_eq!(frame.read_varint().unwrap(), length);
+            assert_eq!(frame.read_varint().unwrap(), matches.len() as i32);
+            for &expected in matches {
+                assert_eq!(frame.read_string().unwrap(), expected);
+                assert!(!frame.read_bool().unwrap());
+            }
+            assert_eq!(frame.position() as usize, frame.get_ref().len());
+        }
+
+        plot.players[0].set_test_permissions(&[]);
+        plot.handle_tab_complete(
+            STabComplete {
+                transaction_id: 99,
+                text: "//load secret".into(),
+            },
+            0,
+        );
+        let (id, mut frame) = read_frame(&mut peer, compressed).unwrap();
+        assert_eq!(id, 0x0f);
+        for expected in [99, 13, 0, 0] {
+            assert_eq!(frame.read_varint().unwrap(), expected);
+        }
+        assert_eq!(frame.position() as usize, frame.get_ref().len());
     }
 }
 

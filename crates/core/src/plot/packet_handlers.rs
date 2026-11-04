@@ -559,7 +559,15 @@ impl ServerBoundPacketHandler for Plot {
     }
 
     fn handle_tab_complete(&mut self, packet: STabComplete, player_idx: usize) {
-        if !self.players[player_idx].can_use_commands() || !self.players[player_idx].allow_tab_complete_at(Instant::now()) {
+        let empty = CTabComplete {
+            id: packet.transaction_id,
+            start: packet.text.encode_utf16().count() as i32,
+            length: 0,
+            matches: Vec::new(),
+        };
+        // Every request must resolve the client's pending suggestions, even without matches.
+        if !self.players[player_idx].can_use_commands() {
+            self.players[player_idx].send_packet(&empty.encode());
             return;
         }
         if !crate::redbox::enabled() {
@@ -600,6 +608,7 @@ impl ServerBoundPacketHandler for Plot {
             || !self.players[player_idx].has_permission("worldedit.clipboard.load")
             || !self.players[player_idx].can_edit_plot(self.owner, (self.world.x, self.world.z))
         {
+            self.players[player_idx].send_packet(&empty.encode());
             return;
         }
 
