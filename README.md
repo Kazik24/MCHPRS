@@ -53,7 +53,7 @@ Building tools:
 - `//rs [direction] [count] [spacing] [-e] [-w]` repeats a build. `-e` expands the selection and `-w` includes air. `/autostack [direction] [count] [spacing] [-e]` repeats placements/removals as you build; `/autostack off` stops it.
 - `/container <chest|barrel|hopper|furnace> <0-15>` gives a container with the requested comparator output. `//replacecontainer <from> <to>` changes container types in a selection.
 - `//load name.schem`, then `//paste`, imports a schematic. To export: select, `//copy`, then `//save name.schem`. Saved names become `Nick@name.schem`. Use letters, digits, `_` and `-`. Legacy `.schematic` files are supported.
-- `/wire` gives a wire pen. Hold a carrot on a stick, right-click a support or dust, aim, then right-click to build the preview. It places supports and dust together, copying the starting support's passive material/color. F cycles horizontal, two vertical planes and free aim; sneak + F changes the bend. `/wire free` and `/wire plane` select aiming directly. Sneak + right-click cancels the route; `/wire off` disables the pen. `//undo` undoes a segment. It checks unsafe interactions but does not add repeaters or check signal range.
+- `/wire` gives a wire pen. Hold a carrot on a stick, right-click a support or dust, aim, then right-click to build the preview. It places supports and dust together. F cycles horizontal, two vertical planes and free aim; sneak + F changes the bend. `/wire free` and `/wire plane` select aiming directly. Sneak + right-click cancels the route; `/wire off` disables the pen.
 
 Plot Git saves versions, branches and block diffs. `/rv` is an alias for `/git`.
 
@@ -101,9 +101,9 @@ Redpiler discovers the circuit once and runs a compact program instead of repeat
 
 The compiler takes an isolated plot snapshot, including scheduled work. It finds components, wires, inputs, piston groups and the cells their payloads can occupy. It then probes transitions in scratch worlds using the interpreter, recording electrical dependencies, ordered rise/fall updates, movement notifications and conditional connections for different payload arrangements.
 
-Those results become indexed components, links, movement tables and schedules. Identical output instruction sequences share storage. The runtime processes input changes and scheduled events using that program, then publishes results at the visual update rate. Independent discovery probes can use multiple threads. Execution inside one plot remains serial; plots run on separate threads.
+Those results become indexed components, links, movement tables and schedules. The runtime processes input changes and scheduled events using that program, then publishes results at the visual update rate.
 
-Rust is the default executor. The optional LLVM backend runs the same program in a native C executor compiled with Clang/LLVM at `-O3`, loaded as a Windows DLL or Linux shared library. The executor is compiled and reused, with circuit-specific program tables.
+Rust is the default executor. The optional LLVM backend runs the same program in a native C executor compiled with Clang/LLVM at `-O3`, loaded as a Windows DLL or Linux shared library. The executor is compiled and reused, with circuit-specific program tables. This allows LLVM to optimize the circuit on it's own yielding ~1.6-1.8 inference speed. 
 
 ```text
 /tps 0
@@ -112,8 +112,6 @@ Rust is the default executor. The optional LLVM backend runs the same program in
 /tps unlimited
 /rp reset
 ```
-
-Compilation covers the current plot and runs on a worker with progress feedback. It activates only if the plot still matches its starting snapshot. Unsupported circuits or entry states are rejected with a reason and position, leaving the interpreter available. Let piston movement settle and finish partial ticks before compiling.
 
 While Redpiler is active, plot edits are blocked in every publication mode. Levers and buttons still work. Run `/rp reset` before editing blocks, containers, signs, or using WorldEdit to change the world.
 
@@ -157,10 +155,10 @@ Approximate throughput in game ticks per second (TPS):
 - **ZCore12B (fully instant):** Interpreter **119 TPS**; Rust backend **1,810 TPS**; LLVM backend **3,126 TPS**. Compilation: Rust **28.6 s**, LLVM **28.0 s**.
 - **ANPU Pong (piston used):** Interpreter **1,016 TPS**; Rust backend **16,501 TPS**; LLVM backend **26,525 TPS**. Compilation: Rust **16.6 s**, LLVM **16.8 s**.
 - **CHUNGUS Mandelbrot (fully non-instant):** Interpreter **~1,884 TPS**; Rust backend **16,468 TPS**; LLVM backend **27,673 TPS**. Compilation: Rust **95.9 s**, LLVM **98.0 s**.
-- **FPU: (fully instant, combinational)** Interpreter **200 TPS**; Rust backend **2,443 TPS**; LLVM backend **3,834 TPS (estimated)**. Compilation: Rust **7.4 s**, LLVM **not measured**.
+- **FPU: (fully instant, combinational)** Interpreter **200 TPS**; Rust backend **2,443 TPS**; LLVM backend **3,834 TPS**. Compilation: Rust **7.4 s**, LLVM **7.5s**.
 - **PC_COUNTER (fully instant counter)** Interpreter **680 TPS**; Rust backend **13,706 TPS**; LLVM backend **21,856 TPS**. Compilation: Rust **1.1 s**, LLVM **1.1 s**.
 
-Recorded on a Ryzen 9 5950X, Windows x64, with optimized builds. Results span different revisions and workloads, so they are not direct speedup comparisons. Compiled TPS excludes publication and server overhead, which can substantially reduce throughput; short runs do not establish sustained performance.
+Recorded on a Ryzen 9 5950X, Windows x64, with optimized builds. Compiled TPS excludes publication and server overhead, which can reduce throughput; short runs do not establish sustained performance.
 
 To run checks:
 
