@@ -267,6 +267,7 @@ impl Plot {
     }
 
     fn capture_git(&mut self) -> Result<(Snapshot, Reservation)> {
+        ensure!(!self.compiling_redpiler(), messages::REDPILER_COMPILATION_PAUSED);
         let started = Instant::now();
         ensure!(
             self.world.piston_state.phase == AdvancePhase::BetweenTicks,
@@ -360,7 +361,7 @@ impl Plot {
         };
         ensure!(self.git_access(player, action), messages::GIT_PERMISSION_DENIED);
         if action == "checkout" {
-            ensure!(!self.redpiler.is_active(), messages::PLOT_CANNOT_INTERACTED_WHILE_REDPILER_ACTIVE);
+            self.prepare_block_edit().map_err(anyhow::Error::msg)?;
         }
         let actor = self.players[player].uuid;
         if args != ["inspect"] && (args.first() != Some(&"diff") || args.get(1) != Some(&"inspect")) {
@@ -394,6 +395,7 @@ impl Plot {
             );
         }
         let inspection = if args == ["inspect"] {
+            ensure!(!self.compiling_redpiler(), messages::REDPILER_COMPILATION_PAUSED);
             self.reset_redpiler().context("could not export active compiled state")?;
             let viewer = &self.players[player];
             let pos = super::worldedit::ray_trace_block(&self.world, viewer.eye_position(), f64::from(pitch), f64::from(yaw), 10.0)

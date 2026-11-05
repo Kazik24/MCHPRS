@@ -268,6 +268,7 @@ impl Compiler {
         if monitor.cancelled() {
             return Err(CompileError::Cancelled);
         }
+        super::memory::check(0).map_err(CompileError::Unsupported)?;
         if options.llvm {
             let piston = world.piston_state();
             if !piston.events.is_empty()
@@ -319,13 +320,14 @@ impl Compiler {
             if total > 1 {
                 return Err(CompileError::UnsupportedComponents { first, total });
             }
-            let mut llvm = LlvmRuntime::new((*program).clone(), &ticks).map_err(CompileError::Unsupported)?;
+            let mut llvm = LlvmRuntime::new(&program, &ticks).map_err(CompileError::Unsupported)?;
             llvm.initialize_tick(world.piston_state().logical_tick);
             Some(llvm)
         } else {
             None
         };
         monitor.set_phase("initializing runtime");
+        super::memory::check(0).map_err(CompileError::Unsupported)?;
         let runtime = sampled::start_shared_runtime(program, ticks, world.piston_state().clone()).map_err(CompileError::Unsupported)?;
         if monitor.cancelled() {
             return Err(CompileError::Cancelled);

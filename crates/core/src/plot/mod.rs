@@ -376,6 +376,9 @@ impl Plot {
     }
 
     fn set_pressure_plate(&mut self, pos: BlockPos, powered: bool) {
+        if self.compiling_redpiler() {
+            return;
+        }
         let Some(current) = self.world.get_block(pos).pressure_plate_powered() else {
             warn!("Block at {} is not a pressure plate", pos);
             return;
@@ -561,7 +564,7 @@ impl Plot {
 
     /// Player edits must not silently stop a running simulation or change its compiled circuit.
     fn prepare_block_edit(&mut self) -> Result<(), String> {
-        if self.redpiler.is_active() {
+        if self.redpiler.is_active() || self.compiling_redpiler() {
             return Err(messages::PLOT_CANNOT_INTERACTED_WHILE_REDPILER_ACTIVE.into());
         }
         self.reset_redpiler().map_err(|error| error.to_string())

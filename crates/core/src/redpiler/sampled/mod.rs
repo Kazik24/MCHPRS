@@ -188,17 +188,12 @@ impl Runtime {
             effective_links
         );
         rows!(
-            incoming,
-            outgoing,
             outgoing_arrangements,
-            input_groups_by_target,
             side_outputs,
             comparators_by_override,
             reactive_by_source,
             reactive_neighbours,
-            source_watchers,
             token_cells,
-            token_piston_components,
             token_movement_groups,
             movement_cells
         );
@@ -259,6 +254,11 @@ impl Runtime {
         eprintln!(
             "Redpiler memory: arrangement_deep_bytes={arrangement_payload} arrangement_link_deep_bytes={link_payload} movement_group_deep_bytes={axis_payload}"
         );
+        small_rows("incoming", &self.program.incoming);
+        small_rows("outgoing", &self.program.outgoing);
+        small_rows("input_groups_by_target", &self.program.input_groups_by_target);
+        small_rows("source_watchers", &self.program.source_watchers);
+        small_rows("token_piston_components", &self.program.token_piston_components);
         small_rows("home_watchers", &self.program.home_watchers);
         small_rows("cell_tokens", &self.program.cell_tokens);
         small_rows("cell_pistons", &self.program.cell_pistons);

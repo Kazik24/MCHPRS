@@ -21,7 +21,6 @@ fn install_job(plot: &mut Plot, work: impl FnOnce(PlotWorld, Arc<TaskMonitor>) -
     plot.compilation = Some(CompilationJob {
         started: Instant::now(),
         last_progress: Instant::now(),
-        last_phase: 0,
         entry: EntryVersion::capture(&plot.world),
         options: Default::default(),
         cacheable: false,
@@ -115,21 +114,27 @@ fn successful_late_completion_cannot_activate_after_budget_expiry() {
 
 #[test]
 fn blocked_compiler_reports_phase_counts_and_elapsed_time_without_blocking_poll() {
-    for phase_changed in [true, false] {
+    for elapsed in [1, 4] {
         let (mut plot, mut peer) = fixture(false);
         let release = blocked_compile(&mut plot);
         let job = plot.compilation.as_mut().unwrap();
         job.started = Instant::now() - Duration::from_secs(10);
-        job.last_progress = Instant::now() - Duration::from_secs(if phase_changed { 1 } else { 4 });
+        job.last_progress = Instant::now() - Duration::from_secs(elapsed);
+        let last_progress = job.last_progress;
         job.monitor.set_phase("source transition sampling");
         job.monitor.set_counts(120, 80, 4);
         job.monitor.set_progress(2, 10, "probes");
-        if !phase_changed {
-            job.last_phase = job.monitor.phase_number();
-        }
         plot.poll_redpiler_compilation();
         assert!(!plot.redpiler.is_active());
         assert!(plot.compilation.is_some());
+        if elapsed < 3 {
+            assert_eq!(plot.compilation.as_ref().unwrap().last_progress, last_progress);
+            plot.reset_redpiler().unwrap();
+            release.send(()).unwrap();
+            plot.wait_for_redpiler();
+            continue;
+        }
+        assert!(plot.compilation.as_ref().unwrap().last_progress > last_progress);
         let (id, packet) = mchprs_network::test_support::read_frame(&mut peer, false).unwrap();
         plot.cancel_redpiler_compilation();
         release.send(()).unwrap();
@@ -368,6 +373,101 @@ fn blocked_compiler_keeps_packets_and_reset_commands_responsive() {
     release.send(()).unwrap();
     plot.wait_for_redpiler();
     assert!(!plot.redpiler.is_active());
+}
+
+#[test]
+fn compilation_rejects_edits_and_controls_until_explicitly_disabled() {
+    use mchprs_network::packets::serverbound::{SPlayerBlockPlacemnt, SPlayerDigging, ServerBoundPacketHandler};
+
+    for command in ["off", "clear"] {
+        let (mut plot, _peer) = fixture(false);
+        plot.owner = Some(plot.players[0].uuid);
+        plot.players[0].set_test_permissions(&["*"]);
+        let support = BlockPos::new(32, 20, 32);
+        let control = BlockPos::new(34, 21, 32);
+        plot.world.set_block(control, Block::from_name("lever").unwrap());
+        let plate = BlockPos::new(35, 21, 32);
+        plot.world.set_block(plate, Block::from_name("stone_pressure_plate").unwrap());
+        let entry = EntryVersion::capture(&plot.world);
+        let release = blocked_compile(&mut plot);
+        let monitor = plot.compilation.as_ref().unwrap().monitor.clone();
+
+        for (sequence, pos) in [(1, support), (2, control)] {
+            plot.handle_player_block_placement(
+                SPlayerBlockPlacemnt {
+                    hand: 0,
+                    pos: pos.packed(),
+                    face: mchprs_blocks::BlockFace::Top.get_id() as i32,
+                    cursor_x: 0.5,
+                    cursor_y: 1.0,
+                    cursor_z: 0.5,
+                    inside_block: false,
+                    sequence,
+                },
+                0,
+            );
+        }
+        plot.handle_player_digging(
+            SPlayerDigging {
+                status: 0,
+                pos: support.packed(),
+                face: 1,
+                sequence: 3,
+            },
+            0,
+        );
+        plot.set_pressure_plate(plate, true);
+        plot.players[0].first_position = Some(support);
+        plot.players[0].second_position = Some(support);
+        plot.handle_command(0, "//set", vec!["stone"]);
+        plot.handle_command(0, "/git", vec!["checkout", "HEAD"]);
+        plot.handle_command(0, "/git", vec!["inspect"]);
+        plot.handle_command(0, "/git", vec!["commit", "test"]);
+
+        assert!(plot.prepare_block_edit().is_err());
+        assert!(entry.matches(&plot.world));
+        assert!(!monitor.cancelled(), "an edit cancelled compilation");
+        plot.handle_command(0, "/rp", vec![command]);
+        assert!(monitor.cancelled());
+        assert!(plot.prepare_block_edit().is_ok());
+        release.send(()).unwrap();
+        plot.wait_for_redpiler();
+        assert!(!plot.redpiler.is_active());
+    }
+}
+
+#[test]
+fn rejected_edits_do_not_prevent_compilation_from_activating() {
+    let (mut plot, _peer) = fixture(false);
+    let release = blocked_compile(&mut plot);
+    assert!(plot.prepare_block_edit().is_err());
+    release.send(()).unwrap();
+    plot.wait_for_redpiler();
+    assert!(plot.redpiler.is_active());
+    assert!(plot.prepare_block_edit().is_err());
+    plot.reset_redpiler().unwrap();
+    assert!(plot.prepare_block_edit().is_ok());
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+#[ignore = "run in a cgroup with MemoryMax=384M to exercise real low-memory admission"]
+fn low_memory_rejects_compilation_without_stopping_the_plot() {
+    let (mut plot, _peer) = fixture(false);
+    let entry = EntryVersion::capture(&plot.world);
+    assert!(crate::redpiler::memory::check(0).is_err(), "this test needs a memory-limited cgroup");
+    plot.start_redpiler_with_budget(
+        CompilerOptions {
+            llvm: true,
+            ..Default::default()
+        },
+        None,
+    );
+    assert!(plot.compilation.is_none());
+    assert!(!plot.redpiler.is_active());
+    assert!(entry.matches(&plot.world));
+    assert!(plot.prepare_block_edit().is_ok());
+    assert!(plot.tick());
 }
 
 #[test]

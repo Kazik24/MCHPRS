@@ -79,10 +79,6 @@ impl TaskMonitor {
         text
     }
 
-    pub(crate) fn phase_number(&self) -> usize {
-        self.status.lock().unwrap().phase_number
-    }
-
     pub fn cancel(&self) {
         self.cancelled.store(true, Ordering::Relaxed);
     }

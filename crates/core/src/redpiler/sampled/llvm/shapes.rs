@@ -12,6 +12,7 @@ pub(super) fn encode(p: &Program, t: &mut [Vec<u32>; AUX_TABLES]) -> Result<(), 
         t[57].extend(map.iter().map(|&v| u32::from(v)));
     }
     for range in &p.cell_shape_steps {
+        crate::redpiler::memory::check_periodic()?;
         let steps = match range {
             Some(range) => p.shape_steps.get(range.clone()).ok_or(ScratchError {
                 position: None,

@@ -353,7 +353,7 @@ impl Plot {
                 Ok(messages::history_disabled(format_memory(bytes)))
             }
             ["on"] | ["on", _] => {
-                if self.redpiler.is_active() {
+                if self.redpiler.is_active() || self.compiling_redpiler() {
                     return Err(messages::TICK_HISTORY_ONLY_AVAILABLE_DURING_INTERPRETED.into());
                 }
                 let capacity = match args.get(1) {
@@ -383,7 +383,7 @@ impl Plot {
                 .map_err(|_| messages::SPECIFY_POSITIVE_NUMBER_GAME_TICKS.to_owned())?,
             _ => return Err(messages::USAGE_REV_TICKS.into()),
         };
-        if self.redpiler.is_active() {
+        if self.redpiler.is_active() || self.compiling_redpiler() {
             return Err(messages::TICK_REWIND_ONLY_AVAILABLE_DURING_INTERPRETED.into());
         }
         let unlimited = self.players[player].has_explicit_permission(UNLIMITED_HISTORY_PERMISSION);

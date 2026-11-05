@@ -443,7 +443,7 @@ impl Plot {
             } else if !session.displayed {
                 session.set_status(messages::WIRE_ROUTE_NOT_DISPLAYED);
             } else if let Some(plan) = session.plan.take() {
-                if self.git_checkout_locked() || self.redpiler.is_active() {
+                if self.git_checkout_locked() || self.redpiler.is_active() || self.compiling_redpiler() {
                     session.plan = Some(plan);
                     session.set_status(messages::WIRE_UNSUPPORTED);
                 } else if !plan.reads.is_current(&self.world) {

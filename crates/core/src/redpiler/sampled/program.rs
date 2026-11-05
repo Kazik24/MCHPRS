@@ -269,9 +269,9 @@ pub(crate) struct Program {
     /// ordinary source-to-target input links; IDs index this vector.
     pub(super) links: Vec<ElectricalLink>,
     /// per target component, listing incoming indices into `links`.
-    pub(super) incoming: Vec<Vec<usize>>,
+    pub(super) incoming: Vec<SmallVec<[usize; 2]>>,
     /// per source component, listing outgoing indices into `links`.
-    pub(super) outgoing: Vec<Vec<usize>>,
+    pub(super) outgoing: Vec<SmallVec<[usize; 2]>>,
     /// indexed by ordinary link ID, indicating whether that link contributes to its target.
     pub(super) effective_links: Vec<bool>,
     /// comparator/repeater side-input connections, separate from ordinary incoming links.
@@ -319,7 +319,7 @@ pub(crate) struct Program {
     /// component-indexed flags for nodes that can source movable-token inputs.
     pub(super) movable_sources: Vec<bool>,
     /// per token, piston component indices whose motion can move that token.
-    pub(super) token_piston_components: Vec<Vec<usize>>,
+    pub(super) token_piston_components: Vec<SmallVec<[usize; 2]>>,
     /// indexed token, token cell, then source component/attenuation dependencies.
     pub(super) token_sources: Vec<Vec<Vec<(usize, u8)>>>,
     /// indexed token and cell, with separate ordered notification IDs for departure and arrival.
@@ -327,7 +327,7 @@ pub(crate) struct Program {
     /// indexed token and cell, listing notification IDs watching movement at that cell.
     pub(super) token_watchers: Vec<Vec<Vec<usize>>>,
     /// per source component, listing notification IDs reached by source changes.
-    pub(super) source_watchers: Vec<Vec<usize>>,
+    pub(super) source_watchers: Vec<SmallVec<[usize; 2]>>,
     /// per piston component, listing notification IDs reached around its home cell.
     pub(super) home_watchers: Vec<SmallVec<[usize; 2]>>,
 
@@ -335,7 +335,7 @@ pub(crate) struct Program {
     /// joint token-position states that change component input connectivity.
     pub(super) input_arrangements: Vec<InputArrangement>,
     /// per target component, listing its token-dependent input-arrangement indices.
-    pub(super) input_groups_by_target: Vec<Vec<usize>>,
+    pub(super) input_groups_by_target: Vec<SmallVec<[usize; 2]>>,
     /// token-dependent electrical links and their active arrangement states.
     pub(super) arrangement_links: Vec<ArrangementLink>,
     /// per source component, listing outgoing indices into `arrangement_links`.
@@ -615,7 +615,7 @@ impl Program {
         self.movement_flips = flips;
         self.arrangement_links = links;
         self.outgoing_arrangements = vec![vec![]; self.initial.len()];
-        self.input_groups_by_target = vec![vec![]; self.initial.len()];
+        self.input_groups_by_target = vec![SmallVec::new(); self.initial.len()];
         for (index, group) in self.input_arrangements.iter().enumerate() {
             self.input_groups_by_target[group.target].push(index);
         }
@@ -785,7 +785,7 @@ impl Program {
             .token_cells
             .iter()
             .map(|cells| {
-                let mut components = Vec::new();
+                let mut components = SmallVec::new();
                 for &cell in cells {
                     for &piston in &self.cell_pistons[cell] {
                         if self.piston_bindings[piston].home_cell == cell {
@@ -1122,8 +1122,8 @@ impl Program {
         for operation in output_programs.iter().flatten().flatten() {
             validate_operation(*operation, &initial, links.len(), watched_wires.len(), None)?;
         }
-        let mut incoming = vec![vec![]; initial.len()];
-        let mut outgoing = vec![vec![]; initial.len()];
+        let mut incoming = vec![SmallVec::new(); initial.len()];
+        let mut outgoing = vec![SmallVec::new(); initial.len()];
         for (id, link) in links.iter().enumerate() {
             incoming[link.target].push(id);
             outgoing[link.source].push(id);
@@ -1194,7 +1194,7 @@ impl Program {
             movement_transitions: Vec::new(),
             movement_ranges: Vec::new(),
             arrangement_links: Vec::new(),
-            source_watchers: vec![vec![]; initial.len()],
+            source_watchers: vec![SmallVec::new(); initial.len()],
             home_watchers: Vec::new(),
             positions,
             initial,
@@ -1205,7 +1205,7 @@ impl Program {
             incoming,
             outgoing,
             outgoing_arrangements,
-            input_groups_by_target: vec![vec![]; component_count],
+            input_groups_by_target: vec![SmallVec::new(); component_count],
             effective_links: Vec::new(),
             side_outputs: Vec::new(),
             watched_wires,
@@ -1419,7 +1419,7 @@ impl Program {
         let notification_lists = self
             .source_watchers
             .iter()
-            .map(Vec::as_slice)
+            .map(SmallVec::as_slice)
             .chain(self.home_watchers.iter().map(SmallVec::as_slice));
         for list in notification_lists {
             if list.iter().any(|&node| !valid_notification(&self.initial, node)) {

@@ -876,7 +876,7 @@ mod tests {
         let wire_id = program.positions.iter().position(|&pos| pos == wire).unwrap();
         let mut rust = program.clone().into_runtime_prepared();
         let mut projection = program.clone().into_runtime_prepared();
-        let mut native = super::super::llvm::LlvmRuntime::new(program, &[]).unwrap();
+        let mut native = super::super::llvm::LlvmRuntime::new(&program, &[]).unwrap();
         let mut handoff: Option<super::super::Runtime> = None;
         let mut moved = false;
         for tick in 0..40 {

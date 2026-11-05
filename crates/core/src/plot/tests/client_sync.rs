@@ -232,7 +232,7 @@ fn interpreter_stays_awake_for_partial_ticks_pistons_and_history() {
 }
 
 #[test]
-fn rejected_circuit_compile_keeps_the_open_container_in_native_mode() {
+fn compilation_closes_containers_before_capturing_input_even_when_rejected() {
     use mchprs_blocks::BlockFacing;
     use mchprs_blocks::block_entities::ContainerType;
     use mchprs_blocks::blocks::{RedstoneObserver, RedstonePiston};
@@ -269,14 +269,15 @@ fn rejected_circuit_compile_keeps_the_open_container_in_native_mode() {
     plot.players[0].open_container(barrel, &[], ContainerType::Barrel);
     // A normal piston cannot push a token beyond this backend's captured movement domain.
     plot.world.set_block(BlockPos::new(39, 20, 32), Block::Stone {});
-    let pending_before = plot.world.scheduler().iter_entries().collect::<Vec<_>>();
-
     plot.start_redpiler_with_budget(CompilerOptions::default(), None);
+    let pending_before = plot.world.scheduler().iter_entries().collect::<Vec<_>>();
+    assert!(plot.players[0].open_container.is_none());
+    assert!(matches!(plot.world.get_block(barrel), Block::Barrel { open: false, .. }));
     plot.wait_for_redpiler();
 
     assert!(!plot.redpiler.is_active());
-    assert!(plot.players[0].open_container.is_some());
-    assert!(matches!(plot.world.get_block(barrel), Block::Barrel { open: true, .. }));
+    assert!(plot.players[0].open_container.is_none());
+    assert!(matches!(plot.world.get_block(barrel), Block::Barrel { open: false, .. }));
     assert_eq!(plot.world.scheduler().iter_entries().collect::<Vec<_>>(), pending_before);
 }
 

@@ -381,7 +381,7 @@ pub(in super::super) fn run(
             sampling.observed_callbacks += frames[0].deliveries.len();
             if let Some(previous) = &first_edge {
                 if powered != initial_power && *previous != frames {
-                    if !matches!(program.initial[source], Block::StoneButton { .. }) {
+                    if phases.enabled && !matches!(program.initial[source], Block::StoneButton { .. }) {
                         eprintln!("sampled source probe at {pos:?}: repeated transition differs");
                     }
                 }
@@ -487,7 +487,7 @@ pub(in super::super) fn run(
                 sampling.frame_comparison_walks += 1;
                 let blocks_match = runtime.blocks == frame.blocks;
                 sampling.frame_capture_comparison += compare_started.elapsed();
-                if !blocks_match || !pending_matches {
+                if phases.enabled && (!blocks_match || !pending_matches) {
                     eprintln!(
                         "sampled runtime at {pos:?}, edge={powered}, step={step}: expected blocks={:?}, pending={:?}; observed blocks={:?}, pending={:?}",
                         frame.blocks,

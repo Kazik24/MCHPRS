@@ -14,6 +14,36 @@ use std::time::Instant;
 #[path = "../../../test_support/cpus.rs"]
 mod cpus;
 
+#[cfg(any(windows, target_os = "linux"))]
+#[test]
+#[ignore = "full PM1 normal-to-LLVM compilation; run under a 6 GiB cgroup and measure peak memory"]
+fn pm1_normal_then_llvm_compilation() {
+    let cpu = cpus::Cpu {
+        schematic: "PM1_SORT_FIXED.schem",
+        sha256: "ad68a0160990c72612c0105802fade337758de127dcdbd4cc1a195059ad2d893",
+        ..cpus::CPUS[0]
+    };
+    let mut world = cpus::load_cpu(cpu);
+    let bounds = world.get_corners();
+    let mut compiler = Compiler::default();
+    for llvm in [false, true] {
+        let snapshot = world.activation_snapshot();
+        let started = Instant::now();
+        compiler
+            .compile(
+                &snapshot,
+                bounds,
+                CompilerOptions { llvm, ..Default::default() },
+                vec![],
+                Default::default(),
+            )
+            .unwrap();
+        eprintln!("PM1 llvm={llvm} compile={:?}", started.elapsed());
+        assert!(compiler.is_active());
+        drop(compiler.try_suspend(&mut world, bounds).unwrap());
+    }
+}
+
 fn fixture() -> (PlotWorld, BlockPos, (BlockPos, BlockPos)) {
     let chunks = (0..PLOT_WIDTH).flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x, z))).collect();
     let mut world = PlotWorld::from_chunks(0, 0, chunks, Default::default());

@@ -1050,7 +1050,7 @@ fn check_reactive_torch_source_fifo(llvm: bool) {
     let program = compile(&world, (BlockPos::new(10, 10, 10), BlockPos::new(22, 22, 22)), entry(&world)).unwrap();
     assert!(program.reactive[program.component_indices[&upper]]);
     assert!(!program.reactive[program.component_indices[&lower]]);
-    let mut native = llvm.then(|| super::llvm::LlvmRuntime::new(program.clone(), &[]).unwrap());
+    let mut native = llvm.then(|| super::llvm::LlvmRuntime::new(&program, &[]).unwrap());
     let mut runtime = program.start();
     for phase in 0..4 {
         crate::interaction::use_redstone(world.get_block(lever), &mut world, lever, None);

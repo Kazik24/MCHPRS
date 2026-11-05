@@ -351,7 +351,7 @@ catalog! {
         PLAYER_SAVE_COULD_NOT_LOADED_ASK = "Your player save could not be loaded. Ask the administrator to inspect the server log; your original file was preserved.";
         PLOT_ALREADY_CLAIMED = "Someone has already claimed this patch of turf.";
         PLOT_ALREADY_LOCKED = "You're already leashed to this plot.";
-        PLOT_CANNOT_INTERACTED_WHILE_REDPILER_ACTIVE = "Plot editing is blocked while Redpiler is active. Levers and buttons still work. Run `/rp reset` to edit.";
+        PLOT_CANNOT_INTERACTED_WHILE_REDPILER_ACTIVE = "Plot editing is blocked while Redpiler is compiling or active. Controls work after compilation. Run `/rp off` or `/rp clear` to edit.";
         PLOT_INDEX_ZERO = "Plot indexes start at 1, pup.";
         PLOT_INVALID_ARGUMENT = "/plot doesn't know that trick. Peek at /help plots.";
         PLOT_INVALID_INDEX = "Couldn't read that plot index, pup. Use a positive integer.";

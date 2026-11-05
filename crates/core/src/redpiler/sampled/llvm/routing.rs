@@ -11,6 +11,7 @@ fn local<T>(
     tables: &mut [Vec<u32>; AUX_TABLES],
     ports: impl Fn(&T) -> Result<(Vec<(usize, bool)>, Vec<(u32, bool)>), ScratchError>,
 ) -> Result<(), ScratchError> {
+    crate::redpiler::memory::check_periodic()?;
     let axes = id(tables[34].len() / 2)?;
     let rows = id(tables[35].len() / 4)?;
     for &Axis::Token(token, cells) in &local.axes {

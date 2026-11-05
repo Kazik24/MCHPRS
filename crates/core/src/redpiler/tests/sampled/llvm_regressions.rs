@@ -6,7 +6,7 @@
         let mut program = Program::new(vec![pos], vec![block], vec![], vec![[vec![], vec![]]], vec![], vec![], vec![]).unwrap();
         program.prepare_projection();
         let imported = vec![TickEntry { pos, block_type: None, ticks_left: 1, tick_priority: TickPriority::Normal }; 128];
-        let mut native = LlvmRuntime::new(program.clone(), &imported).unwrap();
+        let mut native = LlvmRuntime::new(&program, &imported).unwrap();
         native.tick().unwrap();
         let mut projection = program.into_runtime();
         native.sync_projection(&mut projection).unwrap();
@@ -36,7 +36,7 @@
                 (pos - BlockPos::new(3, 3, 3), pos + BlockPos::new(3, 3, 3)),
                 super::super::ScratchEntry { scheduled: imported.clone(), piston: world.piston_state().clone() }, None).unwrap();
             program.prepare_projection();
-            let mut native = LlvmRuntime::new(program.clone(), &imported).unwrap();
+            let mut native = LlvmRuntime::new(&program, &imported).unwrap();
             let mut rust = program.clone().into_runtime_prepared();
             rust.set_pending(imported).unwrap();
             let mut projection = program.into_runtime_prepared();
@@ -78,7 +78,7 @@
         let node = projection_program.component_indices[&pos];
         projection_program.initial[node] = Block::RedstoneWire { wire: RedstoneWire::default() };
         let mut projection = projection_program.into_runtime_prepared();
-        let native = LlvmRuntime::new(program, &[]).unwrap();
+        let native = LlvmRuntime::new(&program, &[]).unwrap();
         let aligned: Vec<u64> = invalid.chunks(8).map(|chunk| {
             let mut bytes = [0; 8];
             bytes[..chunk.len()].copy_from_slice(chunk);
@@ -131,7 +131,7 @@
             (BlockPos::new(10, 10, 10), BlockPos::new(22, 22, 22)),
             super::super::ScratchEntry { scheduled: vec![], piston: world.piston_state().clone() }, None).unwrap();
         let mut projection = program.clone().into_runtime_prepared();
-        let mut native = LlvmRuntime::new(program, &[]).unwrap();
+        let mut native = LlvmRuntime::new(&program, &[]).unwrap();
         for phase in 0..4 {
             crate::interaction::use_redstone(world.get_block(lever), &mut world, lever, None);
             native.use_control(lever).unwrap();
@@ -172,7 +172,7 @@
         let positions = program.projection_positions.clone();
         let mut rust = program.start();
         let mut projection = program.clone().into_runtime_prepared();
-        let mut native = LlvmRuntime::new(program, &[]).unwrap();
+        let mut native = LlvmRuntime::new(&program, &[]).unwrap();
         for index in (0..levers.len()).chain((0..levers.len()).rev()) {
             let lever = levers[index];
             crate::interaction::use_redstone(world.get_block(lever), &mut world, lever, None);

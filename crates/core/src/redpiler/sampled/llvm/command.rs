@@ -86,7 +86,7 @@ impl State {
         if bytes == 0 || bytes > 256 * 1024 * 1024 {
             return Err(invalid());
         }
-        let mut memory = vec![0u64; bytes.div_ceil(8)];
+        let mut memory = crate::redpiler::memory::zeroed::<u64>(bytes.div_ceil(8))?;
         let status = unsafe {
             (api.init)(
                 memory.as_mut_ptr().cast(),
@@ -155,6 +155,7 @@ impl State {
         if needed > self.effects.len() {
             let length = needed.checked_next_power_of_two().ok_or_else(invalid)?;
             let capacity = id(length / 8)?;
+            crate::redpiler::memory::check(length.checked_mul(4).ok_or_else(invalid)?)?;
             self.effects.try_reserve(length - self.effects.len()).map_err(|_| invalid())?;
             self.effects.resize(length, 0);
             if unsafe { (api.effect_buffer)(self.memory.as_mut_ptr().cast(), self.effects.as_mut_ptr(), capacity) } != 0 {
@@ -674,7 +675,7 @@ mod tests {
             rust.piston_state.logical_tick = 1234;
             let mut projection = program.clone().into_runtime_prepared();
             projection.piston_state.logical_tick = 1234;
-            let mut native = super::super::LlvmRuntime::new(program, &ticks).unwrap();
+            let mut native = super::super::LlvmRuntime::new(&program, &ticks).unwrap();
             native.initialize_tick(1234);
             let emissions = |runtime: &crate::redpiler::sampled::Runtime| {
                 runtime

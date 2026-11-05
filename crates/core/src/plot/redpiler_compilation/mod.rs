@@ -11,7 +11,6 @@ pub(super) struct CompilationJob {
     /// Time the request started, including snapshot preparation.
     started: Instant,
     last_progress: Instant,
-    last_phase: usize,
     /// Cooperative cancellation shared with the compiler worker.
     monitor: Arc<TaskMonitor>,
     budget: Option<Duration>,
@@ -44,7 +43,7 @@ impl CompilationCache {
 }
 
 struct CompilationResult {
-    /// Snapshot containing staged container-close notifications.
+    /// Snapshot used to prepare the executor.
     world: PlotWorld,
     /// Prepared executor transferred to the plot only on success.
     compiler: Compiler,
@@ -170,21 +169,17 @@ impl Plot {
             return;
         }
         let started = Instant::now();
+        if let Err(error) = crate::redpiler::memory::check(0) {
+            self.reject_redpiler(started, error.reason);
+            return;
+        }
+        self.close_all_containers();
         let entry = EntryVersion::capture(&self.world);
-        let mut world = self.world.activation_snapshot();
-        // Close open barrels in the staged snapshot so their notifications and ticks agree.
-        let open_barrels: HashSet<_> = self
-            .players
-            .iter()
-            .filter_map(|player| player.open_container.as_ref())
-            .filter(|container| container.ty == mchprs_blocks::block_entities::ContainerType::Barrel)
-            .map(|container| container.pos)
-            .collect();
-        let cacheable = open_barrels.is_empty();
+        let world = self.world.activation_snapshot();
         let cached = self
             .redpiler_cache
             .take()
-            .filter(|cache| cacheable && cache.options == options && cache.entry.matches(&self.world));
+            .filter(|cache| cache.options == options && cache.entry.matches(&self.world));
         let job_options = options.clone();
         let snapshot_ms = started.elapsed().as_millis();
         let monitor = Arc::new(TaskMonitor::with_deadline(budget.map(|budget| started + budget)));
@@ -210,10 +205,6 @@ impl Plot {
             .name(format!("compile-{},{}", self.world.x, self.world.z))
             .spawn(move || {
                 let _entered = span.enter();
-                // Container notifications and their scheduled work belong to the same isolated input.
-                for pos in open_barrels {
-                    crate::container::set_barrel_open(&mut world, pos, false);
-                }
                 let ticks = world.to_be_ticked.iter_entries().collect();
                 let mut compiler = Compiler::default();
                 let result = match cached {
@@ -234,13 +225,12 @@ impl Plot {
                 self.compilation = Some(CompilationJob {
                     started,
                     last_progress: Instant::now(),
-                    last_phase: 0,
                     monitor,
                     budget,
                     budget_reported: false,
                     entry,
                     options: job_options,
-                    cacheable,
+                    cacheable: true,
                     worker,
                 })
             }
@@ -265,11 +255,9 @@ impl Plot {
         if let Some(job) = &mut self.compilation
             && !job.worker.is_finished()
             && !job.monitor.cancelled()
-            && (job.last_progress.elapsed() >= Duration::from_secs(3)
-                || (job.monitor.phase_number() != job.last_phase && job.last_progress.elapsed() >= Duration::from_millis(250)))
+            && job.last_progress.elapsed() >= Duration::from_secs(3)
         {
             job.last_progress = Instant::now();
-            job.last_phase = job.monitor.phase_number();
             let status = job.monitor.status();
             let text = messages::redpiler_progress(job.started.elapsed().as_secs(), &status);
             info!(elapsed_secs = job.started.elapsed().as_secs(), %status, "Redpiler compilation progress");

@@ -19,6 +19,7 @@ mod effects;
 mod movement;
 mod routing;
 mod shapes;
+use crate::redpiler::memory;
 pub(in crate::redpiler) use cache::clear as clear_cache;
 pub(in crate::redpiler) use cache::initialize as initialize_cache;
 use movement::encode_movement;
@@ -99,7 +100,8 @@ impl LlvmRuntime {
             commands.logical_base = tick;
         }
     }
-    pub(in crate::redpiler) fn new(program: Program, ticks: &[TickEntry]) -> Result<Self, ScratchError> {
+    // Borrow the shared graph: cloning a large circuit here can exhaust server memory.
+    pub(in crate::redpiler) fn new(program: &Program, ticks: &[TickEntry]) -> Result<Self, ScratchError> {
         if std::env::var_os("MCHPRS_LLVM_DIAGNOSTICS").is_some() {
             let mut kinds = std::collections::BTreeMap::<String, usize>::new();
             for block in &program.initial {
@@ -108,7 +110,7 @@ impl LlvmRuntime {
             }
             eprintln!("LLVM Program component kinds: {kinds:?}");
         }
-        if let Some(error) = unsupported_reason(&program) {
+        if let Some(error) = unsupported_reason(program) {
             return Err(error);
         }
         let initial_tick_count = u32::try_from(ticks.len()).map_err(|_| overflow())?;
@@ -139,7 +141,7 @@ impl LlvmRuntime {
                 .map_or(PASSIVE_TICK | index as u32, |&node| node as u32);
             initial_ticks.push((component, tick.ticks_left, tick.tick_priority as u8));
         }
-        let encoded = LlvmProgram::encode(&program)?;
+        let encoded = LlvmProgram::encode(program)?;
         if std::env::var_os("MCHPRS_LLVM_DIAGNOSTICS").is_some() {
             let path = std::env::var_os("MCHPRS_LLVM_DLL")
                 .map(std::path::PathBuf::from)
@@ -159,15 +161,12 @@ impl LlvmRuntime {
             });
         }
         // The C executor reads u32 tables directly, so their backing allocation must be aligned.
-        let blob: Vec<u64> = encoded
-            .blob
-            .chunks(8)
-            .map(|chunk| {
-                let mut bytes = [0; 8];
-                bytes[..chunk.len()].copy_from_slice(chunk);
-                u64::from_ne_bytes(bytes)
-            })
-            .collect();
+        let mut blob = memory::zeroed::<u64>(encoded.blob.len().div_ceil(8))?;
+        for (word, chunk) in blob.iter_mut().zip(encoded.blob.chunks(8)) {
+            let mut bytes = [0; 8];
+            bytes[..chunk.len()].copy_from_slice(chunk);
+            *word = u64::from_ne_bytes(bytes);
+        }
         let descriptor = encoded.descriptor;
         let blob_bytes = descriptor.total_bytes;
         drop(encoded.blob);
@@ -178,7 +177,7 @@ impl LlvmRuntime {
                 reason: "LLVM state size rejected",
             });
         }
-        let mut state = vec![0u64; bytes.div_ceil(8)];
+        let mut state = memory::zeroed::<u64>(bytes.div_ceil(8))?;
         let status = unsafe {
             (library.create)(
                 &descriptor,
@@ -196,7 +195,7 @@ impl LlvmRuntime {
             });
         }
         let commands = command::State::new(
-            &program,
+            program,
             &library.commands,
             state.as_mut_ptr().cast(),
             blob.as_ptr().cast::<u8>().wrapping_add(descriptor.component_offset as usize).cast(),
@@ -223,8 +222,8 @@ impl LlvmRuntime {
             state,
             descriptor,
             blob,
-            positions: program.positions,
-            initial: program.initial,
+            positions: program.positions.clone(),
+            initial: program.initial.clone(),
             sources,
             commands,
             imported_pending: ticks.to_vec(),
@@ -365,7 +364,7 @@ impl LlvmRuntime {
     pub(in crate::redpiler) fn initialize_tick(&mut self, _: u64) {
         unreachable!()
     }
-    pub(in crate::redpiler) fn new(_: Program, _: &[TickEntry]) -> Result<Self, ScratchError> {
+    pub(in crate::redpiler) fn new(_: &Program, _: &[TickEntry]) -> Result<Self, ScratchError> {
         Library::load().map(|_| Self)
     }
     pub(in crate::redpiler) fn sync_projection(&self, _: &mut super::Runtime) -> Result<(), ScratchError> {
@@ -666,17 +665,22 @@ unsafe extern "system" {
 
 impl LlvmProgram {
     pub(super) fn encode(program: &Program) -> Result<Self, ScratchError> {
+        memory::check(0)?;
         if program.positions.len() >= PISTON_HEAD_NOTIFICATION {
             return Err(overflow());
         }
-        let mut blob = Vec::with_capacity(
-            HEADER_BYTES
-                .checked_add(program.operations.len().checked_mul(OP_BYTES).ok_or_else(overflow)?)
-                .and_then(|size| size.checked_add(program.links.len().checked_mul(LINK_BYTES)?))
-                .and_then(|size| size.checked_add(program.positions.len().checked_mul(COMPONENT_BYTES)?))
-                .and_then(|size| size.checked_add(program.sources.len().checked_mul(4)?))
-                .ok_or_else(overflow)?,
-        );
+        let initial_bytes = HEADER_BYTES
+            .checked_add(program.operations.len().checked_mul(OP_BYTES).ok_or_else(overflow)?)
+            .and_then(|size| size.checked_add(program.links.len().checked_mul(LINK_BYTES)?))
+            .and_then(|size| size.checked_add(program.positions.len().checked_mul(COMPONENT_BYTES)?))
+            .and_then(|size| size.checked_add(program.sources.len().checked_mul(4)?))
+            .ok_or_else(overflow)?;
+        memory::check(initial_bytes)?;
+        let mut blob = Vec::new();
+        blob.try_reserve_exact(initial_bytes).map_err(|_| ScratchError {
+            position: None,
+            reason: memory::LOW_MEMORY,
+        })?;
         blob.extend_from_slice(&MAGIC);
         put_u32(&mut blob, ABI_VERSION)?;
         put_u32(&mut blob, u32::try_from(HEADER_BYTES).map_err(|_| overflow())?)?;
@@ -784,6 +788,7 @@ fn encode_aux(program: &Program, blob: &mut Vec<u8>) -> Result<(), ScratchError>
     let mut tables: [Vec<u32>; AUX_TABLES] = std::array::from_fn(|_| Vec::new());
     let id = |n: usize| u32::try_from(n).map_err(|_| overflow());
     for row in &program.side_outputs {
+        memory::check_periodic()?;
         let start = id(tables[1].len() / 2)?;
         tables[0].extend([start, id(row.len())?]);
         for &(target, attenuation) in row {
@@ -812,7 +817,9 @@ fn encode_aux(program: &Program, blob: &mut Vec<u8>) -> Result<(), ScratchError>
         }
     }
     encode_movement(program, &mut tables)?;
+    memory::check(0)?;
     routing::encode(program, &mut tables)?;
+    memory::check(0)?;
     encode_comparators(program, &mut tables[42])?;
     effects::encode(program, &mut tables)?;
     shapes::encode(program, &mut tables)?;
@@ -832,6 +839,17 @@ fn encode_aux(program: &Program, blob: &mut Vec<u8>) -> Result<(), ScratchError>
         })
         .collect();
     let directory = blob.len();
+    let additional = tables
+        .iter()
+        .try_fold(AUX_TABLES * 8, |bytes, table| {
+            table.len().checked_mul(4).and_then(|size| bytes.checked_add(size))
+        })
+        .ok_or_else(overflow)?;
+    memory::check(additional)?;
+    blob.try_reserve_exact(additional).map_err(|_| ScratchError {
+        position: None,
+        reason: memory::LOW_MEMORY,
+    })?;
     blob.resize(directory.checked_add(AUX_TABLES * 8).ok_or_else(overflow)?, 0);
     for (index, table) in tables.iter().enumerate() {
         let offset = id(blob.len())?;
@@ -959,6 +977,7 @@ pub(super) fn validate_blob(descriptor: &NativeProgramDescriptor, blob: &[u8]) -
         }
     }
     let mut tables = Vec::with_capacity(AUX_TABLES);
+    memory::check(blob.len())?;
     let mut cursor = sources_end + AUX_TABLES * 8;
     for index in 0..AUX_TABLES {
         let offset = read_u32(blob, sources_end + index * 8).ok_or_else(invalid)? as usize;
@@ -1156,7 +1175,7 @@ mod tests {
         .unwrap();
         let piston = program.component_indices[&base];
         let tag = PISTON_HEAD_NOTIFICATION | piston;
-        program.source_watchers[piston] = vec![tag];
+        program.source_watchers[piston] = smallvec::smallvec![tag];
         let wire_start = program.movement_wires.len();
         let step_index = program.movement_steps.len();
         program.movement_wires.push(program.component_indices[&wire]);
@@ -1172,7 +1191,7 @@ mod tests {
         assert!(native_size(&encoded.blob) > 0);
         let directory = encoded.descriptor.source_offset as usize + encoded.descriptor.source_count as usize * 4;
         let word_offset = |table: usize| read_u32(&encoded.blob, directory + table * 8).unwrap() as usize;
-        let watcher_index = program.source_watchers[..piston].iter().map(Vec::len).sum::<usize>();
+        let watcher_index = program.source_watchers[..piston].iter().map(|row| row.len()).sum::<usize>();
         for (table, index) in [(4, watcher_index), (23, step_index * 5)] {
             for invalid in [
                 PISTON_HEAD_NOTIFICATION as u32 | program.component_indices[&lamp] as u32,
@@ -1249,7 +1268,7 @@ mod tests {
         program.prepare_projection();
         let control = program.positions[0];
         let mut projection = program.clone().into_runtime_prepared();
-        let mut native = LlvmRuntime::new(program, &[]).unwrap();
+        let mut native = LlvmRuntime::new(&program, &[]).unwrap();
         native.sync_projection(&mut projection).unwrap();
         projection.mark_published(false);
         native.sync_projection(&mut projection).unwrap();
@@ -1275,7 +1294,8 @@ mod tests {
         let mut projection = program.clone().into_runtime_prepared();
         let mut rust = program.clone().into_runtime_prepared();
         rust.set_pending(Vec::new()).unwrap();
-        let mut native = LlvmRuntime::new(program, &[]).unwrap();
+        let mut native = LlvmRuntime::new(&program, &[]).unwrap();
+        drop(program);
         for tick in 0..ticks {
             for &(_, source) in controls.iter().filter(|&&(at, _)| at == tick) {
                 rust.use_control(positions[source]).unwrap();
@@ -1595,8 +1615,8 @@ mod tests {
             Vec::new(),
         )
         .unwrap();
-        program.source_watchers[0] = vec![5];
-        program.source_watchers[4] = vec![5];
+        program.source_watchers[0] = smallvec::smallvec![5];
+        program.source_watchers[4] = smallvec::smallvec![5];
         compare_execution(program, &[(0, 0), (4, 2), (8, 0), (12, 2), (25, 2), (26, 2), (38, 0), (39, 0)], 96);
     }
 
@@ -1658,7 +1678,7 @@ mod tests {
             ],
         )
         .unwrap();
-        program.source_watchers[2] = vec![3];
+        program.source_watchers[2] = smallvec::smallvec![3];
         compare_execution(program, &[(0, 1), (4, 0), (8, 1), (13, 1), (17, 0), (21, 1), (32, 0), (34, 0)], 96);
     }
 
@@ -1853,7 +1873,7 @@ mod tests {
                         let mut rust = program.clone().into_runtime_prepared();
                         rust.set_pending(Vec::new()).unwrap();
                         let control = program.positions[0];
-                        let mut native = LlvmRuntime::new(program, &[]).unwrap();
+                        let mut native = LlvmRuntime::new(&program, &[]).unwrap();
                         for tick in 0..96 {
                             if [0, 1, 12, 32, 35, 60].contains(&tick) {
                                 rust.use_control(control).unwrap();
@@ -1931,7 +1951,7 @@ mod tests {
                 });
                 program.prepare_projection();
                 let mut rust = program.clone().into_runtime_prepared();
-                let mut native = LlvmRuntime::new(program.clone(), &[]).unwrap();
+                let mut native = LlvmRuntime::new(&program, &[]).unwrap();
                 let mut handoff: Option<super::super::Runtime> = None;
                 for tick in 0..32 {
                     for &(_, source) in [(0, 0), (4, 1), (8, 0), (12, 0), (16, 1), (20, 0)].iter().filter(|&&(at, _)| at == tick) {
