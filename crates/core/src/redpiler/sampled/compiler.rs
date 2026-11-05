@@ -84,7 +84,7 @@ fn check_cancelled(monitor: Option<&TaskMonitor>) -> Result<(), ScratchError> {
             reason: "compilation cancelled",
         })
     } else {
-        crate::redpiler::memory::check_periodic()
+        Ok(())
     }
 }
 

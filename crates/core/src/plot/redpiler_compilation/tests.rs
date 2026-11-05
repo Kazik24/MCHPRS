@@ -448,27 +448,6 @@ fn rejected_edits_do_not_prevent_compilation_from_activating() {
     assert!(plot.prepare_block_edit().is_ok());
 }
 
-#[cfg(target_os = "linux")]
-#[test]
-#[ignore = "run in a cgroup with MemoryMax=384M to exercise real low-memory admission"]
-fn low_memory_rejects_compilation_without_stopping_the_plot() {
-    let (mut plot, _peer) = fixture(false);
-    let entry = EntryVersion::capture(&plot.world);
-    assert!(crate::redpiler::memory::check(0).is_err(), "this test needs a memory-limited cgroup");
-    plot.start_redpiler_with_budget(
-        CompilerOptions {
-            llvm: true,
-            ..Default::default()
-        },
-        None,
-    );
-    assert!(plot.compilation.is_none());
-    assert!(!plot.redpiler.is_active());
-    assert!(entry.matches(&plot.world));
-    assert!(plot.prepare_block_edit().is_ok());
-    assert!(plot.tick());
-}
-
 #[test]
 fn edits_and_new_pending_work_prevent_stale_activation() {
     for edit_block in [false, true] {

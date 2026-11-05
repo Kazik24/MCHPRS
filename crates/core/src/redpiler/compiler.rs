@@ -268,7 +268,6 @@ impl Compiler {
         if monitor.cancelled() {
             return Err(CompileError::Cancelled);
         }
-        super::memory::check(0).map_err(CompileError::Unsupported)?;
         if options.llvm {
             validate_llvm_entry(world.piston_state()).map_err(CompileError::Unsupported)?;
         }
@@ -300,7 +299,6 @@ impl Compiler {
             None
         };
         monitor.set_phase("initializing runtime");
-        super::memory::check(0).map_err(CompileError::Unsupported)?;
         let runtime = sampled::start_shared_runtime(program, ticks, world.piston_state().clone()).map_err(CompileError::Unsupported)?;
         if monitor.cancelled() {
             return Err(CompileError::Cancelled);

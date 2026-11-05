@@ -25,7 +25,6 @@ fn range(value: &std::ops::Range<usize>) -> Result<[u32; 2], ScratchError> {
 
 pub(super) fn encode_movement(p: &Program, t: &mut [Vec<u32>; AUX_TABLES]) -> Result<(), ScratchError> {
     for (i, piston) in p.pistons.iter().enumerate() {
-        crate::redpiler::memory::check_periodic()?;
         let b = &p.piston_bindings[i];
         t[7].extend([
             id(b.component)?,

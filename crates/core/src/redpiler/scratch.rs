@@ -1392,7 +1392,6 @@ impl ScratchWorld {
                 .iter()
                 .map(|job| {
                     self.revert();
-                    super::memory::check_periodic()?;
                     if monitor.is_some_and(super::TaskMonitor::cancelled) {
                         return Err(ScratchError {
                             position: None,
@@ -1417,7 +1416,6 @@ impl ScratchWorld {
                         reason: "compilation cancelled",
                     })
                 } else {
-                    super::memory::check_periodic()?;
                     Ok(self.fork_basis())
                 }
             })
@@ -1437,7 +1435,7 @@ impl ScratchWorld {
                             reason: "compilation cancelled",
                         })
                     } else {
-                        super::memory::check_periodic().and_then(|_| probe(&mut scratch, job))
+                        probe(&mut scratch, job)
                     };
                     if result.is_err() {
                         stopped.store(true, Ordering::Relaxed);

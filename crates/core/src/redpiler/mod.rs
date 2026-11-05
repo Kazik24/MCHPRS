@@ -7,7 +7,7 @@ mod cache_tests;
 #[path = "tests/classic_fuzz.rs"]
 mod classic_fuzz_tests;
 mod compiler;
-pub(crate) mod memory;
+mod memory;
 mod options;
 #[cfg(test)]
 #[path = "tests/publication.rs"]

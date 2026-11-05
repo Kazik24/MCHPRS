@@ -142,7 +142,6 @@ impl State {
         if needed > self.effects.len() {
             let length = needed.checked_next_power_of_two().ok_or_else(invalid)?;
             let capacity = id(length / 8)?;
-            crate::redpiler::memory::check(length.checked_mul(4).ok_or_else(invalid)?)?;
             self.effects.try_reserve(length - self.effects.len()).map_err(|_| invalid())?;
             self.effects.resize(length, 0);
             if unsafe { (api.effect_buffer)(self.memory.as_mut_ptr().cast(), self.effects.as_mut_ptr(), capacity) } != 0 {

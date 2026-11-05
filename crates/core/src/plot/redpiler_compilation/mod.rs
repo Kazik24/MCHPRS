@@ -237,10 +237,6 @@ impl Plot {
             return;
         }
         let started = Instant::now();
-        if let Err(error) = crate::redpiler::memory::check(0) {
-            self.reject_redpiler(started, error.reason);
-            return;
-        }
         self.close_all_containers();
         let entry = EntryVersion::capture(&self.world);
         let world = self.world.activation_snapshot();

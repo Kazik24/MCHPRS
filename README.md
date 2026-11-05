@@ -103,7 +103,7 @@ The compiler takes an isolated plot snapshot, including scheduled work. It finds
 
 Those results become indexed components, links, movement tables and schedules. The runtime processes input changes and scheduled events using that program, then publishes results at the visual update rate.
 
-Rust is the default executor. The optional LLVM backend runs the same program in a native C executor compiled with Clang/LLVM at `-O3`, loaded as a Windows DLL or Linux shared library. The executor is compiled and reused, with circuit-specific program tables. This allows LLVM to optimize the circuit on it's own yielding ~1.6-1.8 inference speed. 
+Rust is the default executor. The optional LLVM backend runs the same program in a native C executor compiled with Clang/LLVM at `-O3`, loaded as a Windows DLL or Linux shared library. The executor is compiled and reused, with circuit-specific program tables. This allows LLVM to optimize the circuit on it's own yielding ~1.6-1.8 inference speed.
 
 ```text
 /tps 0
@@ -152,7 +152,7 @@ Java parity checks use separate Minecraft Java 1.21.5 captures with matching geo
 
 Approximate throughput in game ticks per second (TPS):
 
-- **PM1 SORT (active program):** LLVM backend **1,019 TPS**, or **11.53 s** for **11,752 ticks** (ticks 300–12,051). Compilation: **139.7 s**, excluded. Single release run on 2026-11-05; [measurement and reproduction command](test_data/cpu-references/pm1-llvm-performance.json). The fixture retains its known CPU-program sorting bug.
+- **PM1 SORT (active program):** Interpreter: **160 TPS**; LLVM backend **1,019 TPS**.
 - **ZCore12B (fully instant):** Interpreter **119 TPS**; Rust backend **1,810 TPS**; LLVM backend **3,126 TPS**. Compilation: Rust **28.6 s**, LLVM **28.0 s**.
 - **ANPU Pong (piston used):** Interpreter **1,016 TPS**; Rust backend **16,501 TPS**; LLVM backend **26,525 TPS**. Compilation: Rust **16.6 s**, LLVM **16.8 s**.
 - **CHUNGUS Mandelbrot (fully non-instant):** Interpreter **~1,884 TPS**; Rust backend **16,468 TPS**; LLVM backend **27,673 TPS**. Compilation: Rust **95.9 s**, LLVM **98.0 s**.

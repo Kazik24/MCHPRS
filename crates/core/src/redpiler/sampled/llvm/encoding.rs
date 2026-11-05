@@ -26,7 +26,6 @@ impl LlvmProgram {
     }
 
     pub(in crate::redpiler::sampled) fn encode(program: &Program) -> Result<Self, ScratchError> {
-        memory::check(0)?;
         if program.positions.len() >= PISTON_HEAD_NOTIFICATION {
             return Err(overflow());
         }
@@ -145,7 +144,6 @@ fn encode_aux(program: &Program, blob: &mut Vec<u8>) -> Result<(), ScratchError>
     let mut tables: [Vec<u32>; AUX_TABLES] = std::array::from_fn(|_| Vec::new());
     let id = |n: usize| u32::try_from(n).map_err(|_| overflow());
     for row in &program.side_outputs {
-        memory::check_periodic()?;
         let start = id(tables[1].len() / 2)?;
         tables[0].extend([start, id(row.len())?]);
         for &(target, attenuation) in row {
@@ -174,9 +172,7 @@ fn encode_aux(program: &Program, blob: &mut Vec<u8>) -> Result<(), ScratchError>
         }
     }
     encode_movement(program, &mut tables)?;
-    memory::check(0)?;
     routing::encode(program, &mut tables)?;
-    memory::check(0)?;
     encode_comparators(program, &mut tables[42])?;
     effects::encode(program, &mut tables)?;
     shapes::encode(program, &mut tables)?;
@@ -330,7 +326,6 @@ pub(super) fn validate_blob(descriptor: &NativeProgramDescriptor, blob: &[u8]) -
         }
     }
     let mut tables = Vec::with_capacity(AUX_TABLES);
-    memory::check(blob.len())?;
     let mut cursor = sources_end + AUX_TABLES * 8;
     for index in 0..AUX_TABLES {
         let offset = read_u32(blob, sources_end + index * 8).ok_or_else(invalid)? as usize;
