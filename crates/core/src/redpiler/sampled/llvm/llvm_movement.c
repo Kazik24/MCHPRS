@@ -74,8 +74,8 @@ static uint32_t valid_movement(const MchprsNativeProgramDescriptor *p, const uin
     }
     for (uint32_t i = 0; i < n[23]; i += 5u) {
         const uint32_t *r = t[23] + i;
-        if (!valid_notification(p, blob, t, n, r[0]) || r[1] > 1u || r[2] > 1u
-            || ((r[0] & PISTON_HEAD_NOTIFICATION) && r[2]) || !bounded(r[3], r[4], n[24]))
+        if (!valid_notification(p, blob, t, n, r[0]) || r[1] > 1u || r[2] > 1u ||
+            ((r[0] & PISTON_HEAD_NOTIFICATION) && r[2]) || !bounded(r[3], r[4], n[24]))
             return 0u;
     }
     for (uint32_t i = 0; i < n[24]; ++i)
@@ -100,38 +100,51 @@ static uint32_t valid_movement(const MchprsNativeProgramDescriptor *p, const uin
     if ((uint64_t)n[53] != (uint64_t)cells * 2u || n[54] % 7u || n[55] % 2u || n[57] % 256u)
         return 0u;
     for (uint32_t i = 0; i < n[53]; i += 2u)
-        if (t[53][i] == NONE ? t[53][i + 1u] != 0u : !bounded(t[53][i], t[53][i + 1u], n[54] / 7u)) return 0u;
+        if (t[53][i] == NONE ? t[53][i + 1u] != 0u : !bounded(t[53][i], t[53][i + 1u], n[54] / 7u))
+            return 0u;
     for (uint32_t i = 0; i < n[54]; i += 7u) {
         const uint32_t *r = t[54] + i;
-        if (r[0] >= nodes || !bounded(r[1], r[2], n[55] / 2u) || !bounded(r[3], r[4], n[56])
-            || !bounded(r[5], r[6], n[58])) return 0u;
+        if (r[0] >= nodes || !bounded(r[1], r[2], n[55] / 2u) || !bounded(r[3], r[4], n[56]) ||
+            !bounded(r[5], r[6], n[58]))
+            return 0u;
         uint32_t kind = blob[p->component_offset + (size_t)r[0] * 32u + 12u];
         if (kind == 7u) {
-            if (r[2] || r[4] || r[6]) return 0u;
+            if (r[2] || r[4] || r[6])
+                return 0u;
         } else {
-            if (kind != 5u) return 0u;
+            if (kind != 5u)
+                return 0u;
             uint64_t states = 1u;
             for (uint32_t j = 0; j < r[2]; ++j) {
                 const uint32_t *a = t[55] + (r[1] + j) * 2u;
-                if (a[0] >= tokens || (j && a[0] <= a[-2]) || a[1] != t[12][a[0] * 2u + 1u] + 1u
-                    || states > 4096u / a[1]) return 0u;
+                if (a[0] >= tokens || (j && a[0] <= a[-2]) || a[1] != t[12][a[0] * 2u + 1u] + 1u ||
+                    states > 4096u / a[1])
+                    return 0u;
                 states *= a[1];
             }
-            if (states != r[4]) return 0u;
+            if (states != r[4])
+                return 0u;
         }
     }
     for (uint32_t i = 0; i < n[56]; ++i)
-        if (t[56][i] != NONE && t[56][i] >= n[57] / 256u) return 0u;
+        if (t[56][i] != NONE && t[56][i] >= n[57] / 256u)
+            return 0u;
     for (uint32_t i = 0; i < n[57]; ++i) {
         uint32_t value = t[57][i];
-        if (value > 255u) return 0u;
+        if (value > 255u)
+            return 0u;
         uint32_t input = i % 256u, valid = 1u;
         for (uint32_t side = 0; side < 4u; ++side)
-            if (((input >> (side * 2u)) & 3u) == 3u) valid = 0u;
-        if (valid) for (uint32_t side = 0; side < 4u; ++side)
-            if (((value >> (side * 2u)) & 3u) == 3u) return 0u;
+            if (((input >> (side * 2u)) & 3u) == 3u)
+                valid = 0u;
+        if (valid)
+            for (uint32_t side = 0; side < 4u; ++side)
+                if (((value >> (side * 2u)) & 3u) == 3u)
+                    return 0u;
     }
-    for (uint32_t i = 0; i < n[58]; ++i) if (t[58][i] >= nodes) return 0u;
+    for (uint32_t i = 0; i < n[58]; ++i)
+        if (t[58][i] >= nodes)
+            return 0u;
     if (!n[33]) {
         for (uint32_t i = 34u; i < 42u; ++i)
             if (n[i])
@@ -427,7 +440,8 @@ static uint32_t init_movement(NEEngine *e, uint8_t *base, size_t bytes) {
                     e->token_digit[i] = j + 1u;
                     break;
                 }
-            if (!e->token_digit[i]) return NE_INVALID;
+            if (!e->token_digit[i])
+                return NE_INVALID;
         }
     }
     for (uint32_t i = 0; i < table_words(e, 27u); ++i)
@@ -511,10 +525,12 @@ static uint32_t notify_shape(NEEngine *e, uint32_t cell) {
     for (uint32_t i = 0; i < steps[1]; ++i) {
         const uint32_t *s = table(e, 54u) + (steps[0] + i) * 7u;
         uint32_t node = s[0];
-        if (consume(e)) return e->error;
+        if (consume(e))
+            return e->error;
         if (components(e)[node].kind == 7u) {
             uint32_t status = update_component(e, node);
-            if (status) return status;
+            if (status)
+                return status;
             continue;
         }
         uint32_t state = 0u, stride = 1u;
@@ -525,18 +541,22 @@ static uint32_t notify_shape(NEEngine *e, uint32_t cell) {
             stride *= a[1];
         }
         uint32_t map = table(e, 56u)[s[3] + state];
-        if (map == NONE) return e->error = NE_INVALID;
+        if (map == NONE)
+            return e->error = NE_INVALID;
         uint8_t next = (uint8_t)table(e, 57u)[map * 256u + e->wire_sides[node]];
         if (next != e->wire_sides[node]) {
             e->wire_sides[node] = next;
             for (uint32_t j = 0; j < s[6]; ++j) {
-                if (consume(e)) return e->error;
+                if (consume(e))
+                    return e->error;
                 uint32_t status = update_component(e, table(e, 58u)[s[5] + j]);
-                if (status) return status;
+                if (status)
+                    return status;
             }
         }
     }
-    if (steps[0] != NONE) return NE_OK;
+    if (steps[0] != NONE)
+        return NE_OK;
     const uint32_t *r = table(e, 16u) + cell * 7u;
     for (uint32_t i = 0; i < r[6]; ++i) {
         uint32_t node = table(e, 17u)[r[5] + i];
@@ -628,7 +648,8 @@ static uint32_t set_token_pos(NEEngine *e, uint32_t token, uint32_t position) {
             }
         }
     }
-    if (notify_shape(e, table(e, 13u)[cells[0] + local])) return e->error;
+    if (notify_shape(e, table(e, 13u)[cells[0] + local]))
+        return e->error;
     for (uint32_t i = 0; i < switched_count; ++i) {
         uint32_t node = e->switched_nodes[i];
         if (components(e)[node].kind == 5u)
@@ -652,9 +673,10 @@ static uint32_t set_token_pos(NEEngine *e, uint32_t token, uint32_t position) {
                 }
             }
         } else if (deliver) {
-            if (!(notification & PISTON_HEAD_NOTIFICATION)) e->switched[node] = 0u;
-            uint32_t result =
-                components(e)[node].kind == 7u && !r[1] ? update_wire_watcher(e, notification) : update_once(e, notification);
+            if (!(notification & PISTON_HEAD_NOTIFICATION))
+                e->switched[node] = 0u;
+            uint32_t result = components(e)[node].kind == 7u && !r[1] ? update_wire_watcher(e, notification)
+                                                                      : update_once(e, notification);
             if (result)
                 return result;
         }
@@ -936,7 +958,8 @@ uint32_t ne_snapshot_words(const void *memory) {
     uint64_t size = 8u + (uint64_t)e->program->component_count * 4u + e->token_count + e->piston_count +
                     (uint64_t)motions * 9u + (uint64_t)e->piston_event_count * 2u + e->program->link_count +
                     e->program->arrangement_link_count + table_words(e, 27u) + e->program->watched_wire_count +
-                    table_words(e, 45u) / 5u + 1u + (uint64_t)e->program->component_count * 2u + (uint64_t)e->note_count * 3u;
+                    table_words(e, 45u) / 5u + 1u + (uint64_t)e->program->component_count * 2u +
+                    (uint64_t)e->note_count * 3u;
     return size <= UINT32_MAX ? (uint32_t)size : 0u;
 }
 uint32_t ne_read_snapshot(const void *memory, uint32_t *out, uint32_t words) {

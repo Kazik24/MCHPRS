@@ -78,6 +78,16 @@ impl Library {
     }
 
     pub(super) fn create_state(&self, descriptor: &NativeProgramDescriptor, blob: &[u64], initial_tick_count: u32) -> Result<Vec<u64>, ScratchError> {
+        if blob
+            .len()
+            .checked_mul(std::mem::size_of::<u64>())
+            .is_none_or(|bytes| bytes < descriptor.total_bytes as usize)
+        {
+            return Err(ScratchError {
+                position: None,
+                reason: "invalid native Program descriptor",
+            });
+        }
         let blob_pointer = blob.as_ptr().cast();
         let bytes = unsafe { (self.state_size)(descriptor, blob_pointer, descriptor.total_bytes, initial_tick_count) };
         if bytes == 0 || bytes > 256 * 1024 * 1024 {
@@ -110,6 +120,17 @@ impl Library {
 #[cfg(all(test, any(windows, target_os = "linux")))]
 mod tests {
     use super::*;
+
+    #[test]
+    fn native_state_creation_rejects_a_truncated_blob_before_calling_c() {
+        let library = Library::load().unwrap();
+        let descriptor = NativeProgramDescriptor {
+            total_bytes: 64,
+            ..Default::default()
+        };
+        let error = library.create_state(&descriptor, &[], 0).unwrap_err();
+        assert_eq!(error.reason, "invalid native Program descriptor");
+    }
 
     #[test]
     fn missing_export_does_not_invalidate_the_owned_module() {

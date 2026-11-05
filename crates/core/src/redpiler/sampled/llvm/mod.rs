@@ -260,46 +260,45 @@ impl LlvmRuntime {
         let mut pending = vec![NativePendingTick::default(); count as usize];
         let status = unsafe { (self.library.read_pending)(self.state.as_ptr().cast(), pending.as_mut_ptr(), count) };
         self.call_status(status)?;
-        pending
-            .into_iter()
-            .map(|entry| {
-                let invalid = || ScratchError {
-                    position: None,
-                    reason: "LLVM pending tick component is invalid",
-                };
-                let (pos, block_type) = if entry.component & PASSIVE_TICK != 0 {
-                    let original = self
-                        .imported_pending
-                        .get((entry.component & !PASSIVE_TICK) as usize)
-                        .ok_or_else(invalid)?;
-                    (original.pos, original.block_type)
-                } else {
-                    let pos = *self.positions.get(entry.component as usize).ok_or_else(invalid)?;
-                    (pos, Some(self.initial[entry.component as usize].registry_id()))
-                };
-                if entry.ticks_left >= 32 {
-                    return Err(invalid());
-                }
-                let tick_priority = match entry.priority {
-                    0 => TickPriority::Highest,
-                    1 => TickPriority::Higher,
-                    2 => TickPriority::High,
-                    3 => TickPriority::Normal,
-                    _ => {
-                        return Err(ScratchError {
-                            position: Some(pos),
-                            reason: "LLVM pending tick priority is invalid",
-                        });
-                    }
-                };
-                Ok(TickEntry {
-                    ticks_left: entry.ticks_left,
-                    tick_priority,
-                    pos,
-                    block_type,
-                })
-            })
-            .collect()
+        pending.into_iter().map(|entry| self.decode_pending_tick(entry)).collect()
+    }
+
+    fn decode_pending_tick(&self, entry: NativePendingTick) -> Result<TickEntry, ScratchError> {
+        let invalid = || ScratchError {
+            position: None,
+            reason: "LLVM pending tick component is invalid",
+        };
+        let (pos, block_type) = if entry.component & PASSIVE_TICK != 0 {
+            let original = self
+                .imported_pending
+                .get((entry.component & !PASSIVE_TICK) as usize)
+                .ok_or_else(invalid)?;
+            (original.pos, original.block_type)
+        } else {
+            let pos = *self.positions.get(entry.component as usize).ok_or_else(invalid)?;
+            (pos, Some(self.initial[entry.component as usize].registry_id()))
+        };
+        if entry.ticks_left >= 32 {
+            return Err(invalid());
+        }
+        let tick_priority = match entry.priority {
+            0 => TickPriority::Highest,
+            1 => TickPriority::Higher,
+            2 => TickPriority::High,
+            3 => TickPriority::Normal,
+            _ => {
+                return Err(ScratchError {
+                    position: Some(pos),
+                    reason: "LLVM pending tick priority is invalid",
+                });
+            }
+        };
+        Ok(TickEntry {
+            ticks_left: entry.ticks_left,
+            tick_priority,
+            pos,
+            block_type,
+        })
     }
 
     fn call_status(&self, status: u32) -> Result<(), ScratchError> {
