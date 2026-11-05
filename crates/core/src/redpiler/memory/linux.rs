@@ -17,12 +17,17 @@ pub(super) fn available_memory() -> io::Result<usize> {
 }
 
 fn parse_mem_available(meminfo: &str) -> io::Result<usize> {
-    meminfo.lines().find_map(|line| {
-        line.strip_prefix("MemAvailable:")?
-            .split_whitespace().next()?
-            .parse::<usize>().ok()?
-            .checked_mul(1024)
-    }).ok_or_else(|| io::Error::other("MemAvailable is missing or invalid"))
+    meminfo
+        .lines()
+        .find_map(|line| {
+            line.strip_prefix("MemAvailable:")?
+                .split_whitespace()
+                .next()?
+                .parse::<usize>()
+                .ok()?
+                .checked_mul(1024)
+        })
+        .ok_or_else(|| io::Error::other("MemAvailable is missing or invalid"))
 }
 
 struct MemoryController<'a> {
@@ -34,9 +39,17 @@ struct MemoryController<'a> {
 impl MemoryController<'static> {
     fn from_controllers(controllers: &str) -> Option<Self> {
         if controllers.is_empty() {
-            Some(Self { root: Path::new("/sys/fs/cgroup"), limit_file: "memory.max", usage_file: "memory.current" })
+            Some(Self {
+                root: Path::new("/sys/fs/cgroup"),
+                limit_file: "memory.max",
+                usage_file: "memory.current",
+            })
         } else if controllers.split(',').any(|controller| controller == "memory") {
-            Some(Self { root: Path::new("/sys/fs/cgroup/memory"), limit_file: "memory.limit_in_bytes", usage_file: "memory.usage_in_bytes" })
+            Some(Self {
+                root: Path::new("/sys/fs/cgroup/memory"),
+                limit_file: "memory.limit_in_bytes",
+                usage_file: "memory.usage_in_bytes",
+            })
         } else {
             None
         }

@@ -25,34 +25,21 @@ pub(super) struct Api {
 
 #[cfg(any(windows, target_os = "linux"))]
 impl Api {
-    pub(super) unsafe fn load(handle: *mut c_void) -> Result<Self, ScratchError> {
-        unsafe fn symbol<T: Copy>(handle: *mut c_void, name: &'static [u8]) -> Result<T, ScratchError> {
-            #[cfg(windows)]
-            let address = unsafe { super::GetProcAddress(handle, name.as_ptr().cast()) };
-            #[cfg(target_os = "linux")]
-            let address = unsafe { super::dlsym(handle, name.as_ptr().cast()) };
-            if address.is_null() {
-                return Err(ScratchError {
-                    position: None,
-                    reason: "LLVM module is missing a command export",
-                });
-            }
-            Ok(unsafe { std::mem::transmute_copy(&address) })
-        }
+    pub(super) unsafe fn load(module: &super::library::Module) -> Result<Self, ScratchError> {
         unsafe {
             Ok(Self {
-                state_size: symbol(handle, b"ne_command_state_size\0")?,
-                init: symbol(handle, b"ne_command_init\0")?,
-                prepare_indices: symbol(handle, b"ne_command_prepare_indices\0")?,
-                bind: symbol(handle, b"ne_bind_commands\0")?,
-                clock: symbol(handle, b"ne_set_command_clock\0")?,
-                effect_bound: symbol(handle, b"ne_command_effect_bound\0")?,
-                effect_buffer: symbol(handle, b"ne_command_set_effect_buffer\0")?,
-                read_state: symbol(handle, b"ne_command_read_state\0")?,
-                effect_words: symbol(handle, b"ne_command_effect_words\0")?,
-                read_effects: symbol(handle, b"ne_command_read_effects\0")?,
-                read_output: symbol(handle, b"ne_command_read_output_state\0")?,
-                ack: symbol(handle, b"ne_command_ack_effects\0")?,
+                state_size: module.symbol(b"ne_command_state_size\0")?,
+                init: module.symbol(b"ne_command_init\0")?,
+                prepare_indices: module.symbol(b"ne_command_prepare_indices\0")?,
+                bind: module.symbol(b"ne_bind_commands\0")?,
+                clock: module.symbol(b"ne_set_command_clock\0")?,
+                effect_bound: module.symbol(b"ne_command_effect_bound\0")?,
+                effect_buffer: module.symbol(b"ne_command_set_effect_buffer\0")?,
+                read_state: module.symbol(b"ne_command_read_state\0")?,
+                effect_words: module.symbol(b"ne_command_effect_words\0")?,
+                read_effects: module.symbol(b"ne_command_read_effects\0")?,
+                read_output: module.symbol(b"ne_command_read_output_state\0")?,
+                ack: module.symbol(b"ne_command_ack_effects\0")?,
             })
         }
     }

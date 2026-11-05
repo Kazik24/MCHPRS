@@ -37,12 +37,10 @@ impl CompilationJob {
         let worker_monitor = monitor.clone();
         let worker_options = options.clone();
         let span = tracing::Span::current();
-        let worker = thread::Builder::new()
-            .name(format!("compile-{},{}", world.x, world.z))
-            .spawn(move || {
-                let _entered = span.enter();
-                CompilationResult::compile(world, worker_options, worker_monitor, cached)
-            })?;
+        let worker = thread::Builder::new().name(format!("compile-{},{}", world.x, world.z)).spawn(move || {
+            let _entered = span.enter();
+            CompilationResult::compile(world, worker_options, worker_monitor, cached)
+        })?;
         Ok(Self {
             started,
             last_progress: Instant::now(),
@@ -61,7 +59,10 @@ impl CompilationJob {
             return None;
         }
         self.budget_reported = true;
-        Some(format!("Compilation exceeded your {} second budget. Try a smaller circuit.", budget.as_secs()))
+        Some(format!(
+            "Compilation exceeded your {} second budget. Try a smaller circuit.",
+            budget.as_secs()
+        ))
     }
 
     fn take_progress_message(&mut self) -> Option<String> {
@@ -312,14 +313,14 @@ impl Plot {
         } else if !job.entry.matches(&self.world) || self.git_checkout_locked() {
             self.reject_redpiler(job.started, messages::REDPILER_COMPILATION_CHANGED);
         } else {
-            self.activate_redpiler(job, output);
+            self.activate_redpiler(output, job.entry, job.options, job.started);
         }
     }
 
-    fn activate_redpiler(&mut self, job: CompilationJob, output: CompilationResult) {
+    fn activate_redpiler(&mut self, output: CompilationResult, entry: EntryVersion, options: CompilerOptions, started: Instant) {
         self.redpiler_cache = output.compiler.cached_program().map(|program| CompilationCache {
-            entry: job.entry,
-            options: job.options,
+            entry,
+            options,
             program,
             suspended: None,
         });
@@ -343,7 +344,12 @@ impl Plot {
             self.broadcast_plot_chat_message(&messages::history_disabled_for_compilation(history::format_memory(bytes)));
         }
         self.scoreboard.set_redpiler_state(&self.players, state);
-        info!(plot_x = self.world.x, plot_z = self.world.z, elapsed_ms = job.started.elapsed().as_millis(), "Redpiler completed");
+        info!(
+            plot_x = self.world.x,
+            plot_z = self.world.z,
+            elapsed_ms = started.elapsed().as_millis(),
+            "Redpiler completed"
+        );
         self.reset_timings();
     }
 

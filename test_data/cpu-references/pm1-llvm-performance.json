@@ -1,0 +1,44 @@
+{
+  "schema": 1,
+  "captured_on": "2026-11-05",
+  "profile": "release, opt-level=3, fat LTO; native executor Clang/LLVM -O3",
+  "processor": "AMD Ryzen 9 5950X, 16 cores / 32 threads",
+  "platform": "Windows x64",
+  "revision": "c308faa26919cf9a9f1fe58eab81379cc9c9ef09",
+  "working_tree_modified": true,
+  "fixture": "PM1_SORT_FIXED.schem",
+  "fixture_sha256": "ad68a0160990c72612c0105802fade337758de127dcdbd4cc1a195059ad2d893",
+  "samples": 1,
+  "timed_scope": "compiler.tick only, program ticks 300 through12051 inclusive; excludes compilation, 299 startup ticks, publication, reset, output checks, 4 settling ticks and idle tail",
+  "reproduce": "cargo run --release --locked -p mchprs_core --example bench_llvm_zcore -- 11752 1 --pm1 --llvm-only",
+  "measurements": {
+    "admission_ms": 139705.9623,
+    "backend": "llvm",
+    "first_timed_tick": 300,
+    "kernel_ms": 11532.7363,
+    "last_timed_tick": 12051,
+    "messages": 1534,
+    "pair": 1,
+    "preparation_ticks": 299,
+    "reset_ms": 751.5307,
+    "screen_sha256": "322d3d336985811875bc4e99b1eec21b69a83792efda6c0b20ac270eef407e3e",
+    "setup_ms": 139693.4461,
+    "ticks": 11752,
+    "tps": 1019.0122876563128
+  },
+  "verification": {
+    "command_messages": 1534,
+    "command_text_sequence_matches_frozen_interpreter": true,
+    "idle_after_settling": true,
+    "main_screen_matches_interpreter": true,
+    "main_screen_lit_pixels": 4,
+    "known_cpu_program_bug": "Interpreter text output23456789:;<=>?@1 retains the final1 out of order; this benchmark does not claim a correct complete sort."
+  },
+  "historical_interpreter": {
+    "source": "pm1-sort-correction-results.json",
+    "active_window_ticks": 12051,
+    "median_seconds": 62.682345,
+    "median_tps": 192.2550919242093,
+    "scope": "Startup plus program; different timed interval from the LLVM result."
+  }
+}

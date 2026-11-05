@@ -36,7 +36,10 @@ pub(crate) fn check(_additional_bytes: usize) -> Result<(), ScratchError> {
 }
 
 pub(super) fn allocation_error() -> ScratchError {
-    ScratchError { position: None, reason: LOW_MEMORY }
+    ScratchError {
+        position: None,
+        reason: LOW_MEMORY,
+    }
 }
 
 pub(super) fn reserve<T>(values: &mut Vec<T>, additional_elements: usize) -> Result<(), ScratchError> {

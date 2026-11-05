@@ -152,6 +152,7 @@ Java parity checks use separate Minecraft Java 1.21.5 captures with matching geo
 
 Approximate throughput in game ticks per second (TPS):
 
+- **PM1 SORT (active program):** LLVM backend **1,019 TPS**, or **11.53 s** for **11,752 ticks** (ticks 300–12,051). Compilation: **139.7 s**, excluded. Single release run on 2026-11-05; [measurement and reproduction command](test_data/cpu-references/pm1-llvm-performance.json). The fixture retains its known CPU-program sorting bug.
 - **ZCore12B (fully instant):** Interpreter **119 TPS**; Rust backend **1,810 TPS**; LLVM backend **3,126 TPS**. Compilation: Rust **28.6 s**, LLVM **28.0 s**.
 - **ANPU Pong (piston used):** Interpreter **1,016 TPS**; Rust backend **16,501 TPS**; LLVM backend **26,525 TPS**. Compilation: Rust **16.6 s**, LLVM **16.8 s**.
 - **CHUNGUS Mandelbrot (fully non-instant):** Interpreter **~1,884 TPS**; Rust backend **16,468 TPS**; LLVM backend **27,673 TPS**. Compilation: Rust **95.9 s**, LLVM **98.0 s**.
@@ -159,6 +160,8 @@ Approximate throughput in game ticks per second (TPS):
 - **PC_COUNTER (fully instant counter)** Interpreter **680 TPS**; Rust backend **13,706 TPS**; LLVM backend **21,856 TPS**. Compilation: Rust **1.1 s**, LLVM **1.1 s**.
 
 Recorded on a Ryzen 9 5950X, Windows x64, with optimized builds. Compiled TPS excludes publication and server overhead, which can reduce throughput; short runs do not establish sustained performance.
+
+An [older PM1 interpreter benchmark](test_data/cpu-references/pm1-sort-correction-results.json) measured **192 TPS**, or **62.68 s** for **12,051 ticks** including startup. Its measurement interval differs from the LLVM program-only result above.
 
 To run checks:
 

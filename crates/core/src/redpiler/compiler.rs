@@ -270,28 +270,7 @@ impl Compiler {
         }
         super::memory::check(0).map_err(CompileError::Unsupported)?;
         if options.llvm {
-            let piston = world.piston_state();
-            if !piston.events.is_empty()
-                || !piston.motions.is_empty()
-                || !piston.movement_work.is_empty()
-                || piston.movement_cursor != 0
-                || piston.phase != AdvancePhase::BetweenTicks
-            {
-                return Err(CompileError::Unsupported(ScratchError {
-                    position: piston
-                        .events
-                        .front()
-                        .map(|event| event.pos)
-                        .or_else(|| piston.motions.front().map(|motion| motion.pos))
-                        .or_else(|| piston.movement_work.get(piston.movement_cursor).map(|&(pos, _)| pos)),
-                    reason: match piston.phase {
-                        AdvancePhase::ScheduledTicks => "LLVM cannot compile during scheduled ticks; finish the current tick first",
-                        AdvancePhase::PistonEvents => "LLVM cannot compile during piston events; finish the current tick first",
-                        AdvancePhase::MovingEntities => "LLVM cannot compile during piston movement; finish the current tick first",
-                        AdvancePhase::BetweenTicks => "LLVM cannot import pending piston work; let it settle before compiling",
-                    },
-                }));
-            }
+            validate_llvm_entry(world.piston_state()).map_err(CompileError::Unsupported)?;
         }
         let entry = ScratchEntry {
             scheduled: ticks.clone(),
@@ -316,13 +295,7 @@ impl Compiler {
         let pending_ticks = ticks.len();
         let llvm = if options.llvm {
             monitor.set_phase("LLVM code generation and initialization");
-            let (first, total) = sampled::unsupported_components(&program);
-            if total > 1 {
-                return Err(CompileError::UnsupportedComponents { first, total });
-            }
-            let mut llvm = LlvmRuntime::new(&program, &ticks).map_err(CompileError::Unsupported)?;
-            llvm.initialize_tick(world.piston_state().logical_tick);
-            Some(llvm)
+            Some(prepare_llvm_runtime(&program, &ticks, world.piston_state().logical_tick)?)
         } else {
             None
         };
@@ -332,17 +305,7 @@ impl Compiler {
         if monitor.cancelled() {
             return Err(CompileError::Cancelled);
         }
-        let capacity = runtime.motion_part_capacity();
-        self.publication_parts.clear();
-        self.publication_parts.reserve(capacity);
-        self.publication_positions.clear();
-        self.publication_positions.reserve(capacity);
-        self.retired_motions.clear();
-        self.retired_motions.reserve(capacity);
-        self.host_motion_indices.clear();
-        self.host_motion_indices.reserve(capacity);
-        self.exported_motions.clear();
-        self.exported_motions.reserve(capacity);
+        self.prepare_publication_buffers(runtime.motion_part_capacity());
         self.runtime = Some(runtime);
         self.llvm_runtime = llvm;
         self.statistics = Some(CompileStatistics {
@@ -356,6 +319,19 @@ impl Compiler {
             self.runtime.as_ref().unwrap().log_memory_layout();
         }
         Ok(())
+    }
+
+    fn prepare_publication_buffers(&mut self, capacity: usize) {
+        self.publication_parts.clear();
+        self.publication_parts.reserve(capacity);
+        self.publication_positions.clear();
+        self.publication_positions.reserve(capacity);
+        self.retired_motions.clear();
+        self.retired_motions.reserve(capacity);
+        self.host_motion_indices.clear();
+        self.host_motion_indices.reserve(capacity);
+        self.exported_motions.clear();
+        self.exported_motions.reserve(capacity);
     }
 
     pub fn reset<W: World>(&mut self, world: &mut W, bounds: (BlockPos, BlockPos)) {
@@ -615,6 +591,37 @@ impl Compiler {
         }
         Ok(())
     }
+}
+
+fn validate_llvm_entry(piston: &mchprs_world::PistonState) -> Result<(), ScratchError> {
+    let has_pending_movement =
+        !piston.events.is_empty() || !piston.motions.is_empty() || !piston.movement_work.is_empty() || piston.movement_cursor != 0;
+    if !has_pending_movement && piston.phase == AdvancePhase::BetweenTicks {
+        return Ok(());
+    }
+    let position = piston
+        .events
+        .front()
+        .map(|event| event.pos)
+        .or_else(|| piston.motions.front().map(|motion| motion.pos))
+        .or_else(|| piston.movement_work.get(piston.movement_cursor).map(|&(pos, _)| pos));
+    let reason = match piston.phase {
+        AdvancePhase::ScheduledTicks => "LLVM cannot compile during scheduled ticks; finish the current tick first",
+        AdvancePhase::PistonEvents => "LLVM cannot compile during piston events; finish the current tick first",
+        AdvancePhase::MovingEntities => "LLVM cannot compile during piston movement; finish the current tick first",
+        AdvancePhase::BetweenTicks => "LLVM cannot import pending piston work; let it settle before compiling",
+    };
+    Err(ScratchError { position, reason })
+}
+
+fn prepare_llvm_runtime(program: &sampled::Program, ticks: &[TickEntry], logical_tick: u64) -> Result<LlvmRuntime, CompileError> {
+    let (first, total) = sampled::unsupported_components(program);
+    if total > 1 {
+        return Err(CompileError::UnsupportedComponents { first, total });
+    }
+    let mut runtime = LlvmRuntime::new(program, ticks).map_err(CompileError::Unsupported)?;
+    runtime.initialize_tick(logical_tick);
+    Ok(runtime)
 }
 
 fn is_output(block: Block) -> bool {
