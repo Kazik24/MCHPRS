@@ -9,7 +9,7 @@ This document describes the current Rust implementation, its execution domain,
 performance optimizations, and their measured benefits. The source is the
 authority. Detailed transition rules are in the
 [redstone model](REDSTONE_MODEL.md) and [piston model](PISTON_MODEL.md);
-[Redpiler architecture](REDPILER_ARCHITECTURE.md) describes compiled execution.
+[Redpilator architecture](REDPILATOR_ARCHITECTURE.md) describes compiled execution.
 Benchmark numbers below describe measured workloads; gains depend on circuit
 activity and do not prove general Minecraft compatibility.
 
@@ -31,7 +31,7 @@ activity and do not prove general Minecraft compatibility.
 | Attachment and shape callbacks | [interaction.rs](../crates/core/src/interaction.rs) | Support checks and geometry changes |
 | Performance and frozen replay | [cpus.rs](../crates/core/test_support/cpus.rs), [cpu_timing.rs](../crates/core/benches/support/cpu_timing.rs), [piston.rs](../crates/core/benches/piston.rs), [instant.rs](../crates/core/benches/instant.rs) | Timed workloads with state and output assertions |
 
-`Plot::tick` chooses `redpiler.tick_with_world` while a compiler is active and
+`Plot::tick` chooses `redpilator.tick_with_world` while a compiler is active and
 `world.tick_interpreted` otherwise. Interpreter cache hits do not activate a
 compiler or transfer simulation ownership.
 
@@ -273,7 +273,7 @@ windows, timer boundaries, and build/host conditions.
 
 ## 9. Boundaries and engineering constraints
 
-The interpreter accepts physical geometry without Redpiler region admission,
+The interpreter accepts physical geometry without Redpilator region admission,
 but implements the repository's modeled mechanics. Unknown-state preservation,
 unrestricted straight-line piston scans, and absent adhesion rules are concrete
 limits on vanilla compatibility.
@@ -287,7 +287,7 @@ Fine stepping, save/load, history restoration, and compiler reset must preserve
 pending work and partial phase state. Rendering choices can project piston
 animation or screen updates differently while physical motion continues.
 The compiler handoff contract is described in
-[Redpiler architecture](REDPILER_ARCHITECTURE.md#compile-ownership-and-handoff).
+[Redpilator architecture](REDPILATOR_ARCHITECTURE.md#compile-ownership-and-handoff).
 
 Before changing a hot path, identify whether its data is an immutable address,
 an immutable registry fact, a per-walk snapshot, or live electrical state.

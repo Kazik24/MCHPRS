@@ -73,7 +73,7 @@
   ],
   "compiler_timing": "Release compiler calls only; fixture loading, verification, and build excluded.",
   "regression": {
-    "command": "cargo test -p mchprs_core --lib --locked redpiler::analysis::tests:: -- --test-threads=1",
+    "command": "cargo test -p mchprs_core --lib --locked redpilator::analysis::tests:: -- --test-threads=1",
     "passed": 86,
     "failed": 0,
     "ignored": 8,

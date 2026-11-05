@@ -6,7 +6,7 @@ use mchprs_blocks::{BlockFace, BlockPos, blocks::Block};
 use mchprs_core::{
     plot::PlotWorld,
     plot::worldedit::load_schematic,
-    redpiler::{CompileError, Compiler, CompilerOptions, PublicationMode, TaskMonitor},
+    redpilator::{CompileError, Compiler, CompilerOptions, PublicationMode, TaskMonitor},
     world::World,
 };
 use sha2::{Digest, Sha256};

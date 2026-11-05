@@ -1095,7 +1095,7 @@
         3,
         2
       ],
-      "readable": "Parse it as / normal OR-gate / in Redpiler",
+      "readable": "Parse it as / normal OR-gate / in Redpilator",
       "candidate_positions": [
         [
           0,
@@ -1173,7 +1173,7 @@
               "text": "normal OR-gate"
             },
             {
-              "text": "in Redpiler"
+              "text": "in Redpilator"
             },
             {
               "text": ""
@@ -1182,7 +1182,7 @@
           "readable": [
             "Parse it as",
             "normal OR-gate",
-            "in Redpiler",
+            "in Redpilator",
             ""
           ]
         },

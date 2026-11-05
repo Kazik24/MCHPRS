@@ -1037,9 +1037,9 @@ impl Player {
         self.permissions_cache.as_ref().and_then(|cache| cache.numeric_limit(prefix))
     }
 
-    pub(crate) fn redpiler_compile_budget(&self) -> Result<Option<std::time::Duration>, String> {
+    pub(crate) fn redpilator_compile_budget(&self) -> Result<Option<std::time::Duration>, String> {
         if let Some(cache) = &self.permissions_cache {
-            return cache.redpiler_compile_budget();
+            return cache.redpilator_compile_budget();
         }
         if CONFIG.luckperms.is_none() && CONFIG.velocity.is_none() {
             return Ok(None);

@@ -405,7 +405,7 @@ impl Plot {
             ["reset", "confirm"] => self.reset_waveform_settings(true),
 
             ["on"] | ["on", _] => {
-                if self.redpiler.is_active() || self.compiling_redpiler() {
+                if self.redpilator.is_active() || self.compiling_redpilator() {
                     return Err("Use /rp reset before starting waveform recording.".into());
                 }
                 let (signals, limit) = actor.waveform_limits()?;

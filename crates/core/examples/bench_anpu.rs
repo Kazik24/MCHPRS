@@ -6,7 +6,7 @@ use cpu_support::*;
 use mchprs_blocks::BlockPos;
 use mchprs_core::{
     plot::worldedit::load_schematic,
-    redpiler::{Compiler, CompilerOptions, TaskMonitor},
+    redpilator::{Compiler, CompilerOptions, TaskMonitor},
     world::World,
 };
 use std::{
@@ -44,7 +44,7 @@ fn main() {
         let compiler_world = load_cpu(cpu);
         let ticks = compiler_world.scheduler().iter_entries().collect();
         let timeout = Duration::from_secs(
-            std::env::var("MCHPRS_REDPILER_COMPILE_TIMEOUT_SECS")
+            std::env::var("MCHPRS_REDPILATOR_COMPILE_TIMEOUT_SECS")
                 .ok()
                 .and_then(|seconds| seconds.parse().ok())
                 .unwrap_or(300),
@@ -147,7 +147,7 @@ fn main() {
         } else if let Err(error) = result {
             let (native_seconds, screen_frames) = native_prefix(cpu, game_ticks, &expected);
             let rejected_at = match &error {
-                mchprs_core::redpiler::CompileError::Unsupported(error) => error.position.unwrap_or_else(BlockPos::zero),
+                mchprs_core::redpilator::CompileError::Unsupported(error) => error.position.unwrap_or_else(BlockPos::zero),
                 _ => BlockPos::zero(),
             };
             reports.push(serde_json::json!({
@@ -161,7 +161,7 @@ fn main() {
             }));
         }
     }
-    let output = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/redpiler-bench-results/anpu.json");
+    let output = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/redpilator-bench-results/anpu.json");
     std::fs::create_dir_all(output.parent().unwrap()).unwrap();
     std::fs::write(
         &output,

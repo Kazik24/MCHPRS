@@ -10,7 +10,7 @@ impl Plot {
         self.close_open_container_inner(player, true);
     }
 
-    pub(super) fn close_all_containers_after_redpiler(&mut self) {
+    pub(super) fn close_all_containers_after_redpilator(&mut self) {
         for player in 0..self.players.len() {
             self.close_open_container_inner(player, false);
         }

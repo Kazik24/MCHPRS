@@ -25,7 +25,7 @@ opt-level = 1
 opt-level = 3
 
 [profile.release]
-# This seems to speed up Redpiler compile times
+# This seems to speed up Redpilator compile times
 lto = "fat"
 
 [profile.profiling]
@@ -36,8 +36,8 @@ strip = "none"
 [features]
 default = ["static-log-levels"]
 static-log-levels = ["tracing/release_max_level_info", "tracing/max_level_debug"]
-redpiler-trace = ["mchprs_core/redpiler-trace"]
-redpiler-full-publication = ["mchprs_core/redpiler-full-publication"]
+redpilator-trace = ["mchprs_core/redpilator-trace"]
+redpilator-full-publication = ["mchprs_core/redpilator-full-publication"]
 
 [dependencies]
 mchprs_core = { path = "./crates/core" }

@@ -2,8 +2,8 @@
 
 Start with [interpreter verification](../docs/INTERPRETER_ARCHITECTURE.md#8-verification-and-reproduction)
 for physical checks and replay observations, or
-[compiler verification](../docs/REDPILER_ARCHITECTURE.md)
-for Redpiler checks and admission limits.
+[compiler verification](../docs/REDPILATOR_ARCHITECTURE.md)
+for Redpilator checks and admission limits.
 
 | Tools | Purpose |
 | --- | --- |

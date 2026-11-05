@@ -8,7 +8,7 @@ use mchprs_core::{
         PLOT_BLOCK_WIDTH, PLOT_WIDTH, PlotWorld,
         worldedit::{load_schematic, paste_clipboard},
     },
-    redpiler::{Compiler, CompilerOptions, TaskMonitor},
+    redpilator::{Compiler, CompilerOptions, TaskMonitor},
     redstone,
     world::{World, storage::Chunk},
 };
@@ -393,7 +393,7 @@ pub fn compile_cpu_with_options(world: PlotWorld, cpu: Cpu, options: CompilerOpt
     );
     let ticks = world.scheduler().iter_entries().collect();
     let timeout = Duration::from_secs(
-        std::env::var("MCHPRS_REDPILER_COMPILE_TIMEOUT_SECS")
+        std::env::var("MCHPRS_REDPILATOR_COMPILE_TIMEOUT_SECS")
             .ok()
             .and_then(|seconds| seconds.parse().ok())
             .unwrap_or(300),
@@ -418,8 +418,8 @@ pub fn compile_cpu_with_options(world: PlotWorld, cpu: Cpu, options: CompilerOpt
         let (world, compiler, result) = worker.join().unwrap();
         (world, compiler, result, timed_out)
     });
-    assert!(!timed_out, "Redpiler compile timed out after {timeout:?}");
-    result.unwrap_or_else(|error| panic!("Redpiler rejected {}: {error}", cpu.name));
+    assert!(!timed_out, "Redpilator compile timed out after {timeout:?}");
+    result.unwrap_or_else(|error| panic!("Redpilator rejected {}: {error}", cpu.name));
     (world, compiler, compile_started.elapsed())
 }
 
@@ -439,7 +439,7 @@ pub fn replay(
     expected: &Reference,
     screen_only: bool,
     flush_every: u32,
-    redpiler: bool,
+    redpilator: bool,
     mut step: impl FnMut(&mut PlotWorld, ReplayStep),
 ) -> (u64, u64, u64) {
     world.set_screen_only(screen_only);
@@ -462,7 +462,7 @@ pub fn replay(
         }
         collect_chat(world, tick, &mut trace);
         collect_ram(world, cpu, tick, &mut ram_trace);
-        if cpu.name == "cpu_bubblesort" && !redpiler && tick >= active_ticks {
+        if cpu.name == "cpu_bubblesort" && !redpilator && tick >= active_ticks {
             assert_eq!(quiet(world), tick > active_ticks, "BubbleSort stop boundary at {tick}");
         }
         if cpu.screen.is_some() {

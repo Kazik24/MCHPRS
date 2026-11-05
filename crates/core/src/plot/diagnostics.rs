@@ -39,9 +39,9 @@ impl Plot {
             || messages::PLOT_INFO_NO_SAMPLES.into(),
             |duration| format!("{:.3} ms", duration.as_secs_f64() * 1000.0),
         );
-        let engine = match self.redpiler.current_flags() {
+        let engine = match self.redpilator.current_flags() {
             Some(options) if options.llvm => messages::PLOT_INFO_ENGINE_LLVM,
-            Some(_) => messages::PLOT_INFO_ENGINE_REDPILER,
+            Some(_) => messages::PLOT_INFO_ENGINE_REDPILATOR,
             None => messages::PLOT_INFO_ENGINE_INTERPRETER,
         };
         let mut lines = vec![
@@ -72,8 +72,8 @@ impl Plot {
             ),
             messages::plot_info_engine(
                 engine,
-                on_off(self.compiling_redpiler()),
-                on_off(self.auto_redpiler),
+                on_off(self.compiling_redpilator()),
+                on_off(self.auto_redpilator),
                 on_off(self.always_running),
             ),
             messages::plot_info_history(
@@ -94,14 +94,14 @@ impl Plot {
             messages::plot_info_worldedit(self.players[player].worldedit_undo.len(), self.players[player].worldedit_redo.len()),
         ];
         // Compiled queues live in the runtime; host queues would report stale work.
-        if !self.redpiler.is_active() {
+        if !self.redpilator.is_active() {
             lines.push(messages::plot_info_pending(
                 self.world.to_be_ticked.queues_iter().map(|queue| queue.len()).sum(),
                 self.world.piston_state.events.len(),
                 self.world.piston_state.motions.len(),
                 self.world.piston_state.phase,
             ));
-        } else if let Some(stats) = self.redpiler.stats() {
+        } else if let Some(stats) = self.redpilator.stats() {
             lines.push(messages::plot_info_compiled(stats.components, stats.duration));
         }
         if self.git_access(player, "read") {
@@ -160,11 +160,11 @@ impl Plot {
             ["settings"] => {
                 let (used, limit) = super::git::memory_usage();
                 format!(
-                    "Players advertised {}; view distance {}; default TPS {}; auto Redpiler {}\nHistory work budget {} MiB (stored usage: /rhistory limit)\nGit RAM reserved {}/{} MiB; snapshot cap {} MiB; plot default/ceiling {}/{} MiB; total disk {} MiB\nCommand steps {}; work time {} ms; WorldEdit operation/history blocks {}/{}",
+                    "Players advertised {}; view distance {}; default TPS {}; auto Redpilator {}\nHistory work budget {} MiB (stored usage: /rhistory limit)\nGit RAM reserved {}/{} MiB; snapshot cap {} MiB; plot default/ceiling {}/{} MiB; total disk {} MiB\nCommand steps {}; work time {} ms; WorldEdit operation/history blocks {}/{}",
                     CONFIG.max_players,
                     CONFIG.view_distance,
                     CONFIG.default_tps,
-                    CONFIG.auto_redpiler,
+                    CONFIG.auto_redpilator,
                     CONFIG.rhistory_work_memory_limit_mib,
                     used / 1048576,
                     limit / 1048576,
@@ -193,7 +193,7 @@ impl Plot {
             |t| format!("TPS 2s/10s/60s: {:.1}/{:.1}/{:.1}", t.two_s, t.ten_s, t.one_m),
         );
         let mut text = format!(
-            "Plot {},{}; owner {:?}; {} players; {} chunks\nTPS setting {:?}; {timings}; last tick {:?}\nAuto Redpiler {}; compiled {}; WSR {}; screen-only {}; fast rendering {}; piston animation {:?}\nPending half-ticks {}; piston events {}; motions {}\n{}\n{}",
+            "Plot {},{}; owner {:?}; {} players; {} chunks\nTPS setting {:?}; {timings}; last tick {:?}\nAuto Redpilator {}; compiled {}; WSR {}; screen-only {}; fast rendering {}; piston animation {:?}\nPending half-ticks {}; piston events {}; motions {}\n{}\n{}",
             self.world.x,
             self.world.z,
             self.owner.map(|uuid| format!("{uuid:032x}")),
@@ -201,8 +201,8 @@ impl Plot {
             self.world.chunks.len(),
             self.tps,
             self.last_nspt,
-            self.auto_redpiler,
-            self.redpiler.is_active(),
+            self.auto_redpilator,
+            self.redpilator.is_active(),
             self.world_send_rate.0,
             self.world.screen_only(),
             self.world.fast_rendering,
@@ -213,7 +213,7 @@ impl Plot {
             self.world.history.status(),
             self.git.diagnostics(),
         );
-        if let Some(stats) = self.redpiler.stats() {
+        if let Some(stats) = self.redpilator.stats() {
             text.push('\n');
             text.push_str(&stats.chat_summary_lines().join("\n"));
         }
@@ -267,7 +267,7 @@ mod tests {
                 .contains("Hist: on | Retained ticks: 1/3")
         );
         plot.world.history.disable();
-        plot.redpiler
+        plot.redpilator
             .compile(
                 &plot.world,
                 (mchprs_blocks::BlockPos::new(30, 19, 30), mchprs_blocks::BlockPos::new(36, 23, 36)),
@@ -277,7 +277,7 @@ mod tests {
             )
             .unwrap();
         let text = plot.plot_info(0, messages::PLOT_INFO_UNCLAIMED);
-        assert!(text.contains("Engine: Redpiler |"));
+        assert!(text.contains("Engine: Redpilator |"));
         assert!(text.contains("Compiled components:"));
         assert!(!text.contains("Pending block ticks:"));
     }

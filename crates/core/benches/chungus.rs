@@ -1,7 +1,7 @@
 use std::time::Instant;
 
 use criterion::*;
-use mchprs_core::redpiler::{Compiler, CompilerOptions, TaskMonitor};
+use mchprs_core::redpilator::{Compiler, CompilerOptions, TaskMonitor};
 use std::sync::Arc;
 
 #[path = "../test_support/chungus.rs"]
@@ -13,7 +13,7 @@ fn chungus_native_tick(c: &mut Criterion) {
     c.bench_function("chungus-mandelbrot-native-tick", |b| b.iter(|| black_box(world.tick_interpreted())));
 }
 
-fn chungus_redpiler_tick(c: &mut Criterion) {
+fn chungus_redpilator_tick(c: &mut Criterion) {
     let world = init_world();
     let mut compiler = Compiler::default();
     compiler
@@ -25,7 +25,7 @@ fn chungus_redpiler_tick(c: &mut Criterion) {
             Arc::new(TaskMonitor::default()),
         )
         .unwrap();
-    c.bench_function("chungus-mandelbrot-redpiler-tick", |b| b.iter(|| black_box(compiler.tick().unwrap())));
+    c.bench_function("chungus-mandelbrot-redpilator-tick", |b| b.iter(|| black_box(compiler.tick().unwrap())));
 }
 
 fn mandelbrot_full(_c: &mut Criterion) {
@@ -40,5 +40,5 @@ fn mandelbrot_full(_c: &mut Criterion) {
     println!("Native Mandelbrot benchmark completed in {:?}", start.elapsed());
 }
 
-criterion_group!(chungus, chungus_native_tick, chungus_redpiler_tick, mandelbrot_full);
+criterion_group!(chungus, chungus_native_tick, chungus_redpilator_tick, mandelbrot_full);
 criterion_main!(chungus);

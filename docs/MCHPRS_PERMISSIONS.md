@@ -99,7 +99,7 @@ waive its plot or packet validation.
 | `/tps` | `mchprs.commands.rtps.view` or `.set` |
 | `/adv` | `mchprs.commands.radvance` |
 | `/visual` | `mchprs.commands.visual` plus `.view` or `.set` |
-| `/rp`, `/redpiler` | `mchprs.commands.redpiler.analyze`, `.compile`, `.reset`, `.inspect`, or `.help` |
+| `/rp`, `/redpilator` | `mchprs.commands.redpilator.analyze`, `.compile`, `.reset`, `.inspect`, or `.help` |
 | `/toggleautorp` | `mchprs.commands.toggleautorp` |
 | `/rhistory` | `mchprs.commands.rhistory` plus the requested subcommand node |
 | `/rev` | `mchprs.commands.rback` |
@@ -199,7 +199,7 @@ from default through admin; database prefixes may override fallback colors.
 Configure inheritance and action grants through the deployment's LuckPerms
 installation and preserve the selected server/world contexts when changing them.
 
-Redpiler access is intended for every rank above B: Z, E, I, M and A. G
+Redpilator access is intended for every rank above B: Z, E, I, M and A. G
 (`default`) and B (`builder`) should not receive access. Compilation has these
 wall-clock budgets, including snapshot preparation and cached/backend admission:
 
@@ -218,7 +218,7 @@ Automatic compilation uses the greatest allowance among current authorized plot
 editors with both compile and automatic-compilation permissions; an unauthorized
 visitor cannot raise the budget.
 
-`/rp off` is an alias for `/rp reset`; both use `mchprs.commands.redpiler.reset`.
+`/rp off` is an alias for `/rp reset`; both use `mchprs.commands.redpilator.reset`.
 `/rp clear` uses the same permission and clears this plot's
 warm checkpoint plus the process-shared owned LLVM artifact cache. Active
 executors on other plots and custom `MCHPRS_LLVM_DLL` files are retained.
@@ -230,7 +230,7 @@ ranks inherit these grants), run these commands in the LuckPerms console after
 deploying the budget enforcement:
 
 ```text
-lp group advanced permission set mchprs.commands.redpiler.* true server=mchprs
+lp group advanced permission set mchprs.commands.redpilator.* true server=mchprs
 lp group advanced permission set mchprs.commands.toggleautorp true server=mchprs
 ```
 

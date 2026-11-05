@@ -268,8 +268,8 @@ impl Plot {
             return;
         }
 
-        if self.redpiler.is_active() {
-            if self.redpiler_handoff_failed {
+        if self.redpilator.is_active() {
+            if self.redpilator_handoff_failed {
                 cancel(self);
                 return;
             }
@@ -286,12 +286,12 @@ impl Plot {
                     return;
                 }
                 if let Err(error) = self
-                    .redpiler
+                    .redpilator
                     .try_on_use_block(block_pos)
-                    .and_then(|_| self.redpiler.try_flush(&mut self.world))
+                    .and_then(|_| self.redpilator.try_flush(&mut self.world))
                 {
-                    self.auto_redpiler = false;
-                    self.fallback_redpiler(&error.to_string());
+                    self.auto_redpilator = false;
+                    self.fallback_redpilator(&error.to_string());
                     cancel(self);
                     return;
                 }
@@ -600,7 +600,7 @@ impl ServerBoundPacketHandler for Plot {
                 return;
             }
         }
-        if let Some(completion) = super::commands::complete_redpiler(packet.transaction_id, &packet.text) {
+        if let Some(completion) = super::commands::complete_redpilator(packet.transaction_id, &packet.text) {
             self.players[player_idx].send_packet(&completion.encode());
             return;
         }

@@ -7,7 +7,7 @@ use mchprs_core::{
         PLOT_WIDTH, PlotWorld,
         worldedit::{load_schematic, paste_clipboard},
     },
-    redpiler::{CompileError, Compiler, CompilerOptions, TaskMonitor},
+    redpilator::{CompileError, Compiler, CompilerOptions, TaskMonitor},
     world::{World, storage::Chunk},
 };
 use mchprs_world::TickEntry;
@@ -267,7 +267,7 @@ fn compile(
                 bounds,
                 CompilerOptions {
                     llvm,
-                    publication: Some(mchprs_core::redpiler::PublicationMode::All),
+                    publication: Some(mchprs_core::redpilator::PublicationMode::All),
                     ..Default::default()
                 },
                 ticks,
@@ -306,7 +306,7 @@ fn main() {
         let compiler_import_seconds = compiler_import_started.elapsed().as_secs_f64();
         let ticks: Vec<TickEntry> = compiler_world.scheduler().iter_entries().collect();
         let timeout = Duration::from_secs(
-            std::env::var("MCHPRS_REDPILER_COMPILE_TIMEOUT_SECS")
+            std::env::var("MCHPRS_REDPILATOR_COMPILE_TIMEOUT_SECS")
                 .ok()
                 .and_then(|seconds| seconds.parse().ok())
                 .unwrap_or(300),
@@ -397,9 +397,9 @@ fn main() {
         }
     }
     let output = Path::new(env!("CARGO_MANIFEST_DIR")).join(if std::env::args().any(|arg| arg == "--llvm") {
-        "../../target/redpiler-bench-results/fpu-llvm.json"
+        "../../target/redpilator-bench-results/fpu-llvm.json"
     } else {
-        "../../target/redpiler-bench-results/fpu.json"
+        "../../target/redpilator-bench-results/fpu.json"
     });
     std::fs::create_dir_all(output.parent().unwrap()).unwrap();
     std::fs::write(&output, serde_json::to_vec_pretty(&json!({"fixture_sha256":"b6182c6c0541d692d635d72d23ecc8f33cef2fb6071f4ba4be66485ff6892bc1", "dimensions":[171,43,107], "trigger_reset_to_off":true, "opcode_mask":2, "input_repetitions":INPUT_REPETITIONS, "window_ticks":WINDOW_TICKS, "reports":reports})).unwrap()).unwrap();

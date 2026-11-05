@@ -6,8 +6,8 @@ edition = "2024"
 
 [features]
 plot-bench = ["mchprs_network/test-support"]
-redpiler-trace = []
-redpiler-full-publication = []
+redpilator-trace = []
+redpilator-full-publication = []
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

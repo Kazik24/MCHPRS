@@ -2,7 +2,7 @@
 
 This document specifies the electrical and scheduling semantics implemented by MCHPRS. Its rules apply to arbitrary supported geometry and ordered input histories; schematic names, saved coordinates and particular output traces are not semantic inputs. The implementation is authoritative when it changes.
 
-The scope is `PlotWorld::tick_interpreted` and its immediate callbacks. [PISTON_MODEL.md](PISTON_MODEL.md) adds piston transport, quasi-connectivity, BUD storage and instant ordering to the same transition system. [compiled execution contract](REDPILER_ARCHITECTURE.md) defines the compiler abstraction; [REDPILER_ARCHITECTURE.md](REDPILER_ARCHITECTURE.md) maps it to the implementation. Physical checks and replay observations are indexed in [interpreter verification](INTERPRETER_ARCHITECTURE.md#8-verification-and-reproduction).
+The scope is `PlotWorld::tick_interpreted` and its immediate callbacks. [PISTON_MODEL.md](PISTON_MODEL.md) adds piston transport, quasi-connectivity, BUD storage and instant ordering to the same transition system. [compiled execution contract](REDPILATOR_ARCHITECTURE.md) defines the compiler abstraction; [REDPILATOR_ARCHITECTURE.md](REDPILATOR_ARCHITECTURE.md) maps it to the implementation. Physical checks and replay observations are indexed in [interpreter verification](INTERPRETER_ARCHITECTURE.md#8-verification-and-reproduction).
 
 All equations describe repository behavior. They are not an exhaustive specification of every Minecraft mechanic. A derived equilibrium or Boolean formula states its assumptions explicitly and does not replace the ordered callback procedures.
 
@@ -290,7 +290,7 @@ Directional emission, dust shape and occupancy determine the guards.
 
 This is an electrical projection, not a replacement for notification or
 scheduling. Comparator overrides and side eligibility still use section 10.
-The [compiled architecture](REDPILER_ARCHITECTURE.md) describes the sampled
+The [compiled architecture](REDPILATOR_ARCHITECTURE.md) describes the sampled
 runtime and the circuits it admits; the interpreter evaluates these guards and
 sources for all supported input histories.
 
@@ -1382,7 +1382,7 @@ argument for the selected observables.
 
 Piston event values, retained storage and electrical boundary strengths need
 separate decoders. An internal falling event does not impose inverted polarity
-on every ordinary consumer. The [Redpiler architecture](REDPILER_ARCHITECTURE.md)
+on every ordinary consumer. The [Redpilator architecture](REDPILATOR_ARCHITECTURE.md)
 documents sampled admission and supported piston state. Compiler admission does
 not alter the physical rules specified here.
 

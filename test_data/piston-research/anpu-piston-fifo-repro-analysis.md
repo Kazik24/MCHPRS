@@ -33,7 +33,7 @@ The diagram shows the repeated footprint; the actual schematic includes cross-co
 
 The tick-218 pending-tick order mismatch first differs at the repeaters on the z=124 lane: the compiled queue starts with **(108,55,124)**, while the interpreter queue starts with **(92,55,124)**. These repeaters face toward each other across the lane. This places the observed mismatch on the outer signal structure adjacent to the piston bank, rather than at one of the three piston blocks themselves.
 
-The regression is [`anpu_piston_repeater_fifo_order_in_schematic_crop`](../../crates/core/src/redpiler/tests/sampled/cpu_trace.rs#L94). Run it with:
+The regression is [`anpu_piston_repeater_fifo_order_in_schematic_crop`](../../crates/core/src/redpilator/tests/sampled/cpu_trace.rs#L94). Run it with:
 
 ```powershell
 cargo test -p mchprs_core --lib anpu_piston_repeater_fifo_order_in_schematic_crop -- --ignored --nocapture

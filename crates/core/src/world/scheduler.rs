@@ -135,7 +135,7 @@ impl<T> TickScheduler<T> {
         (self.pos + 1) % NUM_QUEUES
     }
 
-    // for redpiler tick logic
+    // for redpilator tick logic
     pub fn queues_this_tick_move_next(&mut self) -> Queues<T> {
         self.pos = self.next_pos();
         mem::take(&mut self.queues_deque[self.pos])

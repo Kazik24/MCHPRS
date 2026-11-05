@@ -19,7 +19,7 @@ pub(super) fn page(topic: Option<&str>) -> Option<&'static str> {
         "visual" | "pistons" | "animations" => messages::HELP_PISTONS,
         "rev" | "back" | "rewind" | "history" | "tick_rewind" | "rhistory" | "rback" => messages::HELP_HISTORY,
         "chat" | "commands" | "commandblocks" | "command_blocks" | "say" | "tellraw" => messages::HELP_CHAT,
-        "redpiler" | "rp" => messages::HELP_REDPILER,
+        "redpilator" | "rp" => messages::HELP_REDPILATOR,
         "git" => messages::HELP_GIT,
         "waveform" => super::waveform::HELP,
         _ => return None,

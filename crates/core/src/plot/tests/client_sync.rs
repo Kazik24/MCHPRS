@@ -46,7 +46,7 @@ fn compiled_projection_waits_for_visual_deadline() {
             lever: mchprs_blocks::blocks::Lever::new(mchprs_blocks::blocks::LeverFace::Floor, mchprs_blocks::BlockDirection::North, false),
         },
     );
-    plot.redpiler
+    plot.redpilator
         .compile(
             &plot.world,
             (BlockPos::new(32, 19, 30), BlockPos::new(36, 23, 34)),
@@ -56,14 +56,14 @@ fn compiled_projection_waits_for_visual_deadline() {
         )
         .unwrap();
     plot.world_send_rate = WorldSendRate(10);
-    plot.redpiler.try_on_use_block(lever).unwrap();
+    plot.redpilator.try_on_use_block(lever).unwrap();
     plot.last_world_send_time = Instant::now();
     plot.update();
     assert!(matches!(plot.world.get_block(lever), Block::Lever { lever } if !lever.powered));
     plot.last_world_send_time = Instant::now() - Duration::from_millis(101);
     plot.update();
     assert!(matches!(plot.world.get_block(lever), Block::Lever { lever } if lever.powered));
-    plot.redpiler.try_on_use_block(lever).unwrap();
+    plot.redpilator.try_on_use_block(lever).unwrap();
     plot.world_send_rate = WorldSendRate(0);
     plot.last_world_send_time = Instant::now() - Duration::from_secs(1);
     plot.update();
@@ -71,7 +71,7 @@ fn compiled_projection_waits_for_visual_deadline() {
 }
 
 #[test]
-fn default_redpiler_blocks_plot_edits_but_keeps_controls_active() {
+fn default_redpilator_blocks_plot_edits_but_keeps_controls_active() {
     use mchprs_blocks::block_entities::{BlockEntity, ContainerType, InventoryEntry};
     use mchprs_blocks::blocks::{ButtonFace, Lever, LeverFace, StoneButton};
 
@@ -112,10 +112,10 @@ fn default_redpiler_blocks_plot_edits_but_keeps_controls_active() {
         },
     );
 
-    plot.start_redpiler_with_budget(CompilerOptions::default(), None);
-    plot.wait_for_redpiler();
-    assert!(plot.redpiler.is_active());
-    assert!(!plot.redpiler.current_flags().unwrap().io_only);
+    plot.start_redpilator_with_budget(CompilerOptions::default(), None);
+    plot.wait_for_redpilator();
+    assert!(plot.redpilator.is_active());
+    assert!(!plot.redpilator.current_flags().unwrap().io_only);
 
     let support = BlockPos::new(32, 20, 32);
     let placed = support.offset(BlockFace::Top);
@@ -123,20 +123,20 @@ fn default_redpiler_blocks_plot_edits_but_keeps_controls_active() {
     let (_, blocks) = episode(&mut peer, false, 1);
     assert_eq!(blocks.last(), Some(&(placed, Block::Air.get_id())));
     assert_eq!(plot.world.get_block(placed), Block::Air);
-    assert!(plot.redpiler.is_active());
+    assert!(plot.redpilator.is_active());
 
     plot.handle_player_digging(digging(support, 0, 2), 0);
     let (_, blocks) = episode(&mut peer, false, 2);
     assert!(blocks.contains(&(support, Block::Sandstone {}.get_id())));
     assert_eq!(plot.world.get_block(support), Block::Sandstone {});
-    assert!(plot.redpiler.is_active());
+    assert!(plot.redpilator.is_active());
 
     for (sequence, pos) in [(3, lever), (4, button)] {
-        assert!(plot.redpiler.accepts_control(pos));
+        assert!(plot.redpilator.accepts_control(pos));
         plot.handle_player_block_placement(placement(pos, sequence), 0);
         let (ids, _) = episode(&mut peer, false, sequence);
         assert!(!ids.contains(&0x72), "active control input should not be rejected");
-        assert!(plot.redpiler.is_active());
+        assert!(plot.redpilator.is_active());
     }
 
     plot.players[0].open_container(chest, &chest_contents, ContainerType::Chest);
@@ -157,7 +157,7 @@ fn default_redpiler_blocks_plot_edits_but_keeps_controls_active() {
     assert_eq!(inventory.len(), 1);
     assert_eq!(inventory[0].id, Item::Sandstone {}.get_id());
     assert!(plot.players[0].open_container.is_none());
-    assert!(plot.redpiler.is_active());
+    assert!(plot.redpilator.is_active());
 }
 
 #[test]
@@ -171,7 +171,7 @@ fn idle_interpreter_skips_empty_batches_and_resumes_scheduled_work() {
         plot.world.packet_senders.clear();
         plot.world.packet_senders.push(PlayerPacketSender::new(&plot.players[0].client));
         plot.tps = tps;
-        plot.auto_redpiler = true;
+        plot.auto_redpilator = true;
         plot.lag_time = Duration::from_secs(30);
         plot.last_update_time = Instant::now() - Duration::from_secs(30);
 
@@ -180,14 +180,14 @@ fn idle_interpreter_skips_empty_batches_and_resumes_scheduled_work() {
         assert_eq!(plot.world.update_stats.simulated_ticks, 0);
         assert_eq!(plot.lag_time, Duration::ZERO);
         assert_eq!(plot.world.piston_state.logical_tick, 0);
-        assert!(!plot.compiling_redpiler());
-        assert!(!plot.redpiler.is_active());
+        assert!(!plot.compiling_redpilator());
+        assert!(!plot.redpilator.is_active());
 
         let lamp = BlockPos::new(34, 20, 32);
         plot.world.set_block(lamp, Block::RedstoneLamp { lit: true });
         plot.world.schedule_tick(lamp, 1, TickPriority::Normal);
         assert!(!plot.interpreter_idle());
-        plot.auto_redpiler = false;
+        plot.auto_redpilator = false;
         plot.last_update_time = Instant::now() - Duration::from_secs(1);
         plot.last_nspt = Some(Duration::from_nanos(1));
 
@@ -269,13 +269,13 @@ fn compilation_closes_containers_before_capturing_input_even_when_rejected() {
     plot.players[0].open_container(barrel, &[], ContainerType::Barrel);
     // A normal piston cannot push a token beyond this backend's captured movement domain.
     plot.world.set_block(BlockPos::new(39, 20, 32), Block::Stone {});
-    plot.start_redpiler_with_budget(CompilerOptions::default(), None);
+    plot.start_redpilator_with_budget(CompilerOptions::default(), None);
     let pending_before = plot.world.scheduler().iter_entries().collect::<Vec<_>>();
     assert!(plot.players[0].open_container.is_none());
     assert!(matches!(plot.world.get_block(barrel), Block::Barrel { open: false, .. }));
-    plot.wait_for_redpiler();
+    plot.wait_for_redpilator();
 
-    assert!(!plot.redpiler.is_active());
+    assert!(!plot.redpilator.is_active());
     assert!(plot.players[0].open_container.is_none());
     assert!(matches!(plot.world.get_block(barrel), Block::Barrel { open: false, .. }));
     assert_eq!(plot.world.scheduler().iter_entries().collect::<Vec<_>>(), pending_before);
@@ -295,23 +295,23 @@ fn unpowered_pressure_plate_stays_compiled_on_player_contact() {
             let wire = plate.offset(BlockFace::East);
             plot.world.set_block(wire.offset(BlockFace::Bottom), Block::Stone {});
             plot.world.set_block(wire, Block::from_name("redstone_wire").unwrap());
-            plot.start_redpiler_with_budget(
+            plot.start_redpilator_with_budget(
                 CompilerOptions {
                     llvm,
                     io_only,
-                    publication: Some(crate::redpiler::PublicationMode::All),
+                    publication: Some(crate::redpilator::PublicationMode::All),
                     ..Default::default()
                 },
                 None,
             );
-            plot.wait_for_redpiler();
-            assert!(plot.redpiler.is_active());
+            plot.wait_for_redpilator();
+            assert!(plot.redpilator.is_active());
             plot.players[0].on_ground = true;
 
             plot.players[0].pos = on_plate;
             plot.on_player_move(0, outside, on_plate);
             assert_eq!(plot.world.get_block(plate).pressure_plate_powered(), Some(true));
-            assert!(plot.redpiler.is_active(), "player contact is a compiled input");
+            assert!(plot.redpilator.is_active(), "player contact is a compiled input");
             if !io_only {
                 assert!(matches!(plot.world.get_block(wire), Block::RedstoneWire { wire } if wire.power == 15));
             }
@@ -326,7 +326,7 @@ fn unpowered_pressure_plate_stays_compiled_on_player_contact() {
             if !io_only {
                 assert!(matches!(plot.world.get_block(wire), Block::RedstoneWire { wire } if wire.power == 0));
             }
-            assert!(plot.redpiler.is_active());
+            assert!(plot.redpilator.is_active());
         }
     }
 }
@@ -347,7 +347,7 @@ fn placement(pos: BlockPos, sequence: i32) -> SPlayerBlockPlacemnt {
 #[test]
 fn compiled_bud_piston_unlocks_through_player_lever_clicks() {
     use crate::plot::worldedit::{load_schematic, paste_clipboard};
-    use crate::redpiler::PublicationMode;
+    use crate::redpilator::PublicationMode;
     let origin = BlockPos::new(32, 19, 30);
     let top = origin + BlockPos::new(0, 2, 2);
     let bottom = origin + BlockPos::new(0, 1, 4);
@@ -372,7 +372,7 @@ fn compiled_bud_piston_unlocks_through_player_lever_clicks() {
         clip.offset_z = 0;
         paste_clipboard(&mut plot.world, &clip, origin, false);
         let mut native = plot.world.activation_snapshot();
-        plot.redpiler.compile(
+        plot.redpilator.compile(
             &plot.world,
             (origin - BlockPos::new(2, 2, 2), origin + BlockPos::new(6, 6, 7)),
             CompilerOptions { publication, ..Default::default() },
@@ -387,7 +387,7 @@ fn compiled_bud_piston_unlocks_through_player_lever_clicks() {
             }
             plot.last_world_send_time = Instant::now() - Duration::from_secs(1);
             plot.update();
-            assert!(plot.redpiler.is_active());
+            assert!(plot.redpilator.is_active());
             assert_eq!(plot.world.get_block(output), native.get_block(output), "output after click {sequence}, {publication:?}");
             assert!(matches!(native.get_block(piston), Block::Piston { piston } if piston.extended == (sequence == 1)));
             if publication == Some(PublicationMode::All) {
@@ -395,7 +395,7 @@ fn compiled_bud_piston_unlocks_through_player_lever_clicks() {
             }
         }
         assert!(matches!(plot.world.get_block(bottom), Block::Lever { lever } if lever.powered));
-        plot.reset_redpiler().unwrap();
+        plot.reset_redpilator().unwrap();
         assert_eq!(plot.world.get_block(piston), native.get_block(piston));
         assert_eq!(plot.world.get_block(output), native.get_block(output));
     }

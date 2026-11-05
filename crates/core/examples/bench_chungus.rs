@@ -1,4 +1,4 @@
-//! cargo run -p mchprs_core --profile bench --example bench_chungus --features redpiler-full-publication -- 512 3
+//! cargo run -p mchprs_core --profile bench --example bench_chungus --features redpilator-full-publication -- 512 3
 use std::{
     collections::HashSet,
     sync::Arc,
@@ -7,7 +7,7 @@ use std::{
 
 use mchprs_blocks::{BlockFace, blocks::Block};
 use mchprs_core::{
-    redpiler::{Compiler, CompilerOptions, TaskMonitor},
+    redpilator::{Compiler, CompilerOptions, TaskMonitor},
     world::{World, for_each_block_optimized},
 };
 
@@ -48,7 +48,7 @@ fn run_sample(ticks: u32, sample: usize, llvm: bool) -> serde_json::Value {
         bounds,
         CompilerOptions {
             llvm,
-            publication: Some(mchprs_core::redpiler::PublicationMode::All),
+            publication: Some(mchprs_core::redpilator::PublicationMode::All),
             ..Default::default()
         },
         compiled.scheduler().iter_entries().collect(),
@@ -101,11 +101,11 @@ fn main() {
     let runs: usize = std::env::args().nth(2).map_or(3, |arg| arg.parse().expect("positive sample count"));
     assert!(ticks > 0 && runs > 0);
     let output = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(if paired {
-        "../../target/redpiler-bench-results/chungus-paired.json"
+        "../../target/redpilator-bench-results/chungus-paired.json"
     } else if llvm {
-        "../../target/redpiler-bench-results/chungus-llvm.json"
+        "../../target/redpilator-bench-results/chungus-llvm.json"
     } else {
-        "../../target/redpiler-bench-results/chungus.json"
+        "../../target/redpilator-bench-results/chungus.json"
     });
     std::fs::create_dir_all(output.parent().unwrap()).unwrap();
     let mut reports = Vec::new();

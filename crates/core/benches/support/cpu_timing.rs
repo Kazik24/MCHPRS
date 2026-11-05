@@ -11,12 +11,12 @@ pub struct RunTiming {
     pub instant_piston_cache_stats: Option<(usize, usize, u64)>,
 }
 
-pub fn replay_with_visuals(cpu: Cpu, expected: &Reference, screen_only: bool, flush_every: u32, redpiler: bool) -> RunTiming {
+pub fn replay_with_visuals(cpu: Cpu, expected: &Reference, screen_only: bool, flush_every: u32, redpilator: bool) -> RunTiming {
     let mut world = load_cpu(cpu);
     if flush_every != 0 {
         world.flush_block_changes();
     }
-    let (world, compiler, compile) = if redpiler {
+    let (world, compiler, compile) = if redpilator {
         let (world, compiler, elapsed) = compile_cpu(world, cpu);
         (world, Some(compiler), Some(elapsed))
     } else {
@@ -27,7 +27,7 @@ pub fn replay_with_visuals(cpu: Cpu, expected: &Reference, screen_only: bool, fl
     let mut elapsed = Duration::ZERO;
     let active_ticks = cpu.active_ticks;
     let mut active = Duration::ZERO;
-    let visual_counts = replay(&mut world, cpu, expected, screen_only, flush_every, redpiler, |world, step| match step {
+    let visual_counts = replay(&mut world, cpu, expected, screen_only, flush_every, redpilator, |world, step| match step {
         ReplayStep::Start => {
             if let Some(compiler) = &mut compiler {
                 compiler.try_on_use_block(cpu.start + cpu.origin).unwrap();

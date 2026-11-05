@@ -212,7 +212,7 @@
       "observed_mchprs": "frozen traces, not independent Minecraft oracles",
       "observed_java": "SHA-pinned vanilla 1.21.5 captures with real lever interactions",
       "inferred_mechanism": "Historical NOT naming denotes trigger IN2 (0,2,14), upstream base T=(0,2,10), inhibited by IN1 (2,2,14), base I=(2,2,10). I's sandstone payload uncovers a lower powered connection when it retracts. Output base O=(1,2,5), repeater (1,2,1) and lamp (1,2,0) are new explicit boundary components. First-wave result is IN2 AND NOT IN1.",
-      "proposed_compiler_guard": "The supported condition is effective_inhibit before acceptance of O's retraction. The author allows equal-time firing and warns about extra delay pistons on the negating side. Redpiler may omit internal nanoticks for certified synchronized regions; it still needs the actual consumer adapter and reset contract."
+      "proposed_compiler_guard": "The supported condition is effective_inhibit before acceptance of O's retraction. The author allows equal-time firing and warns about extra delay pistons on the negating side. Redpilator may omit internal nanoticks for certified synchronized regions; it still needs the actual consumer adapter and reset contract."
     },
     "label_mappings": [
       {
@@ -590,7 +590,7 @@
         }
       ],
       "contract": "Certified synchronized physical family; compiled execution omits internal nanoticks. Logical data/sample dependencies and exposed reset/consumer timing remain.",
-      "requirements": "The supported condition is effective_inhibit before acceptance of O's retraction. The author allows equal-time firing and warns about extra delay pistons on the negating side. Redpiler may omit internal nanoticks for certified synchronized regions; it still needs the actual consumer adapter and reset contract."
+      "requirements": "The supported condition is effective_inhibit before acceptance of O's retraction. The author allows equal-time firing and warns about extra delay pistons on the negating side. Redpilator may omit internal nanoticks for certified synchronized regions; it still needs the actual consumer adapter and reset contract."
     },
     "cases": [
       {

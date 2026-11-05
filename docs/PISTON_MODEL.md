@@ -2,7 +2,7 @@
 
 This document specifies piston behavior implemented by the world interpreter. It includes quasi-connectivity, delivered updates, event acceptance, payload ownership, movement and the causal order often called nanoticks. The rules apply to geometry and ordered operations, independently of schematic names or particular truth tables.
 
-[REDSTONE_MODEL.md](REDSTONE_MODEL.md) defines positions, directional power, support checks, notifications and the shared scheduler. [compiled execution contract](REDPILER_ARCHITECTURE.md) defines the compiled abstraction; [REDPILER_ARCHITECTURE.md](REDPILER_ARCHITECTURE.md) describes its implementation. A derived logical gate or storage cell is valid only under the decoder and protocol stated for it. The physical interpreter continues to use the operational rules below for every input history.
+[REDSTONE_MODEL.md](REDSTONE_MODEL.md) defines positions, directional power, support checks, notifications and the shared scheduler. [compiled execution contract](REDPILATOR_ARCHITECTURE.md) defines the compiled abstraction; [REDPILATOR_ARCHITECTURE.md](REDPILATOR_ARCHITECTURE.md) describes its implementation. A derived logical gate or storage cell is valid only under the decoder and protocol stated for it. The physical interpreter continues to use the operational rules below for every input history.
 
 ## 1. State, notation and observables
 
@@ -415,7 +415,7 @@ Electrical boundary strength uses the
 Directional eligibility, attenuation, fixed contributors and comparator channels
 remain electrical properties when a logical result uses a falling-event decoder.
 
-A first-response function $\mathbf y=F(\mathbf d,\mathbf e,\mathbf q)$ is a derived projection over a declared input protocol and observation window. Complete reuse adds retained reset/read/clock state $z$ and transitions $z^+=H(z,\sigma)$ for the ordered actions $\sigma$. No universal reset period or universal observation window follows from a piston truth table. The [Redpiler architecture](REDPILER_ARCHITECTURE.md) documents compiled admission and state handoff; unsupported piston behavior remains with the interpreter.
+A first-response function $\mathbf y=F(\mathbf d,\mathbf e,\mathbf q)$ is a derived projection over a declared input protocol and observation window. Complete reuse adds retained reset/read/clock state $z$ and transitions $z^+=H(z,\sigma)$ for the ordered actions $\sigma$. No universal reset period or universal observation window follows from a piston truth table. The [Redpilator architecture](REDPILATOR_ARCHITECTURE.md) documents compiled admission and state handoff; unsupported piston behavior remains with the interpreter.
 
 ## 6. General rules and implementation limits
 

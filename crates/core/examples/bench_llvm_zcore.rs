@@ -3,7 +3,7 @@
 mod cpus;
 
 use mchprs_blocks::BlockPos;
-use mchprs_core::redpiler::CompilerOptions;
+use mchprs_core::redpilator::CompilerOptions;
 use mchprs_core::world::World;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -98,7 +98,7 @@ fn main() {
     let preparation = if index == 3 { prepare() } else if index == 0 { 299 } else { 0 };
     let name = if index == 3 { "zcore" } else if index == 0 { "pm1_sort" } else { "anpu" };
     let suffix = if rust_only { "rust-profile" } else if llvm_only { "llvm-only" } else { "llvm-paired" };
-    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(format!("../../target/redpiler-bench-results/{name}-{suffix}.json"));
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(format!("../../target/redpilator-bench-results/{name}-{suffix}.json"));
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     let mut results = Vec::new();
     let mut expected = None;

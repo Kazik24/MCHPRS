@@ -8,7 +8,7 @@ use mchprs_core::{
         PLOT_WIDTH, PlotWorld,
         worldedit::{load_schematic, paste_clipboard},
     },
-    redpiler::{Compiler, CompilerOptions, PublicationMode, TaskMonitor},
+    redpilator::{Compiler, CompilerOptions, PublicationMode, TaskMonitor},
     redstone,
     world::{World, storage::Chunk},
 };
@@ -50,7 +50,7 @@ fn main() {
     clip.offset_y = 0;
     clip.offset_z = 0;
     let bounds = (ORIGIN - BlockPos::new(4, 4, 4), ORIGIN + BlockPos::new(27, 22, 78));
-    let output_path = root.join("target/redpiler-bench-results/pc-counter.json");
+    let output_path = root.join("target/redpilator-bench-results/pc-counter.json");
     std::fs::create_dir_all(output_path.parent().unwrap()).unwrap();
     let mut reports = Vec::new();
     for sample in 1..=3 {

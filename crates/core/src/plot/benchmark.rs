@@ -10,10 +10,10 @@ pub fn with_client(mut world: PlotWorld, player: Player, tps: Tps) -> Plot {
         waveform_source: None,
         world,
         players: vec![player],
-        redpiler: Default::default(),
+        redpilator: Default::default(),
         compilation: None,
-        redpiler_cache: None,
-        redpiler_handoff_failed: false,
+        redpilator_cache: None,
+        redpilator_handoff_failed: false,
         message_receiver: bus::Bus::new(4).add_rx(),
         message_sender,
         priv_message_receiver,
@@ -30,7 +30,7 @@ pub fn with_client(mut world: PlotWorld, player: Player, tps: Tps) -> Plot {
         sleep_time: Duration::ZERO,
         running: false,
         always_running: false,
-        auto_redpiler: false,
+        auto_redpilator: false,
         owner: Some(1),
         async_rt: Plot::create_async_rt(),
         scoreboard: Default::default(),
@@ -57,13 +57,13 @@ pub fn run_for(plot: &mut Plot, duration: Duration) -> Duration {
     while started.elapsed() < duration {
         plot.update();
         assert_eq!(plot.players.len(), 1, "benchmark client disconnected or left the plot");
-        assert!(plot.redpiler.is_active(), "compiled execution stopped");
+        assert!(plot.redpilator.is_active(), "compiled execution stopped");
     }
     started.elapsed()
 }
 
 pub fn publish(plot: &mut Plot) {
-    plot.redpiler.flush(&mut plot.world);
+    plot.redpilator.flush(&mut plot.world);
     plot.world.flush_block_changes();
 }
 

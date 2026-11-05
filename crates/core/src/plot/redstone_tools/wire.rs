@@ -443,14 +443,14 @@ impl Plot {
             } else if !session.displayed {
                 session.set_status(messages::WIRE_ROUTE_NOT_DISPLAYED);
             } else if let Some(plan) = session.plan.take() {
-                if self.git_checkout_locked() || self.redpiler.is_active() || self.compiling_redpiler() {
+                if self.git_checkout_locked() || self.redpilator.is_active() || self.compiling_redpilator() {
                     session.plan = Some(plan);
                     session.set_status(messages::WIRE_UNSUPPORTED);
                 } else if !plan.reads.is_current(&self.world) {
                     session.invalidate();
                     session.set_status(messages::WIRE_STALE);
                 } else {
-                    if let Err(error) = self.reset_redpiler() {
+                    if let Err(error) = self.reset_redpilator() {
                         session.set_status(&error.to_string());
                     } else if !plan.reads.is_current(&self.world) {
                         session.invalidate();

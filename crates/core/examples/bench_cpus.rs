@@ -38,7 +38,7 @@ fn outputs(world: &PlotWorld, cpu: cpus::Cpu) -> Value {
 }
 
 fn run_sample(cpu: cpus::Cpu, ticks: u32, sample: usize, kernel_only: bool, llvm: bool) -> Value {
-    let full_publication = cfg!(feature = "redpiler-full-publication") || std::env::var_os("MCHPRS_BENCH_PUBLISH_ALL").is_some();
+    let full_publication = cfg!(feature = "redpilator-full-publication") || std::env::var_os("MCHPRS_BENCH_PUBLISH_ALL").is_some();
     let wait_for_trace = std::env::var_os("MCHPRS_BENCH_WAIT_FOR_TRACE").is_some();
     let diagnostic = wait_for_trace || std::env::var_os("MCHPRS_BENCH_ALLOW_DIVERGENCE").is_some();
     let import = Instant::now();
@@ -69,9 +69,9 @@ fn run_sample(cpu: cpus::Cpu, ticks: u32, sample: usize, kernel_only: bool, llvm
         cpus::compile_cpu_with_options(
             initial,
             cpu,
-            mchprs_core::redpiler::CompilerOptions {
+            mchprs_core::redpilator::CompilerOptions {
                 llvm,
-                publication: full_publication.then_some(mchprs_core::redpiler::PublicationMode::All),
+                publication: full_publication.then_some(mchprs_core::redpilator::PublicationMode::All),
                 ..Default::default()
             },
         )
@@ -192,7 +192,7 @@ fn provenance() -> Value {
     let executable_sha256 = format!("{:x}", Sha256::digest(std::fs::read(executable).unwrap()));
     json!({
         "executable_sha256":executable_sha256,
-        "features":{"redpiler_full_publication":cfg!(feature = "redpiler-full-publication"),"redpiler_trace":cfg!(feature = "redpiler-trace")},
+        "features":{"redpilator_full_publication":cfg!(feature = "redpilator-full-publication"),"redpilator_trace":cfg!(feature = "redpilator-trace")},
         "source_provenance":"external build manifest required: record git HEAD, SHA-256 of the dirty patch including untracked source files, rustc -Vv, and the exact cargo build command"
     })
 }
@@ -218,7 +218,7 @@ fn main() {
     assert!(ticks > 0 && runs > 0);
     let continue_on_divergence = std::env::var_os("MCHPRS_BENCH_ALLOW_DIVERGENCE").is_some();
     let provenance = provenance();
-    let destination = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/redpiler-bench-results");
+    let destination = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/redpilator-bench-results");
     std::fs::create_dir_all(&destination).unwrap();
     let mut results = Vec::new();
     for sample in 1..=runs {

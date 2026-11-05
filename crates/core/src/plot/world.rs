@@ -562,8 +562,8 @@ impl World for PlotWorld {
             && !self.scratch.contract_air.as_ref().is_some_and(|positions| positions.contains(&pos))
         {
             let first = self.scratch.boundary_read.replace(Some(pos)).is_none();
-            if first && std::env::var_os("MCHPRS_REDPILER_BOUNDARY_TRACE").is_some() {
-                eprintln!("Redpiler unknown block read at {pos:?}\n{}", std::backtrace::Backtrace::force_capture());
+            if first && std::env::var_os("MCHPRS_REDPILATOR_BOUNDARY_TRACE").is_some() {
+                eprintln!("Redpilator unknown block read at {pos:?}\n{}", std::backtrace::Backtrace::force_capture());
             }
             return 0;
         }
@@ -573,9 +573,9 @@ impl World for PlotWorld {
                 && !self.scratch.contract_air.as_ref().is_some_and(|positions| positions.contains(&pos))
             {
                 let first = self.scratch.boundary_read.replace(Some(pos)).is_none();
-                if first && std::env::var_os("MCHPRS_REDPILER_BOUNDARY_TRACE").is_some() {
+                if first && std::env::var_os("MCHPRS_REDPILATOR_BOUNDARY_TRACE").is_some() {
                     eprintln!(
-                        "Redpiler unknown unloaded block read at {pos:?}\n{}",
+                        "Redpilator unknown unloaded block read at {pos:?}\n{}",
                         std::backtrace::Backtrace::force_capture()
                     );
                 }

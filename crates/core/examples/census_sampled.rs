@@ -1,6 +1,6 @@
 //! Compile the three native-backend fixtures and print the sampled memory census.
 //!
-//! Run with `MCHPRS_REDPILER_PHASE_TIMINGS=1 cargo run -p mchprs_core --example census_sampled`.
+//! Run with `MCHPRS_REDPILATOR_PHASE_TIMINGS=1 cargo run -p mchprs_core --example census_sampled`.
 use std::{fs::File, path::Path, sync::Arc};
 
 use mchprs_blocks::BlockPos;
@@ -9,7 +9,7 @@ use mchprs_core::{
         PLOT_WIDTH, PlotWorld,
         worldedit::{load_schematic, paste_clipboard},
     },
-    redpiler::{Compiler, CompilerOptions, TaskMonitor},
+    redpilator::{Compiler, CompilerOptions, TaskMonitor},
     world::storage::Chunk,
 };
 

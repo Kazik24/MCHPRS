@@ -10,8 +10,8 @@ use mchprs_blocks::{BlockFace, BlockPos};
 use mchprs_world::{TickEntry, TickPriority};
 
 use crate::plot::{PLOT_BLOCK_HEIGHT, PLOT_BLOCK_WIDTH, PLOT_WIDTH, PlotWorld};
-pub use crate::redpiler::{CompileStatistics, CompilerOptions};
-use crate::redpiler::{Compiler, TaskMonitor};
+pub use crate::redpilator::{CompileStatistics, CompilerOptions};
+use crate::redpilator::{Compiler, TaskMonitor};
 use crate::redstone;
 use crate::world::{World, scheduler::TickScheduler, storage::Chunk};
 use std::io::Cursor;

@@ -1,15 +1,15 @@
 use crate::chat::{ChatComponentBuilder, ColorCode};
 use crate::messages;
 use crate::player::{PacketSender, Player};
-use crate::redpiler::CompilerOptions;
+use crate::redpilator::CompilerOptions;
 use mchprs_network::packets::clientbound::{CDisplayScoreboard, CScoreboardObjective, CUpdateScore, ClientBoundPacket};
 use mchprs_save_data::plot_data::{PistonAnimation, Tps};
 use std::collections::HashSet;
 
-const OBJECTIVE_NAME: &str = "redpiler_status";
+const OBJECTIVE_NAME: &str = "redpilator_status";
 
 #[derive(PartialEq, Eq, Default, Clone, Copy)]
-pub enum RedpilerState {
+pub enum RedpilatorState {
     #[default]
     Stopped,
     Compiling,
@@ -17,13 +17,13 @@ pub enum RedpilerState {
     RunningLlvm,
 }
 
-impl RedpilerState {
+impl RedpilatorState {
     fn to_str(self) -> &'static str {
         match self {
-            RedpilerState::Stopped => messages::SCOREBOARD_ENGINE_INTERPRETER,
-            RedpilerState::Compiling => messages::SCOREBOARD_ENGINE_COMPILING,
-            RedpilerState::Running => messages::SCOREBOARD_ENGINE_REDPILER,
-            RedpilerState::RunningLlvm => messages::SCOREBOARD_ENGINE_REDPILER_LLVM,
+            RedpilatorState::Stopped => messages::SCOREBOARD_ENGINE_INTERPRETER,
+            RedpilatorState::Compiling => messages::SCOREBOARD_ENGINE_COMPILING,
+            RedpilatorState::Running => messages::SCOREBOARD_ENGINE_REDPILATOR,
+            RedpilatorState::RunningLlvm => messages::SCOREBOARD_ENGINE_REDPILATOR_LLVM,
         }
     }
 }
@@ -156,7 +156,7 @@ fn visible_lines(lines: &[String], git_read: bool) -> Vec<&str> {
 #[derive(Default)]
 pub struct Scoreboard {
     current_state: Vec<String>,
-    redpiler_state: RedpilerState,
+    redpilator_state: RedpilatorState,
     compiler_flags: Vec<String>,
     metrics: PlotMetrics,
     git_readers: HashSet<u128>,
@@ -183,13 +183,13 @@ impl Scoreboard {
 
     fn lines(&self) -> Vec<String> {
         let mut lines = vec![
-            self.redpiler_state.to_str().to_owned(),
+            self.redpilator_state.to_str().to_owned(),
             self.metrics.tps.clone(),
             self.metrics.history.clone(),
             self.metrics.history_memory.clone(),
             self.metrics.visual_updates.clone(),
         ];
-        if matches!(self.redpiler_state, RedpilerState::Running | RedpilerState::RunningLlvm) && !self.compiler_flags.is_empty() {
+        if matches!(self.redpilator_state, RedpilatorState::Running | RedpilatorState::RunningLlvm) && !self.compiler_flags.is_empty() {
             lines.extend(self.compiler_flags.iter().map(messages::scoreboard_flag));
         }
         lines.extend([self.metrics.pistons.clone(), self.metrics.screen_only.clone(), self.metrics.git.clone()]);
@@ -281,25 +281,25 @@ impl Scoreboard {
         );
     }
 
-    pub fn set_redpiler_state(&mut self, players: &[Player], state: RedpilerState) {
-        self.redpiler_state = state;
-        if !matches!(state, RedpilerState::Running | RedpilerState::RunningLlvm) {
+    pub fn set_redpilator_state(&mut self, players: &[Player], state: RedpilatorState) {
+        self.redpilator_state = state;
+        if !matches!(state, RedpilatorState::Running | RedpilatorState::RunningLlvm) {
             self.compiler_flags.clear();
         }
         self.refresh_lines(players);
     }
 
-    pub fn set_redpiler_options(&mut self, players: &[Player], options: &CompilerOptions) {
+    pub fn set_redpilator_options(&mut self, players: &[Player], options: &CompilerOptions) {
         self.compiler_flags.clear();
-        if options.io_only && options.publication != Some(crate::redpiler::PublicationMode::Io) {
+        if options.io_only && options.publication != Some(crate::redpilator::PublicationMode::Io) {
             self.compiler_flags.push("io-only".to_owned());
         }
         if let Some(mode) = options.publication {
             self.compiler_flags.push(
                 match mode {
-                    crate::redpiler::PublicationMode::All => "publish-all",
-                    crate::redpiler::PublicationMode::Redstone => "publish-redstone",
-                    crate::redpiler::PublicationMode::Io => "publish-io",
+                    crate::redpilator::PublicationMode::All => "publish-all",
+                    crate::redpilator::PublicationMode::Redstone => "publish-redstone",
+                    crate::redpilator::PublicationMode::Io => "publish-io",
                 }
                 .to_owned(),
             );
@@ -380,15 +380,15 @@ mod tests {
     #[test]
     fn explicit_io_publication_has_one_scoreboard_flag() {
         let mut board = Scoreboard::default();
-        board.set_redpiler_options(&[], &CompilerOptions::parse("--publish-io").unwrap());
+        board.set_redpilator_options(&[], &CompilerOptions::parse("--publish-io").unwrap());
         assert_eq!(board.compiler_flags, ["publish-io"]);
     }
 
     #[test]
     fn footer_stays_below_flags_and_within_sidebar_limits() {
         let mut board = Scoreboard::default();
-        board.set_redpiler_state(&[], RedpilerState::Running);
-        board.set_redpiler_options(
+        board.set_redpilator_state(&[], RedpilatorState::Running);
+        board.set_redpilator_options(
             &[],
             &CompilerOptions {
                 io_only: true,
@@ -413,12 +413,12 @@ mod tests {
             &["Pistons: auto/off", "Screen only: on", "Git: very-long-b...",]
         );
         for engine in [
-            RedpilerState::Running,
-            RedpilerState::RunningLlvm,
-            RedpilerState::Compiling,
-            RedpilerState::Stopped,
+            RedpilatorState::Running,
+            RedpilatorState::RunningLlvm,
+            RedpilatorState::Compiling,
+            RedpilatorState::Stopped,
         ] {
-            board.set_redpiler_state(&[], engine);
+            board.set_redpilator_state(&[], engine);
             let lines = &board.current_state;
             assert!(lines.len() <= 15);
             assert!(lines.iter().all(|line| line.is_ascii() && line.len() <= lines[0].len()));

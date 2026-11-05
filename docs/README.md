@@ -9,7 +9,7 @@ compatibility, logical execution, and individual fixture results are separate cl
 | [Redstone model](REDSTONE_MODEL.md) | Electrical rules, component transitions, notifications, and scheduled work. |
 | [Piston model](PISTON_MODEL.md) | Physical movement, BUD transactions, reset, and instant ordering. |
 | [Interpreter architecture](INTERPRETER_ARCHITECTURE.md) | Physical execution, caches, verification, and reproduction commands. |
-| [Redpiler architecture](REDPILER_ARCHITECTURE.md) | Sampled compilation, supported lifecycle, and interpreter handoff. |
+| [Redpilator architecture](REDPILATOR_ARCHITECTURE.md) | Sampled compilation, supported lifecycle, and interpreter handoff. |
 | [Permissions](MCHPRS_PERMISSIONS.md) | Permission checks, configurable limits, and rank metadata. |
 | [Waveform analyzer design](../scraps/docs/WAVEFORM_ANALYZER_DESIGN.md) | Interpreter capture, binary probes, public HTTP/SSE API and React viewer. |
 | [Waveform analyzer plan](../scraps/docs/WAVEFORM_ANALYZER_PLAN.md) | Implementation sequence and acceptance gates. |
@@ -25,7 +25,7 @@ Keep only maintained, general references here. Put dated reports, measurements,
 superseded proposals, and detailed investigation notes in [scraps/docs](../scraps/docs/README.md).
 The [2026-10-21 archive](../scraps/docs/research-2026-10-21/README.md) preserves the
 research consolidated into these guides, including previous TODO and benchmark
-plans. The [architecture review](../scraps/docs/reports/REDPILER_REVIEW_2026-10-21.md)
+plans. The [architecture review](../scraps/docs/reports/REDPILATOR_REVIEW_2026-10-21.md)
 records the release assessment and cleanup priorities.
 
 Update the owning reference with semantic changes rather than creating another

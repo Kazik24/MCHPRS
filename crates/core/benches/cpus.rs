@@ -1,5 +1,5 @@
-//! Deterministic end-to-end interpreter/Redpiler CPU benchmarks with frozen-state assertions.
-//! CPU initialization, Redpiler compilation and verification are excluded from tick timing.
+//! Deterministic end-to-end interpreter/Redpilator CPU benchmarks with frozen-state assertions.
+//! CPU initialization, Redpilator compilation and verification are excluded from tick timing.
 #![recursion_limit = "256"]
 #[path = "../test_support/cpus.rs"]
 mod cpu_support;
@@ -25,8 +25,8 @@ fn main() {
         .windows(2)
         .find(|pair| pair[0] == "--engine")
         .map_or("interpreter", |pair| pair[1].as_str());
-    assert!(matches!(engine, "interpreter" | "redpiler"), "unknown engine {engine}");
-    let redpiler = engine == "redpiler";
+    assert!(matches!(engine, "interpreter" | "redpilator"), "unknown engine {engine}");
+    let redpilator = engine == "redpilator";
     let output = args.windows(2).find(|pair| pair[0] == "--output").map(|pair| &pair[1]);
     let label = args
         .windows(2)
@@ -53,7 +53,7 @@ fn main() {
         let mut visual_counts = Vec::new();
         let mut instant_cache_stats = Vec::new();
         for sample in 1..=iterations {
-            let timing = replay_with_visuals(cpu, &expected, screen_only, flush_every, redpiler);
+            let timing = replay_with_visuals(cpu, &expected, screen_only, flush_every, redpilator);
             if let Some(compile) = timing.compile {
                 println!("{} compile: {:.3}s (excluded from tick timing)", cpu.name, compile.as_secs_f64());
                 compile_times.push(compile);

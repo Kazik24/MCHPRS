@@ -11,7 +11,7 @@
     },
     "os": "Microsoft Windows NT 10.0.26200.0",
     "profile": "release/bench, fat LTO",
-    "source": "HEAD archive in target/interpreter-opt-20261009/source; unrelated Redpiler working changes excluded",
+    "source": "HEAD archive in target/interpreter-opt-20261009/source; unrelated Redpilator working changes excluded",
     "timer": "native interpreted simulation; no clients; CPU validation and imports outside timers; FPU input actions included",
     "affinity_mask": 4,
     "process_priority": "Normal",

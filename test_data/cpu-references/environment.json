@@ -14,7 +14,7 @@
     "crates/core/src/redstone/wire/turbo.rs": "d5da41168fbd6333ba318ac8254ebe3b597521f3bb27c42fbea2c3561b996de9",
     "crates/core/src/redstone/piston.rs": "b9c1bda3b674e499f92d98e2abb01f41d490cfbae28335d2207626bd2d10c0e5",
     "crates/core/src/plot/mod.rs": "5e55ca49eba1ab00d74ca3f593050a5753f6e2c260b95c5564fa418a7c07b6db",
-    "crates/core/src/redpiler/backend/queue.rs": "16a3c1427c3a02eb5e7749cd24fe17244d9aa057f9a223e7f72c8fc346fa06dd"
+    "crates/core/src/redpilator/backend/queue.rs": "16a3c1427c3a02eb5e7749cd24fe17244d9aa057f9a223e7f72c8fc346fa06dd"
   },
   "optimized_source_sha256": {
     "crates/blocks/src/blocks/mod.rs": "bed9ded903cf45caa146a0759471294ec70e185cc2a2dd660c4dbe811a411dd0",
@@ -22,7 +22,7 @@
     "crates/core/src/redstone/wire/turbo.rs": "57c05585bf56ee178c6520b667d803063c13afa676d142aa12c1be3468a4c9e8",
     "crates/core/src/redstone/piston.rs": "b9c1bda3b674e499f92d98e2abb01f41d490cfbae28335d2207626bd2d10c0e5",
     "crates/core/src/plot/mod.rs": "b8d29f88da67c71b01769c10c45f1231226eed617e8f1217f337612622e29526",
-    "crates/core/src/redpiler/backend/queue.rs": "9c1b71d9fcbe184ad163efbf34e0303c61aba1f6d9cba570c85ccf9e8c0155a3",
+    "crates/core/src/redpilator/backend/queue.rs": "9c1b71d9fcbe184ad163efbf34e0303c61aba1f6d9cba570c85ccf9e8c0155a3",
     "crates/core/benches/cpus.rs": "2ba35d37c93d89fd34ec2d98206000955fdf44dc5409c6045ac2f6431c2538e7",
     "crates/core/benches/support/cpus.rs": "6ae12f3f04cfa427635152f2cbea4d14a86b1fa19f15ee69a0104b26233a58fd"
   },

@@ -267,13 +267,13 @@ impl Plot {
     }
 
     fn capture_git(&mut self) -> Result<(Snapshot, Reservation)> {
-        ensure!(!self.compiling_redpiler(), messages::REDPILER_COMPILATION_PAUSED);
+        ensure!(!self.compiling_redpilator(), messages::REDPILATOR_COMPILATION_PAUSED);
         let started = Instant::now();
         ensure!(
             self.world.piston_state.phase == AdvancePhase::BetweenTicks,
             messages::GIT_FINISH_PARTIAL_TICK
         );
-        self.reset_redpiler().context("could not export active compiled state")?;
+        self.reset_redpilator().context("could not export active compiled state")?;
         for chunk in &mut self.world.chunks {
             chunk.prepare_history();
             for entity in chunk.block_entities.values() {
@@ -395,8 +395,8 @@ impl Plot {
             );
         }
         let inspection = if args == ["inspect"] {
-            ensure!(!self.compiling_redpiler(), messages::REDPILER_COMPILATION_PAUSED);
-            self.reset_redpiler().context("could not export active compiled state")?;
+            ensure!(!self.compiling_redpilator(), messages::REDPILATOR_COMPILATION_PAUSED);
+            self.reset_redpilator().context("could not export active compiled state")?;
             let viewer = &self.players[player];
             let pos = super::worldedit::ray_trace_block(&self.world, viewer.eye_position(), f64::from(pitch), f64::from(yaw), 10.0)
                 .context(messages::GIT_INSPECT_TARGET_REQUIRED)?;
@@ -749,7 +749,7 @@ impl Plot {
     }
 
     fn apply_git(&mut self, snapshot: Snapshot) -> Result<()> {
-        self.reset_redpiler().context("could not export active compiled state")?;
+        self.reset_redpilator().context("could not export active compiled state")?;
         self.close_all_containers();
         let coords = snapshot.plot;
         // Snapshot chunks are row-major; decode each index to its local x/z coordinates.

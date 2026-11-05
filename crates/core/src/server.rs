@@ -192,7 +192,7 @@ impl MinecraftServer {
         }));
 
         info!("Starting MROWW server...");
-        if let Err(error) = crate::redpiler::initialize_llvm_cache() {
+        if let Err(error) = crate::redpilator::initialize_llvm_cache() {
             tracing::error!(%error, "LLVM compiler cache initialization failed");
         }
         let start_time = Instant::now();

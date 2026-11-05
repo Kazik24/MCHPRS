@@ -21,7 +21,7 @@ pub(super) fn toggle(player: &mut Player, args: &[&str]) -> Result<()> {
         player.send_packet(
             &CDisplayScoreboard {
                 position: 1,
-                score_name: "redpiler_status".into(),
+                score_name: "redpilator_status".into(),
             }
             .encode(),
         );

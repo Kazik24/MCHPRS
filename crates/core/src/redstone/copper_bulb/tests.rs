@@ -166,7 +166,7 @@ fn llvm_copper_bulbs_match_java_1_21_5() {
 }
 
 fn compiled_bulbs_match_java(llvm: bool) {
-    use crate::redpiler::{Compiler, CompilerOptions};
+    use crate::redpilator::{Compiler, CompilerOptions};
 
     let reference: serde_json::Value = serde_json::from_str(include_str!("../../../../../test_data/copper-bulbs/java-1.21.5.json")).unwrap();
     assert_eq!(reference["version"], "1.21.5");
@@ -239,7 +239,7 @@ fn llvm_copper_bulbs_match_native_latch_comparators_observer_and_reset() {
 }
 
 fn compiled_copper_bulb_matches_native(name: &str, lit: bool, powered: bool, llvm: bool) {
-    use crate::redpiler::{Compiler, CompilerOptions};
+    use crate::redpilator::{Compiler, CompilerOptions};
 
     let mut world = circuit(name, lit, powered);
     world.schedule_tick(DIRECT, 5, mchprs_world::TickPriority::Normal);

@@ -1,0 +1,629 @@
+use super::{
+    CompilerOptions, PublicationMode, TaskMonitor,
+    sampled::{self, ExportKey, LlvmRuntime, MovingPart, Runtime, ScratchEntry, ScratchError},
+};
+use crate::redstone;
+use crate::world::{World, for_each_block_mut_optimized};
+use mchprs_blocks::{BlockPos, block_entities::BlockEntity, blocks::Block};
+use mchprs_world::{AdvancePhase, PistonMotion, TickEntry};
+use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
+use std::time::{Duration, Instant};
+
+#[derive(Debug)]
+pub enum CompileError {
+    AlreadyActive,
+    Unsupported(ScratchError),
+    UnsupportedComponents { first: Vec<ScratchError>, total: usize },
+    Cancelled,
+}
+
+impl std::fmt::Display for CompileError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::AlreadyActive => f.write_str("reset the active compiler before recompiling"),
+            Self::Unsupported(error) => {
+                if let Some(position) = error.position {
+                    write!(f, "Cannot compile at {position}: {}", error.reason)
+                } else {
+                    f.write_str(error.reason)
+                }
+            }
+            Self::UnsupportedComponents { first, total } => {
+                for (index, error) in first.iter().enumerate() {
+                    if index > 0 {
+                        f.write_str("; ")?;
+                    }
+                    if let Some(pos) = error.position {
+                        write!(f, "{} at ({}, {}, {})", error.reason, pos.x, pos.y, pos.z)?;
+                    } else {
+                        f.write_str(error.reason)?;
+                    }
+                }
+                if *total > first.len() {
+                    write!(f, "; and {} other unsupported LLVM components", total - first.len())?;
+                }
+                Ok(())
+            }
+            Self::Cancelled => f.write_str("compilation cancelled"),
+        }
+    }
+}
+
+impl std::error::Error for CompileError {}
+
+impl CompileError {
+    pub(crate) fn recovery_hint(&self) -> Option<&'static str> {
+        use crate::messages;
+        let reason = match self {
+            Self::UnsupportedComponents { .. } => return Some(messages::REDPILATOR_RETRY_RUST),
+            Self::Unsupported(error) => error.reason,
+            _ => return None,
+        };
+        if reason.starts_with("LLVM does not support") {
+            Some(messages::REDPILATOR_RETRY_RUST)
+        } else if reason.starts_with("LLVM cannot compile during")
+            || reason == "LLVM cannot import pending piston work; let it settle before compiling"
+            || matches!(
+                reason,
+                "scratch entry is mid-tick"
+                    | "scratch entry has queued piston work"
+                    | "scratch entry has piston motion"
+                    | "scratch entry has pending movement work"
+            )
+        {
+            Some(messages::REDPILATOR_RETRY_SETTLED)
+        } else if matches!(
+            reason,
+            "LLVM DLL ABI/version mismatch"
+                | "LLVM DLL is missing a required export"
+                | "LLVM module is missing a required export"
+                | "could not load LLVM DLL (set MCHPRS_LLVM_DLL)"
+                | "could not load LLVM module"
+        ) {
+            Some(messages::REDPILATOR_REBUILD_LLVM)
+        } else if reason.contains("outside compiled region") || reason.contains("outside captured boundary") {
+            Some(messages::REDPILATOR_CAPTURE_WHOLE_CIRCUIT)
+        } else if matches!(
+            reason,
+            "invalid native Program descriptor" | "LLVM rejected the sampled Program" | "LLVM state size rejected"
+        ) {
+            Some(messages::REDPILATOR_INTERNAL_FAILURE_HELP)
+        } else {
+            None
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ExecutionError(
+    /// underlying runtime failure, including its optional world position and reason.
+    ScratchError,
+);
+
+impl std::fmt::Display for ExecutionError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if let Some(position) = self.0.position {
+            write!(f, "Compiled execution failed at {position}: {}", self.0.reason)
+        } else {
+            write!(f, "Compiled execution failed: {}", self.0.reason)
+        }
+    }
+}
+
+impl std::error::Error for ExecutionError {}
+
+#[derive(Debug, Clone)]
+pub struct CompileStatistics {
+    /// number of compiled redstone components.
+    pub components: usize,
+    /// number of host scheduled ticks copied into the compiled runtime.
+    pub pending_ticks: usize,
+    /// elapsed compile time.
+    pub duration: Duration,
+    /// Whether a prepared program or an exported executor checkpoint was reused.
+    pub cached: bool,
+}
+
+impl CompileStatistics {
+    pub fn chat_summary_lines(&self) -> Vec<String> {
+        vec![format!(
+            "Redpilator {} {} components; {} pending ticks; {:?}",
+            if self.cached { "reused" } else { "compiled" },
+            self.components,
+            self.pending_ticks,
+            self.duration
+        )]
+    }
+}
+
+struct ExportedMotion {
+    /// host motion identity used to correlate updates across publications.
+    identity: u64,
+    /// whether this host motion was observed in the current publication pass.
+    seen: bool,
+}
+
+#[derive(Default)]
+pub struct Compiler {
+    /// Rust executor, or a read-only publication projection of the LLVM executor.
+    pub(super) runtime: Option<Runtime>,
+    /// active experimental LLVM executor; ticks use it when present.
+    pub(super) llvm_runtime: Option<LlvmRuntime>,
+    /// publication/reset options used by the current compilation.
+    options: CompilerOptions,
+    /// most recent successful compile statistics.
+    statistics: Option<CompileStatistics>,
+    /// host moving-piston identities tracked between publications.
+    exported_motions: HashMap<ExportKey, ExportedMotion>,
+    /// moving piston block parts queued for host-world publication.
+    publication_parts: Vec<MovingPart>,
+    /// positions already included in the current publication.
+    publication_positions: HashSet<BlockPos>,
+    /// host motion identities retired during reconciliation.
+    retired_motions: HashSet<u64>,
+    /// moving-piston positions mapped to host motion indices.
+    host_motion_indices: HashMap<BlockPos, usize>,
+    /// indicates a publication reconciliation pass is in progress.
+    publication_phase: bool,
+}
+
+impl Compiler {
+    pub fn stats(&self) -> Option<&CompileStatistics> {
+        self.statistics.as_ref()
+    }
+
+    pub fn is_active(&self) -> bool {
+        self.runtime.is_some() || self.llvm_runtime.is_some()
+    }
+
+    pub fn current_flags(&self) -> Option<&CompilerOptions> {
+        self.is_active().then_some(&self.options)
+    }
+
+    /// Change visible publication without recompiling or advancing execution.
+    pub fn set_publication_mode(&mut self, mode: PublicationMode) -> bool {
+        let Some(runtime) = self.runtime.as_mut() else {
+            return false;
+        };
+        if self.options.publication_mode() != mode {
+            runtime.invalidate_publication();
+        }
+        self.options.publication = Some(mode);
+        self.options.io_only = mode == PublicationMode::Io;
+        true
+    }
+
+    pub fn compile<W: World>(
+        &mut self,
+        world: &W,
+        bounds: (BlockPos, BlockPos),
+        options: CompilerOptions,
+        ticks: Vec<TickEntry>,
+        monitor: Arc<TaskMonitor>,
+    ) -> Result<(), CompileError> {
+        self.compile_cached(world, bounds, options, ticks, monitor, None)
+    }
+
+    pub(crate) fn cached_program(&self) -> Option<Arc<sampled::Program>> {
+        self.runtime.as_ref().map(Runtime::shared_program)
+    }
+
+    /// Resume an executor only after its owner verifies the exported world is unchanged.
+    pub(crate) fn resume_cached<W: World>(
+        &mut self,
+        world: &W,
+        mut options: CompilerOptions,
+        monitor: Arc<TaskMonitor>,
+        mut cached: Self,
+    ) -> Result<(), CompileError> {
+        if self.is_active() {
+            return Err(CompileError::AlreadyActive);
+        }
+        let started = Instant::now();
+        monitor.set_phase("restoring exported executor");
+        if monitor.cancelled() {
+            return Err(CompileError::Cancelled);
+        }
+        options.io_only = options.publication_mode() == PublicationMode::Io;
+        if !cached.is_active() || options.update || options.llvm != cached.options.llvm {
+            return Err(CompileError::Unsupported(ScratchError {
+                position: None,
+                reason: "incompatible executor checkpoint",
+            }));
+        }
+        let runtime = cached.runtime.as_mut().unwrap();
+        runtime.refresh_command_output_state(world);
+        runtime.invalidate_publication();
+        if let Some(native) = cached.llvm_runtime.as_mut() {
+            native.acknowledge_effects(runtime.queued_command_outputs());
+        }
+        let statistics = cached.statistics.as_mut().unwrap();
+        statistics.pending_ticks = runtime.pending_entries().len();
+        statistics.duration = started.elapsed();
+        statistics.cached = true;
+        cached.options = options;
+        if monitor.cancelled() {
+            return Err(CompileError::Cancelled);
+        }
+        *self = cached;
+        Ok(())
+    }
+
+    pub(crate) fn compile_cached<W: World>(
+        &mut self,
+        world: &W,
+        bounds: (BlockPos, BlockPos),
+        mut options: CompilerOptions,
+        ticks: Vec<TickEntry>,
+        monitor: Arc<TaskMonitor>,
+        cached: Option<Arc<sampled::Program>>,
+    ) -> Result<(), CompileError> {
+        if self.is_active() {
+            return Err(CompileError::AlreadyActive);
+        }
+        options.io_only = options.publication_mode() == PublicationMode::Io;
+        let start = Instant::now();
+        monitor.set_phase("entry validation");
+        if monitor.cancelled() {
+            return Err(CompileError::Cancelled);
+        }
+        if options.llvm {
+            validate_llvm_entry(world.piston_state()).map_err(CompileError::Unsupported)?;
+        }
+        let entry = ScratchEntry {
+            scheduled: ticks.clone(),
+            piston: world.piston_state().clone(),
+        };
+        let cache_hit = cached.is_some();
+        let program = if let Some(program) = cached {
+            program
+        } else {
+            Arc::new(sampled::compile_program(world, bounds, entry, Some(&monitor)).map_err(|error| {
+                if monitor.cancelled() {
+                    CompileError::Cancelled
+                } else {
+                    CompileError::Unsupported(error)
+                }
+            })?)
+        };
+        if monitor.cancelled() {
+            return Err(CompileError::Cancelled);
+        }
+        let components = program.component_count();
+        let pending_ticks = ticks.len();
+        let llvm = if options.llvm {
+            monitor.set_phase("LLVM code generation and initialization");
+            Some(prepare_llvm_runtime(&program, &ticks, world.piston_state().logical_tick)?)
+        } else {
+            None
+        };
+        monitor.set_phase("initializing runtime");
+        let runtime = sampled::start_shared_runtime(program, ticks, world.piston_state().clone()).map_err(CompileError::Unsupported)?;
+        if monitor.cancelled() {
+            return Err(CompileError::Cancelled);
+        }
+        self.prepare_publication_buffers(runtime.motion_part_capacity());
+        self.runtime = Some(runtime);
+        self.llvm_runtime = llvm;
+        self.statistics = Some(CompileStatistics {
+            components,
+            pending_ticks,
+            duration: start.elapsed(),
+            cached: cache_hit,
+        });
+        self.options = options;
+        if std::env::var_os("MCHPRS_REDPILATOR_PHASE_TIMINGS").is_some() {
+            self.runtime.as_ref().unwrap().log_memory_layout();
+        }
+        Ok(())
+    }
+
+    fn prepare_publication_buffers(&mut self, capacity: usize) {
+        self.publication_parts.clear();
+        self.publication_parts.reserve(capacity);
+        self.publication_positions.clear();
+        self.publication_positions.reserve(capacity);
+        self.retired_motions.clear();
+        self.retired_motions.reserve(capacity);
+        self.host_motion_indices.clear();
+        self.host_motion_indices.reserve(capacity);
+        self.exported_motions.clear();
+        self.exported_motions.reserve(capacity);
+    }
+
+    pub fn reset<W: World>(&mut self, world: &mut W, bounds: (BlockPos, BlockPos)) {
+        if let Err(error) = self.try_reset(world, bounds) {
+            tracing::error!(%error, "compiled reset failed; compiler state retained");
+        }
+    }
+
+    pub fn try_reset<W: World>(&mut self, world: &mut W, bounds: (BlockPos, BlockPos)) -> Result<(), ExecutionError> {
+        self.export_for_reset(world)?;
+        self.runtime = None;
+        self.llvm_runtime = None;
+        self.exported_motions.clear();
+        if self.options.update {
+            let (first_pos, second_pos) = bounds;
+            for_each_block_mut_optimized(world, first_pos, second_pos, |world, pos| {
+                let block = world.get_block(pos);
+                redstone::update(block, world, pos, None);
+            });
+        }
+        self.options = Default::default();
+        Ok(())
+    }
+
+    /// Export reset state while retaining all topology, execution and publication bookkeeping.
+    pub(crate) fn try_suspend<W: World>(&mut self, world: &mut W, bounds: (BlockPos, BlockPos)) -> Result<Option<Self>, ExecutionError> {
+        if !self.is_active() || self.options.update {
+            self.try_reset(world, bounds)?;
+            return Ok(None);
+        }
+        self.export_for_reset(world)?;
+        Ok(Some(std::mem::take(self)))
+    }
+
+    fn export_for_reset<W: World>(&mut self, world: &mut W) -> Result<(), ExecutionError> {
+        if self.runtime.is_some() {
+            self.publish(world, false, true)?;
+            let runtime = self.runtime.as_ref().unwrap();
+            #[cfg(feature = "redpilator-trace")]
+            runtime.log_routing_metrics();
+            let pending = runtime.pending_entries();
+            for entry in pending {
+                world.restore_scheduled_tick(entry);
+            }
+        }
+        Ok(())
+    }
+
+    pub fn tick(&mut self) -> Result<(), ExecutionError> {
+        if let Some(runtime) = self.llvm_runtime.as_mut() {
+            return runtime.tick().map_err(ExecutionError);
+        }
+        self.runtime.as_mut().expect("compiler inactive").tick().map_err(ExecutionError)
+    }
+
+    pub fn tick_with_world<W: World>(&mut self, _world: &mut W) -> Result<(), ExecutionError> {
+        self.tick()
+    }
+
+    pub fn on_use_block(&mut self, pos: BlockPos) {
+        if let Err(error) = self.try_on_use_block(pos) {
+            tracing::error!(%error, "sampled runtime control failed");
+        }
+    }
+
+    pub fn try_on_use_block(&mut self, pos: BlockPos) -> Result<(), ExecutionError> {
+        if let Some(runtime) = self.llvm_runtime.as_mut() {
+            return runtime.use_control(pos).map_err(ExecutionError);
+        }
+        self.runtime.as_mut().expect("compiler inactive").use_control(pos).map_err(ExecutionError)
+    }
+
+    pub fn try_set_pressure_plate(&mut self, pos: BlockPos, powered: bool) -> Result<(), ExecutionError> {
+        if let Some(runtime) = self.llvm_runtime.as_mut() {
+            return runtime.set_pressure_plate(pos, powered).map_err(ExecutionError);
+        }
+        self.runtime
+            .as_mut()
+            .expect("compiler inactive")
+            .set_pressure_plate(pos, powered)
+            .map_err(ExecutionError)
+    }
+
+    pub(crate) fn accepts_control(&self, pos: BlockPos) -> bool {
+        self.runtime.as_ref().is_some_and(|runtime| runtime.accepts_control(pos))
+            || self.llvm_runtime.as_ref().is_some_and(|runtime| runtime.accepts_control(pos))
+    }
+
+    pub fn flush<W: World>(&mut self, world: &mut W) {
+        if let Err(error) = self.try_flush(world) {
+            tracing::error!(%error, "sampled state publication failed");
+        }
+    }
+
+    pub fn try_flush<W: World>(&mut self, world: &mut W) -> Result<(), ExecutionError> {
+        let mode = self.options.publication_mode();
+        self.publish(world, mode == PublicationMode::Io, mode == PublicationMode::All)
+    }
+
+    pub(crate) fn flush_effects<W: World>(&mut self, world: &mut W) {
+        if let Some(llvm) = self.llvm_runtime.as_ref() {
+            if let Err(error) = llvm.sync_publication(self.runtime.as_mut().expect("LLVM publication projection missing")) {
+                tracing::error!(?error, "LLVM effect read failed");
+                return;
+            }
+        }
+        let runtime = self.runtime.as_mut().expect("compiler inactive");
+        runtime.publish_commands(world, true);
+        for (component, pos, instrument, note) in runtime.notes.drain(..) {
+            redstone::noteblock::play_note(world, pos, instrument, note);
+            runtime.note_queued[component] = false;
+        }
+        if let Some(llvm) = self.llvm_runtime.as_mut() {
+            llvm.acknowledge_effects(runtime.queued_command_outputs());
+        }
+    }
+
+    pub(crate) fn try_flush_complete<W: World>(&mut self, world: &mut W) -> Result<(), ExecutionError> {
+        self.publish(world, false, true)
+    }
+
+    fn publish<W: World>(&mut self, world: &mut W, io_only: bool, full: bool) -> Result<(), ExecutionError> {
+        if let Some(llvm) = self.llvm_runtime.as_ref() {
+            llvm.sync_publication(self.runtime.as_mut().expect("LLVM publication projection missing"))
+                .map_err(ExecutionError)?;
+        }
+        self.runtime
+            .as_mut()
+            .expect("compiler inactive")
+            .prepare_publication(io_only || !full)
+            .map_err(ExecutionError)?;
+        let runtime = self.runtime.as_ref().unwrap();
+        if full && !io_only {
+            runtime
+                .write_moving_parts(&mut self.publication_parts, &mut self.publication_positions)
+                .map_err(ExecutionError)?;
+            // Reserve identities before host setters register any new parts.
+            if world
+                .piston_state()
+                .next_identity
+                .checked_add((self.publication_parts.len() as u64).saturating_mul(2))
+                .is_none()
+            {
+                return Err(ExecutionError(ScratchError {
+                    position: None,
+                    reason: "piston motion identity limit exceeded",
+                }));
+            }
+            self.publication_phase = !self.publication_phase;
+            let mut next_identity = world.piston_state().next_identity;
+            for part in &self.publication_parts {
+                let entry = self.exported_motions.entry(part.key).or_insert_with(|| {
+                    next_identity += 1;
+                    ExportedMotion {
+                        identity: next_identity,
+                        seen: self.publication_phase,
+                    }
+                });
+                entry.seen = self.publication_phase;
+            }
+            world.piston_state_mut().next_identity = next_identity;
+            self.retired_motions.clear();
+            self.exported_motions.retain(|key, entry| {
+                if entry.seen == self.publication_phase {
+                    true
+                } else {
+                    self.retired_motions.insert(entry.identity);
+                    world.delete_block_entity(key.3);
+                    false
+                }
+            });
+        }
+        for (pos, block, comparator) in runtime.publication_changes(full) {
+            if io_only && !is_output(block) {
+                continue;
+            }
+            if full && !io_only && self.publication_positions.contains(&pos) {
+                continue;
+            }
+            let previous = world.get_block(pos);
+            if !full && previous.registry_id() != block.registry_id() {
+                continue;
+            }
+            if previous != block {
+                world.set_block(pos, block);
+            }
+            if !io_only && let Some(output_strength) = comparator {
+                if let Some(BlockEntity::Comparator { output_strength: current }) = world.get_block_entity_mut(pos) {
+                    *current = output_strength;
+                }
+            }
+        }
+        if full && !io_only {
+            for part in &self.publication_parts {
+                if world.get_block(part.pos) != part.block {
+                    world.set_block(part.pos, part.block);
+                }
+                if let Some(BlockEntity::MovingPiston(entity)) = world.get_block_entity_mut(part.pos) {
+                    *entity = part.entity;
+                } else {
+                    world.set_block_entity(part.pos, BlockEntity::MovingPiston(part.entity));
+                }
+            }
+            let logical_tick = runtime.logical_tick();
+            let state = world.piston_state_mut();
+            self.host_motion_indices.clear();
+            let mut index = 0;
+            state.motions.retain(|motion| {
+                if self.retired_motions.contains(&motion.identity) {
+                    return false;
+                }
+                if self.publication_positions.contains(&motion.pos) {
+                    if self.host_motion_indices.contains_key(&motion.pos) {
+                        return false;
+                    }
+                    self.host_motion_indices.insert(motion.pos, index);
+                }
+                index += 1;
+                true
+            });
+            for part in &self.publication_parts {
+                let identity = self.exported_motions[&part.key].identity;
+                if let Some(&index) = self.host_motion_indices.get(&part.pos) {
+                    let motion = &mut state.motions[index];
+                    motion.identity = identity;
+                    motion.progress = part.progress;
+                    motion.previous_progress = (part.progress - 0.5).max(0.0);
+                    motion.last_tick = logical_tick;
+                } else {
+                    state.motions.push_back(PistonMotion {
+                        pos: part.pos,
+                        identity,
+                        progress: part.progress,
+                        previous_progress: (part.progress - 0.5).max(0.0),
+                        last_tick: logical_tick,
+                        carried_entity: None,
+                    });
+                }
+            }
+            state.logical_tick = logical_tick;
+            state.phase = AdvancePhase::BetweenTicks;
+            state.scheduled_advanced = false;
+            state.events.retain(|event| !runtime.owns_piston(event.pos));
+            state.events.extend(runtime.pending_piston_event_iter());
+            state.movement_work.clear();
+            state.movement_cursor = 0;
+        }
+        let runtime = self.runtime.as_mut().unwrap();
+        runtime.publish_commands(world, io_only);
+        for (component, pos, instrument, note) in runtime.notes.drain(..) {
+            redstone::noteblock::play_note(world, pos, instrument, note);
+            runtime.note_queued[component] = false;
+        }
+        runtime.mark_published(io_only || !full);
+        if let Some(llvm) = self.llvm_runtime.as_mut() {
+            llvm.acknowledge_effects(runtime.queued_command_outputs());
+        }
+        Ok(())
+    }
+}
+
+fn validate_llvm_entry(piston: &mchprs_world::PistonState) -> Result<(), ScratchError> {
+    let has_pending_movement =
+        !piston.events.is_empty() || !piston.motions.is_empty() || !piston.movement_work.is_empty() || piston.movement_cursor != 0;
+    if !has_pending_movement && piston.phase == AdvancePhase::BetweenTicks {
+        return Ok(());
+    }
+    let position = piston
+        .events
+        .front()
+        .map(|event| event.pos)
+        .or_else(|| piston.motions.front().map(|motion| motion.pos))
+        .or_else(|| piston.movement_work.get(piston.movement_cursor).map(|&(pos, _)| pos));
+    let reason = match piston.phase {
+        AdvancePhase::ScheduledTicks => "LLVM cannot compile during scheduled ticks; finish the current tick first",
+        AdvancePhase::PistonEvents => "LLVM cannot compile during piston events; finish the current tick first",
+        AdvancePhase::MovingEntities => "LLVM cannot compile during piston movement; finish the current tick first",
+        AdvancePhase::BetweenTicks => "LLVM cannot import pending piston work; let it settle before compiling",
+    };
+    Err(ScratchError { position, reason })
+}
+
+fn prepare_llvm_runtime(program: &sampled::Program, ticks: &[TickEntry], logical_tick: u64) -> Result<LlvmRuntime, CompileError> {
+    let (first, total) = sampled::unsupported_components(program);
+    if total > 1 {
+        return Err(CompileError::UnsupportedComponents { first, total });
+    }
+    let mut runtime = LlvmRuntime::new(program, ticks).map_err(CompileError::Unsupported)?;
+    runtime.initialize_tick(logical_tick);
+    Ok(runtime)
+}
+
+fn is_output(block: Block) -> bool {
+    matches!(block, Block::Lever { .. } | Block::StoneButton { .. } | Block::RedstoneLamp { .. })
+        || block.is_copper_bulb()
+        || block.pressure_plate_powered().is_some()
+}

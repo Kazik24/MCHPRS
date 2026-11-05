@@ -117,7 +117,7 @@
     "live Java client/network comparison capture"
   ],
   "validation_notes": [
-    "Shared-checkout core compile was interrupted by unrelated Redpiler API changes; no interpreter/compiler fixes were made for this task.",
+    "Shared-checkout core compile was interrupted by unrelated Redpilator API changes; no interpreter/compiler fixes were made for this task.",
     "F: ran out of space during initial isolated compilation. The owned validation checkout was moved to E: with Move-Item and git worktree repair, using a separate target directory.",
     "Shared WorldEdit selection aliases added during validation were preserved and are absent from the frozen validation source.",
     "An initial outbound regression decoder incorrectly assumed the chunk frame was below the compression threshold; the test now handles compressed chunk frames.",

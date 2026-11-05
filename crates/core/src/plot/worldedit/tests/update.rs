@@ -9,7 +9,7 @@ use mchprs_network::{BlockActionAcknowledgement, PlayerPacketSender, test_suppor
 
 #[test]
 fn compiled_plots_reject_worldedit_and_stacking_until_explicit_reset() {
-    use crate::redpiler::{CompilerOptions, PublicationMode};
+    use crate::redpilator::{CompilerOptions, PublicationMode};
 
     for publication in [None, Some(PublicationMode::All), Some(PublicationMode::Io)] {
         let (mut plot, _peer) = crate::plot::client_sync_tests::fixture(false);
@@ -22,7 +22,7 @@ fn compiled_plots_reject_worldedit_and_stacking_until_explicit_reset() {
         plot.handle_command(0, "//set", vec!["stone"]);
         let undo_count = plot.players[0].worldedit_undo.len();
         assert_eq!(plot.world.get_block(source), Block::Stone {});
-        plot.redpiler
+        plot.redpilator
             .compile(
                 &plot.world,
                 (BlockPos::new(30, 19, 30), BlockPos::new(38, 23, 38)),
@@ -43,7 +43,7 @@ fn compiled_plots_reject_worldedit_and_stacking_until_explicit_reset() {
             ("/rs", vec!["east", "1"]),
         ] {
             plot.handle_command(0, command, args);
-            assert!(plot.redpiler.is_active(), "{command} stopped Redpiler");
+            assert!(plot.redpilator.is_active(), "{command} stopped Redpilator");
             assert_eq!(plot.world.get_block(source), Block::Stone {}, "{command}");
             assert_eq!(
                 plot.world.get_block(source.offset(mchprs_blocks::BlockFace::East)),
@@ -55,13 +55,13 @@ fn compiled_plots_reject_worldedit_and_stacking_until_explicit_reset() {
         }
         // Copying and selecting do not modify the compiled circuit.
         plot.handle_command(0, "//copy", vec![]);
-        assert!(plot.redpiler.is_active());
+        assert!(plot.redpilator.is_active());
         assert_eq!(
             plot.players[0].worldedit_clipboard.as_ref().unwrap().data.get_entry(0),
             Block::Stone {}.get_id()
         );
         plot.handle_command(0, "/rp", vec!["reset"]);
-        assert!(!plot.redpiler.is_active());
+        assert!(!plot.redpilator.is_active());
         plot.handle_command(0, "//set", vec!["glass"]);
         assert_eq!(plot.world.get_block(source), Block::Glass {});
     }

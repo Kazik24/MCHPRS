@@ -17,16 +17,16 @@ fn bubblesort_native_initial_state_matches_reference() {
     assert_eq!(cpus::checkpoint(&cpus::load_cpu(cpu), 0, &[]), cpus::reference(cpu).checkpoints[0]);
 }
 
-fn replay_frozen(cpu: cpus::Cpu, redpiler: bool) {
+fn replay_frozen(cpu: cpus::Cpu, redpilator: bool) {
     let expected = cpus::reference(cpu);
     let world = cpus::load_cpu(cpu);
-    let (mut world, mut compiler) = if redpiler {
+    let (mut world, mut compiler) = if redpilator {
         let (world, compiler, _) = cpus::compile_cpu(world, cpu);
         (world, Some(compiler))
     } else {
         (world, None)
     };
-    cpus::replay(&mut world, cpu, &expected, false, 0, redpiler, |world, step| match step {
+    cpus::replay(&mut world, cpu, &expected, false, 0, redpilator, |world, step| match step {
         cpus::ReplayStep::Start => {
             if let Some(compiler) = &mut compiler {
                 compiler.try_on_use_block(cpu.start + cpu.origin).unwrap();
@@ -64,7 +64,7 @@ fn replay_frozen(cpu: cpus::Cpu, redpiler: bool) {
 #[test]
 #[ignore = "50,000-tick compiled CPU admission gate; run explicitly"]
 fn compiled_bubblesort_load_reset_start_checkpoints() {
-    use mchprs_core::redpiler::{Compiler, CompilerOptions, TaskMonitor};
+    use mchprs_core::redpilator::{Compiler, CompilerOptions, TaskMonitor};
     use mchprs_core::world::World;
     use std::sync::Arc;
 
@@ -88,7 +88,7 @@ fn compiled_bubblesort_load_reset_start_checkpoints() {
     });
     println!("CPU_BUBBLESORT block inventory: {inventory:?}");
     let timeout = std::time::Duration::from_secs(
-        std::env::var("MCHPRS_REDPILER_COMPILE_TIMEOUT_SECS")
+        std::env::var("MCHPRS_REDPILATOR_COMPILE_TIMEOUT_SECS")
             .ok()
             .and_then(|seconds| seconds.parse().ok())
             .unwrap_or(300),
@@ -124,7 +124,7 @@ fn compiled_bubblesort_load_reset_start_checkpoints() {
     }
     if let Err(error) = error {
         let rejected = match &error {
-            mchprs_core::redpiler::CompileError::Unsupported(scratch) => scratch.position,
+            mchprs_core::redpilator::CompileError::Unsupported(scratch) => scratch.position,
             _ => None,
         };
         println!(
@@ -226,8 +226,8 @@ fn zcore12b_sierpinski_frozen_reference() {
 }
 
 #[test]
-#[ignore = "full CPU Redpiler compile plus 50,000-tick replay; run explicitly"]
-fn zcore12b_sierpinski_redpiler_matches_interpreter_reference() {
+#[ignore = "full CPU Redpilator compile plus 50,000-tick replay; run explicitly"]
+fn zcore12b_sierpinski_redpilator_matches_interpreter_reference() {
     replay_frozen(cpus::CPUS[3], true);
 }
 

@@ -4,7 +4,7 @@ use mchprs_blocks::{
 };
 use mchprs_core::{
     plot::{PLOT_BLOCK_WIDTH, PLOT_WIDTH, PlotWorld},
-    redpiler::{Compiler, CompilerOptions, PublicationMode, TaskMonitor, TickScheduler},
+    redpilator::{Compiler, CompilerOptions, PublicationMode, TaskMonitor, TickScheduler},
     world::{World, storage::Chunk},
 };
 use mchprs_world::{TickEntry, TickPriority};

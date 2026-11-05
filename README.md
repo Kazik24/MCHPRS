@@ -4,7 +4,7 @@ Based on this project: [MCHPRS](https://github.com/MCHPR/MCHPRS).
 
 Minecraft Redstone o Wysokiej Wydajności. By kazik24 and lord225.
 
-A creative redstone server for Minecraft Java 1.21.5. Each 512x512 plot runs on its own thread. There is a physical redstone/piston interpreter and a rewritten Redpiler with an optional LLVM backend, plus tools for building and debugging circuits.
+A creative redstone server for Minecraft Java 1.21.5. Each 512x512 plot runs on its own thread. There is a physical redstone/piston interpreter and a rewritten Redpilator with an optional LLVM backend, plus tools for building and debugging circuits.
 
 This is for computational redstone. It implements a subset of Minecraft mechanics.
 
@@ -93,11 +93,11 @@ npm run dev
 
 Open `http://localhost:8443` and load your plot coordinates. [Viewer setup](waveform-viewer/README.md) covers Docker, reverse proxying and controls.
 
-## Redpiler
+## Redpilator
 
-Credit to MAIR for the sampled compilation algorithm that informed this Redpiler rewrite, including piston arrangements and conditional wiring.
+Credit to MAIR for the sampled compilation algorithm that informed this Redpilator rewrite, including piston arrangements and conditional wiring.
 
-Redpiler discovers the circuit once and runs a compact program instead of repeatedly searching the world for the same connections. MROWW's rewritten compiler also models supported piston movement and the electrical connections it changes.
+Redpilator discovers the circuit once and runs a compact program instead of repeatedly searching the world for the same connections. MROWW's rewritten compiler also models supported piston movement and the electrical connections it changes.
 
 The compiler takes an isolated plot snapshot, including scheduled work. It finds components, wires, inputs, piston groups and the cells their payloads can occupy. It then probes transitions in scratch worlds using the interpreter, recording electrical dependencies, ordered rise/fall updates, movement notifications and conditional connections for different payload arrangements.
 
@@ -113,7 +113,7 @@ Rust is the default executor. The optional LLVM backend runs the same program in
 /rp reset
 ```
 
-While Redpiler is active, plot edits are blocked in every publication mode. Levers and buttons still work. Run `/rp reset` before editing blocks, containers, signs, or using WorldEdit to change the world.
+While Redpilator is active, plot edits are blocked in every publication mode. Levers and buttons still work. Run `/rp reset` before editing blocks, containers, signs, or using WorldEdit to change the world.
 
 - `/rp compile --llvm` selects the native backend. Install Clang and LLD on the server's PATH, or set `MCHPRS_LLVM_CLANG` and `MCHPRS_LLVM_LINKER` to their executable paths. Bundled native sources build on demand. `MCHPRS_LLVM_WORK_DIR` changes the work directory (default `./work/llvm`); `MCHPRS_LLVM_DLL` selects an already built matching library.
 - `--publish-all` shows all blocks and piston motion. `--publish-redstone` shows redstone components. `--publish-io` (or `--io-only`, `-i`) shows controls and visible outputs. Pick one. Standard builds default to redstone publication; use full publication to inspect moved payloads.
@@ -123,14 +123,14 @@ While Redpiler is active, plot edits are blocked in every publication mode. Leve
 - `/rp clear` stops execution, cancels pending compilation and discards this plot's checkpoint. It also clears the process-shared owned LLVM artifact cache, forcing the next native module build; other plots' active executors keep running. A busy native build is reported immediately. Locked artifacts may remain until later cleanup, and a custom `MCHPRS_LLVM_DLL` is never deleted.
 - `/toggleautorp` toggles automatic compilation.
 
-Admission depends on component types, piston arrangements and entry state. Accepted circuits can still expose differences from the interpreter. LLVM is optional and experimental. See the [compiler passes](crates/core/src/redpiler/sampled/passes/README.md) for implementation details.
+Admission depends on component types, piston arrangements and entry state. Accepted circuits can still expose differences from the interpreter. LLVM is optional and experimental. See the [compiler passes](crates/core/src/redpilator/sampled/passes/README.md) for implementation details.
 
 ## Testing
 
-Testing includes 200+ Redpiler test cases and 140+ interpreter redstone test cases, alongside world, save/load, plot and client tests. We use small mechanism tests, real schematics, seeded fuzzing and whole-computer replays.
+Testing includes 200+ Redpilator test cases and 140+ interpreter redstone test cases, alongside world, save/load, plot and client tests. We use small mechanism tests, real schematics, seeded fuzzing and whole-computer replays.
 
 - Interpreter tests cover electrical rules, wire propagation and shape, observer/BUD ordering, piston movement, scheduling, cache invalidation and partial stepping.
-- Redpiler tests cover discovery, unsupported circuits, source ordering, conditional wiring, piston arrangements, Rust/LLVM agreement, publication modes and reset. Handoff tests continue in the interpreter to check that state and pending work survive.
+- Redpilator tests cover discovery, unsupported circuits, source ordering, conditional wiring, piston arrangements, Rust/LLVM agreement, publication modes and reset. Handoff tests continue in the interpreter to check that state and pending work survive.
 - RedstoneDB was used for fixture validation. The corpus contains 82 schematics, including gates, adders, memory and larger circuits. The differential test exercises lever combinations or forward/backward input toggles, then adds 32 seeded short pulses per fixture and compares components after every wait tick.
 - Physical capture packs contain 22 piston fixtures and 22 IO fixtures covering gates, adders, counters and edge cases. The packs overlap; these are not 44 unique builds.
 - Frozen CPU replays run for 50,000 ticks and check world checkpoints, ordered output, Pong screen frames, BubbleSort RAM and halt boundaries. Fixtures have pinned inputs and hashes so comparisons use the same initial state and stimulus.
@@ -167,12 +167,12 @@ To run checks:
 
 ```sh
 cargo test -p mchprs_core --lib redstone:: --locked
-cargo test -p mchprs_core --lib redpiler:: --locked
+cargo test -p mchprs_core --lib redpilator:: --locked
 cargo test -p mchprs_core --lib normal_redstone_matches_interpreter --locked -- --nocapture
 cargo test -p mchprs_core --lib redstonedb_levers_match_interpreter --locked -- --nocapture
 cargo test -p mchprs_core --test cpu_references --release --locked frozen_reference -- --ignored --test-threads=1
 cargo bench -p mchprs_core --bench cpus -- --iterations 3
-cargo run -p mchprs_core --profile bench --locked --example bench_chungus --features redpiler-full-publication -- 128 1 --paired
+cargo run -p mchprs_core --profile bench --locked --example bench_chungus --features redpilator-full-publication -- 128 1 --paired
 cargo run -p mchprs_core --profile bench --locked --example bench_pc_counter
 ```
 

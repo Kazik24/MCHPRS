@@ -1,7 +1,7 @@
 mod declaration;
 mod plot;
-mod redpiler;
-pub(super) use redpiler::complete_redpiler;
+mod redpilator;
+pub(super) use redpilator::complete_redpilator;
 
 use super::{Plot, database, worldedit};
 use crate::chat::ChatComponent;
@@ -10,7 +10,7 @@ use crate::player::{Gamemode, PacketSender, PlayerPos};
 use crate::plot::data::sleep_time_for_tps;
 use crate::profile::PlayerProfile;
 #[cfg(test)]
-use crate::redpiler::CompilerOptions;
+use crate::redpilator::CompilerOptions;
 use crate::server::Message;
 use mchprs_network::PlayerPacketSender;
 use mchprs_network::packets::clientbound::{CTabComplete, CTabCompleteMatch};
@@ -427,8 +427,8 @@ impl Plot {
                     return false;
                 };
 
-                if tps == Tps::Limited(0) && self.redpiler.is_active() {
-                    self.redpiler.flush(&mut self.world);
+                if tps == Tps::Limited(0) && self.redpilator.is_active() {
+                    self.redpilator.flush(&mut self.world);
                     self.world.flush_block_changes();
                 }
                 self.sleep_time = sleep_time_for_tps(tps);
@@ -468,8 +468,8 @@ impl Plot {
                 }
             }
             "/adv" => {
-                if self.compiling_redpiler() {
-                    self.players[player].send_error_message(messages::REDPILER_COMPILATION_PAUSED);
+                if self.compiling_redpilator() {
+                    self.players[player].send_error_message(messages::REDPILATOR_COMPILATION_PAUSED);
                     return false;
                 }
                 let (unit, ticks) = match AdvanceUnit::parse(&args, crate::config::CONFIG.max_command_ticks) {
@@ -481,11 +481,11 @@ impl Plot {
                 };
                 let start_time = Instant::now();
                 if unit != AdvanceUnit::Game {
-                    if self.redpiler.is_active() {
+                    if self.redpilator.is_active() {
                         self.players[player].send_error_message(if unit == AdvanceUnit::Nano {
-                            messages::CANNOT_ADVANCE_NANO_TICKS_WHILE_REDPILER
+                            messages::CANNOT_ADVANCE_NANO_TICKS_WHILE_REDPILATOR
                         } else {
-                            messages::CANNOT_ADVANCE_PICO_TICKS_WHILE_REDPILER
+                            messages::CANNOT_ADVANCE_PICO_TICKS_WHILE_REDPILATOR
                         });
                         return false;
                     }
@@ -506,8 +506,8 @@ impl Plot {
                     }),
                 };
                 if advanced > 0 {
-                    if self.redpiler.is_active() {
-                        self.redpiler.flush(&mut self.world);
+                    if self.redpilator.is_active() {
+                        self.redpilator.flush(&mut self.world);
                     }
                     self.world.flush_block_changes();
                 }
@@ -516,11 +516,11 @@ impl Plot {
             }
 
             "/toggleautorp" => {
-                self.auto_redpiler = !self.auto_redpiler;
-                if self.auto_redpiler {
-                    self.players[player].send_system_message(messages::REDPILER_AUTO_ENABLED);
+                self.auto_redpilator = !self.auto_redpilator;
+                if self.auto_redpilator {
+                    self.players[player].send_system_message(messages::REDPILATOR_AUTO_ENABLED);
                 } else {
-                    self.players[player].send_system_message(messages::REDPILER_AUTO_DISABLED);
+                    self.players[player].send_system_message(messages::REDPILATOR_AUTO_DISABLED);
                 }
             }
             "/setwarp" if !crate::redbox::enabled() => {
@@ -655,13 +655,13 @@ impl Plot {
                 let command = args.remove(0);
                 self.handle_plot_command(player, command, &args);
             }
-            "/redpiler" | "/rp" => {
+            "/redpilator" | "/rp" => {
                 if args.is_empty() {
                     self.players[player].send_error_message(messages::INVALID_ARGUMENT_COUNT);
                     return false;
                 }
                 let command = args.remove(0);
-                self.handle_redpiler_command(player, command, &args);
+                self.handle_redpilator_command(player, command, &args);
             }
             "/small" => {
                 let enabled = match args.as_slice() {
@@ -737,8 +737,8 @@ impl Plot {
                     self.players[player].send_system_message(messages::WORLD_ALREADY_CURSED);
                 } else {
                     self.world.is_cursed = true;
-                    self.auto_redpiler = false;
-                    self.players[player].send_system_message(messages::WORLD_BEEN_CURSED_REDPILER_DISABLED_BLESS);
+                    self.auto_redpilator = false;
+                    self.players[player].send_system_message(messages::WORLD_BEEN_CURSED_REDPILATOR_DISABLED_BLESS);
                 }
                 return false;
             }
@@ -780,8 +780,8 @@ fn native_command_permission(command: &str, args: &[&str]) -> Option<String> {
         "/toggleautorp" => "toggleautorp".to_owned(),
         "/curse" => "curse".to_owned(),
         "/bless" => "bless".to_owned(),
-        "/redpiler" | "/rp" => format!(
-            "redpiler.{}",
+        "/redpilator" | "/rp" => format!(
+            "redpilator.{}",
             match args.first().copied() {
                 Some("c" | "compile") => "compile",
                 Some("r" | "reset" | "off" | "clear") => "reset",
@@ -800,7 +800,7 @@ fn changes_plot(command: &str, args: &[&str]) -> bool {
         "/tps" => !args.is_empty() && args != ["timings"],
         "/visual" => args.len() > 1,
         "/adv" | "/toggleautorp" | "/curse" | "/bless" => true,
-        "/redpiler" | "/rp" => true,
+        "/redpilator" | "/rp" => true,
         _ => false,
     }
 }
@@ -896,7 +896,7 @@ mod security_tests {
         let (mut plot, _) = super::super::client_sync_tests::fixture(false);
         let owner = 2;
         plot.owner = Some(owner);
-        plot.players[0].set_test_permissions(&["commands.rtps.set", "commands.radvance", "commands.redpiler.reset", "commands.curse"]);
+        plot.players[0].set_test_permissions(&["commands.rtps.set", "commands.radvance", "commands.redpilator.reset", "commands.curse"]);
 
         let commands = [("/tps", vec!["42"]), ("/adv", vec!["1"]), ("/rp", vec!["reset"]), ("/curse", vec![])];
         for (command, args) in &commands {
@@ -1222,14 +1222,14 @@ mod security_tests {
         for proxied in ["warp", "setwarp", "tp", "teleport"] {
             assert_eq!(names.contains(&proxied), !crate::redbox::enabled(), "incorrect declaration for {proxied}");
         }
-        for retained in ["tps", "adv", "rhistory", "redpiler", "rp", "gm", "serverinfo", "wire", "waveform"] {
+        for retained in ["tps", "adv", "rhistory", "redpilator", "rp", "gm", "serverinfo", "wire", "waveform"] {
             assert!(names.contains(&retained), "missing command {retained}");
         }
         assert!(names.contains(&"rev"));
         assert!(!names.contains(&"back"));
         assert!(names.contains(&"rv"));
         for (alias, target) in [
-            ("rp", "redpiler"),
+            ("rp", "redpilator"),
             ("gm", "gamemode"),
             ("/desel", "/sel"),
             ("desel", "/sel"),
@@ -1304,7 +1304,7 @@ mod security_tests {
     #[test]
     fn native_aliases_share_permissions_and_ownership_checks() {
         for (alias, canonical, args) in [
-            ("/rp", "/redpiler", vec!["compile"]),
+            ("/rp", "/redpilator", vec!["compile"]),
             ("/tp", "/teleport", vec!["Admin"]),
             ("/gm", "/gamemode", vec!["2"]),
         ] {
@@ -1314,16 +1314,16 @@ mod security_tests {
     }
 
     #[test]
-    fn retired_redpiler_commands_and_graph_flags_are_not_exposed() {
+    fn retired_redpilator_commands_and_graph_flags_are_not_exposed() {
         let nodes = declared_command_nodes();
         assert!(!nodes.iter().any(|node| matches!(node.name, Some("analyze" | "inspect" | "--graph"))));
         assert_eq!(
             native_command_permission("/rp", &["compile"]).as_deref(),
-            Some("commands.redpiler.compile")
+            Some("commands.redpilator.compile")
         );
-        assert_eq!(native_command_permission("/rp", &["reset"]).as_deref(), Some("commands.redpiler.reset"));
+        assert_eq!(native_command_permission("/rp", &["reset"]).as_deref(), Some("commands.redpilator.reset"));
         for command in ["off", "clear"] {
-            assert_eq!(native_command_permission("/rp", &[command]).as_deref(), Some("commands.redpiler.reset"));
+            assert_eq!(native_command_permission("/rp", &[command]).as_deref(), Some("commands.redpilator.reset"));
         }
         for flag in ["-O3", "--optimize", "--graph", "--export-json"] {
             assert!(CompilerOptions::parse(flag).is_err(), "retired option {flag} must be rejected");
@@ -1333,14 +1333,14 @@ mod security_tests {
         assert!(CompilerOptions::parse("--llvm").unwrap().llvm);
         assert_eq!(
             CompilerOptions::parse("--publish-all").unwrap().publication,
-            Some(crate::redpiler::PublicationMode::All)
+            Some(crate::redpilator::PublicationMode::All)
         );
         assert_eq!(
             CompilerOptions::parse("--publish-redstone").unwrap().publication,
-            Some(crate::redpiler::PublicationMode::Redstone)
+            Some(crate::redpilator::PublicationMode::Redstone)
         );
         let io = CompilerOptions::parse("--publish-io").unwrap();
-        assert_eq!(io.publication, Some(crate::redpiler::PublicationMode::Io));
+        assert_eq!(io.publication, Some(crate::redpilator::PublicationMode::Io));
         assert!(io.io_only);
         assert!(CompilerOptions::parse("--io-only --publish-io").is_ok());
         assert!(CompilerOptions::parse("--publish-io --publish-redstone").is_err());
@@ -1349,10 +1349,10 @@ mod security_tests {
     }
 
     #[test]
-    fn redpiler_completion_offers_only_supported_compile_flags() {
+    fn redpilator_completion_offers_only_supported_compile_flags() {
         let nodes = declared_command_nodes();
-        let redpiler = nodes.iter().find(|node| node.name == Some("redpiler")).unwrap();
-        let compile = redpiler
+        let redpilator = nodes.iter().find(|node| node.name == Some("redpilator")).unwrap();
+        let compile = redpilator
             .children
             .iter()
             .map(|&id| &nodes[id as usize])
@@ -1367,7 +1367,7 @@ mod security_tests {
                 vec!["--publish-all", "--publish-redstone", "--publish-io", "--io-only", "--update", "--llvm"],
             ),
             (
-                "/redpiler c -",
+                "/redpilator c -",
                 vec![
                     "--publish-all",
                     "--publish-redstone",
@@ -1380,18 +1380,18 @@ mod security_tests {
                 ],
             ),
             ("/rp publish ", vec!["all", "redstone", "io"]),
-            ("/redpiler publish r", vec!["redstone"]),
+            ("/redpilator publish r", vec!["redstone"]),
             ("/rp compile --graph", vec![]),
         ] {
-            let response = complete_redpiler(42, text).unwrap();
+            let response = complete_redpilator(42, text).unwrap();
             assert_eq!(response.matches.iter().map(|m| m.match_.as_str()).collect::<Vec<_>>(), expected);
         }
-        assert!(complete_redpiler(0, "/rp analyze ").is_none());
-        assert!(complete_redpiler(0, "/rp inspect ").is_none());
+        assert!(complete_redpilator(0, "/rp analyze ").is_none());
+        assert!(complete_redpilator(0, "/rp inspect ").is_none());
         for command in ["reset", "r", "off", "clear"] {
-            assert!(complete_redpiler(0, &format!("/rp {command} ")).is_none());
+            assert!(complete_redpilator(0, &format!("/rp {command} ")).is_none());
         }
-        let publish = redpiler
+        let publish = redpilator
             .children
             .iter()
             .map(|&id| &nodes[id as usize])
@@ -1402,7 +1402,7 @@ mod security_tests {
             ["all", "redstone", "io"]
         );
         for command in ["reset", "off", "clear"] {
-            let node = redpiler
+            let node = redpilator
                 .children
                 .iter()
                 .map(|&id| &nodes[id as usize])
@@ -1412,7 +1412,7 @@ mod security_tests {
         }
         assert_eq!(
             native_command_permission("/rp", &["publish", "all"]).as_deref(),
-            Some("commands.redpiler.compile")
+            Some("commands.redpilator.compile")
         );
     }
 }

@@ -11,11 +11,11 @@ mod client_test_utils;
 mod command_block;
 pub mod commands;
 #[cfg(test)]
-#[path = "tests/redpiler_fallback.rs"]
-mod redpiler_fallback_tests;
+#[path = "tests/redpilator_fallback.rs"]
+mod redpilator_fallback_tests;
 #[cfg(test)]
-#[path = "tests/redpiler_notes.rs"]
-mod redpiler_notes_tests;
+#[path = "tests/redpilator_notes.rs"]
+mod redpilator_notes_tests;
 use redstone_tools::compass;
 mod containers;
 mod data;
@@ -34,7 +34,7 @@ mod picking;
 mod piston_tests;
 mod player_model;
 mod preview;
-mod redpiler_compilation;
+mod redpilator_compilation;
 pub(crate) mod redstone_tools;
 mod scoreboard;
 mod screen_updates;
@@ -48,7 +48,7 @@ pub mod worldedit;
 use crate::chat::ChatComponent;
 use crate::config::CONFIG;
 use crate::player::{EntityId, Gamemode, PacketSender, Player, PlayerPos};
-use crate::redpiler::{Compiler, CompilerOptions};
+use crate::redpilator::{Compiler, CompilerOptions};
 use crate::redstone;
 use crate::server::{BroadcastMessage, Message, PrivMessage};
 use crate::utils::HyphenatedUUID;
@@ -70,7 +70,7 @@ use mchprs_save_data::plot_data::{ChunkData, PistonAnimation, PlotData, Tps, Wor
 use mchprs_world::TickPriority;
 use mchprs_world::{AdvancePhase, TickEntry};
 use monitor::TimingsMonitor;
-use scoreboard::RedpilerState;
+use scoreboard::RedpilatorState;
 use serde_json::json;
 use std::cmp::Ordering;
 use std::collections::HashSet;
@@ -109,12 +109,12 @@ pub struct Plot {
     // TODO Route plot-specific world packets through the active plot when a player enters it.
     pub world: PlotWorld,
     pub players: Vec<Player>,
-    pub redpiler: Compiler,
+    pub redpilator: Compiler,
     /// In-flight compilation owns a snapshot; the live plot stays on this thread.
-    compilation: Option<redpiler_compilation::CompilationJob>,
-    redpiler_cache: Option<redpiler_compilation::CompilationCache>,
+    compilation: Option<redpilator_compilation::CompilationJob>,
+    redpilator_cache: Option<redpilator_compilation::CompilationCache>,
     /// A failed export keeps compiler ownership until an explicit successful reset.
-    redpiler_handoff_failed: bool,
+    redpilator_handoff_failed: bool,
 
     // Thread communication
     message_receiver: BusReader<BroadcastMessage>,
@@ -143,7 +143,7 @@ pub struct Plot {
     /// If true, the plot will remain running even if no players are on for a long time.
     always_running: bool,
     /// Whether the update loop may automatically compile eligible plots.
-    auto_redpiler: bool,
+    auto_redpilator: bool,
 
     owner: Option<u128>,
     /// Runtime entered by this plot's worker for its async helpers.
@@ -279,16 +279,16 @@ impl Plot {
     }
 
     fn tick(&mut self) -> bool {
-        if self.compiling_redpiler() || self.redpiler_handoff_failed {
+        if self.compiling_redpilator() || self.redpilator_handoff_failed {
             return false;
         }
 
         self.timings.tick();
-        if self.redpiler.is_active() {
-            if let Err(error) = self.redpiler.tick_with_world(&mut self.world) {
+        if self.redpilator.is_active() {
+            if let Err(error) = self.redpilator.tick_with_world(&mut self.world) {
                 tracing::error!(%error, "sampled execution failed");
-                self.auto_redpiler = false;
-                self.fallback_redpiler(&error.to_string());
+                self.auto_redpilator = false;
+                self.fallback_redpilator(&error.to_string());
                 return false;
             }
         } else {
@@ -376,7 +376,7 @@ impl Plot {
     }
 
     fn set_pressure_plate(&mut self, pos: BlockPos, powered: bool) {
-        if self.compiling_redpiler() {
+        if self.compiling_redpilator() {
             return;
         }
         let Some(current) = self.world.get_block(pos).pressure_plate_powered() else {
@@ -386,19 +386,19 @@ impl Plot {
         if current == powered {
             return;
         }
-        if self.redpiler.is_active() {
-            if self.redpiler_handoff_failed {
+        if self.redpilator.is_active() {
+            if self.redpilator_handoff_failed {
                 return;
             }
             match self
-                .redpiler
+                .redpilator
                 .try_set_pressure_plate(pos, powered)
-                .and_then(|_| self.redpiler.try_flush(&mut self.world))
+                .and_then(|_| self.redpilator.try_flush(&mut self.world))
             {
                 Ok(()) => return,
                 Err(error) => {
-                    self.auto_redpiler = false;
-                    self.fallback_redpiler(&error.to_string());
+                    self.auto_redpilator = false;
+                    self.fallback_redpilator(&error.to_string());
                     return;
                 }
             }
@@ -564,61 +564,61 @@ impl Plot {
 
     /// Player edits must not silently stop a running simulation or change its compiled circuit.
     fn prepare_block_edit(&mut self) -> Result<(), String> {
-        if self.redpiler.is_active() || self.compiling_redpiler() {
-            return Err(messages::PLOT_CANNOT_INTERACTED_WHILE_REDPILER_ACTIVE.into());
+        if self.redpilator.is_active() || self.compiling_redpilator() {
+            return Err(messages::PLOT_CANNOT_INTERACTED_WHILE_REDPILATOR_ACTIVE.into());
         }
-        self.reset_redpiler().map_err(|error| error.to_string())
+        self.reset_redpilator().map_err(|error| error.to_string())
     }
 
     /// Export compiled state for an explicit reset, save, or other lifecycle transition.
-    fn reset_redpiler(&mut self) -> Result<(), crate::redpiler::ExecutionError> {
-        if self.compiling_redpiler() {
-            self.cancel_redpiler_compilation();
-            self.scoreboard.set_redpiler_state(&self.players, RedpilerState::Stopped);
-            self.scoreboard.set_redpiler_options(&self.players, &Default::default());
+    fn reset_redpilator(&mut self) -> Result<(), crate::redpilator::ExecutionError> {
+        if self.compiling_redpilator() {
+            self.cancel_redpilator_compilation();
+            self.scoreboard.set_redpilator_state(&self.players, RedpilatorState::Stopped);
+            self.scoreboard.set_redpilator_options(&self.players, &Default::default());
             self.reset_timings();
         }
-        if self.redpiler.is_active() {
-            debug!("Resetting redpiler");
+        if self.redpilator.is_active() {
+            debug!("Resetting redpilator");
             let bounds = self.world.get_corners();
-            self.redpiler_cache = self
-                .redpiler
+            self.redpilator_cache = self
+                .redpilator
                 .try_suspend(&mut self.world, bounds)?
-                .map(|compiler| redpiler_compilation::CompilationCache::exported(&self.world, compiler));
-            self.scoreboard.set_redpiler_state(&self.players, RedpilerState::Stopped);
-            self.scoreboard.set_redpiler_options(&self.players, &Default::default());
+                .map(|compiler| redpilator_compilation::CompilationCache::exported(&self.world, compiler));
+            self.scoreboard.set_redpilator_state(&self.players, RedpilatorState::Stopped);
+            self.scoreboard.set_redpilator_options(&self.players, &Default::default());
 
-            // reseting redpiler could cause a large amount of block updates
+            // reseting redpilator could cause a large amount of block updates
             self.reset_timings();
         }
-        self.redpiler_handoff_failed = false;
+        self.redpilator_handoff_failed = false;
         Ok(())
     }
 
     /// Automatic handoffs explain the cause; explicit resets and saves remain quiet.
-    fn fallback_redpiler(&mut self, reason: &str) -> bool {
-        if !self.redpiler.is_active() {
+    fn fallback_redpilator(&mut self, reason: &str) -> bool {
+        if !self.redpilator.is_active() {
             return true;
         }
-        if self.redpiler_handoff_failed {
+        if self.redpilator_handoff_failed {
             return false;
         }
-        warn!(%reason, "Redpiler falling back to interpreter");
-        let message = messages::redpiler_fallback(reason);
+        warn!(%reason, "Redpilator falling back to interpreter");
+        let message = messages::redpilator_fallback(reason);
         for player in &self.players {
             player.send_raw_system_message(crate::player::diagnostic_component(&message).to_string());
         }
-        if let Err(error) = self.reset_redpiler() {
+        if let Err(error) = self.reset_redpilator() {
             error!(%error, "compiled state export failed; keeping compiler ownership");
-            self.redpiler_handoff_failed = true;
-            self.auto_redpiler = false;
+            self.redpilator_handoff_failed = true;
+            self.auto_redpilator = false;
             self.tps = Tps::Limited(0);
             self.sleep_time = sleep_time_for_tps(self.tps);
             self.timings.set_tps(self.tps);
             self.update_render_mode();
             self.reset_timings();
             for player in &self.players {
-                player.send_error_message(&messages::redpiler_handoff_failed(&error));
+                player.send_error_message(&messages::redpilator_handoff_failed(&error));
             }
             return false;
         }
@@ -983,7 +983,7 @@ impl Plot {
     }
 
     fn interpreter_idle(&self) -> bool {
-        !self.redpiler.is_active()
+        !self.redpilator.is_active()
             && !self.world.history.enabled()
             && !self.world.waveform.enabled()
             && self.world.piston_state.phase == AdvancePhase::BetweenTicks
@@ -994,7 +994,7 @@ impl Plot {
 
     fn update(&mut self) {
         if let Some(source) = &mut self.waveform_source {
-            source.poll(&self.world.waveform, self.redpiler.is_active() || self.compilation.is_some(), self.owner);
+            source.poll(&self.world.waveform, self.redpilator.is_active() || self.compilation.is_some(), self.owner);
         }
         if self.world.waveform.take_overflow_notice() {
             for player in &mut self.players {
@@ -1009,7 +1009,7 @@ impl Plot {
         self.update_git();
         self.handle_messages();
         self.update_render_mode();
-        self.poll_redpiler_compilation();
+        self.poll_redpilator_compilation();
 
         // Only tick if there are players in the plot
         if !self.players.is_empty() {
@@ -1047,7 +1047,7 @@ impl Plot {
             };
 
             self.last_update_time = now;
-            if self.compiling_redpiler() || idle {
+            if self.compiling_redpilator() || idle {
                 // Idle time must not become tick debt when a player wakes the circuit.
                 self.lag_time = Duration::ZERO;
             } else if batch_size != 0 {
@@ -1070,8 +1070,8 @@ impl Plot {
                         break;
                     }
                 }
-                if self.redpiler.is_active() {
-                    self.redpiler.flush_effects(&mut self.world);
+                if self.redpilator.is_active() {
+                    self.redpilator.flush_effects(&mut self.world);
                 }
                 if let Some(duration) = tick_duration {
                     self.lag_time = self.lag_time.saturating_sub(duration * ticks_completed);
@@ -1083,25 +1083,25 @@ impl Plot {
                 self.world.update_stats.simulated_ticks += u64::from(ticks_completed);
             }
 
-            if self.auto_redpiler
+            if self.auto_redpilator
                 && !self.world.waveform.enabled()
                 && !idle
                 && self.compilation.is_none()
                 && !self.git_checkout_locked()
-                && !self.redpiler.is_active()
+                && !self.redpilator.is_active()
                 && (self.tps == Tps::Unlimited || self.timings.is_running_behind())
                 && !self.world.chunks.iter().any(Chunk::requires_interpreter)
             {
-                self.start_automatic_redpiler(Default::default());
+                self.start_automatic_redpilator(Default::default());
             }
 
             let now = Instant::now();
             let time_since_last_world_send = now - self.last_world_send_time;
             if self.world_send_rate.0 != 0 && time_since_last_world_send > world_send_rate {
                 self.last_world_send_time = now;
-                if self.redpiler.is_active() {
+                if self.redpilator.is_active() {
                     let projection_started = Instant::now();
-                    self.redpiler.flush(&mut self.world);
+                    self.redpilator.flush(&mut self.world);
                     self.world.update_stats.projection += projection_started.elapsed();
                 }
                 self.world.flush_block_changes();
@@ -1300,15 +1300,15 @@ impl Plot {
             players: Vec::new(),
             locked_players: HashSet::new(),
             running: true,
-            auto_redpiler: CONFIG.auto_redpiler,
+            auto_redpilator: CONFIG.auto_redpilator,
             tps,
             world_send_rate,
             piston_animation: plot_data.piston_animation,
             always_running,
-            redpiler: Default::default(),
+            redpilator: Default::default(),
             compilation: None,
-            redpiler_cache: None,
-            redpiler_handoff_failed: false,
+            redpilator_cache: None,
+            redpilator_handoff_failed: false,
             timings: TimingsMonitor::new(tps),
             owner,
             async_rt: Plot::create_async_rt(),
@@ -1361,7 +1361,7 @@ impl Plot {
 
         while self.running {
             // Fast path, for super high RTPS
-            if self.sleep_time <= Duration::from_millis(5) && !self.players.is_empty() && !self.compiling_redpiler() && !self.interpreter_idle() {
+            if self.sleep_time <= Duration::from_millis(5) && !self.players.is_empty() && !self.compiling_redpilator() && !self.interpreter_idle() {
                 self.update();
                 if self.tps != Tps::Unlimited {
                     thread::yield_now();
@@ -1373,7 +1373,7 @@ impl Plot {
             self.update();
             let delta = before.elapsed();
 
-            let cadence = if self.compiling_redpiler() || self.interpreter_idle() {
+            let cadence = if self.compiling_redpilator() || self.interpreter_idle() {
                 Duration::from_millis(20)
             } else if self.wire_tools_active() {
                 self.sleep_time.min(Duration::from_millis(20))
@@ -1418,7 +1418,7 @@ impl Plot {
 
 impl Drop for Plot {
     fn drop(&mut self) {
-        self.cancel_redpiler_compilation();
+        self.cancel_redpilator_compilation();
         // Packet-handler tests own an in-memory world, with no persistent saves
         // or server thread to receive crash-recovery messages.
         #[cfg(any(test, feature = "plot-bench"))]
@@ -1449,7 +1449,7 @@ impl Drop for Plot {
             }
         }
 
-        if let Err(error) = self.reset_redpiler() {
+        if let Err(error) = self.reset_redpilator() {
             tracing::error!(%error, "compiled state export failed during plot shutdown; skipping save");
         } else {
             self.world.chunks.iter_mut().for_each(|chunk| chunk.compress());

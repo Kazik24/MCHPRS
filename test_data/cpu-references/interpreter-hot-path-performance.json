@@ -33,7 +33,7 @@
     "crates/core/src/redstone/command_block.rs": "6a1f5f744be42a4084db6d8356d03ecd90614ca0d5517d1e7eb7c5640b4bba77",
     "crates/core/src/plot/mod.rs": "ae66a20aff3a61a48e979f4f45ff67c3476aa457e808dc9db0b62ee1b3571c96",
     "crates/core/src/plot/interpreter_cache.rs": "38b6aabb8a9969be00afbbaa95927e286236fd90b74e04f0289f4d55942b855e",
-    "crates/core/src/redpiler/backend/queue.rs": "0d7d25d1bb9123e13e36cf18adfbe4f0676445f1f72c0e3e0d313ef3de22b658",
+    "crates/core/src/redpilator/backend/queue.rs": "0d7d25d1bb9123e13e36cf18adfbe4f0676445f1f72c0e3e0d313ef3de22b658",
     "crates/world/src/lib.rs": "682afaaee812ec151b0ffbfbb0e11e26d7ba88257f8832b29692e6eedee4035e"
   },
   "raw_cpu_runs": [
@@ -852,7 +852,7 @@
       "files": [
         "crates/core/src/plot/interpreter_cache.rs",
         "crates/core/src/plot/mod.rs",
-        "crates/core/src/redpiler/backend/queue.rs"
+        "crates/core/src/redpilator/backend/queue.rs"
       ],
       "change": "Replace membership scans over the 32-bucket, four-priority ring with a derived counted hash index. Ordinary queries and insert/pop maintenance are expected O(1); rebuild is O(pending entries) after invalidation.",
       "accuracy": "Keys include expected block type. Count imported duplicates, pop before callback, and invalidate on load/history/cache clearing/compiled handoff. The scheduler remains authoritative for priority, FIFO, delay and serialization."
@@ -916,7 +916,7 @@
         "docs/INSTANT_REDPILLER.md",
         "docs/REDSTONE_MODEL.md"
       ],
-      "proposal": "A separate Redpiler project could recognize validated instant reset groups and lower their computational behavior.",
+      "proposal": "A separate Redpilator project could recognize validated instant reset groups and lower their computational behavior.",
       "accuracy_conditions": "BUD memory, observers, quasi-connectivity, moving-cell electrical gaps, event order and transient wire states require a separate equivalence argument. Ordinary Boolean graph reduction does not establish interpreter equivalence."
     }
   ],
@@ -927,7 +927,7 @@
     "crates/core/src/redstone/command_block.rs": "465122daf61fae4d5288413400695af7147928872cd721c49a167bfa5b5d1604",
     "crates/core/src/plot/mod.rs": "b46bc25cff73d0d6206cc6c5845a2e9a816f17286ebacfa06aaad4c9cb9e7c91",
     "crates/core/src/plot/interpreter_cache.rs": "e1a62154ec8c97118514eeda0658bd06779ebbfc581fb7a5046d531c29cc4d8c",
-    "crates/core/src/redpiler/backend/queue.rs": "c78403dad790db2c56798c8604de4235141467c61a6ec14c81cb4f696b0ec7e8",
+    "crates/core/src/redpilator/backend/queue.rs": "c78403dad790db2c56798c8604de4235141467c61a6ec14c81cb4f696b0ec7e8",
     "crates/world/src/lib.rs": "7e4326ba43f4ffd4d1b638486f982e6efe78c6a2f9dcc76c00c3a199c24f067f",
     "crates/core/benches/support/cpus.rs": "0224f3b2f96c52592b089b5af2c9d9127e63188c97edd92a4363c37102a1c00b",
     "test_data/cpu-references/piston-shape-checkpoints.json": "344d0dceb8d9fc3c14c395ca4a6fc32c05d7a024557904350770b40906130158"

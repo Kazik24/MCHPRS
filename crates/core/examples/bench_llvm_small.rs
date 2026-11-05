@@ -7,7 +7,7 @@ use mchprs_core::{
         PLOT_WIDTH, PlotWorld,
         worldedit::{load_schematic, paste_clipboard},
     },
-    redpiler::{Compiler, CompilerOptions, TaskMonitor},
+    redpilator::{Compiler, CompilerOptions, TaskMonitor},
     redstone,
     world::{World, storage::Chunk},
 };

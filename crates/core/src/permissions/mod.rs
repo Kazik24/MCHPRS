@@ -266,12 +266,12 @@ impl PlayerPermissionsCache {
         ))
     }
 
-    pub(crate) fn redpiler_compile_budget(&self) -> Result<Option<Duration>, String> {
+    pub(crate) fn redpilator_compile_budget(&self) -> Result<Option<Duration>, String> {
         match self.waveform_rank().ok_or("Rank unavailable; rejoin and try again.")? {
             Rank::Advanced => Ok(Some(Duration::from_secs(30))),
             Rank::Expert => Ok(Some(Duration::from_secs(120))),
             Rank::Engineer | Rank::Moderator | Rank::Admin => Ok(None),
-            Rank::Player | Rank::Builder => Err("Redpiler compilation requires rank Z or higher.".into()),
+            Rank::Player | Rank::Builder => Err("Redpilator compilation requires rank Z or higher.".into()),
         }
     }
 
@@ -490,7 +490,7 @@ mod tests {
     }
 
     #[test]
-    fn redpiler_budgets_start_above_builder_and_keep_higher_ranks_unlimited() {
+    fn redpilator_budgets_start_above_builder_and_keep_higher_ranks_unlimited() {
         let config = config();
         for (rank, expected) in [
             (Rank::Player, Err(())),
@@ -502,20 +502,20 @@ mod tests {
             (Rank::Admin, Ok(None)),
         ] {
             let mut cache = PlayerPermissionsCache::resolve(vec![node("", &format!("group.{}", rank.group()), true)], vec![], &config, now());
-            assert_eq!(cache.redpiler_compile_budget().map_err(|_| ()), expected, "{rank:?}");
-            assert_eq!(cache.get_node_val("commands.redpiler.compile"), None, "budget must not grant access");
+            assert_eq!(cache.redpilator_compile_budget().map_err(|_| ()), expected, "{rank:?}");
+            assert_eq!(cache.get_node_val("commands.redpilator.compile"), None, "budget must not grant access");
             cache.valid_until = Some(Instant::now());
-            assert!(cache.redpiler_compile_budget().is_err(), "expired {rank:?}");
+            assert!(cache.redpilator_compile_budget().is_err(), "expired {rank:?}");
         }
-        assert!(PlayerPermissionsCache::default().redpiler_compile_budget().is_err());
+        assert!(PlayerPermissionsCache::default().redpilator_compile_budget().is_err());
         let cache = PlayerPermissionsCache::resolve(
-            vec![node("", "group.expert", true), node("", "commands.redpiler.compile", false)],
-            vec![node("expert", "commands.redpiler.*", true)],
+            vec![node("", "group.expert", true), node("", "commands.redpilator.compile", false)],
+            vec![node("expert", "commands.redpilator.*", true)],
             &config,
             now(),
         );
-        assert_eq!(cache.redpiler_compile_budget().unwrap(), Some(Duration::from_secs(120)));
-        assert_eq!(cache.get_node_val("commands.redpiler.compile"), Some(0));
+        assert_eq!(cache.redpilator_compile_budget().unwrap(), Some(Duration::from_secs(120)));
+        assert_eq!(cache.get_node_val("commands.redpilator.compile"), Some(0));
     }
 
     #[test]

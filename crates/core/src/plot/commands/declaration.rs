@@ -141,15 +141,15 @@ pub(super) fn declared_command_nodes() -> Vec<Node<'static>> {
             .suggestions("minecraft:ask_server"),
         // /toggleautorp
         Node::literal("toggleautorp", &[]).executable(),
-        // /redpiler
-        Node::literal("redpiler", &[63, 65, 143, 145]),
+        // /redpilator
+        Node::literal("redpilator", &[63, 65, 143, 145]),
         // /rp
         Node::redirect("rp", 61),
-        // /redpiler compile
+        // /redpilator compile
         Node::literal("compile", &[129]).executable(),
         // Reserved protocol node ID; the inspection command was removed.
         Node::literal("reserved", &[]),
-        // /redpiler reset
+        // /redpilator reset
         Node::literal("reset", &[]).executable(),
         // /worldsendrate
         Node::literal("worldsendrate", &[67]).executable(),
@@ -195,7 +195,7 @@ pub(super) fn declared_command_nodes() -> Vec<Node<'static>> {
         Node::literal("pistons", &[]).executable(),
         Node::literal("rewind", &[]).executable(),
         Node::literal("chat", &[]).executable(),
-        Node::literal("redpiler", &[]).executable(),
+        Node::literal("redpilator", &[]).executable(),
         // tick history and whole-game-tick rewind
         Node::literal("rhistory", &[97, 99, 100, 103]).executable(),
         Node::literal("on", &[98]).executable(),
@@ -255,7 +255,7 @@ pub(super) fn declared_command_nodes() -> Vec<Node<'static>> {
             .suggestions("minecraft:ask_server"),
         // Reserved protocol node ID.
         Node::literal("reserved", &[]),
-        // /redpiler compile [flags]
+        // /redpilator compile [flags]
         Node::argument("flags", Parser::String(2), &[])
             .executable()
             .suggestions("minecraft:ask_server"),
@@ -275,7 +275,7 @@ pub(super) fn declared_command_nodes() -> Vec<Node<'static>> {
         Node::redirect("desel", 32).executable(),
         // /set accepts the same block patterns as //set.
         Node::redirect("set", 20),
-        // Redpiler subcommand aliases share arguments and suggestions.
+        // Redpilator subcommand aliases share arguments and suggestions.
         Node::redirect("c", 63).executable(),
         Node::redirect("i", 64).executable(),
         Node::redirect("r", 65).executable(),
@@ -344,7 +344,7 @@ pub(super) fn declared_command_nodes() -> Vec<Node<'static>> {
     nodes.push(Node::literal("waveform", &[]).executable());
     nodes[help].children = Box::leak(help_children.into_boxed_slice());
 
-    let redpiler = nodes.iter().position(|node| node.name == Some("redpiler")).unwrap();
+    let redpilator = nodes.iter().position(|node| node.name == Some("redpilator")).unwrap();
     let publish = nodes.len() as i32;
     nodes.push(Node::literal(
         "publish",
@@ -357,11 +357,11 @@ pub(super) fn declared_command_nodes() -> Vec<Node<'static>> {
     nodes.push(Node::literal("clear", &[]).executable());
     let off = nodes.len() as i32;
     nodes.push(Node::literal("off", &[]).executable());
-    let mut redpiler_children = nodes[redpiler].children.to_vec();
-    redpiler_children.push(publish);
-    redpiler_children.push(clear);
-    redpiler_children.push(off);
-    nodes[redpiler].children = Box::leak(redpiler_children.into_boxed_slice());
+    let mut redpilator_children = nodes[redpilator].children.to_vec();
+    redpilator_children.push(publish);
+    redpilator_children.push(clear);
+    redpilator_children.push(off);
+    nodes[redpilator].children = Box::leak(redpilator_children.into_boxed_slice());
 
     let redbox = crate::redbox::enabled();
     let mut root_children = nodes[0].children.to_vec();
@@ -454,7 +454,7 @@ mod tests {
                 "pistons",
                 "rewind",
                 "chat",
-                "redpiler",
+                "redpilator",
                 "visual",
                 "waveform"
             ]

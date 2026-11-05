@@ -2,13 +2,13 @@ use crate::plot::*;
 use mchprs_blocks::block_entities::CommandBlockEntity;
 
 #[test]
-fn command_block_edits_cannot_stop_an_active_redpiler() {
+fn command_block_edits_cannot_stop_an_active_redpilator() {
     let (mut plot, _peer) = crate::plot::client_sync_tests::fixture(false);
     plot.owner = Some(plot.players[0].uuid);
     plot.players[0].set_test_permissions(&["*"]);
     let pos = BlockPos::new(33, 21, 35);
     place(&mut plot.world, pos, "command_block", "say before", false, false);
-    plot.redpiler
+    plot.redpilator
         .compile(
             &plot.world,
             (BlockPos::new(30, 19, 30), BlockPos::new(36, 23, 34)),
@@ -26,7 +26,7 @@ fn command_block_edits_cannot_stop_an_active_redpiler() {
         },
         0,
     );
-    assert!(plot.redpiler.is_active());
+    assert!(plot.redpilator.is_active());
     let Some(BlockEntity::CommandBlock(entity)) = plot.world.get_block_entity(pos) else {
         panic!("command block disappeared");
     };
@@ -116,7 +116,7 @@ fn output_fixture(name: &str, automatic: bool) -> (PlotWorld, BlockPos, BlockPos
 
 #[test]
 fn compiled_command_blocks_are_admitted_without_changing_native_state() {
-    use crate::redpiler::{Compiler, CompilerOptions};
+    use crate::redpilator::{Compiler, CompilerOptions};
 
     let mut world = world();
     let pos = BlockPos::new(40, 30, 40);

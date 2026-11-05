@@ -10,11 +10,11 @@ use sha2::{Digest, Sha256};
 use std::fs;
 
 #[test]
-fn git_world_restores_require_an_explicit_redpiler_reset() {
+fn git_world_restores_require_an_explicit_redpilator_reset() {
     let (mut plot, _peer) = crate::plot::client_sync_tests::fixture(false);
     plot.owner = Some(plot.players[0].uuid);
     plot.players[0].set_test_permissions(&["*"]);
-    plot.redpiler
+    plot.redpilator
         .compile(
             &plot.world,
             (BlockPos::new(30, 19, 30), BlockPos::new(36, 23, 36)),
@@ -25,8 +25,8 @@ fn git_world_restores_require_an_explicit_redpiler_reset() {
         .unwrap();
     for action in ["checkout", "restore", "recover", "rebase"] {
         let error = plot.git_command(0, &[action, "HEAD"]).unwrap_err();
-        assert_eq!(error.to_string(), messages::PLOT_CANNOT_INTERACTED_WHILE_REDPILER_ACTIVE);
-        assert!(plot.redpiler.is_active());
+        assert_eq!(error.to_string(), messages::PLOT_CANNOT_INTERACTED_WHILE_REDPILATOR_ACTIVE);
+        assert!(plot.redpilator.is_active());
         assert!(!plot.git.locked);
         assert!(plot.git.pending.is_none());
     }
@@ -1454,10 +1454,10 @@ fn rejected_piston_compilation_highlights_the_block_and_keeps_interpreter_work()
         };
         plot.world.piston_state_mut().events.push_back(queued);
         let ticks = plot.world.scheduler().iter_entries().collect::<Vec<_>>();
-        plot.start_redpiler_with_budget(Default::default(), None);
-        plot.wait_for_redpiler();
+        plot.start_redpilator_with_budget(Default::default(), None);
+        plot.wait_for_redpilator();
         assert_eq!(plot.world.piston_state().events.iter().copied().collect::<Vec<_>>(), vec![queued]);
-        assert!(!plot.redpiler.is_active());
+        assert!(!plot.redpilator.is_active());
         assert_eq!(plot.world.get_block(pos), block);
         assert_eq!(plot.world.scheduler().iter_entries().collect::<Vec<_>>(), ticks);
         let marker = plot.git.inspections.get(&plot.players[0].uuid).unwrap();

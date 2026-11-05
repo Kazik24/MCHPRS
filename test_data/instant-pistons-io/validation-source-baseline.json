@@ -22,7 +22,7 @@
     "crates/core/src/plot/worldedit/mod.rs": "96a0fc2a3161f0ea19686ce1aeb2d50ffda61481da5b4237807dae68f6510dd0",
     "crates/core/src/plot/worldedit/schematic.rs": "f3e2754e1f21f7b803fa541731cc45c9fdfa2bec4d6476782adba8d18e3a88d6",
     "crates/core/src/interaction.rs": "383e37e7796a3e76fd8087791ba7d01c4f1c15f4fad1795331a76f12e4e98fe9",
-    "crates/core/src/redpiler/backend/queue.rs": "cc695863e72ff24b230397748aaa912b3dbdfd523e67ef12a2c3ac0f455efe24",
+    "crates/core/src/redpilator/backend/queue.rs": "cc695863e72ff24b230397748aaa912b3dbdfd523e67ef12a2c3ac0f455efe24",
     "crates/core/src/world/mod.rs": "925a230c7fd0839103050db8e270d8f3c9add6ba0bd0d4741b4325ab654f2c36",
     "crates/core/src/world/wire_cache.rs": "4d3ce0df4daf043e608219a326b977a27b2def17d68c4c02fb11e422a6479097",
     "crates/world/src/lib.rs": "7e4326ba43f4ffd4d1b638486f982e6efe78c6a2f9dcc76c00c3a199c24f067f",
