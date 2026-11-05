@@ -95,6 +95,8 @@ Open `http://localhost:8443` and load your plot coordinates. [Viewer setup](wave
 
 ## Redpilator
 
+Use `/redpilator` or its short alias `/rp`.
+
 Credit to MAIR for the sampled compilation algorithm that informed this Redpilator rewrite, including piston arrangements and conditional wiring.
 
 Redpilator discovers the circuit once and runs a compact program instead of repeatedly searching the world for the same connections. MROWW's rewritten compiler also models supported piston movement and the electrical connections it changes.
@@ -121,7 +123,7 @@ While Redpilator is active, plot edits are blocked in every publication mode. Le
 - `--update` (`-u`) recalculates neighbors after reset. `/rp reset` exports state and pending work back to the interpreter.
 - `/rp off` is an alias for `/rp reset`. A normal reset retains the prepared executor: recompiling with the same options and unchanged exported world resumes it. Block/entity edits, tick or piston changes, and host rate-limit changes invalidate it; draining queued command messages is allowed. `--update` and staged open-barrel notifications exclude this reuse. This does not reuse connectivity across arbitrary edits.
 - `/rp clear` stops execution, cancels pending compilation and discards this plot's checkpoint. It also clears the process-shared owned LLVM artifact cache, forcing the next native module build; other plots' active executors keep running. A busy native build is reported immediately. Locked artifacts may remain until later cleanup, and a custom `MCHPRS_LLVM_DLL` is never deleted.
-- `/toggleautorp` toggles automatic compilation.
+- `/toggleautorp` toggles automatic compilation; `auto_redpilator` sets its default in `Config.toml`.
 
 Admission depends on component types, piston arrangements and entry state. Accepted circuits can still expose differences from the interpreter. LLVM is optional and experimental. See the [compiler passes](crates/core/src/redpilator/sampled/passes/README.md) for implementation details.
 
