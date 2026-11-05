@@ -188,7 +188,10 @@ impl Module {
         Ok(Self { handle })
     }
 
-    /// The export must be a function pointer with exactly the requested ABI signature.
+    /// Resolve a function exported by this module.
+    ///
+    /// # Safety
+    /// `name` must be NUL-terminated, and `T` must match the export's exact function-pointer ABI.
     pub(super) unsafe fn symbol<T: Copy>(&self, name: &'static [u8]) -> Result<T, ScratchError> {
         #[cfg(windows)]
         let address = unsafe { GetProcAddress(self.handle, name.as_ptr().cast()) };

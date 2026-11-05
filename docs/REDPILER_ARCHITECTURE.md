@@ -73,8 +73,9 @@ Publication can show all blocks and piston motion, redstone components, or just
 controls and visible outputs. Switching modes changes what is shown without
 advancing the simulation.
 
-While Redpiler is active, levers and buttons work, but block edits are blocked.
-Changing the build would invalidate the compiled connections.
+Block edits are blocked from the start of compilation until an explicit reset.
+Levers and buttons work once compilation finishes. Changing the build would
+invalidate the compiled connections.
 
 ## Compile ownership and handoff
 
@@ -90,6 +91,21 @@ an unchanged exported world allow it to resume; edits or simulation changes
 invalidate that reuse. `/rp clear` discards the plot checkpoint and clears the
 shared owned LLVM artifact cache.
 
+## Code map
+
+| Responsibility | Entry point |
+| --- | --- |
+| Snapshot, worker lifecycle, progress and activation | [Plot compilation](../crates/core/src/plot/redpiler_compilation/mod.rs) |
+| Entry validation, backend selection and state handoff | [Compiler](../crates/core/src/redpiler/compiler.rs) |
+| Allocation checks and Linux memory limits | [Memory guards](../crates/core/src/redpiler/memory.rs) and [Linux reader](../crates/core/src/redpiler/memory/linux.rs) |
+| Native runtime initialization, controls and pending ticks | [LLVM runtime](../crates/core/src/redpiler/sampled/llvm/mod.rs) |
+| Binary program encoding, alignment and validation | [LLVM encoding](../crates/core/src/redpiler/sampled/llvm/encoding.rs) |
+| Native exports, ABI checks and library handle ownership | [LLVM library](../crates/core/src/redpiler/sampled/llvm/library.rs) |
+
+The runtime owns its native state and library. Initialization uses the same
+cleanup path as normal shutdown, including when command binding or tick import
+fails. Encoding borrows the shared program rather than copying the circuit.
+
 ## Where the shortcut stops
 
 Redpiler accepts a subset of circuits the interpreter can run. Unsupported
@@ -98,6 +114,9 @@ the captured region can prevent compilation.
 
 Successful compilation also doesn't guarantee perfect agreement with the
 interpreter or vanilla Minecraft. Tests check specific mechanisms and circuits.
+
+Memory checks are advisory: compilation and execution still share the server
+process. Hard isolation from OOM kills or native faults requires worker processes.
 
 For the next layer of detail:
 

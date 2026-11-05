@@ -1,3 +1,4 @@
+use super::encoding::{read_u32, validate_blob};
 use super::*;
 
 #[test]
