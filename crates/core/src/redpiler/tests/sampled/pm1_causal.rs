@@ -313,15 +313,25 @@ fn pm1_final_screen_capture() {
         }
     }
     let mut world = cpus::load_cpu(cpu);
+    let screen = cpus::Cpu { screen: Some(cpus::Screen {
+        x: 230, top_y: 71, bottom_y: 40, left_z: 81, right_z: 112, sparse: false,
+    }), ..cpu };
+    let mut frames = Vec::new();
+    cpus::collect_screen(&world, screen, 0, &mut frames);
     cpus::click_cpu(&mut world, cpu, cpu.start);
     for tick in 1..=12_055 {
         world.tick_interpreted();
+        cpus::collect_screen(&world, screen, tick, &mut frames);
         if tick % 1000 == 0 { eprintln!("PM1 screen reached {tick}"); }
     }
     let mut chat = Vec::new();
     cpus::collect_chat(&world, 12_055, &mut chat);
-    let final_lamps: Vec<_> = lamps.iter().map(|(pos, _)| (*pos, world.get_block(*pos))).collect();
+    let final_lamps: Vec<_> = lamps.iter().map(|(pos, _)| {
+        let Block::RedstoneLamp { lit } = world.get_block(*pos) else { panic!("lamp removed at {pos:?}"); };
+        (*pos, lit)
+    }).collect();
     write(&root, "lamps.json", &json!({"schematic_sha256":cpu.sha256,"initial":lamps,"final":final_lamps}));
+    write(&root, "screen-frames.json", &frames);
     write(&root, "final-checkpoint.json", &cpus::checkpoint(&world, 12_055, &chat));
     assert_eq!(chat.len(), 1534);
     assert!(chat.last().unwrap().1.contains("shut"));

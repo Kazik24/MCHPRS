@@ -4,6 +4,8 @@ use crate::redpiler::{CachedProgram, CompileError, TaskMonitor};
 use std::sync::Arc;
 use std::thread::JoinHandle;
 
+const PROGRESS_INTERVAL: Duration = Duration::from_secs(3);
+
 #[cfg(test)]
 mod tests;
 
@@ -18,9 +20,60 @@ pub(super) struct CompilationJob {
     /// Live entry state that must still match before activation.
     entry: EntryVersion,
     options: CompilerOptions,
-    cacheable: bool,
     /// Worker owning all temporary compilation data and no live plot references.
     worker: JoinHandle<CompilationResult>,
+}
+
+impl CompilationJob {
+    fn spawn(
+        world: PlotWorld,
+        entry: EntryVersion,
+        options: CompilerOptions,
+        budget: Option<Duration>,
+        started: Instant,
+        cached: Option<CompilationCache>,
+    ) -> std::io::Result<Self> {
+        let monitor = Arc::new(TaskMonitor::with_deadline(budget.map(|budget| started + budget)));
+        let worker_monitor = monitor.clone();
+        let worker_options = options.clone();
+        let span = tracing::Span::current();
+        let worker = thread::Builder::new()
+            .name(format!("compile-{},{}", world.x, world.z))
+            .spawn(move || {
+                let _entered = span.enter();
+                CompilationResult::compile(world, worker_options, worker_monitor, cached)
+            })?;
+        Ok(Self {
+            started,
+            last_progress: Instant::now(),
+            monitor,
+            budget,
+            budget_reported: false,
+            entry,
+            options,
+            worker,
+        })
+    }
+
+    fn take_timeout_message(&mut self) -> Option<String> {
+        let budget = self.budget?;
+        if self.budget_reported || !self.monitor.budget_expired() {
+            return None;
+        }
+        self.budget_reported = true;
+        Some(format!("Compilation exceeded your {} second budget. Try a smaller circuit.", budget.as_secs()))
+    }
+
+    fn take_progress_message(&mut self) -> Option<String> {
+        if self.worker.is_finished() || self.monitor.cancelled() || self.last_progress.elapsed() < PROGRESS_INTERVAL {
+            return None;
+        }
+        self.last_progress = Instant::now();
+        let elapsed_secs = self.started.elapsed().as_secs();
+        let status = self.monitor.status();
+        info!(elapsed_secs, %status, "Redpiler compilation progress");
+        Some(messages::redpiler_progress(elapsed_secs, &status))
+    }
 }
 
 pub(super) struct CompilationCache {
@@ -49,6 +102,20 @@ struct CompilationResult {
     compiler: Compiler,
     /// Structured rejection retained for diagnostics and block highlighting.
     result: Result<(), CompileError>,
+}
+
+impl CompilationResult {
+    fn compile(world: PlotWorld, options: CompilerOptions, monitor: Arc<TaskMonitor>, cached: Option<CompilationCache>) -> Self {
+        let mut compiler = Compiler::default();
+        let result = match cached {
+            Some(CompilationCache { suspended: Some(saved), .. }) => compiler.resume_cached(&world, options, monitor, saved),
+            cache => {
+                let ticks = world.to_be_ticked.iter_entries().collect();
+                compiler.compile_cached(&world, world.get_corners(), options, ticks, monitor, cache.map(|cache| cache.program))
+            }
+        };
+        Self { world, compiler, result }
+    }
 }
 
 struct EntryVersion {
@@ -180,11 +247,7 @@ impl Plot {
             .redpiler_cache
             .take()
             .filter(|cache| cache.options == options && cache.entry.matches(&self.world));
-        let job_options = options.clone();
         let snapshot_ms = started.elapsed().as_millis();
-        let monitor = Arc::new(TaskMonitor::with_deadline(budget.map(|budget| started + budget)));
-        let worker_monitor = monitor.clone();
-        let span = tracing::Span::current();
         info!(plot_x = self.world.x, plot_z = self.world.z, snapshot_ms, ?options, "Redpiler started");
         self.scoreboard.set_redpiler_state(&self.players, RedpilerState::Compiling);
         self.scoreboard.set_redpiler_options(&self.players, &options);
@@ -197,43 +260,10 @@ impl Plot {
                 "compiling circuit"
             }
         );
-        for player in &self.players {
-            player.send_raw_system_message(crate::player::diagnostic_component(&milestone).to_string());
-        }
+        self.send_redpiler_diagnostic(&milestone);
 
-        let worker = thread::Builder::new()
-            .name(format!("compile-{},{}", self.world.x, self.world.z))
-            .spawn(move || {
-                let _entered = span.enter();
-                let ticks = world.to_be_ticked.iter_entries().collect();
-                let mut compiler = Compiler::default();
-                let result = match cached {
-                    Some(CompilationCache { suspended: Some(saved), .. }) => compiler.resume_cached(&world, options, worker_monitor, saved),
-                    cache => compiler.compile_cached(
-                        &world,
-                        world.get_corners(),
-                        options,
-                        ticks,
-                        worker_monitor,
-                        cache.map(|cache| cache.program),
-                    ),
-                };
-                CompilationResult { world, compiler, result }
-            });
-        match worker {
-            Ok(worker) => {
-                self.compilation = Some(CompilationJob {
-                    started,
-                    last_progress: Instant::now(),
-                    monitor,
-                    budget,
-                    budget_reported: false,
-                    entry,
-                    options: job_options,
-                    cacheable: true,
-                    worker,
-                })
-            }
+        match CompilationJob::spawn(world, entry, options, budget, started, cached) {
+            Ok(job) => self.compilation = Some(job),
             Err(error) => self.reject_redpiler(started, &format!("cannot start compiler worker: {error}")),
         }
         self.reset_timings();
@@ -241,29 +271,15 @@ impl Plot {
 
     pub(super) fn poll_redpiler_compilation(&mut self) {
         if let Some(job) = &mut self.compilation
-            && job.monitor.budget_expired()
-            && !job.budget_reported
+            && let Some(reason) = job.take_timeout_message()
         {
-            job.budget_reported = true;
             let started = job.started;
-            let reason = format!(
-                "Compilation exceeded your {} second budget. Try a smaller circuit.",
-                job.budget.unwrap().as_secs()
-            );
             self.reject_redpiler(started, &reason);
         }
         if let Some(job) = &mut self.compilation
-            && !job.worker.is_finished()
-            && !job.monitor.cancelled()
-            && job.last_progress.elapsed() >= Duration::from_secs(3)
+            && let Some(message) = job.take_progress_message()
         {
-            job.last_progress = Instant::now();
-            let status = job.monitor.status();
-            let text = messages::redpiler_progress(job.started.elapsed().as_secs(), &status);
-            info!(elapsed_secs = job.started.elapsed().as_secs(), %status, "Redpiler compilation progress");
-            for player in &self.players {
-                player.send_raw_system_message(crate::player::diagnostic_component(&text).to_string());
-            }
+            self.send_redpiler_diagnostic(&message);
         }
         if !self.compilation.as_ref().is_some_and(|job| job.worker.is_finished()) {
             return;
@@ -296,43 +312,45 @@ impl Plot {
         } else if !job.entry.matches(&self.world) || self.git_checkout_locked() {
             self.reject_redpiler(job.started, messages::REDPILER_COMPILATION_CHANGED);
         } else {
-            if job.cacheable {
-                self.redpiler_cache = output.compiler.cached_program().map(|program| CompilationCache {
-                    entry: job.entry,
-                    options: job.options,
-                    program,
-                    suspended: None,
-                });
+            self.activate_redpiler(job, output);
+        }
+    }
+
+    fn activate_redpiler(&mut self, job: CompilationJob, output: CompilationResult) {
+        self.redpiler_cache = output.compiler.cached_program().map(|program| CompilationCache {
+            entry: job.entry,
+            options: job.options,
+            program,
+            suspended: None,
+        });
+        self.redpiler = output.compiler;
+        self.redpiler_handoff_failed = false;
+        let state = if self.redpiler.current_flags().is_some_and(|options| options.llvm) {
+            RedpilerState::RunningLlvm
+        } else {
+            RedpilerState::Running
+        };
+        if let Some(stats) = self.redpiler.stats() {
+            for line in stats.chat_summary_lines() {
+                self.send_redpiler_diagnostic(&line);
             }
-            self.redpiler = output.compiler;
-            self.redpiler_handoff_failed = false;
-            let state = if self.redpiler.current_flags().is_some_and(|options| options.llvm) {
-                RedpilerState::RunningLlvm
-            } else {
-                RedpilerState::Running
-            };
-            if let Some(stats) = self.redpiler.stats() {
-                for line in stats.chat_summary_lines() {
-                    for player in &self.players {
-                        player.send_raw_system_message(crate::player::diagnostic_component(&line).to_string());
-                    }
-                }
-            }
-            self.world.publish_activation_changes(&output.world);
-            self.world.clear_scheduled_ticks();
-            self.close_all_containers_after_redpiler();
-            if self.world.history.enabled() {
-                let bytes = self.world.history.disable();
-                self.broadcast_plot_chat_message(&messages::history_disabled_for_compilation(history::format_memory(bytes)));
-            }
-            self.scoreboard.set_redpiler_state(&self.players, state);
-            info!(
-                plot_x = self.world.x,
-                plot_z = self.world.z,
-                elapsed_ms = job.started.elapsed().as_millis(),
-                "Redpiler completed"
-            );
-            self.reset_timings();
+        }
+        self.world.publish_activation_changes(&output.world);
+        self.world.clear_scheduled_ticks();
+        self.close_all_containers_after_redpiler();
+        if self.world.history.enabled() {
+            let bytes = self.world.history.disable();
+            self.broadcast_plot_chat_message(&messages::history_disabled_for_compilation(history::format_memory(bytes)));
+        }
+        self.scoreboard.set_redpiler_state(&self.players, state);
+        info!(plot_x = self.world.x, plot_z = self.world.z, elapsed_ms = job.started.elapsed().as_millis(), "Redpiler completed");
+        self.reset_timings();
+    }
+
+    fn send_redpiler_diagnostic(&self, text: &str) {
+        let message = crate::player::diagnostic_component(text).to_string();
+        for player in &self.players {
+            player.send_raw_system_message(message.clone());
         }
     }
 

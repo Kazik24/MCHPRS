@@ -23,7 +23,6 @@ fn install_job(plot: &mut Plot, work: impl FnOnce(PlotWorld, Arc<TaskMonitor>) -
         last_progress: Instant::now(),
         entry: EntryVersion::capture(&plot.world),
         options: Default::default(),
-        cacheable: false,
         monitor,
         budget: None,
         budget_reported: false,
