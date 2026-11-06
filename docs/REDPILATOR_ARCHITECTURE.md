@@ -1,130 +1,63 @@
 # Redpilator architecture
 
-**Redpilator pays the cost of understanding a circuit once, then runs the result
-many times.** That's where the speed comes from.
+Redpilator compiles a circuit into a program, then runs that program instead of searching the world for connections on each update. Rust is the default executor. The optional LLVM backend runs a native C executor built with Clang.
 
-Imagine a lever connected to a lamp through a long dust wire. The interpreter
-follows the blocks and their update rules when something changes. Redpilator
-works out the connection during compilation, so execution can use stored links
-and instructions.
+Credit to MAIR for the sampled compilation algorithm that informed this rewrite, including piston arrangements and conditional wiring.
 
-There are three main pieces:
+## Compilation
 
-| Piece | Job |
+The plot takes a snapshot of blocks, block entities, scheduled ticks and piston state. A worker thread compiles the snapshot. The plot keeps handling packets and commands while simulation is paused. Edits are blocked during compilation and remain blocked while the compiled runtime is active.
+
+The compiler scans components, traces wiring and finds piston groups. It probes input transitions with the interpreter in isolated scratch worlds and records the resulting updates. Scratch state is restored between probes.
+
+The compiler stores separate instruction sequences for rising and falling signals. It also stores electrical links and connections that depend on piston positions. The instructions preserve callback order, including short pulses and piston notifications.
+
+Before activating the result, the plot checks that its state still matches the snapshot. A failed, cancelled or stale compilation never becomes the active runtime.
+
+## Execution
+
+The program stores components, links, instructions and movement rules. Components use numeric IDs. The runtime stores current signal strengths, component states, pending ticks and piston movement.
+
+Inputs and scheduled ticks run the stored instructions. While Redpilator is active, it advances the circuit and the plot's interpreter stays paused.
+
+Pistons can change electrical connections by moving blocks. The compiler records movable blocks, the cells they can occupy and the connections for supported arrangements. During execution, movement selects the current arrangement and sends its recorded notifications.
+
+## Publishing and reset
+
+The runtime's state is separate from the plot world. Publishing copies results back to the world for players to see. `/visual rate` controls how often updates are sent, independently of simulation speed.
+
+Publication can include all blocks and piston motion, redstone components, or just controls and visible outputs. Changing publication mode does not advance simulation.
+
+`/rp reset` and `/rp off` export the current state and pending work to the interpreter. This includes piston state. They continue from the current state rather than restarting the circuit.
+
+A normal reset can keep the prepared executor. The next compile can resume it if the world and compiler options have not changed. `/rp clear` stops execution and discards the plot checkpoint and the shared LLVM build cache. Active runtimes on other plots keep running.
+
+## LLVM backend
+
+The encoder writes the compiled program into versioned, little-endian tables. The native library is built on demand and reused with different circuit tables. The loader checks the ABI version before creating native state.
+
+Each runtime owns its state buffers, command state and library handle. After native state is created, errors during command setup or tick import drop the runtime and free its resources. The encoder borrows the shared program instead of copying the circuit.
+
+## Limits
+
+Unsupported components, piston arrangements, unfinished movement or dependencies outside the captured region can prevent compilation. The LLVM backend has additional restrictions.
+
+Tests cover specific mechanisms and circuits. Passing compilation does not prove that every circuit will match the interpreter or vanilla Minecraft.
+
+Compilation and execution share the server process. A native fault or an OS OOM kill can still terminate the server.
+
+## Source files
+
+| File | Purpose |
 | --- | --- |
-| Compiler | Discover connections and learn update order. |
-| Program | Store what the compiler learned. |
-| Runtime | Run that program and keep the circuit's current state. |
+| [Plot compilation](../crates/core/src/plot/redpilator_compilation/mod.rs) | Snapshot, worker thread, progress and activation |
+| [Compiler](../crates/core/src/redpilator/compiler.rs) | Entry checks, backend setup, publishing and reset |
+| [Compiler passes](../crates/core/src/redpilator/sampled/passes/README.md) | Discovery and instruction generation |
+| [Program](../crates/core/src/redpilator/sampled/program.rs) | Compiled circuit data |
+| [Rust executor](../crates/core/src/redpilator/sampled/executor.rs) | Mutable state and instruction execution |
+| [LLVM runtime](../crates/core/src/redpilator/sampled/llvm/mod.rs) | Native state, controls and pending ticks |
+| [LLVM encoding](../crates/core/src/redpilator/sampled/llvm/encoding.rs) | Binary tables, alignment and validation |
+| [LLVM library](../crates/core/src/redpilator/sampled/llvm/library.rs) | Native exports, ABI checks and library ownership |
+| [Allocation helpers](../crates/core/src/redpilator/memory.rs) | Fallible native-buffer allocation |
 
-## 1. Learn the circuit
-
-Compilation starts with a **snapshot of the plot**, including scheduled ticks
-and piston state. A background worker does the expensive work. Before accepting
-its result, the plot checks that the captured entry state still matches.
-
-First, the compiler finds components and traces wiring. Then it runs small
-experiments in isolated copies of the world, called **scratch worlds**.
-
-These experiments use the existing interpreter: change an input, observe the
-updates, restore the scratch world, repeat. This is what *sampled compilation*
-means here. It discovers behavior through targeted probes.
-
-The compiler records both **who gets updated** and **in what order**. Turning a
-signal on and turning it off can need different instruction sequences.
-
-## 2. Deal with pistons
-
-A lever changes a signal. A piston can change the wiring itself.
-
-For example, moving a solid block can connect or disconnect a power path. The
-compiler discovers piston groups, movable blocks and the cells those blocks can
-occupy. It records connections for supported arrangements, plus the notifications
-caused by movement.
-
-At runtime, movement changes which connections are active. This is why the
-program needs more than a fixed graph of wires.
-
-## 3. Run the program
-
-The **program** stores components, links, ordered instructions and movement
-rules. Components get numeric IDs, so the executor can work with indexed data.
-
-The **runtime** stores the changing values: signal strengths, component states,
-block positions and pending events.
-
-When an input changes or a scheduled tick becomes due, the runtime executes the
-affected instructions. Delays stay in a scheduler. Update order is preserved
-because a brief pulse or an earlier piston notification can change what happens
-next, even when the final power levels look identical.
-
-There are two executors:
-
-- **Rust:** the default.
-- **LLVM:** an optional native C executor built with Clang/LLVM. It runs the same
-  sampled program using circuit-specific tables. The native library is reused.
-  This backend is experimental and has additional limits on what it accepts.
-
-## 4. Show results in Minecraft
-
-The runtime advances the circuit; **publication** copies results back to the
-plot for players to see. Simulation speed and visual update rate are separate.
-
-Publication can show all blocks and piston motion, redstone components, or just
-controls and visible outputs. Switching modes changes what is shown without
-advancing the simulation.
-
-Block edits are blocked from the start of compilation until an explicit reset.
-Levers and buttons work once compilation finishes. Changing the build would
-invalidate the compiled connections.
-
-## Compile ownership and handoff
-
-**Only one simulator advances the circuit at a time.** After compilation, that's
-the compiled runtime.
-
-`/rp reset` writes the current state and pending work back to the interpreter,
-including piston state. The circuit continues from there. The command does not
-rewind it to the moment it was compiled.
-
-A normal reset can keep the prepared executor for reuse. Matching options and
-an unchanged exported world allow it to resume; edits or simulation changes
-invalidate that reuse. `/rp clear` discards the plot checkpoint and clears the
-shared owned LLVM artifact cache.
-
-## Code map
-
-| Responsibility | Entry point |
-| --- | --- |
-| Snapshot, worker lifecycle, progress and activation | [Plot compilation](../crates/core/src/plot/redpilator_compilation/mod.rs) |
-| Entry validation, backend selection and state handoff | [Compiler](../crates/core/src/redpilator/compiler.rs) |
-| Fallible native-buffer allocation | [Allocation helpers](../crates/core/src/redpilator/memory.rs) |
-| Native runtime initialization, controls and pending ticks | [LLVM runtime](../crates/core/src/redpilator/sampled/llvm/mod.rs) |
-| Binary program encoding, alignment and validation | [LLVM encoding](../crates/core/src/redpilator/sampled/llvm/encoding.rs) |
-| Native exports, ABI checks and library handle ownership | [LLVM library](../crates/core/src/redpilator/sampled/llvm/library.rs) |
-
-The runtime owns its native state and library. Initialization uses the same
-cleanup path as normal shutdown, including when command binding or tick import
-fails. Encoding borrows the shared program rather than copying the circuit.
-
-## Where the shortcut stops
-
-Redpilator accepts a subset of circuits the interpreter can run. Unsupported
-components, piston arrangements, unfinished movement or dependencies outside
-the captured region can prevent compilation.
-
-Successful compilation also doesn't guarantee perfect agreement with the
-interpreter or vanilla Minecraft. Tests check specific mechanisms and circuits.
-
-Compilation and execution share the server process. Hard isolation from OOM
-kills or native faults requires worker processes.
-
-For the next layer of detail:
-
-- [Commands and setup](../README.md#redpilator).
-- [Compiler passes](../crates/core/src/redpilator/sampled/passes/README.md).
-- [Program data](../crates/core/src/redpilator/sampled/program.rs) and
-  [Rust executor](../crates/core/src/redpilator/sampled/executor.rs).
-- [Redstone rules](REDSTONE_MODEL.md) and [piston rules](PISTON_MODEL.md).
-
-Credit to MAIR for the sampled compilation algorithm that informed this rewrite,
-including piston arrangements and conditional wiring.
+See the [README](../README.md#redpilator) for commands and setup, and the [redstone](REDSTONE_MODEL.md) and [piston](PISTON_MODEL.md) models for interpreter behavior.
