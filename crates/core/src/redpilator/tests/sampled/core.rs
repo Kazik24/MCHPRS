@@ -200,7 +200,7 @@ fn token_move_notifies_wire_watchers_only_when_strength_changes() {
             vec![WatchedWire { wire: 1, watchers: vec![2] }],
         )
         .unwrap();
-        program.tokens.push(super::compiler::PistonToken {
+        program.tokens.push(super::pistons::PistonToken {
             block: Block::RedstoneBlock,
             position: Some(cell),
             cells: vec![cell],
@@ -253,7 +253,7 @@ fn token_move_distinguishes_dust_power_from_direct_observer_updates() {
             vec![WatchedWire { wire: 0, watchers: vec![1] }],
         )
         .unwrap();
-        program.tokens.push(super::compiler::PistonToken {
+        program.tokens.push(super::pistons::PistonToken {
             block: Block::RedstoneBlock,
             position: Some(cell),
             cells: vec![cell],
@@ -316,7 +316,7 @@ fn moving_token_invalidates_every_bound_piston_update_mark() {
         .into_iter()
         .zip(homes)
         .enumerate()
-        .map(|(id, (base, home))| super::compiler::PistonActor {
+        .map(|(id, (base, home))| super::pistons::PistonActor {
             id,
             base,
             facing: BlockFacing::East,
@@ -328,7 +328,7 @@ fn moving_token_invalidates_every_bound_piston_update_mark() {
             group: 0,
         })
         .collect();
-    program.tokens.push(super::compiler::PistonToken {
+    program.tokens.push(super::pistons::PistonToken {
         block: Block::Stone {},
         position: Some(homes[0]),
         cells: vec![homes[0], homes[1], far],
@@ -365,7 +365,7 @@ fn finishing_piston_motion_invalidates_its_update_mark() {
         vec![],
     )
     .unwrap();
-    program.pistons.push(super::compiler::PistonActor {
+    program.pistons.push(super::pistons::PistonActor {
         id: 0,
         base,
         facing: BlockFacing::East,
@@ -434,7 +434,7 @@ fn opposed_pistons_can_push_a_shared_far_token_into_the_mate_home() {
     )
     .unwrap();
     program.pistons = vec![
-        super::compiler::PistonActor {
+        super::pistons::PistonActor {
             id: 0,
             base: left_base,
             facing: BlockFacing::East,
@@ -445,7 +445,7 @@ fn opposed_pistons_can_push_a_shared_far_token_into_the_mate_home() {
             head_present: false,
             group: 0,
         },
-        super::compiler::PistonActor {
+        super::pistons::PistonActor {
             id: 1,
             base: right_base,
             facing: BlockFacing::West,
@@ -459,12 +459,12 @@ fn opposed_pistons_can_push_a_shared_far_token_into_the_mate_home() {
     ];
     let cells = vec![left_home, far, right_home];
     program.tokens = vec![
-        super::compiler::PistonToken {
+        super::pistons::PistonToken {
             block: Block::Stone {},
             position: Some(left_home),
             cells: cells.clone(),
         },
-        super::compiler::PistonToken {
+        super::pistons::PistonToken {
             block: Block::Stone {},
             position: Some(far),
             cells,
@@ -497,7 +497,7 @@ fn movement_flips_preserve_discovery_order_for_remaining_recipients() {
         vec![],
     )
     .unwrap();
-    program.tokens.push(super::compiler::PistonToken {
+    program.tokens.push(super::pistons::PistonToken {
         block: Block::RedstoneBlock,
         position: Some(cell),
         cells: vec![cell],
@@ -543,7 +543,7 @@ fn conditional_source_changes_wait_for_their_ordered_link_instruction() {
         vec![],
     )
     .unwrap();
-    program.tokens.push(super::compiler::PistonToken {
+    program.tokens.push(super::pistons::PistonToken {
         block: Block::Stone {},
         position: Some(cell.offset(BlockFace::Top)),
         cells: vec![cell.offset(BlockFace::Top)],
@@ -597,7 +597,7 @@ fn separate_arrangement_groups_mask_each_of_their_fixed_sources() {
         vec![],
     )
     .unwrap();
-    program.tokens.push(super::compiler::PistonToken {
+    program.tokens.push(super::pistons::PistonToken {
         block: Block::Stone {},
         position: None,
         cells: vec![cell.offset(BlockFace::Top)],
@@ -623,12 +623,12 @@ fn changed_links_include_masked_sources_additions_removals_and_attenuation() {
     let before = [(Component(0), 0), (Component(1), 4), (Component(2), 2)].into_iter().collect();
     let after = [(Component(0), 0), (Component(1), 5), (Component(3), 3)].into_iter().collect();
     assert_eq!(
-        super::compiler::find_changed_links(&before, &after),
+        super::group_probe::find_changed_links(&before, &after),
         vec![Component(1), Component(2), Component(3)]
     );
     let before = [((Component(0), false), 1), ((Component(0), true), 3)].into_iter().collect();
     let after = [((Component(0), false), 1), ((Component(0), true), 4)].into_iter().collect();
-    assert_eq!(super::compiler::find_changed_links(&before, &after), vec![(Component(0), true)]);
+    assert_eq!(super::group_probe::find_changed_links(&before, &after), vec![(Component(0), true)]);
 }
 #[test]
 fn group_probe_finds_masked_conductor_dependency() {
@@ -654,7 +654,7 @@ fn group_probe_finds_masked_conductor_dependency() {
         vec![],
     )
     .unwrap();
-    program.tokens.push(super::compiler::PistonToken {
+    program.tokens.push(super::pistons::PistonToken {
         block: Block::Stone {},
         position: Some(cell),
         cells: vec![cell],
@@ -691,7 +691,7 @@ fn group_probe_finds_direct_token_inputs_for_all_reader_families() {
         world.set_block(cell, Block::RedstoneBlock);
         world.set_block(reader, block);
         let mut program = test_program(vec![cell, reader], vec![Block::RedstoneBlock, block], vec![], vec![], vec![], vec![]).unwrap();
-        program.tokens.push(super::compiler::PistonToken {
+        program.tokens.push(super::pistons::PistonToken {
             block: Block::RedstoneBlock,
             position: Some(cell),
             cells: vec![cell],
@@ -814,7 +814,7 @@ fn conditional_side_input_locks_repeater_without_powering_its_rear() {
     )
     .unwrap();
     let token_cell = cell.offset(BlockFace::Top);
-    program.tokens.push(super::compiler::PistonToken {
+    program.tokens.push(super::pistons::PistonToken {
         block: Block::Stone {},
         position: None,
         cells: vec![token_cell],
@@ -994,7 +994,10 @@ fn torch_piston_watchers_follow_interpreter_notification_order() {
     }
     let program = compile(&world, (BlockPos::new(10, 10, 10), BlockPos::new(22, 22, 22)), entry(&world)).unwrap();
     let source = program.component_indices[&torch];
-    let actual: Vec<_> = program.source_watchers[source].iter().map(|&index| program.positions[notification_component(index)]).collect();
+    let actual: Vec<_> = program.source_watchers[source]
+        .iter()
+        .map(|&index| program.positions[notification_component(index)])
+        .collect();
     world.observe_redstone_updates(true);
     crate::redstone::on_torch_state_change(&mut world, torch);
     let mut expected = Vec::new();
@@ -1104,7 +1107,7 @@ fn empty_shape_program_suppresses_manual_observer_fallback_after_reindexing() {
         vec![],
     )
     .unwrap();
-    program.tokens.push(super::compiler::PistonToken {
+    program.tokens.push(super::pistons::PistonToken {
         block: Block::Stone {},
         position: Some(cell),
         cells: vec![cell],
@@ -1312,7 +1315,7 @@ fn piston_request_moves_token_after_two_motion_ticks() {
     );
     world.set_block(home, Block::Stone {});
     let actors = discover_piston_actors(&world, bounds, entry(&world)).unwrap();
-    let tokens = super::compiler::discover_piston_tokens(&world, &actors).unwrap();
+    let tokens = super::pistons::discover_piston_tokens(&world, &actors).unwrap();
     let lever = BlockPos::new(14, 15, 15);
     let mut program = test_program(
         vec![lever, base],
@@ -1382,7 +1385,7 @@ fn normal_and_early_retract_requests_keep_distinct_queue_identities() {
     );
     world.set_block(far, Block::Stone {});
     let actors = discover_piston_actors(&world, (BlockPos::new(10, 10, 10), BlockPos::new(22, 20, 20)), entry(&world)).unwrap();
-    let tokens = super::compiler::discover_piston_tokens(&world, &actors).unwrap();
+    let tokens = super::pistons::discover_piston_tokens(&world, &actors).unwrap();
     let mut program = test_program(vec![base], vec![world.get_block(base)], vec![], vec![], vec![], vec![]).unwrap();
     program.pistons = actors;
     program.tokens = tokens;
@@ -1430,7 +1433,7 @@ fn landing_order_that_already_passed_requests_normal_retraction() {
         vec![],
     )
     .unwrap();
-    program.pistons.push(super::compiler::PistonActor {
+    program.pistons.push(super::pistons::PistonActor {
         id: 0,
         base,
         facing: BlockFacing::East,
@@ -1441,7 +1444,7 @@ fn landing_order_that_already_passed_requests_normal_retraction() {
         head_present: false,
         group: 0,
     });
-    program.tokens.push(super::compiler::PistonToken {
+    program.tokens.push(super::pistons::PistonToken {
         block: Block::Stone {},
         position: None,
         cells: vec![far],
@@ -1496,7 +1499,7 @@ fn landing_callbacks_preserve_both_motion_orders() {
         vec![],
     )
     .unwrap();
-    program.pistons.push(super::compiler::PistonActor {
+    program.pistons.push(super::pistons::PistonActor {
         id: 0,
         base,
         facing: BlockFacing::East,
@@ -1508,12 +1511,12 @@ fn landing_callbacks_preserve_both_motion_orders() {
         group: 0,
     });
     program.tokens = vec![
-        super::compiler::PistonToken {
+        super::pistons::PistonToken {
             block: Block::Stone {},
             position: None,
             cells: vec![far],
         },
-        super::compiler::PistonToken {
+        super::pistons::PistonToken {
             block: Block::Stone {},
             position: None,
             cells: vec![callback_cell],
@@ -1595,7 +1598,7 @@ fn interrupted_extension_exports_only_its_unfinished_parts() {
             vec![],
         )
         .unwrap();
-        program.pistons.push(super::compiler::PistonActor {
+        program.pistons.push(super::pistons::PistonActor {
             id: 0,
             base,
             facing: BlockFacing::East,
@@ -1606,7 +1609,7 @@ fn interrupted_extension_exports_only_its_unfinished_parts() {
             head_present: false,
             group: 0,
         });
-        program.tokens.push(super::compiler::PistonToken {
+        program.tokens.push(super::pistons::PistonToken {
             block: Block::Stone {},
             position: None,
             cells: vec![far],
@@ -3258,7 +3261,7 @@ fn check_joint_movement_sources(intermediate_source: bool) {
     let initial = positions.iter().map(|&pos| world.get_block(pos)).collect();
     let mut program = test_program(positions, initial, vec![], vec![], vec![], vec![]).unwrap();
     for pos in gates {
-        program.tokens.push(compiler::PistonToken {
+        program.tokens.push(pistons::PistonToken {
             block: Block::Stone {},
             position: Some(pos),
             cells: vec![pos],
@@ -3315,7 +3318,7 @@ fn compressed_electrical_axes_preserve_physical_token_positions() {
         vec![],
     )
     .unwrap();
-    program.tokens.push(compiler::PistonToken {
+    program.tokens.push(pistons::PistonToken {
         block: concrete,
         position: Some(upper),
         cells: vec![upper, lower],
@@ -3804,7 +3807,7 @@ fn discovers_static_empty_piston_actors_and_preserves_source() {
             serde_json::to_value(world.piston_state()).unwrap(),
         )
     );
-    assert_eq!(compile(&world, bounds, entry(&world)).unwrap().pistons.len(), 3);
+    assert_eq!(compile(&world, bounds, entry(&world)).unwrap().pistons, actors);
 }
 
 #[test]
@@ -3838,6 +3841,9 @@ fn rejects_invalid_or_unreadable_piston_contacts() {
     let error = discover_piston_actors(&mismatched, bounds, entry(&mismatched)).unwrap_err();
     assert_eq!(error.position, Some(home));
     assert_eq!(error.reason, "piston head does not match base state");
+    let error = compile(&mismatched, bounds, entry(&mismatched)).err().unwrap();
+    assert_eq!(error.position, Some(home));
+    assert_eq!(error.reason, "piston head does not match base state");
 
     let mut occupied = host();
     occupied.set_block(
@@ -3852,7 +3858,7 @@ fn rejects_invalid_or_unreadable_piston_contacts() {
     );
     occupied.set_block(far, Block::Stone {});
     let actors = discover_piston_actors(&occupied, bounds, entry(&occupied)).unwrap();
-    assert!(super::compiler::discover_piston_tokens(&occupied, &actors).unwrap().is_empty());
+    assert!(super::pistons::discover_piston_tokens(&occupied, &actors).unwrap().is_empty());
 
     occupied.set_block(
         base,
@@ -3865,7 +3871,7 @@ fn rejects_invalid_or_unreadable_piston_contacts() {
         },
     );
     let actors = discover_piston_actors(&occupied, bounds, entry(&occupied)).unwrap();
-    let tokens = super::compiler::discover_piston_tokens(&occupied, &actors).unwrap();
+    let tokens = super::pistons::discover_piston_tokens(&occupied, &actors).unwrap();
     assert_eq!(tokens.len(), 1);
     assert_eq!(tokens[0].position, Some(far));
     assert_eq!(tokens[0].block, Block::Stone {});

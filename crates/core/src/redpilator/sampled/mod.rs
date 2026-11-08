@@ -18,12 +18,14 @@ mod group_probe;
 mod incremental_input_tests;
 mod input;
 mod llvm;
+mod passes;
 #[cfg(test)]
 #[path = "../tests/sampled/piston_bud_repro.rs"]
 mod piston_bud_repro;
 #[cfg(test)]
 #[path = "../tests/sampled/piston_head_notifications.rs"]
 mod piston_head_notifications;
+mod pistons;
 #[cfg(test)]
 #[path = "../tests/sampled/pm1_causal.rs"]
 mod pm1_causal;
@@ -54,12 +56,14 @@ pub(super) use super::scratch::{ScratchEntry, ScratchError};
 #[cfg(test)]
 use crate::world::World;
 #[cfg(test)]
-use compiler::{PistonActor, assign_piston_groups, compile, discover_piston_actors};
+use compiler::compile;
 pub(super) use executor::Runtime;
 use mchprs_blocks::{
     block_entities::MovingPistonEntity,
     blocks::{Block, RedstonePistonHead},
 };
+#[cfg(test)]
+use pistons::{PistonActor, assign_piston_groups, discover_piston_actors};
 pub(crate) use program::Program;
 #[cfg(test)]
 use program::WatchedWire;

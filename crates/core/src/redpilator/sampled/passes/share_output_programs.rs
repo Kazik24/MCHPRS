@@ -1,8 +1,9 @@
 //! Share identical immutable rise/fall programs without merging component state.
-use super::*;
+use super::{CompilePhases, check_cancelled};
+use crate::redpilator::sampled::{Operation, Program, ScratchError};
 
-pub(in super::super) fn run(program: &mut Program, monitor: Option<&TaskMonitor>, phases: &mut CompilePhases<'_>) -> Result<(), ScratchError> {
-    check_cancelled(monitor)?;
+pub(in super::super) fn run(program: &mut Program, phases: &mut CompilePhases<'_>) -> Result<(), ScratchError> {
+    check_cancelled(phases.monitor)?;
     phases.next("share output programs");
     let original_operations = program.operations.len();
     program.compact_output_programs(true);
@@ -18,5 +19,5 @@ pub(in super::super) fn run(program: &mut Program, monitor: Option<&TaskMonitor>
     }
 
     program.validate()?;
-    check_cancelled(monitor)
+    check_cancelled(phases.monitor)
 }

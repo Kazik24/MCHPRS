@@ -1,9 +1,11 @@
 //! Validate discovered records and build the indexes required by runtime activation.
-use super::*;
+use super::{CompilePhases, check_cancelled};
+use crate::redpilator::sampled::{Operation, Program, ScratchError};
+use mchprs_blocks::blocks::Block;
 
-pub(in super::super) fn run(program: &mut Program, monitor: Option<&TaskMonitor>, phases: &mut CompilePhases<'_>) -> Result<(), ScratchError> {
+pub(in super::super) fn run(program: &mut Program, phases: &mut CompilePhases<'_>) -> Result<(), ScratchError> {
     phases.next("program finalization");
-    check_cancelled(monitor)?;
+    check_cancelled(phases.monitor)?;
     program.validate()?;
     program.prepare_projection();
 

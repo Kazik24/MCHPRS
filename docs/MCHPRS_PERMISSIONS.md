@@ -218,9 +218,9 @@ Automatic compilation uses the greatest allowance among current authorized plot
 editors with both compile and automatic-compilation permissions; an unauthorized
 visitor cannot raise the budget.
 
-`/rp off` is an alias for `/rp reset`; both use `mchprs.commands.redpilator.reset`.
-`/rp clear` uses the same permission and clears this plot's
-warm checkpoint plus the process-shared owned LLVM artifact cache. Active
+`/rp off` and `/rp r` are aliases for `/rp reset`; all use `mchprs.commands.redpilator.reset`
+and discard this plot's prepared executor and sampling cache.
+`/rp clear` uses the same permission and also clears the process-shared owned LLVM artifact cache. Active
 executors on other plots and custom `MCHPRS_LLVM_DLL` files are retained.
 
 Budgets do not grant command access or override explicit denials. Enforce access

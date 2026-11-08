@@ -1,5 +1,13 @@
 //! Extract electrical links, component ports, watched wires and fixed geometry.
-use super::*;
+use super::{CompilePhases, Context, Inventory, check_cancelled};
+use crate::redpilator::sampled::{
+    ElectricalLink, Program, ScratchError, ScratchWorld,
+    group_probe::ProbeIndexes,
+    program::{ArrangementSource, ComparatorInput, WatchedWire},
+};
+use crate::world::World;
+use mchprs_blocks::{BlockPos, block_entities::BlockEntity, blocks::Block};
+use std::collections::HashMap;
 
 pub(in super::super) fn run<'a>(
     context: &Context<'_, impl World>,
@@ -32,23 +40,14 @@ pub(in super::super) fn run<'a>(
         } else {
             crate::redpilator::scratch::discover_wire_sources(scratch.world(), &wire_positions)?
         };
-        for lamp in lamp_positions {
-            check_cancelled(monitor)?;
-            dependencies.extend(crate::redpilator::scratch::discover_lamp_sources(scratch.world(), lamp)?);
-        }
-        for hopper in hopper_positions {
-            check_cancelled(monitor)?;
-            dependencies.extend(crate::redpilator::scratch::discover_lamp_sources(scratch.world(), hopper)?);
-        }
-        for note_block in note_positions {
-            check_cancelled(monitor)?;
-            dependencies.extend(crate::redpilator::scratch::discover_lamp_sources(scratch.world(), note_block)?);
-        }
-        for &bulb in &copper_bulbs {
-            check_cancelled(monitor)?;
-            dependencies.extend(crate::redpilator::scratch::discover_lamp_sources(scratch.world(), bulb)?);
-        }
-        for &pos in positions.iter().filter(|&&pos| world.get_block(pos).is_command_block()) {
+        let command_positions = positions.iter().copied().filter(|&pos| world.get_block(pos).is_command_block());
+        let powered_receivers = lamp_positions
+            .into_iter()
+            .chain(hopper_positions)
+            .chain(note_positions)
+            .chain(copper_bulbs)
+            .chain(command_positions);
+        for pos in powered_receivers {
             check_cancelled(monitor)?;
             dependencies.extend(crate::redpilator::scratch::discover_lamp_sources(scratch.world(), pos)?);
         }
@@ -131,25 +130,23 @@ pub(in super::super) fn run<'a>(
     let discovery = discovery?;
     phases.next("link and watcher construction");
     let initial: Vec<_> = positions.iter().map(|&p| world.get_block(p)).collect();
-    let probe_indexes = crate::redpilator::sampled::group_probe::ProbeIndexes::new(&position_index, &positions, &initial, &tokens, monitor)?;
+    let probe_indexes = ProbeIndexes::new(position_index, &positions, &initial, &tokens, monitor)?;
 
     let mut links = vec![];
-    {
-        for dependency in discovery {
-            let source = position_index
-                .get(&dependency.source)
-                .copied()
-                .ok_or_else(|| error(dependency.source, "unrepresented discovered wire source"))?;
-            let target = position_index
-                .get(&dependency.wire)
-                .copied()
-                .ok_or_else(|| error(dependency.wire, "unrepresented discovered wire"))?;
-            links.push(ElectricalLink {
-                source,
-                target,
-                attenuation: dependency.attenuation,
-            });
-        }
+    for dependency in discovery {
+        let source = position_index
+            .get(&dependency.source)
+            .copied()
+            .ok_or_else(|| error(dependency.source, "unrepresented discovered wire source"))?;
+        let target = position_index
+            .get(&dependency.wire)
+            .copied()
+            .ok_or_else(|| error(dependency.wire, "unrepresented discovered wire"))?;
+        links.push(ElectricalLink {
+            source,
+            target,
+            attenuation: dependency.attenuation,
+        });
     }
 
     let mut watched_wires: Vec<WatchedWire> = Vec::new();
@@ -157,7 +154,11 @@ pub(in super::super) fn run<'a>(
     for watch in crate::redpilator::scratch::discover_wire_watchers(world, &wire_positions, &piston_positions) {
         let wire = position_index[&watch.wire];
         let piston = position_index[&watch.piston]
-            | if watch.head { crate::redpilator::sampled::program::PISTON_HEAD_NOTIFICATION } else { 0 };
+            | if watch.head {
+                crate::redpilator::sampled::program::PISTON_HEAD_NOTIFICATION
+            } else {
+                0
+            };
         if let Some(record) = watched_wires.iter_mut().find(|record| record.wire == wire) {
             record.watchers.push(piston);
         } else {
@@ -191,8 +192,8 @@ pub(in super::super) fn run<'a>(
     scratch.finish_probe()?;
 
     let output_programs = vec![[vec![], vec![]]; positions.len()];
-    let mut program = Program::new(positions, initial, sources.clone(), output_programs, links, watched_wires, repeaters)
-        .map_err(|err| error(bounds.0, err.reason))?;
+    let mut program =
+        Program::new(positions, initial, sources, output_programs, links, watched_wires, repeaters).map_err(|err| error(bounds.0, err.reason))?;
     program.pistons = pistons;
     program.tokens = tokens;
 

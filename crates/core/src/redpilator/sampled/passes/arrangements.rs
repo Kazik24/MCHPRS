@@ -1,5 +1,7 @@
 //! Discover joint token-dependent inputs, lower flips and reject unsafe motion effects.
-use super::*;
+use super::{CompilePhases, Context, check_cancelled};
+use crate::redpilator::sampled::{Program, ScratchError, group_probe::ProbeIndexes};
+use crate::world::World;
 
 pub(in super::super) fn run(
     context: &Context<'_, impl World>,

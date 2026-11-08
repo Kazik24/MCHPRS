@@ -1,7 +1,14 @@
 //! Sample ordered source transitions and compare the lowered execution with scratch frames.
-use super::*;
+use super::{CompilePhases, Context, check_cancelled};
+use crate::redpilator::sampled::program::ArrangementSource;
 use crate::redpilator::sampled::program::{PISTON_HEAD_NOTIFICATION, notification_component};
 use crate::redpilator::sampled::source_cache::{CachedEdge, SourceOrderCache, quiet_chunk_fingerprint};
+use crate::redpilator::{
+    TaskMonitor,
+    sampled::{Operation, Program, ScratchError, ScratchWorld, group_probe::ProbeIndexes},
+};
+use crate::world::World;
+use mchprs_blocks::{BlockPos, block_entities::BlockEntity, blocks::Block};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};

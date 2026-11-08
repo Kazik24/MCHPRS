@@ -1,4 +1,3 @@
-use super::compiler::find_changed_links;
 use super::program::{ArrangementSource, InputArrangement, PISTON_HEAD_NOTIFICATION};
 use super::{Program, ScratchEntry, ScratchError, ScratchWorld};
 use crate::redpilator::TaskMonitor;
@@ -10,6 +9,15 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 type InputKey = (ArrangementSource, bool);
 type InputValue = (u8, bool);
 type Inputs = BTreeMap<InputKey, InputValue>;
+
+/// Return keys whose values were added, removed, or changed, in sorted order.
+pub(super) fn find_changed_links<K: Ord + Copy, V: PartialEq>(
+    before: &std::collections::BTreeMap<K, V>,
+    after: &std::collections::BTreeMap<K, V>,
+) -> Vec<K> {
+    let all_sources: std::collections::BTreeSet<_> = before.keys().chain(after.keys()).copied().collect();
+    all_sources.into_iter().filter(|source| before.get(source) != after.get(source)).collect()
+}
 
 #[derive(Clone, Copy)]
 enum ReaderKind {
@@ -45,7 +53,8 @@ pub(super) struct ProbeIndexes<'a> {
 impl<'a> ProbeIndexes<'a> {
     pub(super) fn notification(&self, event: &crate::world::RedstoneUpdateObservation) -> Option<usize> {
         match event.block {
-            Block::PistonHead { head } if event.input_on.is_some() => self.components
+            Block::PistonHead { head } if event.input_on.is_some() => self
+                .components
                 .get(&event.pos.offset(head.facing.opposite().into()))
                 .map(|&base| base | PISTON_HEAD_NOTIFICATION),
             Block::PistonHead { .. } => None,
@@ -55,7 +64,11 @@ impl<'a> ProbeIndexes<'a> {
 
     pub(super) fn notifications_at(&self, position: BlockPos) -> impl Iterator<Item = usize> + '_ {
         self.components.get(&position).copied().into_iter().chain(
-            self.head_owners.get(&position).into_iter().flatten().map(|&base| base | PISTON_HEAD_NOTIFICATION)
+            self.head_owners
+                .get(&position)
+                .into_iter()
+                .flatten()
+                .map(|&base| base | PISTON_HEAD_NOTIFICATION),
         )
     }
 
@@ -75,7 +88,7 @@ impl<'a> ProbeIndexes<'a> {
         components: &'a HashMap<BlockPos, usize>,
         positions: &[BlockPos],
         initial: &[Block],
-        tokens: &[super::compiler::PistonToken],
+        tokens: &[super::pistons::PistonToken],
         monitor: Option<&TaskMonitor>,
     ) -> Result<ProbeIndexes<'a>, ScratchError> {
         let mut redstone_tokens = HashMap::new();
@@ -646,7 +659,7 @@ mod tests {
         )
         .unwrap();
         for x in 0..2 {
-            program.tokens.push(super::super::compiler::PistonToken {
+            program.tokens.push(super::super::pistons::PistonToken {
                 block: Block::Stone {},
                 position: None,
                 cells: if x == 0 {
@@ -745,7 +758,7 @@ mod tests {
             vec![],
         )
         .unwrap();
-        program.tokens.push(super::super::compiler::PistonToken {
+        program.tokens.push(super::super::pistons::PistonToken {
             block: Block::Stone {},
             position: Some(cell),
             cells: vec![cell],
@@ -936,7 +949,7 @@ mod tests {
         )
         .unwrap();
         for block in [Block::from_name("black_concrete").unwrap(), Block::RedstoneBlock] {
-            program.tokens.push(super::super::compiler::PistonToken {
+            program.tokens.push(super::super::pistons::PistonToken {
                 block,
                 position: Some(BlockPos::new(10, 12, 10)),
                 cells: vec![BlockPos::new(10, 12, 10), BlockPos::new(10, 11, 10)],

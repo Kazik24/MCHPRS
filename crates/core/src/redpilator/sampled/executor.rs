@@ -211,6 +211,140 @@ pub(super) fn compare(rear: u8, side: u8, mode: mchprs_blocks::blocks::Comparato
 }
 
 impl Runtime {
+    /// Run scheduled updates, then piston events and movement, for one game tick.
+    pub(crate) fn tick(&mut self) -> Result<(), ScratchError> {
+        if let Some(error) = &self.failure {
+            return Err(error.clone());
+        }
+        self.motion_time += 1;
+        self.begin_phase();
+        self.drain_ticks();
+        if let Some(error) = &self.failure {
+            return Err(error.clone());
+        }
+        self.pending.end_last_tick_move_next();
+        self.drain_ticks();
+        if let Some(error) = &self.failure {
+            return Err(error.clone());
+        }
+        if !self.program.pistons.is_empty() {
+            self.begin_phase();
+            self.run_piston_events();
+            if let Some(error) = &self.failure {
+                return Err(error.clone());
+            }
+            self.begin_phase();
+            self.tick_motions();
+            if let Some(error) = &self.failure {
+                return Err(error.clone());
+            }
+        }
+        self.tick_operations = 0;
+        Ok(())
+    }
+
+    pub(crate) fn component_count(&self) -> usize {
+        self.program.positions.len()
+    }
+
+    pub(crate) fn accepts_control(&self, pos: mchprs_blocks::BlockPos) -> bool {
+        self.program.sources.iter().any(|&component| self.program.positions[component] == pos)
+    }
+
+    pub(crate) fn use_control(&mut self, pos: mchprs_blocks::BlockPos) -> Result<(), ScratchError> {
+        let Some(source_index) = self
+            .program
+            .sources
+            .iter()
+            .position(|&component| self.program.positions[component] == pos)
+        else {
+            return Ok(());
+        };
+        match self.blocks[self.program.sources[source_index]] {
+            Block::Lever { lever } => self.set_input(source_index, !lever.powered),
+            Block::StoneButton { .. } => self.set_input(source_index, true),
+            block if block.pressure_plate_powered().is_some() => Ok(()),
+            _ => unreachable!(),
+        }
+    }
+
+    pub(crate) fn set_pressure_plate(&mut self, pos: mchprs_blocks::BlockPos, powered: bool) -> Result<(), ScratchError> {
+        let source_index = self
+            .program
+            .sources
+            .iter()
+            .position(|&component| self.program.positions[component] == pos && self.blocks[component].pressure_plate_powered().is_some())
+            .ok_or(ScratchError {
+                position: Some(pos),
+                reason: "pressure plate is not a compiled input",
+            })?;
+        self.set_input(source_index, powered)
+    }
+
+    pub(crate) fn projected_blocks(&self) -> Vec<(mchprs_blocks::BlockPos, Block)> {
+        self.program
+            .projection_positions
+            .iter()
+            .enumerate()
+            .filter_map(|(cell, &pos)| self.project_cell(cell).map(|block| (pos, block)))
+            .collect()
+    }
+
+    /// Apply an input slot from `program.sources`; the slot maps to a component ID.
+    pub(crate) fn set_input(&mut self, source_index: usize, powered: bool) -> Result<(), ScratchError> {
+        if let Some(error) = &self.failure {
+            return Err(error.clone());
+        }
+        let Some(&source) = self.program.sources.get(source_index) else {
+            return Err(ScratchError {
+                position: None,
+                reason: "runtime set_input source index out of bounds",
+            });
+        };
+        match self.blocks[source] {
+            block if block.pressure_plate_powered().is_some() => {
+                if block.pressure_plate_powered() == Some(powered) {
+                    return Ok(());
+                }
+            }
+            Block::Lever { lever } if lever.powered != powered => {}
+            Block::StoneButton { button } if button.powered != powered => {}
+            Block::Lever { .. } | Block::StoneButton { .. } => return Ok(()),
+            _ => unreachable!(),
+        }
+        self.begin_phase();
+        match self.blocks[source] {
+            block if block.pressure_plate_powered().is_some() => {
+                self.set_component(source, block.with_pressure_plate_power(powered).unwrap());
+            }
+            Block::Lever { mut lever } => {
+                lever.powered = powered;
+                self.set_component(source, Block::Lever { lever });
+            }
+            Block::StoneButton { mut button } => {
+                button.powered = powered;
+                self.set_component(source, Block::StoneButton { button });
+                if powered {
+                    let tick = ScheduledComponentTick {
+                        component: source,
+                        block_type: Some(self.blocks[source].registry_id()),
+                    };
+                    self.schedule_tick(tick, 10, TickPriority::Normal);
+                }
+            }
+            _ => unreachable!(),
+        }
+        #[cfg(any(test, feature = "redpilator-trace"))]
+        if runtime_trace_enabled!(self) {
+            runtime_trace!(self, "input {:?} powered={powered}", self.program.positions[source]);
+        }
+        self.execute_output_program(source, powered);
+        self.notify_source_watchers(source, true, true);
+        self.failure.clone().map_or(Ok(()), Err)
+    }
+}
+
+impl Runtime {
     pub(super) fn mark_dirty(&mut self, cell: usize) {
         if !self.dirty[cell] {
             self.dirty[cell] = true;
@@ -1865,58 +1999,6 @@ impl Runtime {
         }
     }
 
-    pub(crate) fn set_input(&mut self, source_index: usize, powered: bool) -> Result<(), ScratchError> {
-        if let Some(error) = &self.failure {
-            return Err(error.clone());
-        }
-        let Some(&source) = self.program.sources.get(source_index) else {
-            return Err(ScratchError {
-                position: None,
-                reason: "runtime set_input source index out of bounds",
-            });
-        };
-        match self.blocks[source] {
-            block if block.pressure_plate_powered().is_some() => {
-                if block.pressure_plate_powered() == Some(powered) {
-                    return Ok(());
-                }
-            }
-            Block::Lever { lever } if lever.powered != powered => {}
-            Block::StoneButton { button } if button.powered != powered => {}
-            Block::Lever { .. } | Block::StoneButton { .. } => return Ok(()),
-            _ => unreachable!(),
-        }
-        self.begin_phase();
-        match self.blocks[source] {
-            block if block.pressure_plate_powered().is_some() => {
-                self.set_component(source, block.with_pressure_plate_power(powered).unwrap());
-            }
-            Block::Lever { mut lever } => {
-                lever.powered = powered;
-                self.set_component(source, Block::Lever { lever });
-            }
-            Block::StoneButton { mut button } => {
-                button.powered = powered;
-                self.set_component(source, Block::StoneButton { button });
-                if powered {
-                    let tick = ScheduledComponentTick {
-                        component: source,
-                        block_type: Some(self.blocks[source].registry_id()),
-                    };
-                    self.schedule_tick(tick, 10, TickPriority::Normal);
-                }
-            }
-            _ => unreachable!(),
-        }
-        #[cfg(any(test, feature = "redpilator-trace"))]
-        if runtime_trace_enabled!(self) {
-            runtime_trace!(self, "input {:?} powered={powered}", self.program.positions[source]);
-        }
-        self.execute_output_program(source, powered);
-        self.notify_source_watchers(source, true, true);
-        self.failure.clone().map_or(Ok(()), Err)
-    }
-
     fn has_pending(&self, tick: ScheduledComponentTick) -> bool {
         debug_assert_eq!(tick.block_type, Some(self.blocks[tick.component].registry_id()));
         self.pending_counts[tick.component] != 0
@@ -2039,78 +2121,5 @@ impl Runtime {
             self.set_component(receiver, Block::RedstoneLamp { lit: false });
             self.notify_source_watchers(receiver, true, false);
         }
-    }
-
-    pub(crate) fn tick(&mut self) -> Result<(), ScratchError> {
-        if let Some(error) = &self.failure {
-            return Err(error.clone());
-        }
-        self.motion_time += 1;
-        self.begin_phase();
-        self.drain_ticks();
-        if let Some(error) = &self.failure {
-            return Err(error.clone());
-        }
-        self.pending.end_last_tick_move_next();
-        self.drain_ticks();
-        if let Some(error) = &self.failure {
-            return Err(error.clone());
-        }
-        if !self.program.pistons.is_empty() {
-            self.begin_phase();
-            self.run_piston_events();
-            if let Some(error) = &self.failure {
-                return Err(error.clone());
-            }
-            self.begin_phase();
-            self.tick_motions();
-            if let Some(error) = &self.failure {
-                return Err(error.clone());
-            }
-        }
-        self.tick_operations = 0;
-        Ok(())
-    }
-
-    pub(crate) fn component_count(&self) -> usize {
-        self.program.positions.len()
-    }
-
-    pub(crate) fn accepts_control(&self, pos: mchprs_blocks::BlockPos) -> bool {
-        self.program.sources.iter().any(|&source| self.program.positions[source] == pos)
-    }
-
-    pub(crate) fn use_control(&mut self, pos: mchprs_blocks::BlockPos) -> Result<(), ScratchError> {
-        let Some(source) = self.program.sources.iter().position(|&source| self.program.positions[source] == pos) else {
-            return Ok(());
-        };
-        match self.blocks[self.program.sources[source]] {
-            Block::Lever { lever } => self.set_input(source, !lever.powered),
-            Block::StoneButton { .. } => self.set_input(source, true),
-            block if block.pressure_plate_powered().is_some() => Ok(()),
-            _ => unreachable!(),
-        }
-    }
-
-    pub(crate) fn set_pressure_plate(&mut self, pos: mchprs_blocks::BlockPos, powered: bool) -> Result<(), ScratchError> {
-        let source = self
-            .program
-            .sources
-            .iter()
-            .position(|&source| self.program.positions[source] == pos && self.blocks[source].pressure_plate_powered().is_some())
-            .ok_or(ScratchError {
-                position: Some(pos),
-                reason: "pressure plate is not a compiled input",
-            })?;
-        self.set_input(source, powered)
-    }
-
-    pub(crate) fn projected_blocks(&self) -> Vec<(mchprs_blocks::BlockPos, Block)> {
-        self.program
-            .projection_positions
-            .iter()
-            .enumerate()
-            .filter_map(|(cell, &pos)| self.project_cell(cell).map(|block| (pos, block)))
-            .collect()
     }
 }

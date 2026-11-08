@@ -36,7 +36,7 @@ Publication can include all blocks and piston motion, redstone components, or ju
 
 `/rp reset` and `/rp off` export the current state and pending work to the interpreter. This includes piston state. They continue from the current state rather than restarting the circuit.
 
-A normal reset can keep the prepared executor. The next compile can resume it if the world and compiler options have not changed. `/rp clear` stops execution and discards the plot checkpoint and the shared LLVM build cache. Active runtimes on other plots keep running.
+`/rp reset` (including `/rp r` and `/rp off`) discards the plot's prepared executor and sampling cache and cancels pending compilation. `/rp clear` also discards the shared LLVM build cache. Active runtimes on other plots keep running. Internal handoffs can retain the prepared executor and sampling data; recompilation resumes the executor only when the world and compiler options still match.
 
 ## LLVM backend
 

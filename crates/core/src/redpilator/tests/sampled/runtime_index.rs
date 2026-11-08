@@ -1,7 +1,7 @@
 use super::{Operation, program::ElectricalLink};
 use super::{
     Program,
-    compiler::{PistonActor, PistonToken},
+    pistons::{PistonActor, PistonToken},
 };
 use crate::plot::{PLOT_WIDTH, PlotWorld};
 use crate::redpilator::{Compiler, CompilerOptions, TaskMonitor};
@@ -339,7 +339,7 @@ fn invalid_imported_tick_is_rejected_without_changing_native_ownership_state() {
 
 #[test]
 fn sealed_program_validation_rejects_bad_output_ranges_and_flip_links() {
-    use super::compiler::PistonToken;
+    use super::pistons::PistonToken;
     use super::program::{ArrangementSource, InputArrangement};
 
     let make_program = || {

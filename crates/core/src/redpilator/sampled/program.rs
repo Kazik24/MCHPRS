@@ -310,13 +310,13 @@ pub(crate) struct Program {
 
     // Pistons, tokens, and movement notifications
     /// discovered piston bases, orientations, and group identities.
-    pub(super) pistons: Vec<super::compiler::PistonActor>,
+    pub(super) pistons: Vec<super::pistons::PistonActor>,
     /// reverse map from component index to `piston_bindings` index plus one.
     pub(super) piston_by_component: Vec<Option<NonZeroUsize>>,
     /// piston projection bindings and their home/far cell state.
     pub(super) piston_bindings: Vec<PistonBinding>,
     /// movable blocks and their legal positions/cells.
-    pub(super) tokens: Vec<super::compiler::PistonToken>,
+    pub(super) tokens: Vec<super::pistons::PistonToken>,
     /// component-indexed flags for nodes that can source movable-token inputs.
     pub(super) movable_sources: Vec<bool>,
     /// per token, piston component indices whose motion can move that token.

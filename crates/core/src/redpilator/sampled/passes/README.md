@@ -1,8 +1,20 @@
 # Sampled compiler passes
 
-`compiler.rs::compile_monitored_with_source_cache` runs the ordered pipeline.
-`compile_monitored` starts it without prior sampling artifacts. Passes run only
-during compilation; the runtime and public `Compiler` API are unchanged.
+Start at [`compiler.rs::compile_monitored_with_source_cache`](../compiler.rs).
+It runs the pipeline below in order and returns the finished program.
+`compile_monitored` starts the same pipeline without prior sampling artifacts.
+Passes run only during compilation; the runtime and public `Compiler` API are unchanged.
+
+Each world-discovery pass takes the same captured `Context` and phase reporter.
+`Context` holds the original world, capture bounds, pending work and cancellation
+handle. The passes fill in `Program`, which stores component IDs (indexes into
+`positions`) and instructions. `ProbeIndexes` maps world positions back to those IDs.
+The last two passes need only the program and phase reporter.
+
+After compilation, [`Runtime::tick`](../executor.rs) runs scheduled updates,
+then piston events and movement. Its tick and input entry points appear before
+the component-specific mechanics. Publication back to the world is handled by
+the public [`Compiler`](../../compiler.rs).
 
 | Pass | Input | Result |
 | --- | --- | --- |
@@ -15,10 +27,16 @@ during compilation; the runtime and public `Compiler` API are unchanged.
 | `finalize` | Complete discovered program | Validated records and runtime/projection indexes |
 | `share_output_programs` | Validated instructions | Shared identical immutable rise/fall ranges, preserving component identity |
 
-Parsing, discovery and instruction rewrites are sequential calls in
-`compiler.rs::compile_monitored_with_source_cache`. Add each new pass directly to that pipeline
+Parsing, discovery and instruction rewrites are sequential calls in the compiler.
+Add each new pass directly to that pipeline
 and keep its implementation in its own module. Each rewrite checks cancellation
 before and after its work and validates the resulting program.
+
+[`mod.rs`](mod.rs) holds shared pass inputs, progress reporting, cancellation
+checks and callback notification order. [`pistons.rs`](../pistons.rs) owns piston
+records, payload discovery and grouping. The program and runtime use those
+records directly, without depending on the compiler entry point. Parsing shares
+its scratch snapshot with piston discovery instead of capturing the world twice.
 
 Finalization prepares indexes before instruction sharing, preserving the existing
 compilation order. Rewrites that change component/link IDs or dependencies must

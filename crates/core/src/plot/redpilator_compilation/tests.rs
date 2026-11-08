@@ -549,6 +549,48 @@ fn entry_versions_detect_entity_changes() {
     assert!(!entry.matches(&plot.world));
 }
 #[test]
+fn reset_commands_release_sampling_data_and_force_cold_recompilation() {
+    for command in ["reset", "r", "off", "clear"] {
+        for suspended in [false, true] {
+            let (mut plot, _peer) = fixture(false);
+            plot.owner = Some(plot.players[0].uuid);
+            plot.players[0].set_test_permissions(&["commands.redpilator.reset"]);
+            let button = BlockPos::new(34, 21, 32);
+            plot.world.set_block(button.offset(BlockFace::Bottom), Block::Stone {});
+            plot.world.set_block(button, Block::from_name("stone_button").unwrap());
+            plot.start_redpilator_with_budget(Default::default(), None);
+            plot.wait_for_redpilator();
+            let program = plot.redpilator.cached_program().unwrap();
+            let sampling = Arc::downgrade(program.source_order_cache.as_ref().unwrap());
+            let old_program = Arc::downgrade(&program);
+            drop(program);
+            plot.redpilator.try_on_use_block(button).unwrap();
+            plot.redpilator.tick().unwrap();
+            if suspended {
+                plot.reset_redpilator().unwrap();
+                assert!(plot.redpilator_cache.is_some());
+            }
+
+            plot.handle_command(0, "/rp", vec![command]);
+            assert!(!plot.redpilator.is_active());
+            assert!(plot.redpilator_cache.is_none());
+            assert!(old_program.upgrade().is_none(), "{command} retained the program");
+            assert!(sampling.upgrade().is_none(), "{command} retained sampling data");
+            let pending: Vec<_> = plot.world.scheduler().iter_entries().collect();
+            assert_eq!(pending.len(), 1, "{command} lost the pending button release");
+
+            plot.start_redpilator_with_budget(Default::default(), None);
+            plot.wait_for_redpilator();
+            assert!(plot.redpilator.is_active());
+            assert!(!plot.redpilator.stats().unwrap().cached);
+            assert_eq!(plot.redpilator.source_sampling_stats().unwrap().0, 0);
+            plot.reset_redpilator().unwrap();
+            assert_eq!(plot.world.scheduler().iter_entries().collect::<Vec<_>>(), pending);
+        }
+    }
+}
+
+#[test]
 fn source_sampling_survives_whole_program_rejection_after_wire_removal() {
     use mchprs_blocks::BlockDirection;
     use mchprs_blocks::blocks::{Lever, LeverFace, RedstoneWire};

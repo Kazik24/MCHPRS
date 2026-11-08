@@ -121,9 +121,9 @@ mod tests {
             }
             plot.handle_command(0, "/rp", vec![command]);
             assert!(!plot.redpilator.is_active());
-            assert!(plot.redpilator_cache.is_some(), "plain {command} discarded the warm checkpoint");
+            assert!(plot.redpilator_cache.is_none(), "{command} retained the warm checkpoint");
             plot.handle_command(0, "/rp", vec![command, "--bad"]);
-            assert!(plot.redpilator_cache.is_some());
+            assert!(plot.redpilator_cache.is_none());
 
             plot.redpilator
                 .compile(&plot.world, bounds, CompilerOptions::default(), vec![], Default::default())
@@ -143,22 +143,19 @@ mod tests {
     }
 
     #[test]
-    fn clear_cancels_pending_compilation_without_repopulating_cache() {
-        let (mut plot, _peer) = crate::plot::client_sync_tests::fixture(false);
-        plot.owner = Some(plot.players[0].uuid);
-        plot.players[0].set_test_permissions(&["commands.redpilator.reset"]);
-        plot.start_redpilator_with_budget(CompilerOptions::default(), None);
-        assert!(plot.compilation.is_some());
-        plot.handle_command(0, "/rp", vec!["clear"]);
-        assert!(!plot.compiling_redpilator());
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
-        while plot.compilation.is_some() {
-            assert!(std::time::Instant::now() < deadline, "cancelled compiler worker did not finish");
-            plot.poll_redpilator_compilation();
-            std::thread::sleep(std::time::Duration::from_millis(1));
+    fn reset_commands_cancel_pending_compilation_without_repopulating_cache() {
+        for command in ["reset", "r", "off", "clear"] {
+            let (mut plot, _peer) = crate::plot::client_sync_tests::fixture(false);
+            plot.owner = Some(plot.players[0].uuid);
+            plot.players[0].set_test_permissions(&["commands.redpilator.reset"]);
+            plot.start_redpilator_with_budget(CompilerOptions::default(), None);
+            assert!(plot.compilation.is_some());
+            plot.handle_command(0, "/rp", vec![command]);
+            assert!(!plot.compiling_redpilator());
+            plot.wait_for_redpilator();
+            assert!(!plot.redpilator.is_active());
+            assert!(plot.redpilator_cache.is_none());
         }
-        assert!(!plot.redpilator.is_active());
-        assert!(plot.redpilator_cache.is_none());
     }
 }
 
@@ -201,9 +198,9 @@ impl Plot {
                     self.players[player].send_error_message(&error.to_string());
                     return;
                 }
+                self.clear_redpilator_cache();
+                self.players[player].send_system_message(messages::REDPILATOR_PLOT_CACHE_CLEARED);
                 if command == "clear" {
-                    self.clear_redpilator_cache();
-                    self.players[player].send_system_message(messages::REDPILATOR_PLOT_CACHE_CLEARED);
                     match crate::redpilator::clear_llvm_cache() {
                         Ok(summary) => self.players[player].send_system_message(&summary),
                         Err(error) => self.players[player].send_error_message(&error),

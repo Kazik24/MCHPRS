@@ -2,7 +2,7 @@
 pub(super) mod cpus;
 
 use super::{
-    ScratchEntry, compiler,
+    ScratchEntry, compiler, pistons,
     program::{ArrangementSource, ElectricalLink, InputArrangement, MoveStepSpec as MoveStep, Program, RepeaterRecord},
 };
 use crate::{
@@ -615,7 +615,7 @@ fn moving_redstone_block_refreshes_wire_contribution_before_repeater_callback() 
         }],
     )
     .unwrap();
-    program.tokens.push(compiler::PistonToken {
+    program.tokens.push(pistons::PistonToken {
         block: Block::RedstoneBlock,
         position: Some(token_cell),
         cells: vec![token_cell],

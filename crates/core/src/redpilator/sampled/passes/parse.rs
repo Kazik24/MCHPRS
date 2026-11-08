@@ -1,5 +1,16 @@
 //! Capture and validate the world inventory before electrical discovery.
-use super::*;
+use super::{CompilePhases, Context, Inventory, check_cancelled};
+use crate::redpilator::sampled::{
+    ScratchError, ScratchWorld,
+    pistons::{discover_piston_actors_monitored, discover_piston_tokens},
+    program::RepeaterRecord,
+};
+use crate::world::World;
+use mchprs_blocks::{
+    BlockPos,
+    block_entities::{BlockEntity, ContainerType},
+    blocks::Block,
+};
 
 pub(in super::super) fn run(context: &Context<'_, impl World>, phases: &mut CompilePhases<'_>) -> Result<(ScratchWorld, Inventory), ScratchError> {
     let world = context.world;
@@ -11,7 +22,7 @@ pub(in super::super) fn run(context: &Context<'_, impl World>, phases: &mut Comp
     let scratch = ScratchWorld::from_world_monitored(world, bounds, entry.clone(), monitor)?;
 
     phases.next("piston actor and token discovery");
-    let pistons = discover_piston_actors_monitored(world, bounds, entry.clone(), monitor)?;
+    let pistons = discover_piston_actors_monitored(&scratch, bounds, monitor)?;
     let tokens = discover_piston_tokens(scratch.world(), &pistons)?;
 
     if phases.enabled {
@@ -38,12 +49,7 @@ pub(in super::super) fn run(context: &Context<'_, impl World>, phases: &mut Comp
     let layer_size = width.saturating_mul(depth);
     let total_blocks = layer_size.saturating_mul(height);
     for y in bounds.0.y..=bounds.1.y {
-        if monitor.is_some_and(TaskMonitor::cancelled) {
-            return Err(ScratchError {
-                position: None,
-                reason: "compilation cancelled",
-            });
-        }
+        check_cancelled(monitor)?;
         for z in bounds.0.z..=bounds.1.z {
             for x in bounds.0.x..=bounds.1.x {
                 let pos = BlockPos::new(x, y, z);
@@ -114,26 +120,19 @@ pub(in super::super) fn run(context: &Context<'_, impl World>, phases: &mut Comp
     }
 
     // Existing saves need not satisfy placement rules; native redstone callbacks retain them too.
-    let wire_positions: Vec<_> = positions
-        .iter()
-        .copied()
-        .filter(|&pos| matches!(scratch.world().get_block(pos), Block::RedstoneWire { .. }))
-        .collect();
-    let lamp_positions: Vec<_> = positions
-        .iter()
-        .copied()
-        .filter(|&pos| matches!(scratch.world().get_block(pos), Block::RedstoneLamp { .. }))
-        .collect();
-    let hopper_positions: Vec<_> = positions
-        .iter()
-        .copied()
-        .filter(|&pos| matches!(scratch.world().get_block(pos), Block::Hopper { .. } | Block::IronTrapdoor { .. }))
-        .collect();
-    let note_positions: Vec<_> = positions
-        .iter()
-        .copied()
-        .filter(|&pos| matches!(scratch.world().get_block(pos), Block::NoteBlock { .. }))
-        .collect();
+    let mut wire_positions = Vec::new();
+    let mut lamp_positions = Vec::new();
+    let mut hopper_positions = Vec::new();
+    let mut note_positions = Vec::new();
+    for &pos in &positions {
+        match scratch.world().get_block(pos) {
+            Block::RedstoneWire { .. } => wire_positions.push(pos),
+            Block::RedstoneLamp { .. } => lamp_positions.push(pos),
+            Block::Hopper { .. } | Block::IronTrapdoor { .. } => hopper_positions.push(pos),
+            Block::NoteBlock { .. } => note_positions.push(pos),
+            _ => {}
+        }
+    }
     if let Some(monitor) = monitor {
         monitor.set_counts(positions.len(), wire_positions.len(), pistons.len());
     }

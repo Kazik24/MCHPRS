@@ -1,13 +1,23 @@
 //! Bind initially reactive components and their wire/neighbor dependencies.
-use super::*;
+use super::{CompilePhases, Context, check_cancelled, update_footprint, update_order};
+use crate::redpilator::sampled::{Program, ScratchError, group_probe::ProbeIndexes, program::ComparatorInput};
+use crate::world::World;
+use mchprs_blocks::{BlockPos, blocks::Block};
 
 pub(in super::super) fn run(
-    world: &impl World,
-    entry: &ScratchEntry,
+    context: &Context<'_, impl World>,
     program: &mut Program,
-    components: &std::collections::HashMap<BlockPos, usize>,
-    monitor: Option<&TaskMonitor>,
+    probe_indexes: &ProbeIndexes<'_>,
+    phases: &mut CompilePhases<'_>,
 ) -> Result<(), ScratchError> {
+    let world = context.world;
+    let entry = context.entry;
+    let monitor = context.monitor;
+    let components = probe_indexes.components;
+
+    phases.next("reactive dependency tracking");
+    check_cancelled(monitor)?;
+
     // Comparator inputs must come from the initial runtime state before marking reactions.
     let inputs = {
         let runtime = program.start();

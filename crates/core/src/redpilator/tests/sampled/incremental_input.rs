@@ -100,7 +100,7 @@ fn equal_strength_rear_sources_survive_revalidation_and_independent_removal() {
 
 #[test]
 fn conditional_source_shadows_its_fixed_link_when_token_enters_and_leaves() {
-    use super::compiler::PistonToken;
+    use super::pistons::PistonToken;
     use super::program::{ArrangementSource, InputArrangement};
 
     let source_pos = BlockPos::new(10, 10, 10);

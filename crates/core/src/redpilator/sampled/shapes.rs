@@ -155,7 +155,7 @@ mod tests {
         )
         .unwrap();
         program.tokens = vec![
-            super::super::compiler::PistonToken {
+            super::super::pistons::PistonToken {
                 block: Block::Stone {},
                 position: None,
                 cells: vec![cap],

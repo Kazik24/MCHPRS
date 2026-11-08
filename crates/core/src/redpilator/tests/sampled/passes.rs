@@ -1,4 +1,5 @@
 use super::*;
+use crate::redpilator::sampled::{Operation, Program};
 
 fn lamp_program() -> Program {
     Program::new(
@@ -21,11 +22,24 @@ fn cancelled_optimization_keeps_instruction_storage_unchanged() {
     let monitor = TaskMonitor::default();
     monitor.cancel();
 
-    let error = share_output_programs::run(&mut program, Some(&monitor), &mut CompilePhases::new(Some(&monitor))).unwrap_err();
+    let error = share_output_programs::run(&mut program, &mut CompilePhases::new(Some(&monitor))).unwrap_err();
 
     assert_eq!(error.reason, "compilation cancelled");
     assert_eq!(program.operations, before);
     assert_eq!(program.output_programs, ranges);
+}
+
+#[test]
+fn cancelled_finalization_keeps_projection_indexes_unchanged() {
+    let mut program = lamp_program();
+    program.projection_positions.clear();
+    let monitor = TaskMonitor::default();
+    monitor.cancel();
+
+    let error = finalize::run(&mut program, &mut CompilePhases::new(Some(&monitor))).unwrap_err();
+
+    assert_eq!(error.reason, "compilation cancelled");
+    assert!(program.projection_positions.is_empty());
 }
 
 #[test]
@@ -34,7 +48,7 @@ fn output_sharing_preserves_programs_pending_work_and_later_execution() {
     let vectors = program.output_vectors();
     let mut original = program.start();
 
-    share_output_programs::run(&mut program, None, &mut CompilePhases::new(None)).unwrap();
+    share_output_programs::run(&mut program, &mut CompilePhases::new(None)).unwrap();
 
     assert_eq!(program.output_vectors(), vectors);
     assert_eq!(program.operations.len(), 1);

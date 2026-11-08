@@ -1,5 +1,5 @@
 //! Local dust connectivity for inputs that do not fit a dense arrangement table.
-use super::{Program, ScratchError, ScratchWorld, compiler::PistonToken, group_probe::ProbeIndexes, program::ArrangementSource};
+use super::{Program, ScratchError, ScratchWorld, group_probe::ProbeIndexes, pistons::PistonToken, program::ArrangementSource};
 use crate::redpilator::{TaskMonitor, scratch::discover_wire_ports};
 use crate::world::World;
 use mchprs_blocks::{BlockPos, blocks::Block};
@@ -378,7 +378,7 @@ impl WireGraph {
         for token in tokens {
             if token.block != Block::RedstoneBlock
                 && token.block.slab_type().is_none()
-                && (token.block.pressure_plate_powered().is_some() || !super::compiler::is_passive_geometry(token.block))
+                && (token.block.pressure_plate_powered().is_some() || !super::pistons::is_passive_geometry(token.block))
             {
                 return Err(ScratchError {
                     position: token.position,
@@ -944,7 +944,7 @@ mod tests {
     #[test]
     #[ignore = "ANPU local-connectivity census and tick-278 path check, without full compilation"]
     fn anpu_local_graph_reproduces_the_hidden_source() {
-        use super::super::{compiler, cpu_trace::cpus};
+        use super::super::{cpu_trace::cpus, pistons};
         let cpu = cpus::CPUS[1];
         let mut world = cpus::load_cpu(cpu);
         let clip = crate::plot::worldedit::load_schematic(
@@ -964,8 +964,8 @@ mod tests {
             scheduled: vec![],
             piston: world.piston_state().clone(),
         };
-        let actors = compiler::discover_piston_actors(&world, bounds, entry.clone()).unwrap();
-        let tokens = compiler::discover_piston_tokens(&world, &actors).unwrap();
+        let actors = pistons::discover_piston_actors(&world, bounds, entry.clone()).unwrap();
+        let tokens = pistons::discover_piston_tokens(&world, &actors).unwrap();
         let mut wires = Vec::new();
         let mut components = Vec::new();
         crate::world::for_each_block_optimized(&world, bounds.0, bounds.1, |pos| {
