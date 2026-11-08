@@ -548,3 +548,114 @@ fn entry_versions_detect_entity_changes() {
     *output_strength = 7;
     assert!(!entry.matches(&plot.world));
 }
+#[test]
+fn source_sampling_survives_whole_program_rejection_after_wire_removal() {
+    use mchprs_blocks::BlockDirection;
+    use mchprs_blocks::blocks::{Lever, LeverFace, RedstoneWire};
+    let (mut plot, _peer) = fixture(false);
+    let controls = [BlockPos::new(40, 20, 40), BlockPos::new(80, 20, 40)];
+    for control in controls {
+        plot.world.set_block(control.offset(BlockFace::Bottom), Block::Stone {});
+        plot.world.set_block(
+            control,
+            Block::Lever {
+                lever: Lever::new(LeverFace::Floor, BlockDirection::North, false),
+            },
+        );
+        for offset in 1..=4 {
+            let pos = control + BlockPos::new(offset, 0, 0);
+            plot.world.set_block(pos.offset(BlockFace::Bottom), Block::Stone {});
+            plot.world.set_block(
+                pos,
+                Block::RedstoneWire {
+                    wire: RedstoneWire::default(),
+                },
+            );
+        }
+        plot.world.set_block(control + BlockPos::new(5, 0, 0), Block::RedstoneLamp { lit: false });
+    }
+    let leaf = controls[0] + BlockPos::new(2, 0, 1);
+    plot.world.set_block(leaf.offset(BlockFace::Bottom), Block::Stone {});
+    plot.world.set_block(
+        leaf,
+        Block::RedstoneWire {
+            wire: RedstoneWire::default(),
+        },
+    );
+    for control in controls {
+        crate::interaction::use_redstone(plot.world.get_block(control), &mut plot.world, control, None);
+    }
+    plot.start_redpilator_with_budget(Default::default(), None);
+    plot.wait_for_redpilator();
+    assert!(plot.redpilator.is_active());
+    assert_eq!(
+        plot.redpilator.source_sampling_stats().map(|(hits, misses, _)| (hits, misses)),
+        Some((0, 2))
+    );
+    plot.reset_redpilator().unwrap();
+    plot.world.set_block(leaf, Block::Air);
+    crate::redstone::update_surrounding_blocks(&mut plot.world, leaf);
+    assert!(plot.world.scheduler().iter_entries().next().is_none());
+    plot.start_redpilator_with_budget(Default::default(), None);
+    plot.wait_for_redpilator();
+    assert!(plot.redpilator.is_active());
+    assert!(!plot.redpilator.stats().unwrap().cached, "topology changes rebuild the program");
+    assert_eq!(
+        plot.redpilator.source_sampling_stats().map(|(hits, misses, _)| (hits, misses)),
+        Some((1, 1))
+    );
+    assert_eq!(plot.world.get_block(leaf), Block::Air);
+}
+
+#[test]
+fn activation_refreshes_output_drained_while_cold_or_cached_compilation_runs() {
+    use mchprs_blocks::block_entities::{BlockEntity, CommandBlockEntity};
+    for llvm in [false, true] {
+        if llvm && !cfg!(any(windows, target_os = "linux")) {
+            continue;
+        }
+        for cached in [false, true] {
+            let (mut plot, _peer) = fixture(false);
+            let button = BlockPos::new(34, 21, 32);
+            let command = button.offset(BlockFace::South);
+            plot.world.set_block(button.offset(BlockFace::Bottom), Block::Stone {});
+            plot.world.set_block(button, Block::from_name("stone_button").unwrap());
+            plot.world.set_block(command, Block::from_name("command_block").unwrap());
+            plot.world.set_block_entity(
+                command,
+                BlockEntity::CommandBlock(Box::new(CommandBlockEntity {
+                    command: "say resumed".into(),
+                    ..Default::default()
+                })),
+            );
+            plot.world.command_output_window = Instant::now() - Duration::from_secs(2);
+            plot.world.command_output_count = 64;
+            plot.world.command_messages = (0..64)
+                .map(|_| crate::chat_commands::ChatCommand {
+                    recipient: crate::chat_commands::Recipient::All,
+                    message: "already sent".into(),
+                })
+                .collect();
+            let options = CompilerOptions { llvm, ..Default::default() };
+            if cached {
+                plot.start_redpilator_with_budget(options.clone(), None);
+                plot.wait_for_redpilator();
+                plot.reset_redpilator().unwrap();
+            }
+            plot.start_redpilator_with_budget(options, None);
+            assert!(plot.compilation.is_some());
+            plot.world.command_messages.clear();
+            plot.wait_for_redpilator();
+            assert!(plot.redpilator.is_active());
+            assert_eq!(plot.redpilator.stats().unwrap().cached, cached);
+            plot.redpilator.try_on_use_block(button).unwrap();
+            plot.redpilator.tick().unwrap();
+            plot.redpilator.try_flush(&mut plot.world).unwrap();
+            let delivered: Vec<_> = plot.world.command_output().map(str::to_owned).collect();
+            assert_eq!(delivered.len(), 1, "llvm={llvm}, cached={cached}: stale captured queue");
+            assert!(delivered[0].contains("resumed"));
+            plot.redpilator.try_flush(&mut plot.world).unwrap();
+            assert_eq!(plot.world.command_output().map(str::to_owned).collect::<Vec<_>>(), delivered);
+        }
+    }
+}

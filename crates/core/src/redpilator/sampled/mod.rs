@@ -12,15 +12,6 @@ mod compiler;
 #[path = "../tests/sampled/cpu_trace.rs"]
 mod cpu_trace;
 mod executor;
-#[cfg(test)]
-#[path = "../tests/sampled/pm1_causal.rs"]
-mod pm1_causal;
-#[cfg(test)]
-#[path = "../tests/sampled/piston_bud_repro.rs"]
-mod piston_bud_repro;
-#[cfg(test)]
-#[path = "../tests/sampled/piston_head_notifications.rs"]
-mod piston_head_notifications;
 mod group_probe;
 #[cfg(test)]
 #[path = "../tests/sampled/incremental_input.rs"]
@@ -28,13 +19,24 @@ mod incremental_input_tests;
 mod input;
 mod llvm;
 #[cfg(test)]
+#[path = "../tests/sampled/piston_bud_repro.rs"]
+mod piston_bud_repro;
+#[cfg(test)]
+#[path = "../tests/sampled/piston_head_notifications.rs"]
+mod piston_head_notifications;
+#[cfg(test)]
+#[path = "../tests/sampled/pm1_causal.rs"]
+mod pm1_causal;
+#[cfg(test)]
 #[path = "../tests/sampled/redstonedb.rs"]
 mod redstonedb_tests;
 mod routing;
 mod shapes;
+mod source_cache;
 pub(super) use llvm::clear_cache;
 pub(super) use llvm::initialize_cache;
 pub(in crate::redpilator) use llvm::{LlvmRuntime, unsupported_components};
+pub(crate) use source_cache::SourceOrderCache;
 mod program;
 #[cfg(test)]
 #[path = "../tests/sampled/reviewed_fixes.rs"]
@@ -63,7 +65,9 @@ pub(crate) use program::Program;
 use program::WatchedWire;
 use program::{ElectricalLink, Operation};
 
+#[cfg(test)]
 pub(super) use compiler::compile_monitored as compile_program;
+pub(super) use compiler::compile_monitored_with_source_cache as compile_program_with_source_cache;
 
 pub(super) type ExportKey = (usize, u64, bool, mchprs_blocks::BlockPos);
 

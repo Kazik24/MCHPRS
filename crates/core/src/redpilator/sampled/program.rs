@@ -15,8 +15,7 @@ pub(super) fn notification_component(notification: usize) -> usize {
 
 fn valid_notification(initial: &[Block], notification: usize) -> bool {
     let component = notification_component(notification);
-    component < initial.len()
-        && (notification & PISTON_HEAD_NOTIFICATION == 0 || matches!(initial[component], Block::Piston { .. }))
+    component < initial.len() && (notification & PISTON_HEAD_NOTIFICATION == 0 || matches!(initial[component], Block::Piston { .. }))
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -250,6 +249,8 @@ pub(super) struct PistonBinding {
 
 #[derive(Clone)]
 pub(crate) struct Program {
+    /// Position-keyed sampling artifacts survive topology changes between compilations.
+    pub(crate) source_order_cache: Option<std::sync::Arc<super::SourceOrderCache>>,
     pub(super) routing: Option<std::sync::Arc<super::routing::WireGraph>>,
     // Components and output instructions
     /// component-indexed world positions; index is the canonical component ID throughout the program.
@@ -1111,10 +1112,12 @@ impl Program {
             let mut recipients = std::collections::HashSet::new();
             record.watchers.retain(|watcher| recipients.insert(*watcher));
             for &watcher in &record.watchers {
-                if !valid_notification(&initial, watcher) || !matches!(
-                    initial.get(notification_component(watcher)),
-                    Some(Block::RedstoneLamp { .. } | Block::Piston { .. } | Block::Observer { .. })
-                ) {
+                if !valid_notification(&initial, watcher)
+                    || !matches!(
+                        initial.get(notification_component(watcher)),
+                        Some(Block::RedstoneLamp { .. } | Block::Piston { .. } | Block::Observer { .. })
+                    )
+                {
                     return Err(invalid("sampled watched-wire receiver is not a lamp, piston or observer"));
                 }
             }
@@ -1143,6 +1146,7 @@ impl Program {
             })
             .collect();
         Ok(Self {
+            source_order_cache: None,
             command_blocks: HashMap::new(),
             command_output_state: None,
             routing: None,
@@ -1255,7 +1259,10 @@ impl Program {
             }
             piston_components[component] = true;
         }
-        let notifications = self.source_watchers.iter().flatten()
+        let notifications = self
+            .source_watchers
+            .iter()
+            .flatten()
             .chain(self.home_watchers.iter().flat_map(|row| row.iter()))
             .chain(self.watched_wires.iter().flat_map(|record| record.watchers.iter()))
             .chain(self.movement_steps.iter().map(|step| &step.node));
@@ -1390,7 +1397,8 @@ impl Program {
                         .ok_or_else(|| invalid("invalid movement wire range"))?;
                     if !valid_notification(&self.initial, step.node)
                         || (step.wire && !watched.get(step.node).copied().unwrap_or(false))
-                        || wires.iter().any(|&wire| wire >= nodes || !watched[wire]) {
+                        || wires.iter().any(|&wire| wire >= nodes || !watched[wire])
+                    {
                         return Err(invalid("invalid sealed movement step reference"));
                     }
                 }
@@ -1713,3 +1721,7 @@ impl Program {
         runtime
     }
 }
+
+#[cfg(test)]
+#[path = "../tests/sampled/source_cache.rs"]
+mod source_cache_tests;

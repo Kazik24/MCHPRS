@@ -146,19 +146,31 @@ impl PlotWorld {
     pub(super) fn get_chunk_index_for_chunk(&self, chunk_x: i32, chunk_z: i32) -> usize {
         let local_x = chunk_x - self.x * PLOT_WIDTH;
         let local_z = chunk_z - self.z * PLOT_WIDTH;
-        (local_x * PLOT_WIDTH + local_z).unsigned_abs() as usize
+        let index = (local_x * PLOT_WIDTH + local_z).unsigned_abs() as usize;
+        if self.scratch.source_probe_active() {
+            self.scratch.record_source_probe_chunk(
+                ((0..PLOT_WIDTH).contains(&local_x) && (0..PLOT_WIDTH).contains(&local_z) && index < self.chunks.len()).then_some(index),
+            );
+        }
+        index
     }
 
     pub(super) fn get_chunk_index_for_block(&self, block_x: i32, block_z: i32) -> Option<usize> {
         let chunk_x = (block_x - (self.x * PLOT_BLOCK_WIDTH)) >> 4;
         let chunk_z = (block_z - (self.z * PLOT_BLOCK_WIDTH)) >> 4;
         if !(0..PLOT_WIDTH).contains(&chunk_x) || !(0..PLOT_WIDTH).contains(&chunk_z) {
+            self.scratch.decline_source_probe();
             return None;
         }
-        Some(((chunk_x << PLOT_SCALE) + chunk_z).unsigned_abs() as usize)
+        let index = ((chunk_x << PLOT_SCALE) + chunk_z).unsigned_abs() as usize;
+        if self.scratch.source_probe_active() {
+            self.scratch.record_source_probe_chunk((index < self.chunks.len()).then_some(index));
+        }
+        Some(index)
     }
 
     pub fn flush_block_changes(&mut self) {
+        self.scratch.record_all_source_probe_chunks(self.chunks.len());
         if self.screen_only() {
             self.flush_screen_changes();
             return;
@@ -235,6 +247,7 @@ impl PlotWorld {
     }
 
     pub(crate) fn activation_snapshot(&self) -> Self {
+        self.scratch.record_all_source_probe_chunks(self.chunks.len());
         let mut snapshot = Self::from_chunks(
             self.x,
             self.z,
@@ -254,6 +267,7 @@ impl PlotWorld {
     }
 
     pub(super) fn publish_activation_changes(&mut self, staged: &Self) {
+        self.scratch.decline_source_probe();
         let changes: Vec<_> = staged.chunks.iter().flat_map(Chunk::changed_blocks).collect();
         for (pos, block) in changes {
             self.set_block(pos, Block::from_id(block));
@@ -261,11 +275,13 @@ impl PlotWorld {
     }
 
     pub fn get_chunks(&self) -> &[Chunk] {
+        self.scratch.record_all_source_probe_chunks(self.chunks.len());
         &self.chunks
     }
 
     /// Commit and drain pending writes for a headless world, without sending packets.
     pub fn take_block_changes(&mut self) -> Vec<(BlockPos, u32)> {
+        self.scratch.record_all_source_probe_chunks(self.chunks.len());
         self.chunks.iter_mut().flat_map(Chunk::take_changed_blocks).collect()
     }
 
@@ -288,6 +304,7 @@ impl PlotWorld {
         read_chunks: HashSet<(i32, i32)>,
         contract_air: HashSet<BlockPos>,
     ) {
+        self.scratch.reset_source_probe_reads();
         self.scratch.capture_bounds = Some(bounds);
         self.scratch.read_bounds = Some(read_bounds);
         self.scratch.read_chunks = Some(read_chunks);
@@ -307,6 +324,7 @@ impl PlotWorld {
     }
 
     pub(crate) fn reset_scratch_probe_state(&mut self, piston: &mchprs_world::PistonState) {
+        self.scratch.reset_source_probe_reads();
         self.clear_scheduled_ticks();
         self.piston_state_mut().clone_from(piston);
         self.observe_redstone_updates(false);
@@ -322,11 +340,30 @@ impl PlotWorld {
         self.scratch.suppress_commands = true;
     }
 
+    /// Track one native probe after reverting scratch state; callers union all source edges.
+    pub(crate) fn begin_source_probe_reads(&mut self) {
+        self.scratch.begin_source_probe_reads();
+    }
+
+    /// End tracking; unknown reads and allocation declines make this probe uncacheable.
+    pub(crate) fn take_source_probe_reads(&mut self) -> Option<Vec<usize>> {
+        if self.scratch.boundary_read.get().is_some() || self.scratch.boundary_effect.get().is_some() {
+            self.scratch.decline_source_probe();
+        }
+        self.scratch.take_source_probe_reads()
+    }
+
     pub(crate) fn take_scratch_boundary_read(&self) -> Option<BlockPos> {
+        if self.scratch.boundary_read.get().is_some() {
+            self.scratch.decline_source_probe();
+        }
         self.scratch.boundary_read.take()
     }
 
     pub(crate) fn take_scratch_boundary_effect(&self) -> Option<BlockPos> {
+        if self.scratch.boundary_effect.get().is_some() {
+            self.scratch.decline_source_probe();
+        }
         self.scratch.boundary_effect.take()
     }
 
@@ -755,7 +792,14 @@ impl World for PlotWorld {
 
     fn wire_neighborhood(&self, pos: BlockPos) -> Option<std::sync::Arc<[crate::world::WireNeighbor; 24]>> {
         let cell = self.wire_location(pos)?;
-        Some(self.wire_topology.borrow_mut().neighborhood(cell, pos, |p| self.wire_location(p)))
+        let neighbors = self.wire_topology.borrow_mut().neighborhood(cell, pos, |p| self.wire_location(p));
+        // A warm address cache skips wire_location for its neighbors.
+        if self.scratch.source_probe_active() {
+            for neighbor in neighbors.iter() {
+                let _ = self.get_chunk_index_for_block(neighbor.pos.x, neighbor.pos.z);
+            }
+        }
+        Some(neighbors)
     }
 
     fn get_wire_block_raw(&self, location: crate::world::WireNeighbor) -> u32 {
@@ -766,14 +810,22 @@ impl World for PlotWorld {
             return self.get_block_raw(location.pos);
         };
         let section = (cell >> 12) as usize;
+        if self.scratch.source_probe_active() {
+            self.scratch
+                .record_source_probe_chunk(((section >> 4) < self.chunks.len()).then_some(section >> 4));
+        }
         self.chunks[section >> 4].sections[section & 15].get_block_by_index((cell & 4095) as usize)
     }
 
     fn instant_piston_cache(&self) -> Option<&crate::world::InstantPistonCache> {
+        if self.scratch.source_probe_active() && !self.instant_pistons.is_empty() {
+            self.scratch.decline_source_probe();
+        }
         Some(&self.instant_pistons)
     }
 
     fn instant_piston_cache_mut(&mut self) -> Option<&mut crate::world::InstantPistonCache> {
+        self.scratch.decline_source_probe();
         Some(&mut self.instant_pistons)
     }
 
@@ -830,6 +882,7 @@ impl World for PlotWorld {
 
     fn get_chunk(&self, x: i32, z: i32) -> Option<&Chunk> {
         if !(self.x * PLOT_WIDTH..(self.x + 1) * PLOT_WIDTH).contains(&x) || !(self.z * PLOT_WIDTH..(self.z + 1) * PLOT_WIDTH).contains(&z) {
+            self.scratch.decline_source_probe();
             return None;
         }
         self.chunks.get(self.get_chunk_index_for_chunk(x, z))

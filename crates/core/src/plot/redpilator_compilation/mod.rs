@@ -36,10 +36,11 @@ impl CompilationJob {
         let monitor = Arc::new(TaskMonitor::with_deadline(budget.map(|budget| started + budget)));
         let worker_monitor = monitor.clone();
         let worker_options = options.clone();
+        let worker_entry = entry.clone();
         let span = tracing::Span::current();
         let worker = thread::Builder::new().name(format!("compile-{},{}", world.x, world.z)).spawn(move || {
             let _entered = span.enter();
-            CompilationResult::compile(world, worker_options, worker_monitor, cached)
+            CompilationResult::compile(world, worker_entry, worker_options, worker_monitor, cached)
         })?;
         Ok(Self {
             started,
@@ -106,19 +107,31 @@ struct CompilationResult {
 }
 
 impl CompilationResult {
-    fn compile(world: PlotWorld, options: CompilerOptions, monitor: Arc<TaskMonitor>, cached: Option<CompilationCache>) -> Self {
+    fn compile(world: PlotWorld, entry: EntryVersion, options: CompilerOptions, monitor: Arc<TaskMonitor>, cached: Option<CompilationCache>) -> Self {
         let mut compiler = Compiler::default();
+        let cached = cached.filter(|cache| cache.options == options);
+        let source_cache = cached.as_ref().and_then(|cache| cache.program.source_order_cache.clone());
+        let cached = cached.filter(|cache| cache.entry == entry);
         let result = match cached {
             Some(CompilationCache { suspended: Some(saved), .. }) => compiler.resume_cached(&world, options, monitor, saved),
             cache => {
                 let ticks = world.to_be_ticked.iter_entries().collect();
-                compiler.compile_cached(&world, world.get_corners(), options, ticks, monitor, cache.map(|cache| cache.program))
+                compiler.compile_cached_with_sampling(
+                    &world,
+                    world.get_corners(),
+                    options,
+                    ticks,
+                    monitor,
+                    cache.map(|cache| cache.program),
+                    source_cache,
+                )
             }
         };
         Self { world, compiler, result }
     }
 }
 
+#[derive(Clone, PartialEq, Eq)]
 struct EntryVersion {
     bounds: (BlockPos, BlockPos),
     /// All plot chunks also cover the compiler's read-only probe context.
@@ -240,10 +253,7 @@ impl Plot {
         self.close_all_containers();
         let entry = EntryVersion::capture(&self.world);
         let world = self.world.activation_snapshot();
-        let cached = self
-            .redpilator_cache
-            .take()
-            .filter(|cache| cache.options == options && cache.entry.matches(&self.world));
+        let cached = self.redpilator_cache.take().filter(|cache| cache.options == options);
         let snapshot_ms = started.elapsed().as_millis();
         info!(plot_x = self.world.x, plot_z = self.world.z, snapshot_ms, ?options, "Redpilator started");
         self.scoreboard.set_redpilator_state(&self.players, RedpilatorState::Compiling);
@@ -313,7 +323,8 @@ impl Plot {
         }
     }
 
-    fn activate_redpilator(&mut self, output: CompilationResult, entry: EntryVersion, options: CompilerOptions, started: Instant) {
+    fn activate_redpilator(&mut self, mut output: CompilationResult, entry: EntryVersion, options: CompilerOptions, started: Instant) {
+        output.compiler.refresh_command_output_state(&self.world);
         self.redpilator_cache = output.compiler.cached_program().map(|program| CompilationCache {
             entry,
             options,

@@ -209,6 +209,23 @@ impl Compiler {
         self.runtime.as_ref().map(Runtime::shared_program)
     }
 
+    #[cfg(test)]
+    pub(crate) fn source_sampling_stats(&self) -> Option<(usize, usize, usize)> {
+        let program = self.cached_program()?;
+        let cache = program.source_order_cache.as_ref()?;
+        let (hits, misses) = cache.reuse_counts();
+        Some((hits, misses, cache.estimated_bytes()))
+    }
+
+    pub(crate) fn refresh_command_output_state<W: World>(&mut self, world: &W) {
+        if let Some(runtime) = self.runtime.as_mut() {
+            runtime.refresh_command_output_state(world);
+            if let Some(native) = self.llvm_runtime.as_mut() {
+                native.acknowledge_effects(runtime.queued_command_outputs());
+            }
+        }
+    }
+
     /// Resume an executor only after its owner verifies the exported world is unchanged.
     pub(crate) fn resume_cached<W: World>(
         &mut self,
@@ -254,10 +271,23 @@ impl Compiler {
         &mut self,
         world: &W,
         bounds: (BlockPos, BlockPos),
+        options: CompilerOptions,
+        ticks: Vec<TickEntry>,
+        monitor: Arc<TaskMonitor>,
+        cached: Option<Arc<sampled::Program>>,
+    ) -> Result<(), CompileError> {
+        self.compile_cached_with_sampling(world, bounds, options, ticks, monitor, cached, None)
+    }
+
+    pub(crate) fn compile_cached_with_sampling<W: World>(
+        &mut self,
+        world: &W,
+        bounds: (BlockPos, BlockPos),
         mut options: CompilerOptions,
         ticks: Vec<TickEntry>,
         monitor: Arc<TaskMonitor>,
         cached: Option<Arc<sampled::Program>>,
+        source_cache: Option<Arc<sampled::SourceOrderCache>>,
     ) -> Result<(), CompileError> {
         if self.is_active() {
             return Err(CompileError::AlreadyActive);
@@ -279,13 +309,15 @@ impl Compiler {
         let program = if let Some(program) = cached {
             program
         } else {
-            Arc::new(sampled::compile_program(world, bounds, entry, Some(&monitor)).map_err(|error| {
-                if monitor.cancelled() {
-                    CompileError::Cancelled
-                } else {
-                    CompileError::Unsupported(error)
-                }
-            })?)
+            Arc::new(
+                sampled::compile_program_with_source_cache(world, bounds, entry, Some(&monitor), source_cache.as_deref()).map_err(|error| {
+                    if monitor.cancelled() {
+                        CompileError::Cancelled
+                    } else {
+                        CompileError::Unsupported(error)
+                    }
+                })?,
+            )
         };
         if monitor.cancelled() {
             return Err(CompileError::Cancelled);

@@ -14,6 +14,12 @@ The compiler stores separate instruction sequences for rising and falling signal
 
 Before activating the result, the plot checks that its state still matches the snapshot. A failed, cancelled or stale compilation never becomes the active runtime.
 
+Source-order probes can reuse observations from an earlier compilation. Each record stores ordered callbacks by world position and a certificate for the source's graph dependencies and the scratch chunks it read or wrote. The compiler checks those certificates against the current quiet probe basis, then lowers reusable observations into the fresh program's numeric IDs. Wiring, piston arrangements and movement validation still rebuild from the current snapshot.
+
+Reuse is conservative: changed data anywhere in a dependency chunk can resample nearby independent sources. Bounds, loaded chunks, cursed state, ordered pending ticks and the complete piston context must match; advancing the logical clock currently prevents reuse. Unknown reads and unsafe shortcuts also cause fresh probing. A rebuilt program receives a fresh runtime initialized from the current world.
+
+Retained sampling data has estimated limits of 64 MiB per program and 256 MiB shared across plots. Exhausting that budget declines retention without rejecting compilation. These limits do not bound total compiler or process memory. Full-program scratch frames are captured only for the source comparisons that consume them; routine probes retain callback observations.
+
 ## Execution
 
 The program stores components, links, instructions and movement rules. Components use numeric IDs. The runtime stores current signal strengths, component states, pending ticks and piston movement.
@@ -53,6 +59,7 @@ Compilation and execution share the server process. A native fault or an OS OOM 
 | [Plot compilation](../crates/core/src/plot/redpilator_compilation/mod.rs) | Snapshot, worker thread, progress and activation |
 | [Compiler](../crates/core/src/redpilator/compiler.rs) | Entry checks, backend setup, publishing and reset |
 | [Compiler passes](../crates/core/src/redpilator/sampled/passes/README.md) | Discovery and instruction generation |
+| [Source probe cache](../crates/core/src/redpilator/sampled/source_cache.rs) | Dependency certificates, retained callback traces and memory reservations |
 | [Program](../crates/core/src/redpilator/sampled/program.rs) | Compiled circuit data |
 | [Rust executor](../crates/core/src/redpilator/sampled/executor.rs) | Mutable state and instruction execution |
 | [LLVM runtime](../crates/core/src/redpilator/sampled/llvm/mod.rs) | Native state, controls and pending ticks |

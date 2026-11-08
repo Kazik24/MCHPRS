@@ -234,6 +234,16 @@ pub(crate) fn compile_monitored(
     entry: ScratchEntry,
     monitor: Option<&TaskMonitor>,
 ) -> Result<Program, ScratchError> {
+    compile_monitored_with_source_cache(world, bounds, entry, monitor, None)
+}
+
+pub(crate) fn compile_monitored_with_source_cache(
+    world: &impl World,
+    bounds: (BlockPos, BlockPos),
+    entry: ScratchEntry,
+    monitor: Option<&TaskMonitor>,
+    source_cache: Option<&super::SourceOrderCache>,
+) -> Result<Program, ScratchError> {
     let mut phases = CompilePhases::new(monitor);
     let context = passes::Context {
         world,
@@ -260,7 +270,7 @@ pub(crate) fn compile_monitored(
     check_cancelled(monitor)?;
 
     passes::reactive::run(world, &entry, &mut program, probe_indexes.components, monitor)?;
-    passes::source_order::run(&context, &mut program, &probe_indexes, &mut phases)?;
+    passes::source_order::run(&context, &mut program, &probe_indexes, &mut phases, source_cache)?;
     passes::finalize::run(&mut program, monitor, &mut phases)?;
     passes::share_output_programs::run(&mut program, monitor, &mut phases)?;
 
