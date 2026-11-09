@@ -5,6 +5,7 @@ use super::{
 };
 use mchprs_blocks::blocks::Block;
 use smallvec::SmallVec;
+use std::collections::{HashMap, HashSet};
 
 #[derive(Clone)]
 pub(super) struct MoveStepSpec {
@@ -189,6 +190,7 @@ impl Program {
         let mut flips = Vec::new();
         let mut links = Vec::new();
         let mut grouped: Vec<(Vec<usize>, Vec<Vec<usize>>, Vec<Vec<(usize, ArrangementSource, u8, bool, bool)>>)> = Vec::new();
+        let mut group_index = HashMap::new();
         for input in &self.input_arrangements {
             let states: Vec<_> = input
                 .tokens
@@ -200,15 +202,11 @@ impl Program {
                         .collect::<Vec<_>>()
                 })
                 .collect();
-            let index = if let Some(index) = grouped
-                .iter()
-                .position(|(tokens, mapping, _)| *tokens == input.tokens && *mapping == states)
-            {
-                index
-            } else {
-                grouped.push((input.tokens.clone(), states, vec![Vec::new(); input.inputs.len()]));
+            let key = (input.tokens.clone(), states);
+            let index = *group_index.entry(key.clone()).or_insert_with(|| {
+                grouped.push((key.0, key.1, vec![Vec::new(); input.inputs.len()]));
                 grouped.len() - 1
-            };
+            });
             for (state, entries) in input.inputs.iter().enumerate() {
                 grouped[index].2[state].extend(
                     entries
@@ -217,11 +215,18 @@ impl Program {
                 );
             }
         }
+        drop(group_index);
         for (tokens, states, maps) in grouped {
             let (group, entries) = self.movement_group(&tokens, &states, &maps, groups.len(), links.len(), &mut flips);
             groups.push(group);
             links.extend(entries);
         }
+        let conditional: HashSet<_> = self
+            .input_arrangements
+            .iter()
+            .filter(|group| !group.side)
+            .flat_map(|group| group.conditional_sources.iter().map(move |&source| (group.target, source)))
+            .collect();
         for (token, cells) in self.token_sources.iter().enumerate() {
             let mut maps = vec![vec![]];
             maps.extend(cells.iter().map(|links| {
@@ -229,11 +234,13 @@ impl Program {
                     .iter()
                     .filter_map(|&(target, attenuation)| {
                         let source = ArrangementSource::Token(token);
-                        (!self
-                            .input_arrangements
-                            .iter()
-                            .any(|group| group.target == target && !group.side && group.conditional_sources.contains(&source)))
-                        .then_some((target, source, attenuation, false, matches!(self.initial[target], Block::Piston { .. })))
+                        (!conditional.contains(&(target, source))).then_some((
+                            target,
+                            source,
+                            attenuation,
+                            false,
+                            matches!(self.initial[target], Block::Piston { .. }),
+                        ))
                     })
                     .collect()
             }));
@@ -304,6 +311,9 @@ impl Program {
             }
             self.movement_cells.push(cells);
         }
+        self.movement_flips.shrink_to_fit();
+        self.movement_ranges.shrink_to_fit();
+        self.movement_transitions.shrink_to_fit();
         self.validate_input_bound()
     }
 
@@ -324,11 +334,20 @@ impl Program {
         flips: &mut Vec<ArrangementFlip>,
     ) -> (MovementGroup, Vec<ArrangementLink>) {
         let mut conditions = Vec::new();
-        for &entry in maps.iter().flatten() {
-            if !conditions.contains(&entry) {
-                conditions.push(entry);
-            }
-        }
+        let mut condition_ids = HashMap::new();
+        let membership: Vec<HashSet<usize>> = maps
+            .iter()
+            .map(|map| {
+                map.iter()
+                    .map(|&entry| {
+                        *condition_ids.entry(entry).or_insert_with(|| {
+                            conditions.push(entry);
+                            conditions.len() - 1
+                        })
+                    })
+                    .collect()
+            })
+            .collect();
         let mut stride = 1;
         let axes = tokens
             .iter()
@@ -344,15 +363,14 @@ impl Program {
                     }
                     let empty = state - digit * stride;
                     let start = flips.len();
-                    for (index, &(target, source, attenuation, side, silent)) in conditions.iter().enumerate() {
-                        let entry = (target, source, attenuation, side, silent);
-                        if maps[state].contains(&entry) != maps[empty].contains(&entry) {
+                    for (index, &(target, source, attenuation, side, _silent)) in conditions.iter().enumerate() {
+                        if membership[state].contains(&index) != membership[empty].contains(&index) {
                             let flip = ArrangementFlip {
                                 target,
                                 source,
                                 attenuation,
                                 link: link_start + index,
-                                entering: maps[empty].contains(&entry),
+                                entering: membership[empty].contains(&index),
                                 side,
                             };
                             flips.push(flip);
@@ -382,17 +400,15 @@ impl Program {
             .collect();
         let links = conditions
             .iter()
-            .map(|&(target, source, attenuation, side, silent)| ArrangementLink {
+            .enumerate()
+            .map(|(index, &(target, source, attenuation, side, silent))| ArrangementLink {
                 target,
                 side,
                 silent,
                 source,
                 attenuation,
                 group,
-                active: maps
-                    .iter()
-                    .map(|map| map.contains(&(target, source, attenuation, side, silent)))
-                    .collect(),
+                active: membership.iter().map(|map| map.contains(&index)).collect(),
             })
             .collect();
         (MovementGroup { axes }, links)

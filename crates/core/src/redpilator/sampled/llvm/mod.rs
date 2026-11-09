@@ -1,4 +1,17 @@
 //! Native execution for sampled Redpilator programs.
+//!
+//! Shared safety invariants for the FFI calls below and in child modules:
+//! - The loaded module is trusted output of our native build; its signatures match abi.h and
+//!   command_engine.c. Version validation detects drift, but is not a proof of library trust.
+//! - Native descriptors use repr(C). State/blob allocations use u64 alignment; native creation
+//!   checks alignment and size before accessing state. C copies the stack descriptor into state.
+//! - LlvmRuntime retains the state, immutable blob, command tables and library until Drop finishes.
+//!   Moving their Vec owners does not move the allocations. State/blob/tables are never resized;
+//!   the resizable command effect buffer is rebound before the next native execution.
+//! - Native code retains raw pointers, not Rust references. Calls are synchronous, with no native
+//!   worker threads or callbacks into Rust. Mutating calls require an exclusive runtime borrow;
+//!   shared calls only read native state. Output buffers are separate writable allocations.
+//! Each SAFETY comment gives the remaining argument/buffer proof for its individual call.
 use super::{
     ScratchError,
     program::{Operation, PISTON_HEAD_NOTIFICATION, Program, notification_component},
@@ -137,6 +150,8 @@ pub(in crate::redpilator) struct LlvmRuntime {
 #[cfg(any(windows, target_os = "linux"))]
 impl LlvmRuntime {
     pub(in crate::redpilator) fn acknowledge_effects(&mut self, host_queued: usize) {
+        // SAFETY: The runtime owns initialized state and all native backing buffers; &mut self excludes
+        // concurrent native access.
         unsafe { (self.library.ack_effects)(self.state.as_mut_ptr().cast()) }
         if let Some(commands) = &mut self.commands {
             commands.acknowledge(&self.library.commands, host_queued);
@@ -215,6 +230,8 @@ impl LlvmRuntime {
 
     fn import_initial_ticks(&mut self, ticks: &[NativePendingTick]) -> Result<(), ScratchError> {
         for tick in ticks {
+            // SAFETY: The state is initialized and retained; InitialTicks::encode supplies checked tick values
+            // and C validates queue insertion.
             let status = unsafe { (self.library.import_tick)(self.state.as_mut_ptr().cast(), tick.component, tick.ticks_left, tick.priority) };
             if status != 0 {
                 return Err(ScratchError {
@@ -230,6 +247,8 @@ impl LlvmRuntime {
         if let Some(commands) = &mut self.commands {
             commands.prepare_tick(&self.library.commands, self.state.as_mut_ptr().cast())?;
         }
+        // SAFETY: The runtime retains initialized state, blob and command buffers; &mut self excludes
+        // concurrent access and prepare_tick binds effect capacity.
         let status = unsafe { (self.library.tick)(self.state.as_mut_ptr().cast()) };
         self.call_status(status)
     }
@@ -238,6 +257,8 @@ impl LlvmRuntime {
         let Some((_, source)) = self.sources.iter().find(|(source_pos, _)| *source_pos == pos) else {
             return Ok(());
         };
+        // SAFETY: The runtime retains initialized state; source is an encoded source slot, and C checks it
+        // before indexing.
         let status = unsafe { (self.library.use_control)(self.state.as_mut_ptr().cast(), *source) };
         self.call_status(status)
     }
@@ -258,6 +279,8 @@ impl LlvmRuntime {
                 reason: "pressure plate is not a compiled input",
             });
         };
+        // SAFETY: The runtime retains initialized state; source is a compiled input slot, powered is 0/1, and C
+        // validates both.
         let status = unsafe { (self.library.set_input)(self.state.as_mut_ptr().cast(), *source, u8::from(powered)) };
         self.call_status(status)
     }
@@ -276,6 +299,8 @@ impl LlvmRuntime {
     /// Allocate a bounded read buffer, request pending records from the native API and decode each record
     /// back into a checked world position, delay and priority.
     pub(in crate::redpilator) fn pending_entries(&self) -> Result<Vec<TickEntry>, ScratchError> {
+        // SAFETY: The runtime retains initialized state; this query only reads the scheduler count, with no
+        // concurrent mutation.
         let count = unsafe { (self.library.pending_count)(self.state.as_ptr().cast()) };
         if count > self.pending_capacity {
             return Err(ScratchError {
@@ -284,6 +309,8 @@ impl LlvmRuntime {
             });
         }
         let mut pending = vec![NativePendingTick::default(); count as usize];
+        // SAFETY: pending has count repr(C) records; C checks the count and each write bound, and state cannot
+        // change during this borrow.
         let status = unsafe { (self.library.read_pending)(self.state.as_ptr().cast(), pending.as_mut_ptr(), count) };
         self.call_status(status)?;
         pending.into_iter().map(|entry| self.decode_pending_tick(entry)).collect()
@@ -350,9 +377,13 @@ impl LlvmRuntime {
 impl Drop for LlvmRuntime {
     fn drop(&mut self) {
         if std::env::var_os("MCHPRS_LLVM_DIAGNOSTICS").is_some() {
+            // SAFETY: Drop runs while initialized state and the library are still alive; work_count only reads
+            // the state.
             let count = unsafe { (self.library.work_count)(self.state.as_ptr().cast()) };
             eprintln!("LLVM native: executed operations and scheduled callbacks={count}");
         }
+        // SAFETY: Drop runs once before any backing field is dropped; destroy does not free Rust-owned
+        // allocations.
         unsafe {
             (self.library.destroy)(self.state.as_mut_ptr().cast());
         }

@@ -130,6 +130,8 @@ fn llvm_wire_sides_round_trip_and_reject_invalid_encoding() {
         })
         .collect();
     assert_eq!(
+        // SAFETY: The live u64-aligned buffer covers invalid.len() bytes; C validates the malformed
+        // descriptor/blob before using table entries.
         unsafe { (native.library.state_size)(&encoded.descriptor, aligned.as_ptr().cast(), invalid.len() as u32, 0,) },
         0
     );
@@ -149,6 +151,8 @@ fn llvm_wire_sides_round_trip_and_reject_invalid_encoding() {
             })
             .collect();
         assert_eq!(
+            // SAFETY: The live u64-aligned buffer covers invalid.len() bytes; table extents are unchanged
+            // and C validates the corrupted wire-side values before accepting the program.
             unsafe { (native.library.state_size)(&encoded.descriptor, aligned.as_ptr().cast(), invalid.len() as u32, 0,) },
             0
         );

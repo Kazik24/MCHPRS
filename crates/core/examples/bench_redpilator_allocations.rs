@@ -32,8 +32,10 @@ static COUNTS: Counts = Counts {
 static ALLOCATOR: CountingAllocator = CountingAllocator;
 
 // This wrapper exists only in this isolated example so the benchmark can count System allocator calls.
+// SAFETY: Contracts are forwarded unchanged to System; counters use nonallocating, nonpanicking atomics.
 unsafe impl GlobalAlloc for CountingAllocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+        // SAFETY: The GlobalAlloc caller supplies a valid layout, forwarded unchanged to System.
         let ptr = unsafe { System.alloc(layout) };
         COUNTS.alloc_calls.fetch_add(1, Ordering::Relaxed);
         COUNTS.alloc_bytes.fetch_add(layout.size() as u64, Ordering::Relaxed);
@@ -41,10 +43,12 @@ unsafe impl GlobalAlloc for CountingAllocator {
     }
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+        // SAFETY: The caller supplies the live System allocation and its original layout unchanged.
         unsafe { System.dealloc(ptr, layout) }
     }
 
     unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
+        // SAFETY: The caller supplies the live System allocation, original layout and valid new_size unchanged.
         let new_ptr = unsafe { System.realloc(ptr, layout, new_size) };
         COUNTS.realloc_calls.fetch_add(1, Ordering::Relaxed);
         COUNTS.realloc_old_bytes.fetch_add(layout.size() as u64, Ordering::Relaxed);

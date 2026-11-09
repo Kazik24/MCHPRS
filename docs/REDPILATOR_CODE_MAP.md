@@ -2,7 +2,7 @@
 
 This is the production code map for Redpilator and its plot command/compilation integration. It includes Rust functions and methods, Rust structs/enums/traits/type aliases, C function definitions and C structs. Test functions and external OS function declarations are excluded; test locations are listed at the end. Conditional platform implementations are listed separately.
 
-The index contains **579 function definitions** and **123 type declarations** across **48 source files**. Function documentation describes purpose and inputs, with implementation details where they clarify the behavior. Each module lists documented functions first, then its remaining functions and methods.
+The index contains **584 function definitions** and **124 type declarations** across **48 source files**. Function documentation describes purpose and inputs, with implementation details where they clarify the behavior. Each module lists documented functions first, then its remaining functions and methods.
 
 ## Start here
 
@@ -357,30 +357,30 @@ Types: [`PistonEvent`](../crates/core/src/redpilator/sampled/executor.rs#L29) (e
 | [`Runtime::finish_piston_part`](../crates/core/src/redpilator/sampled/executor.rs#L806) | Complete the piston-head or base portion of a motion. |
 | [`Runtime::tick_motions`](../crates/core/src/redpilator/sampled/executor.rs#L844) | Advance active piston motions and complete due landings. |
 | [`Runtime::routed_values`](../crates/core/src/redpilator/sampled/executor.rs#L979) | Compute conditional input attenuation for the current geometry. |
-| [`Runtime::refresh_routing`](../crates/core/src/redpilator/sampled/executor.rs#L1034) | Apply connectivity changes after a token moves. |
-| [`Runtime::set_token_pos`](../crates/core/src/redpilator/sampled/executor.rs#L1102) | Move a payload and update the circuit connections it changes. |
-| [`Runtime::run_move_steps`](../crates/core/src/redpilator/sampled/executor.rs#L1148) | Replay the sampled callbacks for a token leaving or entering a cell. |
-| [`Runtime::refresh_wire_power`](../crates/core/src/redpilator/sampled/executor.rs#L1306) | Change a wire's stored strength and dependent signals. |
-| [`Runtime::token_dependency_signature`](../crates/core/src/redpilator/sampled/executor.rs#L1360) | Describe a receiver's conditional sources for a proposed token position. |
-| [`Runtime::output`](../crates/core/src/redpilator/sampled/executor.rs#L1430) | Read a component's current redstone output strength. |
-| [`Runtime::dispatch_receiver`](../crates/core/src/redpilator/sampled/executor.rs#L1498) | Deliver one callback to the correct kind of receiver. |
-| [`Runtime::update_note_block`](../crates/core/src/redpilator/sampled/executor.rs#L1549) | Update a note block and queue a note on a valid rising edge. |
-| [`Runtime::update_copper_bulb`](../crates/core/src/redpilator/sampled/executor.rs#L1580) | Toggle a copper bulb only on a rising input edge. |
-| [`Runtime::update_once`](../crates/core/src/redpilator/sampled/executor.rs#L1606) | Deliver a receiver update at most once for its current effective state. |
-| [`Runtime::update`](../crates/core/src/redpilator/sampled/executor.rs#L1635) | Apply an ordinary receiver callback and count its work. |
-| [`Runtime::check_watched_wire`](../crates/core/src/redpilator/sampled/executor.rs#L1663) | Notify wire watchers when their observed signal level changes. |
-| [`Runtime::update_wire_watcher`](../crates/core/src/redpilator/sampled/executor.rs#L1693) | Update a wire and the watchers associated with that component. |
-| [`Runtime::execute_output_program`](../crates/core/src/redpilator/sampled/executor.rs#L1720) | Execute the stored instruction sequence for an output edge. |
-| [`Runtime::comparator_result`](../crates/core/src/redpilator/sampled/executor.rs#L1844) | Compute the comparator's next strength and powered flag. |
-| [`Runtime::update_comparator`](../crates/core/src/redpilator/sampled/executor.rs#L1880) | Schedule a comparator tick when its desired result changes. |
-| [`Runtime::tick_comparator`](../crates/core/src/redpilator/sampled/executor.rs#L1905) | Apply a scheduled comparator output change. |
-| [`Runtime::update_reactive`](../crates/core/src/redpilator/sampled/executor.rs#L1937) | Reconcile initially unsettled components affected by a source. |
-| [`Runtime::update_torch`](../crates/core/src/redpilator/sampled/executor.rs#L1978) | Schedule a torch transition when its input disagrees with its lit state. |
-| [`Runtime::tick_torch`](../crates/core/src/redpilator/sampled/executor.rs#L2000) | Apply a scheduled redstone-torch transition. |
-| [`Runtime::update_repeater`](../crates/core/src/redpilator/sampled/executor.rs#L2024) | Refresh repeater locking and schedule an output transition. |
-| [`Runtime::drain_ticks`](../crates/core/src/redpilator/sampled/executor.rs#L2115) | Execute every scheduled callback due in the current half-tick. |
-| [`Runtime::tick_repeater`](../crates/core/src/redpilator/sampled/executor.rs#L2175) | Apply a scheduled repeater edge while preserving short pulses. |
-| [`Program::runtime_from_prepared`](../crates/core/src/redpilator/sampled/executor.rs#L2257) | Create mutable execution state for an already indexed program. |
+| [`Runtime::refresh_routing`](../crates/core/src/redpilator/sampled/executor.rs#L1035) | Apply connectivity changes after a token moves. |
+| [`Runtime::set_token_pos`](../crates/core/src/redpilator/sampled/executor.rs#L1104) | Move a payload and update the circuit connections it changes. |
+| [`Runtime::run_move_steps`](../crates/core/src/redpilator/sampled/executor.rs#L1150) | Replay the sampled callbacks for a token leaving or entering a cell. |
+| [`Runtime::refresh_wire_power`](../crates/core/src/redpilator/sampled/executor.rs#L1308) | Change a wire's stored strength and dependent signals. |
+| [`Runtime::token_dependency_signature`](../crates/core/src/redpilator/sampled/executor.rs#L1362) | Describe a receiver's conditional sources for a proposed token position. |
+| [`Runtime::output`](../crates/core/src/redpilator/sampled/executor.rs#L1432) | Read a component's current redstone output strength. |
+| [`Runtime::dispatch_receiver`](../crates/core/src/redpilator/sampled/executor.rs#L1500) | Deliver one callback to the correct kind of receiver. |
+| [`Runtime::update_note_block`](../crates/core/src/redpilator/sampled/executor.rs#L1551) | Update a note block and queue a note on a valid rising edge. |
+| [`Runtime::update_copper_bulb`](../crates/core/src/redpilator/sampled/executor.rs#L1582) | Toggle a copper bulb only on a rising input edge. |
+| [`Runtime::update_once`](../crates/core/src/redpilator/sampled/executor.rs#L1608) | Deliver a receiver update at most once for its current effective state. |
+| [`Runtime::update`](../crates/core/src/redpilator/sampled/executor.rs#L1637) | Apply an ordinary receiver callback and count its work. |
+| [`Runtime::check_watched_wire`](../crates/core/src/redpilator/sampled/executor.rs#L1665) | Notify wire watchers when their observed signal level changes. |
+| [`Runtime::update_wire_watcher`](../crates/core/src/redpilator/sampled/executor.rs#L1695) | Update a wire and the watchers associated with that component. |
+| [`Runtime::execute_output_program`](../crates/core/src/redpilator/sampled/executor.rs#L1722) | Execute the stored instruction sequence for an output edge. |
+| [`Runtime::comparator_result`](../crates/core/src/redpilator/sampled/executor.rs#L1846) | Compute the comparator's next strength and powered flag. |
+| [`Runtime::update_comparator`](../crates/core/src/redpilator/sampled/executor.rs#L1882) | Schedule a comparator tick when its desired result changes. |
+| [`Runtime::tick_comparator`](../crates/core/src/redpilator/sampled/executor.rs#L1907) | Apply a scheduled comparator output change. |
+| [`Runtime::update_reactive`](../crates/core/src/redpilator/sampled/executor.rs#L1939) | Reconcile initially unsettled components affected by a source. |
+| [`Runtime::update_torch`](../crates/core/src/redpilator/sampled/executor.rs#L1980) | Schedule a torch transition when its input disagrees with its lit state. |
+| [`Runtime::tick_torch`](../crates/core/src/redpilator/sampled/executor.rs#L2002) | Apply a scheduled redstone-torch transition. |
+| [`Runtime::update_repeater`](../crates/core/src/redpilator/sampled/executor.rs#L2026) | Refresh repeater locking and schedule an output transition. |
+| [`Runtime::drain_ticks`](../crates/core/src/redpilator/sampled/executor.rs#L2117) | Execute every scheduled callback due in the current half-tick. |
+| [`Runtime::tick_repeater`](../crates/core/src/redpilator/sampled/executor.rs#L2177) | Apply a scheduled repeater edge while preserving short pulses. |
+| [`Program::runtime_from_prepared`](../crates/core/src/redpilator/sampled/executor.rs#L2259) | Create mutable execution state for an already indexed program. |
 
 Other functions and methods:
 
@@ -408,32 +408,32 @@ Other functions and methods:
 - [`Runtime::update_side_inputs`](../crates/core/src/redpilator/sampled/executor.rs#L948)
 - [`Runtime::arrangement_contribution`](../crates/core/src/redpilator/sampled/executor.rs#L962)
 - [`Runtime::initialize_routing`](../crates/core/src/redpilator/sampled/executor.rs#L1017)
-- [`Runtime::arrangement_output`](../crates/core/src/redpilator/sampled/executor.rs#L1083)
-- [`Runtime::mark_changed_wire`](../crates/core/src/redpilator/sampled/executor.rs#L1287)
-- [`Runtime::begin_phase`](../crates/core/src/redpilator/sampled/executor.rs#L1487)
-- [`Runtime::update_hopper`](../crates/core/src/redpilator/sampled/executor.rs#L1518)
-- [`Runtime::update_trapdoor`](../crates/core/src/redpilator/sampled/executor.rs#L1529)
-- [`Runtime::side_strength`](../crates/core/src/redpilator/sampled/executor.rs#L1834)
-- [`Runtime::dispatch_receiver_tick`](../crates/core/src/redpilator/sampled/executor.rs#L2210)
-- [`start_runtime`](../crates/core/src/redpilator/sampled/executor.rs#L2218)
-- [`start_shared_runtime`](../crates/core/src/redpilator/sampled/executor.rs#L2226)
-- [`Program::start`](../crates/core/src/redpilator/sampled/executor.rs#L2238)
-- [`Program::into_runtime`](../crates/core/src/redpilator/sampled/executor.rs#L2242)
-- [`Program::into_runtime_prepared`](../crates/core/src/redpilator/sampled/executor.rs#L2247)
-- [`Runtime::shared_program`](../crates/core/src/redpilator/sampled/executor.rs#L2476)
-- [`Runtime::has_motions`](../crates/core/src/redpilator/sampled/executor.rs#L2479)
-- [`Runtime::piston_state`](../crates/core/src/redpilator/sampled/executor.rs#L2483)
-- [`Runtime::motion_time`](../crates/core/src/redpilator/sampled/executor.rs#L2487)
-- [`Runtime::pending_piston_events`](../crates/core/src/redpilator/sampled/executor.rs#L2491)
-- [`Runtime::owns_piston`](../crates/core/src/redpilator/sampled/executor.rs#L2495)
-- [`Runtime::logical_tick`](../crates/core/src/redpilator/sampled/executor.rs#L2502)
-- [`Runtime::pending_piston_event_iter`](../crates/core/src/redpilator/sampled/executor.rs#L2506)
+- [`Runtime::arrangement_output`](../crates/core/src/redpilator/sampled/executor.rs#L1085)
+- [`Runtime::mark_changed_wire`](../crates/core/src/redpilator/sampled/executor.rs#L1289)
+- [`Runtime::begin_phase`](../crates/core/src/redpilator/sampled/executor.rs#L1489)
+- [`Runtime::update_hopper`](../crates/core/src/redpilator/sampled/executor.rs#L1520)
+- [`Runtime::update_trapdoor`](../crates/core/src/redpilator/sampled/executor.rs#L1531)
+- [`Runtime::side_strength`](../crates/core/src/redpilator/sampled/executor.rs#L1836)
+- [`Runtime::dispatch_receiver_tick`](../crates/core/src/redpilator/sampled/executor.rs#L2212)
+- [`start_runtime`](../crates/core/src/redpilator/sampled/executor.rs#L2220)
+- [`start_shared_runtime`](../crates/core/src/redpilator/sampled/executor.rs#L2228)
+- [`Program::start`](../crates/core/src/redpilator/sampled/executor.rs#L2240)
+- [`Program::into_runtime`](../crates/core/src/redpilator/sampled/executor.rs#L2244)
+- [`Program::into_runtime_prepared`](../crates/core/src/redpilator/sampled/executor.rs#L2249)
+- [`Runtime::shared_program`](../crates/core/src/redpilator/sampled/executor.rs#L2478)
+- [`Runtime::has_motions`](../crates/core/src/redpilator/sampled/executor.rs#L2481)
+- [`Runtime::piston_state`](../crates/core/src/redpilator/sampled/executor.rs#L2485)
+- [`Runtime::motion_time`](../crates/core/src/redpilator/sampled/executor.rs#L2489)
+- [`Runtime::pending_piston_events`](../crates/core/src/redpilator/sampled/executor.rs#L2493)
+- [`Runtime::owns_piston`](../crates/core/src/redpilator/sampled/executor.rs#L2497)
+- [`Runtime::logical_tick`](../crates/core/src/redpilator/sampled/executor.rs#L2504)
+- [`Runtime::pending_piston_event_iter`](../crates/core/src/redpilator/sampled/executor.rs#L2508)
 
 ### [sampled/group_probe.rs](../crates/core/src/redpilator/sampled/group_probe.rs)
 
-Reader/source discovery and selection between dense arrangement tables and graph routing.
+Reader/source discovery and bounded dense-table admission by estimated visits saved per byte. Shared mappings remain intact until the first byte-budget overflow triggers equivalent-axis digit folding of retained/current/future candidates and rank rebuilding. The estimate assumes uniform token movement; accepted tables retain reader discovery order.
 
-Types: [`InputKey`](../crates/core/src/redpilator/sampled/group_probe.rs#L9) (type), [`InputValue`](../crates/core/src/redpilator/sampled/group_probe.rs#L10) (type), [`Inputs`](../crates/core/src/redpilator/sampled/group_probe.rs#L11) (type), [`ReaderKind`](../crates/core/src/redpilator/sampled/group_probe.rs#L23) (enum), [`ProbeIndexes`](../crates/core/src/redpilator/sampled/group_probe.rs#L43) (struct), [`Discovery`](../crates/core/src/redpilator/sampled/group_probe.rs#L336) (struct).
+Types: [`InputKey`](../crates/core/src/redpilator/sampled/group_probe.rs#L9) (type), [`InputValue`](../crates/core/src/redpilator/sampled/group_probe.rs#L10) (type), [`Inputs`](../crates/core/src/redpilator/sampled/group_probe.rs#L11) (type), [`ReaderKind`](../crates/core/src/redpilator/sampled/group_probe.rs#L23) (enum), [`ProbeIndexes`](../crates/core/src/redpilator/sampled/group_probe.rs#L43) (struct), [`Discovery`](../crates/core/src/redpilator/sampled/group_probe.rs#L336) (struct), [`DenseRank`](../crates/core/src/redpilator/sampled/group_probe.rs#L387) (struct).
 
 | Function or method | Purpose |
 | --- | --- |
@@ -442,8 +442,11 @@ Types: [`InputKey`](../crates/core/src/redpilator/sampled/group_probe.rs#L9) (ty
 | [`wire_sources`](../crates/core/src/redpilator/sampled/group_probe.rs#L137) | Resolve either direct wire contacts or their upstream sources. |
 | [`discover_inputs`](../crates/core/src/redpilator/sampled/group_probe.rs#L190) | Discover the main and side sources feeding a component. |
 | [`electrical_states`](../crates/core/src/redpilator/sampled/group_probe.rs#L299) | Fold token positions that are electrically equivalent for one reader. |
-| [`dense_table_bytes`](../crates/core/src/redpilator/sampled/group_probe.rs#L348) | Estimate retained memory for a dense arrangement table. |
-| [`run_with_dense_budget`](../crates/core/src/redpilator/sampled/group_probe.rs#L455) | Choose dense arrangement tables or routing for movement-dependent readers. |
+| [`compact_arrangement`](../crates/core/src/redpilator/sampled/group_probe.rs#L342) | Fold equivalent axis digits across all other-axis combinations, retaining token axes and physical digit mappings. |
+| [`compact_selected`](../crates/core/src/redpilator/sampled/group_probe.rs#L440) | Compact retained candidates on first budget overflow, rebuild their byte estimates/ranks and return removed row count. |
+| [`admit_dense`](../crates/core/src/redpilator/sampled/group_probe.rs#L412) | Replace lower-benefit retained tables while keeping estimated bytes within the budget. |
+| [`dense_table_bytes`](../crates/core/src/redpilator/sampled/group_probe.rs#L464) | Estimate retained memory for a dense arrangement table. |
+| [`run_with_dense_budget`](../crates/core/src/redpilator/sampled/group_probe.rs#L571) | Choose dense arrangement tables or routing for movement-dependent readers. |
 
 Other functions and methods:
 
@@ -455,7 +458,9 @@ Other functions and methods:
 - [`inputs_of`](../crates/core/src/redpilator/sampled/group_probe.rs#L164)
 - [`ports_of`](../crates/core/src/redpilator/sampled/group_probe.rs#L174)
 - [`placements`](../crates/core/src/redpilator/sampled/group_probe.rs#L322)
-- [`run`](../crates/core/src/redpilator/sampled/group_probe.rs#L436)
+- [`DenseRank::cmp`](../crates/core/src/redpilator/sampled/group_probe.rs#L395)
+- [`DenseRank::partial_cmp`](../crates/core/src/redpilator/sampled/group_probe.rs#L407)
+- [`run`](../crates/core/src/redpilator/sampled/group_probe.rs#L552)
 
 ### [sampled/input.rs](../crates/core/src/redpilator/sampled/input.rs)
 
@@ -480,21 +485,21 @@ This file declares types or module exports; it has no production function defini
 
 ### [sampled/movement.rs](../crates/core/src/redpilator/sampled/movement.rs)
 
-Movement-table records, lowering, bounds and validation. This owns compile_movement_flips and its helpers.
+Movement-table records, lowering, bounds and validation. Stable hash indexes accelerate group/condition lookup without changing vector emission order; completed movement buffers release spare capacity. This owns compile_movement_flips and its helpers.
 
-Types: [`MoveStepSpec`](../crates/core/src/redpilator/sampled/movement.rs#L10) (struct), [`MoveStep`](../crates/core/src/redpilator/sampled/movement.rs#L22) (struct), [`ArrangementFlip`](../crates/core/src/redpilator/sampled/movement.rs#L34) (struct), [`MovementAxis`](../crates/core/src/redpilator/sampled/movement.rs#L50) (struct), [`MovementTransition`](../crates/core/src/redpilator/sampled/movement.rs#L63) (struct), [`MovementGroup`](../crates/core/src/redpilator/sampled/movement.rs#L72) (struct).
+Types: [`MoveStepSpec`](../crates/core/src/redpilator/sampled/movement.rs#L11) (struct), [`MoveStep`](../crates/core/src/redpilator/sampled/movement.rs#L23) (struct), [`ArrangementFlip`](../crates/core/src/redpilator/sampled/movement.rs#L35) (struct), [`MovementAxis`](../crates/core/src/redpilator/sampled/movement.rs#L51) (struct), [`MovementTransition`](../crates/core/src/redpilator/sampled/movement.rs#L64) (struct), [`MovementGroup`](../crates/core/src/redpilator/sampled/movement.rs#L73) (struct).
 
 | Function or method | Purpose |
 | --- | --- |
-| [`Program::compile_movement_flips`](../crates/core/src/redpilator/sampled/movement.rs#L104) | Build the power changes caused by moving piston-carried blocks. |
-| [`Program::movement_group`](../crates/core/src/redpilator/sampled/movement.rs#L317) | Lower one set of token arrangements into movement axes and links. |
-| [`Program::set_move_steps`](../crates/core/src/redpilator/sampled/movement.rs#L407) | Store sampled movement callbacks in flat runtime tables. |
-| [`Program::validate_movement`](../crates/core/src/redpilator/sampled/movement.rs#L439) | Check that compiled movement groups, links and transitions agree. |
-| [`Program::validate_move_steps`](../crates/core/src/redpilator/sampled/movement.rs#L542) | Check sampled movement callbacks against the program's components. |
+| [`Program::compile_movement_flips`](../crates/core/src/redpilator/sampled/movement.rs#L105) | Build the power changes caused by moving piston-carried blocks. |
+| [`Program::movement_group`](../crates/core/src/redpilator/sampled/movement.rs#L327) | Lower one set of token arrangements into movement axes and links. |
+| [`Program::set_move_steps`](../crates/core/src/redpilator/sampled/movement.rs#L423) | Store sampled movement callbacks in flat runtime tables. |
+| [`Program::validate_movement`](../crates/core/src/redpilator/sampled/movement.rs#L455) | Check that compiled movement groups, links and transitions agree. |
+| [`Program::validate_move_steps`](../crates/core/src/redpilator/sampled/movement.rs#L558) | Check sampled movement callbacks against the program's components. |
 
 Other functions and methods:
 
-- [`valid_states`](../crates/core/src/redpilator/sampled/movement.rs#L79)
+- [`valid_states`](../crates/core/src/redpilator/sampled/movement.rs#L80)
 
 ### [sampled/passes/arrangements.rs](../crates/core/src/redpilator/sampled/passes/arrangements.rs)
 
@@ -670,22 +675,22 @@ Other functions and methods:
 
 ### [sampled/routing.rs](../crates/core/src/redpilator/sampled/routing.rs)
 
-Local connectivity sampling, wire graphs and movement-dependent source searches.
+Local connectivity sampling, wire graphs and movement-dependent source searches. The separately benchmarked connectivity-cache prototype was removed after paired PM1 comparisons did not establish a repeatable gain.
 
 Types: [`Axis`](../crates/core/src/redpilator/sampled/routing.rs#L10) (enum), [`Ports`](../crates/core/src/redpilator/sampled/routing.rs#L23) (struct), [`Local`](../crates/core/src/redpilator/sampled/routing.rs#L29) (struct), [`Node`](../crates/core/src/redpilator/sampled/routing.rs#L34) (type), [`TokenCells`](../crates/core/src/redpilator/sampled/routing.rs#L35) (type), [`ReaderPorts`](../crates/core/src/redpilator/sampled/routing.rs#L38) (struct), [`Reader`](../crates/core/src/redpilator/sampled/routing.rs#L44) (struct), [`WireGraph`](../crates/core/src/redpilator/sampled/routing.rs#L131) (struct), [`Search`](../crates/core/src/redpilator/sampled/routing.rs#L143) (struct).
 
 | Function or method | Purpose |
 | --- | --- |
 | [`compile_local`](../crates/core/src/redpilator/sampled/routing.rs#L74) | Sample local connectivity for every relevant token placement. |
-| [`manhattan_positions`](../crates/core/src/redpilator/sampled/routing.rs#L183) | Enumerate nearby positions within a taxi-cab distance. |
-| [`reader_contact_positions`](../crates/core/src/redpilator/sampled/routing.rs#L256) | Collect the local cells that can conduct into a reader. |
-| [`reader_token_axes`](../crates/core/src/redpilator/sampled/routing.rs#L289) | Choose the tokens that can change a reader's direct connectivity. |
-| [`WireGraph::reindex`](../crates/core/src/redpilator/sampled/routing.rs#L334) | Rebuild lookup lists after the routing reader list changes. |
-| [`WireGraph::bind_links`](../crates/core/src/redpilator/sampled/routing.rs#L360) | Attach lowered arrangement-link IDs to their routing readers. |
-| [`WireGraph::potential_sources`](../crates/core/src/redpilator/sampled/routing.rs#L377) | Find every source a reader could reach in any sampled arrangement. |
-| [`WireGraph::compile`](../crates/core/src/redpilator/sampled/routing.rs#L418) | Build movement-sensitive wire connectivity tables. |
-| [`WireGraph::compile_readers`](../crates/core/src/redpilator/sampled/routing.rs#L505) | Add reader contact tables and their token dependencies to the wire graph. |
-| [`WireGraph::reader_sources`](../crates/core/src/redpilator/sampled/routing.rs#L602) | Resolve the currently connected sources of one routed reader. |
+| [`manhattan_positions`](../crates/core/src/redpilator/sampled/routing.rs#L184) | Enumerate nearby positions within a taxi-cab distance. |
+| [`reader_contact_positions`](../crates/core/src/redpilator/sampled/routing.rs#L257) | Collect the local cells that can conduct into a reader. |
+| [`reader_token_axes`](../crates/core/src/redpilator/sampled/routing.rs#L290) | Choose the tokens that can change a reader's direct connectivity. |
+| [`WireGraph::reindex`](../crates/core/src/redpilator/sampled/routing.rs#L335) | Rebuild lookup lists after the routing reader list changes. |
+| [`WireGraph::bind_links`](../crates/core/src/redpilator/sampled/routing.rs#L361) | Attach lowered arrangement-link IDs to their routing readers. |
+| [`WireGraph::potential_sources`](../crates/core/src/redpilator/sampled/routing.rs#L378) | Find every source a reader could reach in any sampled arrangement. |
+| [`WireGraph::compile`](../crates/core/src/redpilator/sampled/routing.rs#L419) | Build movement-sensitive wire connectivity tables. |
+| [`WireGraph::compile_readers`](../crates/core/src/redpilator/sampled/routing.rs#L506) | Add reader contact tables and their token dependencies to the wire graph. |
+| [`WireGraph::reader_sources`](../crates/core/src/redpilator/sampled/routing.rs#L603) | Resolve the currently connected sources of one routed reader. |
 | [`WireGraph::reader_attenuations`](../crates/core/src/redpilator/sampled/routing.rs#L628) | Append conditional-link attenuation updates directly into reusable runtime storage, retaining reader/link order. |
 | [`WireGraph::sources`](../crates/core/src/redpilator/sampled/routing.rs#L666) | Find power sources connected to a wire in the current arrangement. |
 | [`WireGraph::visit_sources`](../crates/core/src/redpilator/sampled/routing.rs#L678) | Traverse numeric wire roots with shared BFS accounting and emit source distances without an intermediate map. |
@@ -694,20 +699,20 @@ Other functions and methods:
 
 - [`Axis::radix`](../crates/core/src/redpilator/sampled/routing.rs#L15)
 - [`<T> Local<T>::select`](../crates/core/src/redpilator/sampled/routing.rs#L53)
-- [`checked_offset`](../crates/core/src/redpilator/sampled/routing.rs#L156)
-- [`adjacent_positions`](../crates/core/src/redpilator/sampled/routing.rs#L164)
-- [`index_token_cells`](../crates/core/src/redpilator/sampled/routing.rs#L203)
-- [`append_tokens_at`](../crates/core/src/redpilator/sampled/routing.rs#L213)
-- [`axes_for_tokens`](../crates/core/src/redpilator/sampled/routing.rs#L219)
-- [`wire_token_axes`](../crates/core/src/redpilator/sampled/routing.rs#L228)
-- [`piston_contact_cells`](../crates/core/src/redpilator/sampled/routing.rs#L236)
-- [`WireGraph::reader_count`](../crates/core/src/redpilator/sampled/routing.rs#L315)
-- [`WireGraph::reader_component`](../crates/core/src/redpilator/sampled/routing.rs#L318)
-- [`WireGraph::reader_dependencies`](../crates/core/src/redpilator/sampled/routing.rs#L321)
-- [`WireGraph::retain_readers`](../crates/core/src/redpilator/sampled/routing.rs#L324)
-- [`WireGraph::reader_for_component`](../crates/core/src/redpilator/sampled/routing.rs#L346)
-- [`WireGraph::readers_for_token`](../crates/core/src/redpilator/sampled/routing.rs#L349)
-- [`WireGraph::links`](../crates/core/src/redpilator/sampled/routing.rs#L352)
+- [`checked_offset`](../crates/core/src/redpilator/sampled/routing.rs#L157)
+- [`adjacent_positions`](../crates/core/src/redpilator/sampled/routing.rs#L165)
+- [`index_token_cells`](../crates/core/src/redpilator/sampled/routing.rs#L204)
+- [`append_tokens_at`](../crates/core/src/redpilator/sampled/routing.rs#L214)
+- [`axes_for_tokens`](../crates/core/src/redpilator/sampled/routing.rs#L220)
+- [`wire_token_axes`](../crates/core/src/redpilator/sampled/routing.rs#L229)
+- [`piston_contact_cells`](../crates/core/src/redpilator/sampled/routing.rs#L237)
+- [`WireGraph::reader_count`](../crates/core/src/redpilator/sampled/routing.rs#L316)
+- [`WireGraph::reader_component`](../crates/core/src/redpilator/sampled/routing.rs#L319)
+- [`WireGraph::reader_dependencies`](../crates/core/src/redpilator/sampled/routing.rs#L322)
+- [`WireGraph::retain_readers`](../crates/core/src/redpilator/sampled/routing.rs#L325)
+- [`WireGraph::reader_for_component`](../crates/core/src/redpilator/sampled/routing.rs#L347)
+- [`WireGraph::readers_for_token`](../crates/core/src/redpilator/sampled/routing.rs#L350)
+- [`WireGraph::links`](../crates/core/src/redpilator/sampled/routing.rs#L353)
 
 ### [sampled/scheduler.rs](../crates/core/src/redpilator/sampled/scheduler.rs)
 
@@ -821,27 +826,27 @@ Other functions and methods:
 
 Command specification encoding, native command-state ownership and effect decoding.
 
-Types: [`Api`](../crates/core/src/redpilator/sampled/llvm/command.rs#L11) (struct), [`State`](../crates/core/src/redpilator/sampled/llvm/command.rs#L49) (struct), [`StringRef`](../crates/core/src/redpilator/sampled/llvm/command.rs#L301) (struct), [`RecipientKind`](../crates/core/src/redpilator/sampled/llvm/command.rs#L307) (enum), [`CommandResult`](../crates/core/src/redpilator/sampled/llvm/command.rs#L314) (enum), [`CommandSpec`](../crates/core/src/redpilator/sampled/llvm/command.rs#L321) (struct), [`CommandBlockMode`](../crates/core/src/redpilator/sampled/llvm/command.rs#L329) (enum), [`CommandBlockRecord`](../crates/core/src/redpilator/sampled/llvm/command.rs#L336) (struct), [`EncodedCommands`](../crates/core/src/redpilator/sampled/llvm/command.rs#L355) (struct), [`EncodedOutputState`](../crates/core/src/redpilator/sampled/llvm/command.rs#L366) (struct), [`CommandTables`](../crates/core/src/redpilator/sampled/llvm/command.rs#L393) (struct).
+Types: [`Api`](../crates/core/src/redpilator/sampled/llvm/command.rs#L11) (struct), [`State`](../crates/core/src/redpilator/sampled/llvm/command.rs#L54) (struct), [`StringRef`](../crates/core/src/redpilator/sampled/llvm/command.rs#L330) (struct), [`RecipientKind`](../crates/core/src/redpilator/sampled/llvm/command.rs#L336) (enum), [`CommandResult`](../crates/core/src/redpilator/sampled/llvm/command.rs#L343) (enum), [`CommandSpec`](../crates/core/src/redpilator/sampled/llvm/command.rs#L350) (struct), [`CommandBlockMode`](../crates/core/src/redpilator/sampled/llvm/command.rs#L358) (enum), [`CommandBlockRecord`](../crates/core/src/redpilator/sampled/llvm/command.rs#L365) (struct), [`EncodedCommands`](../crates/core/src/redpilator/sampled/llvm/command.rs#L384) (struct), [`EncodedOutputState`](../crates/core/src/redpilator/sampled/llvm/command.rs#L395) (struct), [`CommandTables`](../crates/core/src/redpilator/sampled/llvm/command.rs#L422) (struct).
 
 | Function or method | Purpose |
 | --- | --- |
-| [`State::new`](../crates/core/src/redpilator/sampled/llvm/command.rs#L70) | Create and bind native command-block state for a program. |
-| [`State::prepare_tick`](../crates/core/src/redpilator/sampled/llvm/command.rs#L150) | Reserve enough effect output space and update the native clock. |
-| [`State::sync`](../crates/core/src/redpilator/sampled/llvm/command.rs#L181) | Copy checked native command state and effects into the Rust projection. |
-| [`EncodedCommands::serialize_at`](../crates/core/src/redpilator/sampled/llvm/command.rs#L408) | Call with `Instant::now()` immediately before native state creation so compilation and DLL loading time count against the existing output window. |
-| [`spec`](../crates/core/src/redpilator/sampled/llvm/command.rs#L548) | Parse and encode one command block's command result. |
-| [`encode`](../crates/core/src/redpilator/sampled/llvm/command.rs#L588) | Encode every command component in canonical Program order, including blocks without a saved entity. Parse outcomes become native bytecode rather than causing unsupported commands to disappear or reject the Program. |
+| [`State::new`](../crates/core/src/redpilator/sampled/llvm/command.rs#L75) | Create and bind native command-block state for a program. |
+| [`State::prepare_tick`](../crates/core/src/redpilator/sampled/llvm/command.rs#L162) | Reserve enough effect output space and update the native clock. |
+| [`State::sync`](../crates/core/src/redpilator/sampled/llvm/command.rs#L201) | Copy checked native command state and effects into the Rust projection. |
+| [`EncodedCommands::serialize_at`](../crates/core/src/redpilator/sampled/llvm/command.rs#L437) | Call with `Instant::now()` immediately before native state creation so compilation and DLL loading time count against the existing output window. |
+| [`spec`](../crates/core/src/redpilator/sampled/llvm/command.rs#L577) | Parse and encode one command block's command result. |
+| [`encode`](../crates/core/src/redpilator/sampled/llvm/command.rs#L617) | Encode every command component in canonical Program order, including blocks without a saved entity. Parse outcomes become native bytecode rather than causing unsupported commands to disappear or reject the Program. |
 
 Other functions and methods:
 
-- [`Api::load`](../crates/core/src/redpilator/sampled/llvm/command.rs#L28)
-- [`State::text`](../crates/core/src/redpilator/sampled/llvm/command.rs#L169)
-- [`State::acknowledge`](../crates/core/src/redpilator/sampled/llvm/command.rs#L289)
-- [`invalid`](../crates/core/src/redpilator/sampled/llvm/command.rs#L515)
-- [`id`](../crates/core/src/redpilator/sampled/llvm/command.rs#L522)
-- [`add_string`](../crates/core/src/redpilator/sampled/llvm/command.rs#L526)
-- [`recipient`](../crates/core/src/redpilator/sampled/llvm/command.rs#L535)
-- [`mode`](../crates/core/src/redpilator/sampled/llvm/command.rs#L572)
+- [`Api::load`](../crates/core/src/redpilator/sampled/llvm/command.rs#L31)
+- [`State::text`](../crates/core/src/redpilator/sampled/llvm/command.rs#L189)
+- [`State::acknowledge`](../crates/core/src/redpilator/sampled/llvm/command.rs#L316)
+- [`invalid`](../crates/core/src/redpilator/sampled/llvm/command.rs#L544)
+- [`id`](../crates/core/src/redpilator/sampled/llvm/command.rs#L551)
+- [`add_string`](../crates/core/src/redpilator/sampled/llvm/command.rs#L555)
+- [`recipient`](../crates/core/src/redpilator/sampled/llvm/command.rs#L564)
+- [`mode`](../crates/core/src/redpilator/sampled/llvm/command.rs#L601)
 
 ### [sampled/llvm/command_engine.c](../crates/core/src/redpilator/sampled/llvm/command_engine.c)
 
@@ -1016,20 +1021,20 @@ Other functions and methods:
 
 OS library handles, symbol resolution, ABI validation and native state allocation.
 
-Types: [`Library`](../crates/core/src/redpilator/sampled/llvm/library.rs#L10) (struct), [`Module`](../crates/core/src/redpilator/sampled/llvm/library.rs#L167) (struct), [`Library`](../crates/core/src/redpilator/sampled/llvm/library.rs#L259) (struct).
+Types: [`Library`](../crates/core/src/redpilator/sampled/llvm/library.rs#L10) (struct), [`Module`](../crates/core/src/redpilator/sampled/llvm/library.rs#L187) (struct), [`Library`](../crates/core/src/redpilator/sampled/llvm/library.rs#L295) (struct).
 
 | Function or method | Purpose |
 | --- | --- |
-| [`Library::load`](../crates/core/src/redpilator/sampled/llvm/library.rs#L38) | Load the native executor and resolve its required API. |
-| [`Library::create_state`](../crates/core/src/redpilator/sampled/llvm/library.rs#L92) | Allocate and initialize native execution memory for an encoded program. |
-| [`Module::open`](../crates/core/src/redpilator/sampled/llvm/library.rs#L180) | Open a native module with an owning OS handle. |
-| [`Module::symbol`](../crates/core/src/redpilator/sampled/llvm/library.rs#L212) | Resolve a function exported by this module. |
+| [`Library::load`](../crates/core/src/redpilator/sampled/llvm/library.rs#L42) | Load the native executor and resolve its required API. |
+| [`Library::create_state`](../crates/core/src/redpilator/sampled/llvm/library.rs#L104) | Allocate and initialize native execution memory for an encoded program. |
+| [`Module::open`](../crates/core/src/redpilator/sampled/llvm/library.rs#L201) | Open a native module with an owning OS handle. |
+| [`Module::symbol`](../crates/core/src/redpilator/sampled/llvm/library.rs#L238) | Resolve a function exported by this module. |
 
 Other functions and methods:
 
-- [`Library::validate_abi`](../crates/core/src/redpilator/sampled/llvm/library.rs#L75)
-- [`Module::drop`](../crates/core/src/redpilator/sampled/llvm/library.rs#L230)
-- [`Library::load`](../crates/core/src/redpilator/sampled/llvm/library.rs#L263)
+- [`Library::validate_abi`](../crates/core/src/redpilator/sampled/llvm/library.rs#L85)
+- [`Module::drop`](../crates/core/src/redpilator/sampled/llvm/library.rs#L260)
+- [`Library::load`](../crates/core/src/redpilator/sampled/llvm/library.rs#L299)
 
 ### [sampled/llvm/llvm_movement.c](../crates/core/src/redpilator/sampled/llvm/llvm_movement.c)
 
@@ -1078,45 +1083,45 @@ Other functions and methods:
 
 Native runtime ownership, component admission, controls and pending-tick translation.
 
-Types: [`NativePendingTick`](../crates/core/src/redpilator/sampled/llvm/mod.rs#L36) (struct), [`InitialTicks`](../crates/core/src/redpilator/sampled/llvm/mod.rs#L43) (struct), [`NativeApiDescriptor`](../crates/core/src/redpilator/sampled/llvm/mod.rs#L94) (struct), [`NativeProgramDescriptor`](../crates/core/src/redpilator/sampled/llvm/mod.rs#L102) (struct), [`LlvmRuntime`](../crates/core/src/redpilator/sampled/llvm/mod.rs#L119) (struct), [`LlvmRuntime`](../crates/core/src/redpilator/sampled/llvm/mod.rs#L349) (struct).
+Types: [`NativePendingTick`](../crates/core/src/redpilator/sampled/llvm/mod.rs#L50) (struct), [`InitialTicks`](../crates/core/src/redpilator/sampled/llvm/mod.rs#L57) (struct), [`NativeApiDescriptor`](../crates/core/src/redpilator/sampled/llvm/mod.rs#L108) (struct), [`NativeProgramDescriptor`](../crates/core/src/redpilator/sampled/llvm/mod.rs#L116) (struct), [`LlvmRuntime`](../crates/core/src/redpilator/sampled/llvm/mod.rs#L133) (struct), [`LlvmRuntime`](../crates/core/src/redpilator/sampled/llvm/mod.rs#L394) (struct).
 
 | Function or method | Purpose |
 | --- | --- |
-| [`InitialTicks::encode`](../crates/core/src/redpilator/sampled/llvm/mod.rs#L55) | Translate host pending ticks into native scheduler records. |
-| [`LlvmRuntime::new`](../crates/core/src/redpilator/sampled/llvm/mod.rs#L152) | Construct a native executor while retaining all backing storage. |
-| [`LlvmRuntime::pending_entries`](../crates/core/src/redpilator/sampled/llvm/mod.rs#L264) | Export native pending work as host scheduler entries. |
-| [`LlvmRuntime::decode_pending_tick`](../crates/core/src/redpilator/sampled/llvm/mod.rs#L284) | Validate and decode one pending native callback. |
-| [`unsupported_components`](../crates/core/src/redpilator/sampled/llvm/mod.rs#L391) | Collect representative components unsupported by the native backend. |
-| [`unsupported_reason`](../crates/core/src/redpilator/sampled/llvm/mod.rs#L432) | Find the first program-level native-backend admission failure. |
+| [`InitialTicks::encode`](../crates/core/src/redpilator/sampled/llvm/mod.rs#L69) | Translate host pending ticks into native scheduler records. |
+| [`LlvmRuntime::new`](../crates/core/src/redpilator/sampled/llvm/mod.rs#L172) | Construct a native executor while retaining all backing storage. |
+| [`LlvmRuntime::pending_entries`](../crates/core/src/redpilator/sampled/llvm/mod.rs#L301) | Export native pending work as host scheduler entries. |
+| [`LlvmRuntime::decode_pending_tick`](../crates/core/src/redpilator/sampled/llvm/mod.rs#L325) | Validate and decode one pending native callback. |
+| [`unsupported_components`](../crates/core/src/redpilator/sampled/llvm/mod.rs#L438) | Collect representative components unsupported by the native backend. |
+| [`unsupported_reason`](../crates/core/src/redpilator/sampled/llvm/mod.rs#L479) | Find the first program-level native-backend admission failure. |
 
 Other functions and methods:
 
-- [`LlvmRuntime::acknowledge_effects`](../crates/core/src/redpilator/sampled/llvm/mod.rs#L134)
-- [`LlvmRuntime::initialize_tick`](../crates/core/src/redpilator/sampled/llvm/mod.rs#L140)
-- [`LlvmRuntime::bind_commands`](../crates/core/src/redpilator/sampled/llvm/mod.rs#L188)
-- [`LlvmRuntime::import_initial_ticks`](../crates/core/src/redpilator/sampled/llvm/mod.rs#L202)
-- [`LlvmRuntime::tick`](../crates/core/src/redpilator/sampled/llvm/mod.rs#L215)
-- [`LlvmRuntime::use_control`](../crates/core/src/redpilator/sampled/llvm/mod.rs#L223)
-- [`LlvmRuntime::accepts_control`](../crates/core/src/redpilator/sampled/llvm/mod.rs#L231)
-- [`LlvmRuntime::set_pressure_plate`](../crates/core/src/redpilator/sampled/llvm/mod.rs#L235)
-- [`LlvmRuntime::sync_commands`](../crates/core/src/redpilator/sampled/llvm/mod.rs#L251)
-- [`LlvmRuntime::call_status`](../crates/core/src/redpilator/sampled/llvm/mod.rs#L322)
-- [`LlvmRuntime::drop`](../crates/core/src/redpilator/sampled/llvm/mod.rs#L337)
-- [`LlvmRuntime::acknowledge_effects`](../crates/core/src/redpilator/sampled/llvm/mod.rs#L353)
-- [`LlvmRuntime::initialize_tick`](../crates/core/src/redpilator/sampled/llvm/mod.rs#L356)
-- [`LlvmRuntime::new`](../crates/core/src/redpilator/sampled/llvm/mod.rs#L359)
-- [`LlvmRuntime::sync_io`](../crates/core/src/redpilator/sampled/llvm/mod.rs#L367) (unsupported-platform stub)
-- [`LlvmRuntime::sync_effects`](../crates/core/src/redpilator/sampled/llvm/mod.rs#L368) (unsupported-platform stub)
-- [`LlvmRuntime::sync_projection`](../crates/core/src/redpilator/sampled/llvm/mod.rs#L362)
-- [`LlvmRuntime::sync_publication`](../crates/core/src/redpilator/sampled/llvm/mod.rs#L365)
-- [`LlvmRuntime::tick`](../crates/core/src/redpilator/sampled/llvm/mod.rs#L368)
-- [`LlvmRuntime::use_control`](../crates/core/src/redpilator/sampled/llvm/mod.rs#L371)
-- [`LlvmRuntime::accepts_control`](../crates/core/src/redpilator/sampled/llvm/mod.rs#L374)
-- [`LlvmRuntime::set_pressure_plate`](../crates/core/src/redpilator/sampled/llvm/mod.rs#L377)
-- [`LlvmRuntime::pending_entries`](../crates/core/src/redpilator/sampled/llvm/mod.rs#L380)
-- [`log_program_diagnostics`](../crates/core/src/redpilator/sampled/llvm/mod.rs#L448)
-- [`log_artifact_diagnostics`](../crates/core/src/redpilator/sampled/llvm/mod.rs#L460)
-- [`native_status_reason`](../crates/core/src/redpilator/sampled/llvm/mod.rs#L467)
+- [`LlvmRuntime::acknowledge_effects`](../crates/core/src/redpilator/sampled/llvm/mod.rs#L152)
+- [`LlvmRuntime::initialize_tick`](../crates/core/src/redpilator/sampled/llvm/mod.rs#L160)
+- [`LlvmRuntime::bind_commands`](../crates/core/src/redpilator/sampled/llvm/mod.rs#L217)
+- [`LlvmRuntime::import_initial_ticks`](../crates/core/src/redpilator/sampled/llvm/mod.rs#L231)
+- [`LlvmRuntime::tick`](../crates/core/src/redpilator/sampled/llvm/mod.rs#L246)
+- [`LlvmRuntime::use_control`](../crates/core/src/redpilator/sampled/llvm/mod.rs#L256)
+- [`LlvmRuntime::accepts_control`](../crates/core/src/redpilator/sampled/llvm/mod.rs#L266)
+- [`LlvmRuntime::set_pressure_plate`](../crates/core/src/redpilator/sampled/llvm/mod.rs#L270)
+- [`LlvmRuntime::sync_commands`](../crates/core/src/redpilator/sampled/llvm/mod.rs#L288)
+- [`LlvmRuntime::call_status`](../crates/core/src/redpilator/sampled/llvm/mod.rs#L363)
+- [`LlvmRuntime::drop`](../crates/core/src/redpilator/sampled/llvm/mod.rs#L378)
+- [`LlvmRuntime::acknowledge_effects`](../crates/core/src/redpilator/sampled/llvm/mod.rs#L400)
+- [`LlvmRuntime::initialize_tick`](../crates/core/src/redpilator/sampled/llvm/mod.rs#L403)
+- [`LlvmRuntime::new`](../crates/core/src/redpilator/sampled/llvm/mod.rs#L406)
+- [`LlvmRuntime::sync_io`](../crates/core/src/redpilator/sampled/llvm/mod.rs#L398) (unsupported-platform stub)
+- [`LlvmRuntime::sync_effects`](../crates/core/src/redpilator/sampled/llvm/mod.rs#L399) (unsupported-platform stub)
+- [`LlvmRuntime::sync_projection`](../crates/core/src/redpilator/sampled/llvm/mod.rs#L409)
+- [`LlvmRuntime::sync_publication`](../crates/core/src/redpilator/sampled/llvm/mod.rs#L412)
+- [`LlvmRuntime::tick`](../crates/core/src/redpilator/sampled/llvm/mod.rs#L415)
+- [`LlvmRuntime::use_control`](../crates/core/src/redpilator/sampled/llvm/mod.rs#L418)
+- [`LlvmRuntime::accepts_control`](../crates/core/src/redpilator/sampled/llvm/mod.rs#L421)
+- [`LlvmRuntime::set_pressure_plate`](../crates/core/src/redpilator/sampled/llvm/mod.rs#L424)
+- [`LlvmRuntime::pending_entries`](../crates/core/src/redpilator/sampled/llvm/mod.rs#L427)
+- [`log_program_diagnostics`](../crates/core/src/redpilator/sampled/llvm/mod.rs#L495)
+- [`log_artifact_diagnostics`](../crates/core/src/redpilator/sampled/llvm/mod.rs#L507)
+- [`native_status_reason`](../crates/core/src/redpilator/sampled/llvm/mod.rs#L514)
 
 ### [sampled/llvm/movement.rs](../crates/core/src/redpilator/sampled/llvm/movement.rs)
 
@@ -1143,7 +1148,7 @@ Checked control/output component and queued-effect transfers without a full runt
 | Function or method | Purpose |
 | --- | --- |
 | [`LlvmRuntime::sync_io`](../crates/core/src/redpilator/sampled/llvm/publication.rs#L8) | Read and validate compiled IO component states, mark changed output cells and synchronize queued effects. |
-| [`LlvmRuntime::sync_effects`](../crates/core/src/redpilator/sampled/llvm/publication.rs#L61) | Validate queued notes, synchronize command state and refresh effect/clock projection without geometry or scheduler reconstruction. |
+| [`LlvmRuntime::sync_effects`](../crates/core/src/redpilator/sampled/llvm/publication.rs#L63) | Validate queued notes, synchronize command state and refresh effect/clock projection without geometry or scheduler reconstruction. |
 
 ### [sampled/llvm/routing.rs](../crates/core/src/redpilator/sampled/llvm/routing.rs)
 

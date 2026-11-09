@@ -154,6 +154,9 @@ mod tests {
                 watched_wire_count: 0,
             };
             let mut aligned = vec![0u64; (blob.len() + offset).div_ceil(8)];
+            // SAFETY: aligned covers offset + blob.len() bytes and is disjoint from blob. C rejects input
+            // misalignment before typed reads; the separate state allocation covers state_bytes + 1 and C
+            // rejects its misalignment before writes.
             unsafe {
                 let data = aligned.as_mut_ptr().cast::<u8>().add(offset);
                 std::ptr::copy_nonoverlapping(blob.as_ptr(), data, blob.len());

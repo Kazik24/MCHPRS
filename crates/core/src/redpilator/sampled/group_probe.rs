@@ -338,6 +338,122 @@ pub(super) struct Discovery {
     pub(super) routing: Option<super::routing::WireGraph>,
 }
 
+/// Fold axis digits only when every combination of the other axes has identical inputs.
+fn compact_arrangement(group: &mut InputArrangement) {
+    let mut stride = 1;
+    for axis in 0..group.tokens.len() {
+        let radix = group.token_states[axis].iter().copied().max().unwrap_or(0) + 1;
+        let mut representatives = Vec::new();
+        let mut digits = vec![0; radix];
+        for digit in 0..radix {
+            let equivalent = representatives.iter().position(|&other| {
+                (0..group.inputs.len())
+                    .filter(|state| state / stride % radix == 0)
+                    .all(|state| group.inputs[state + digit * stride] == group.inputs[state + other * stride])
+            });
+            digits[digit] = equivalent.unwrap_or_else(|| {
+                representatives.push(digit);
+                representatives.len() - 1
+            });
+        }
+        if representatives.len() != radix {
+            let mut inputs = Vec::with_capacity(group.inputs.len() / radix * representatives.len());
+            for block in (0..group.inputs.len()).step_by(stride * radix) {
+                for &digit in &representatives {
+                    inputs.extend((0..stride).map(|offset| std::mem::take(&mut group.inputs[block + digit * stride + offset])));
+                }
+            }
+            group.inputs = inputs;
+            for digit in &mut group.token_states[axis] {
+                *digit = digits[*digit];
+            }
+        }
+        // Keep token axes, including constant ones, to preserve movement-group ordering.
+        stride *= representatives.len();
+    }
+    group.tokens.shrink_to_fit();
+    group.token_states.shrink_to_fit();
+    for states in &mut group.token_states {
+        states.shrink_to_fit();
+    }
+    group.conditional_sources.shrink_to_fit();
+    group.inputs.shrink_to_fit();
+    for inputs in &mut group.inputs {
+        inputs.shrink_to_fit();
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct DenseRank {
+    reader: usize,
+    work: usize,
+    bytes: usize,
+    states: usize,
+}
+
+impl Ord for DenseRank {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        let left = (self.work as u128) * (other.bytes as u128) * (other.states as u128);
+        let right = (other.work as u128) * (self.bytes as u128) * (self.states as u128);
+        left.cmp(&right)
+            .then_with(|| other.reader.cmp(&self.reader))
+            .then_with(|| self.work.cmp(&other.work))
+            .then_with(|| self.bytes.cmp(&other.bytes))
+            .then_with(|| self.states.cmp(&other.states))
+    }
+}
+
+impl PartialOrd for DenseRank {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+fn admit_dense(rank: DenseRank, ranks: &mut BTreeSet<DenseRank>, bytes: &mut usize, limit: usize) -> Option<Vec<usize>> {
+    if rank.bytes > limit {
+        return None;
+    }
+    let needed = rank.bytes.saturating_sub(limit - *bytes);
+    let mut recovered = 0usize;
+    let mut count = 0;
+    for old in ranks.iter().take_while(|&&old| old < rank) {
+        if recovered >= needed {
+            break;
+        }
+        recovered += old.bytes;
+        count += 1;
+    }
+    if recovered < needed {
+        return None;
+    }
+    let mut removed = Vec::with_capacity(count);
+    for _ in 0..count {
+        let old = ranks.pop_first().unwrap();
+        *bytes -= old.bytes;
+        removed.push(old.reader);
+    }
+    *bytes += rank.bytes;
+    ranks.insert(rank);
+    Some(removed)
+}
+
+fn compact_selected(selected: &mut [Option<Vec<InputArrangement>>], ranks: &mut BTreeSet<DenseRank>, bytes: &mut usize) -> usize {
+    let mut removed_rows = 0;
+    *bytes = 0;
+    for mut rank in std::mem::take(ranks) {
+        let groups = selected[rank.reader].as_mut().unwrap();
+        for group in groups.iter_mut() {
+            let before = group.inputs.len();
+            compact_arrangement(group);
+            removed_rows += before - group.inputs.len();
+        }
+        rank.bytes = groups.iter().fold(0usize, |total, group| total.saturating_add(dense_table_bytes(group)));
+        *bytes += rank.bytes;
+        ranks.insert(rank);
+    }
+    removed_rows
+}
+
 /// Estimate retained memory for a dense arrangement table.
 ///
 /// Inputs: The input arrangement's state mappings, source lists and allocated capacities.
@@ -500,7 +616,6 @@ fn run_with_dense_budget(
     let mut rejected_overlap = 0usize;
     let mut rejected_states = 0usize;
     let mut rejected_slots = 0usize;
-    let mut rejected_budget = 0usize;
     for reader in 0..graph.reader_count() {
         let tokens = graph.reader_dependencies(reader);
         if tokens.is_empty() {
@@ -534,6 +649,11 @@ fn run_with_dense_budget(
     let mut groups = Vec::new();
     let mut routed = BTreeSet::new();
     let mut dense_bytes = 0usize;
+    let mut selected = vec![None; graph.reader_count()];
+    let mut ranks = BTreeSet::new();
+    let mut sampled_states = 0usize;
+    let mut compact_states = 0usize;
+    let mut compact = false;
     let mut start = 0;
     if let Some(monitor) = monitor {
         monitor.set_progress(0, jobs.len(), "arrangements");
@@ -552,6 +672,7 @@ fn run_with_dense_budget(
                 let tokens = graph.reader_dependencies(reader);
                 let mut search = Search::default();
                 let basis = graph.reader_sources(reader, |Axis::Token(token, _)| initial[token], &mut search)?;
+                search.spent = 0;
                 let mut maps = Vec::with_capacity(states);
                 let mut conditional = BTreeSet::new();
                 for state in 0..states {
@@ -589,7 +710,7 @@ fn run_with_dense_budget(
                                 .collect()
                         })
                         .collect();
-                    groups.push(InputArrangement {
+                    let group = InputArrangement {
                         target,
                         side,
                         silent: matches!(program.initial[target], Block::Piston { .. }),
@@ -597,26 +718,55 @@ fn run_with_dense_budget(
                         token_states: axes.clone(),
                         conditional_sources: sources,
                         inputs,
-                    });
+                    };
+                    groups.push(group);
                 }
                 if let Some(monitor) = monitor {
                     monitor.advance_progress();
                 }
-                Ok((reader, groups))
+                // Assume uniform token movement: visits per query times dependency count.
+                let work = search.spent.saturating_add(states).saturating_mul(tokens.len());
+                Ok((reader, groups, work, states))
             })
             .collect::<Result<Vec<_>, ScratchError>>()?;
-        for (reader, lowered) in lowered {
-            let estimate = lowered.iter().fold(0usize, |total, group| total.saturating_add(dense_table_bytes(group)));
-            if dense_bytes.saturating_add(estimate) <= max_dense_bytes {
-                dense_bytes += estimate;
-                groups.extend(lowered);
+        for (reader, mut lowered, work, states) in lowered {
+            sampled_states += lowered.len() * states;
+            let mut estimate = lowered.iter().fold(0usize, |total, group| total.saturating_add(dense_table_bytes(group)));
+            // Keep shared mappings intact unless table memory pressure requires quotienting.
+            if !compact && dense_bytes.saturating_add(estimate) > max_dense_bytes {
+                compact = true;
+                compact_states -= compact_selected(&mut selected, &mut ranks, &mut dense_bytes);
+            }
+            if compact {
+                for group in &mut lowered {
+                    compact_arrangement(group);
+                }
+                estimate = lowered.iter().fold(0usize, |total, group| total.saturating_add(dense_table_bytes(group)));
+            }
+            compact_states += lowered.iter().map(|group| group.inputs.len()).sum::<usize>();
+            let rank = DenseRank {
+                reader,
+                work,
+                bytes: estimate,
+                states,
+            };
+            if let Some(removed) = admit_dense(rank, &mut ranks, &mut dense_bytes, max_dense_bytes) {
+                for reader in removed {
+                    selected[reader] = None;
+                    fallback.insert(reader);
+                }
+                selected[reader] = Some(lowered);
             } else {
-                rejected_budget += 1;
                 fallback.insert(reader);
             }
         }
         start = end;
     }
+    // Admission order must not reorder the retained input/movement programs.
+    for lowered in selected.into_iter().flatten() {
+        groups.extend(lowered);
+    }
+    let rejected_budget = fallback.len() - rejected_overlap - rejected_states - rejected_slots;
     for reader in fallback {
         graph.reader_sources(reader, |Axis::Token(token, _)| initial[token], &mut Search::default())?;
         let target = graph.reader_component(reader);
@@ -649,6 +799,9 @@ fn run_with_dense_budget(
             started.elapsed().as_millis()
         );
         eprintln!("Redpilator routing fallback: overlap={rejected_overlap} states={rejected_states} slots={rejected_slots} budget={rejected_budget}");
+        eprintln!(
+            "Redpilator arrangement compression: sampled_rows={sampled_states} compact_rows={compact_states} budget_triggered={compact}; admission=uniform-token-visits-per-byte"
+        );
     }
     Ok(Discovery {
         groups,
@@ -658,6 +811,129 @@ fn run_with_dense_budget(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn dense_budget_preserves_shared_mappings_until_compaction_is_needed() {
+        use mchprs_blocks::{
+            BlockDirection,
+            blocks::{Lever, LeverFace},
+        };
+        let cell = BlockPos::new(15, 15, 15);
+        let source = cell.offset(BlockFace::West);
+        let lamp = cell.offset(BlockFace::East);
+        let lever = Block::Lever {
+            lever: Lever::new(LeverFace::Wall, BlockDirection::West, true),
+        };
+        let mut world = super::super::tests::host();
+        world.set_block(cell, Block::Stone {});
+        world.set_block(source, lever);
+        world.set_block(lamp, Block::RedstoneLamp { lit: true });
+        let mut program = Program::new(
+            vec![source, lamp],
+            vec![lever, Block::RedstoneLamp { lit: true }],
+            vec![0],
+            vec![[vec![], vec![]]; 2],
+            vec![],
+            vec![],
+            vec![],
+        )
+        .unwrap();
+        program.tokens.push(super::super::pistons::PistonToken {
+            block: Block::Stone {},
+            position: Some(cell),
+            cells: vec![cell, BlockPos::new(20, 20, 20)],
+        });
+        let components = program.positions.iter().enumerate().map(|(index, &pos)| (pos, index)).collect();
+        let indexes = ProbeIndexes::new(&components, &program.positions, &program.initial, &program.tokens, None).unwrap();
+        let entry = super::super::ScratchEntry {
+            scheduled: vec![],
+            piston: world.piston_state().clone(),
+        };
+        let bounds = (BlockPos::new(10, 10, 10), BlockPos::new(22, 21, 22));
+        let full = run_with_dense_budget(&world, bounds, &entry, &program, &indexes, None, usize::MAX).unwrap();
+        assert_eq!(full.groups.len(), 1);
+        assert_eq!(full.groups[0].token_states, vec![vec![0, 1, 2]]);
+        let mut compact = full.groups[0].clone();
+        compact_arrangement(&mut compact);
+        let limit = dense_table_bytes(&compact);
+        assert!(limit < dense_table_bytes(&full.groups[0]));
+        let pressured = run_with_dense_budget(&world, bounds, &entry, &program, &indexes, None, limit).unwrap();
+        assert!(pressured.routing.is_none());
+        assert_eq!(pressured.groups[0].token_states, vec![vec![0, 1, 0]]);
+        for physical in 0..3 {
+            let before = full.groups[0].token_states[0][physical];
+            let after = pressured.groups[0].token_states[0][physical];
+            assert_eq!(full.groups[0].inputs[before], pressured.groups[0].inputs[after]);
+        }
+    }
+
+    #[test]
+    fn compact_axes_preserve_every_physical_arrangement_and_axis_order() {
+        let a = vec![(ArrangementSource::Component(3), 0)];
+        let b = vec![(ArrangementSource::Component(3), 2)];
+        let mut group = InputArrangement {
+            target: 0,
+            side: false,
+            silent: false,
+            tokens: vec![7, 9],
+            token_states: vec![vec![0, 1, 2, 1], vec![0, 1]],
+            conditional_sources: vec![ArrangementSource::Component(3)],
+            inputs: vec![a.clone(), b.clone(), a.clone(), a.clone(), b.clone(), a],
+        };
+        let before = group.clone();
+        let rank = DenseRank {
+            reader: 0,
+            work: 60,
+            bytes: dense_table_bytes(&before),
+            states: 6,
+        };
+        let mut selected = vec![Some(vec![before.clone()])];
+        let mut ranks = BTreeSet::from([rank]);
+        let mut bytes = rank.bytes;
+        assert_eq!(compact_selected(&mut selected, &mut ranks, &mut bytes), 4);
+        assert_eq!(bytes, dense_table_bytes(&selected[0].as_ref().unwrap()[0]));
+        let updated = ranks.first().unwrap();
+        assert_eq!((updated.work, updated.states), (rank.work, rank.states));
+        assert_eq!(updated.bytes, bytes);
+        assert!(bytes < rank.bytes);
+        compact_arrangement(&mut group);
+        assert_eq!(group.tokens, before.tokens);
+        assert_eq!(group.token_states, vec![vec![0, 1, 0, 1], vec![0, 0]]);
+        assert_eq!(group.inputs.len(), 2);
+        assert!(dense_table_bytes(&group) < dense_table_bytes(&before));
+        for x in 0..4 {
+            for y in 0..2 {
+                let old = before.token_states[0][x] + 3 * before.token_states[1][y];
+                let new = group.token_states[0][x] + 2 * group.token_states[1][y];
+                assert_eq!(before.inputs[old], group.inputs[new]);
+            }
+        }
+        let once = group.clone();
+        compact_arrangement(&mut group);
+        assert_eq!(group.inputs, once.inputs);
+        assert_eq!(group.token_states, once.token_states);
+    }
+
+    #[test]
+    fn dense_admission_prefers_work_per_byte_and_keeps_budget_and_ties_stable() {
+        let rank = |reader, work, bytes| DenseRank {
+            reader,
+            work,
+            bytes,
+            states: 1,
+        };
+        let mut ranks = BTreeSet::new();
+        let mut bytes = 0;
+        assert_eq!(admit_dense(rank(2, 100, 100), &mut ranks, &mut bytes, 100), Some(vec![]));
+        assert_eq!(admit_dense(rank(1, 100, 100), &mut ranks, &mut bytes, 100), Some(vec![2]));
+        assert_eq!(admit_dense(rank(3, 100, 100), &mut ranks, &mut bytes, 100), None);
+        assert_eq!(admit_dense(rank(4, 200, 100), &mut ranks, &mut bytes, 100), Some(vec![1]));
+        assert_eq!(admit_dense(rank(5, 1000, 101), &mut ranks, &mut bytes, 100), None);
+        assert_eq!(admit_dense(rank(6, 1, 0), &mut ranks, &mut bytes, 100), Some(vec![]));
+        assert_eq!(bytes, 100);
+        assert_eq!(ranks.iter().map(|rank| rank.reader).collect::<BTreeSet<_>>(), BTreeSet::from([4, 6]));
+        assert_eq!(bytes, ranks.iter().map(|rank| rank.bytes).sum::<usize>());
+    }
 
     #[test]
     fn dense_budget_counts_sparse_and_attenuation_transitions() {
@@ -838,6 +1114,123 @@ mod tests {
             assert_eq!(dense.input_strength(1), if position.is_some() && powered { 15 } else { 0 });
             assert_eq!(routed.input_strength(1), dense.input_strength(1));
             assert_eq!(routed.pending_entries(), dense.pending_entries());
+        }
+    }
+
+    #[test]
+    fn mixed_budget_preserves_independent_recipients_and_routing_first_leftovers() {
+        use mchprs_blocks::{
+            BlockDirection,
+            blocks::{Lever, LeverFace},
+        };
+        let cell = BlockPos::new(15, 15, 15);
+        let source = cell.offset(BlockFace::West);
+        let lamp = cell.offset(BlockFace::East);
+        let other_lamp = cell.offset(BlockFace::South);
+        let lever = Block::Lever {
+            lever: Lever::new(LeverFace::Wall, BlockDirection::West, true),
+        };
+        let mut world = super::super::tests::host();
+        world.set_block(cell, Block::Stone {});
+        world.set_block(source, lever);
+        world.set_block(lamp, Block::RedstoneLamp { lit: true });
+        world.set_block(other_lamp, Block::RedstoneLamp { lit: true });
+        let mut program = Program::new(
+            vec![source, lamp, other_lamp],
+            vec![lever, Block::RedstoneLamp { lit: true }, Block::RedstoneLamp { lit: true }],
+            vec![0],
+            vec![[vec![], vec![]]; 3],
+            vec![],
+            vec![],
+            vec![],
+        )
+        .unwrap();
+        program.tokens.push(super::super::pistons::PistonToken {
+            block: Block::Stone {},
+            position: Some(cell),
+            cells: vec![cell],
+        });
+        let components = program.positions.iter().enumerate().map(|(index, &pos)| (pos, index)).collect();
+        let indexes = ProbeIndexes::new(&components, &program.positions, &program.initial, &program.tokens, None).unwrap();
+        let entry = super::super::ScratchEntry {
+            scheduled: vec![],
+            piston: world.piston_state().clone(),
+        };
+        let bounds = (BlockPos::new(10, 10, 10), BlockPos::new(22, 21, 22));
+        let full = run_with_dense_budget(&world, bounds, &entry, &program, &indexes, None, usize::MAX).unwrap();
+        let mixed_budget = full.groups.iter().map(dense_table_bytes).min().unwrap();
+        let runtime = |budget| {
+            let mut discovery = run_with_dense_budget(&world, bounds, &entry, &program, &indexes, None, budget).unwrap();
+            assert_eq!(discovery.routing.is_some(), budget != usize::MAX);
+            if budget == mixed_budget {
+                assert!(discovery.groups.iter().any(|group| !group.tokens.is_empty()));
+                assert!(discovery.groups.iter().any(|group| group.tokens.is_empty()));
+            }
+            let mut program = program.clone();
+            program.input_arrangements = discovery.groups;
+            program.compile_movement_flips().unwrap();
+            if let Some(graph) = &mut discovery.routing {
+                graph.bind_links(&program.arrangement_links);
+            }
+            program.routing = discovery.routing.map(std::sync::Arc::new);
+            let links: Vec<_> = program
+                .arrangement_links
+                .iter()
+                .enumerate()
+                .filter_map(|(index, link)| {
+                    (link.source == ArrangementSource::Component(0)).then_some(super::super::program::Operation::ArrangementContribution(index))
+                })
+                .collect();
+            for powered in [false, true] {
+                program.set_output_program(0, powered, links.clone());
+            }
+            program.start()
+        };
+        let mut dense = runtime(usize::MAX);
+        let mut routed = runtime(0);
+        let mut mixed = runtime(mixed_budget);
+        for (position, powered) in [(Some(cell), true), (None, true), (None, false), (Some(cell), false), (Some(cell), true)] {
+            dense.set_token_pos(0, position);
+            routed.set_token_pos(0, position);
+            mixed.set_token_pos(0, position);
+            dense.set_input(0, powered).unwrap();
+            routed.set_input(0, powered).unwrap();
+            mixed.set_input(0, powered).unwrap();
+            assert_eq!(dense.input_strength(1), if position.is_some() && powered { 15 } else { 0 });
+            assert_eq!(routed.input_strength(1), dense.input_strength(1));
+            // Leftover callbacks are routing-first in the existing executor, so budgets can change global order.
+            for recipient in [lamp, other_lamp] {
+                let expected: Vec<_> = dense.pending_entries().into_iter().filter(|entry| entry.pos == recipient).collect();
+                assert_eq!(
+                    routed
+                        .pending_entries()
+                        .into_iter()
+                        .filter(|entry| entry.pos == recipient)
+                        .collect::<Vec<_>>(),
+                    expected
+                );
+                assert_eq!(
+                    mixed
+                        .pending_entries()
+                        .into_iter()
+                        .filter(|entry| entry.pos == recipient)
+                        .collect::<Vec<_>>(),
+                    expected
+                );
+            }
+            if position.is_none() && powered {
+                assert_eq!(
+                    mixed.pending_entries().iter().map(|entry| entry.pos).collect::<Vec<_>>(),
+                    vec![other_lamp, lamp]
+                );
+                assert_eq!(
+                    dense.pending_entries().iter().map(|entry| entry.pos).collect::<Vec<_>>(),
+                    vec![lamp, other_lamp]
+                );
+            }
+            assert_eq!(mixed.input_strength(1), dense.input_strength(1));
+            assert_eq!(mixed.input_strength(2), dense.input_strength(2));
+            assert_eq!(routed.input_strength(2), dense.input_strength(2));
         }
     }
 

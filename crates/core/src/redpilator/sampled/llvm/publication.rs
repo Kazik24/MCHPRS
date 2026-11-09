@@ -12,6 +12,8 @@ impl LlvmRuntime {
                 reason: "invalid LLVM IO projection",
             });
         }
+        // SAFETY: new builds equal-length ID/output buffers from valid component IDs; C checks IDs and writes
+        // count bytes to separate output.
         let status = unsafe {
             (self.library.read_components)(
                 self.state.as_ptr().cast(),
@@ -63,6 +65,8 @@ impl LlvmRuntime {
             position: None,
             reason: "invalid LLVM effect state",
         };
+        // SAFETY: The runtime retains initialized state and its blob; note_count only reads the pending note
+        // count.
         let count = unsafe { (self.library.note_count)(self.state.as_ptr().cast()) } as usize;
         if count > self.initial.len() || runtime.note_queued.len() != self.initial.len() || runtime.program.initial.len() != self.initial.len() {
             return Err(invalid());
@@ -73,6 +77,8 @@ impl LlvmRuntime {
             super::memory::reserve(&mut self.note_events, additional)?;
             self.note_events.resize(words, 0);
         }
+        // SAFETY: note_events holds at least count * 3 u32s; C checks the unchanged count and writes three
+        // words per note.
         let status = unsafe { (self.library.read_notes)(self.state.as_ptr().cast(), self.note_events.as_mut_ptr(), count as u32) };
         self.call_status(status)?;
         // Validate before changing the projection or acknowledging native effects.
@@ -96,6 +102,8 @@ impl LlvmRuntime {
             self.note_seen[row[0] as usize] = true;
         }
         self.sync_commands(runtime)?;
+        // SAFETY: The runtime retains initialized state; tick_count only reads its scalar clock, with no
+        // concurrent native mutation.
         runtime.motion_time = unsafe { (self.library.tick_count)(self.state.as_ptr().cast()) };
         for (component, ..) in runtime.notes.drain(..) {
             runtime.note_queued[component] = false;

@@ -53,6 +53,8 @@ impl Library {
             eprintln!("LLVM module: path={}, bytes={module_bytes}", path.display());
         }
         // Module ownership also releases the handle if any required export is missing.
+        // SAFETY: The trusted native exports match these field ABIs; all names end in NUL and _module keeps
+        // their code loaded.
         unsafe {
             Ok(Self {
                 api_descriptor: module.symbol(b"ne_api_descriptor\0")?,
@@ -81,6 +83,8 @@ impl Library {
     }
 
     pub(super) fn validate_abi(&self) -> Result<(), ScratchError> {
+        // SAFETY: ne_api_descriptor takes no arguments and returns the repr(C) descriptor from abi.h; self owns
+        // the module.
         let descriptor = unsafe { (self.api_descriptor)() };
         if descriptor.abi_version != ABI_VERSION || descriptor.descriptor_bytes != 16 || descriptor.semantic_version != 27 {
             return Err(ScratchError {
@@ -109,6 +113,8 @@ impl Library {
             });
         }
         let blob_pointer = blob.as_ptr().cast();
+        // SAFETY: The live repr(C) descriptor and u64-aligned blob cover total_bytes (checked above); C
+        // validates contents before indexing.
         let bytes = unsafe { (self.state_size)(descriptor, blob_pointer, descriptor.total_bytes, initial_tick_count) };
         if bytes == 0 || bytes > 256 * 1024 * 1024 {
             return Err(ScratchError {
@@ -117,6 +123,8 @@ impl Library {
             });
         }
         let mut state = memory::zeroed::<u64>(bytes.div_ceil(8))?;
+        // SAFETY: The u64 storage covers the queried byte count; inputs stay live for this call and the caller
+        // retains the blob afterward.
         let status = unsafe {
             (self.create)(
                 descriptor,
@@ -156,8 +164,12 @@ mod tests {
     fn missing_export_does_not_invalidate_the_owned_module() {
         let path = cache::module_path(None).unwrap();
         let module = Module::open(&path).unwrap();
+        // SAFETY: This NUL-terminated name is absent in the generated module, so symbol returns Err without
+        // constructing a pointer.
         let missing = unsafe { module.symbol::<unsafe extern "C" fn()>(b"ne_missing_export_for_test\0") };
         assert!(missing.is_err());
+        // SAFETY: The NUL-terminated name and extern C signature match abi.h; module stays loaded through
+        // export().
         let descriptor = unsafe {
             let export = module
                 .symbol::<unsafe extern "C" fn() -> NativeApiDescriptor>(b"ne_api_descriptor\0")
@@ -176,7 +188,8 @@ pub(super) struct Module {
     handle: *mut c_void,
 }
 
-// The compiler moves its exclusively owned module between compile and tick workers.
+// SAFETY: Windows/Linux loader references can be transferred and released on another thread. The
+// generated module has no thread-affine state; ownership moves between workers and Module is not Sync.
 #[cfg(any(windows, target_os = "linux"))]
 unsafe impl Send for Module {}
 
@@ -190,6 +203,8 @@ impl Module {
         let handle = {
             use std::os::windows::ffi::OsStrExt;
             let wide: Vec<u16> = path.as_os_str().encode_wide().chain(Some(0)).collect();
+            // SAFETY: wide is a live NUL-terminated UTF-16 buffer; the loaded module and its initializers are
+            // trusted.
             unsafe { LoadLibraryW(wide.as_ptr()) }
         };
         #[cfg(target_os = "linux")]
@@ -199,6 +214,8 @@ impl Module {
                 position: None,
                 reason: "invalid LLVM module path",
             })?;
+            // SAFETY: CString supplies a live NUL-terminated path; 2 is RTLD_NOW, and the module and its
+            // initializers are trusted.
             unsafe { dlopen(path.as_ptr(), 2) }
         };
         if handle.is_null() {
@@ -215,12 +232,15 @@ impl Module {
     ///
     /// # Safety
     /// `name` must be NUL-terminated, and `T` must match the export's exact function-pointer ABI.
+    /// The returned pointer may only be called while this module remains loaded.
     ///
     /// Inputs: The owning module, a NUL-terminated export name and the caller-selected pointer type.
     pub(super) unsafe fn symbol<T: Copy>(&self, name: &'static [u8]) -> Result<T, ScratchError> {
         #[cfg(windows)]
+        // SAFETY: Self owns a live loader handle; the caller guarantees name is NUL-terminated for the lookup.
         let address = unsafe { GetProcAddress(self.handle, name.as_ptr().cast()) };
         #[cfg(target_os = "linux")]
+        // SAFETY: Self owns a live loader handle; the caller guarantees name is NUL-terminated for the lookup.
         let address = unsafe { dlsym(self.handle, name.as_ptr().cast()) };
         if address.is_null() {
             #[cfg(windows)]
@@ -229,6 +249,8 @@ impl Module {
             let reason = "LLVM module is missing a required export";
             return Err(ScratchError { position: None, reason });
         }
+        // SAFETY: The address is non-null; the caller promises the exact function-pointer type, with loader-
+        // address size on Windows/Linux.
         Ok(unsafe { std::mem::transmute_copy(&address) })
     }
 }
@@ -237,10 +259,14 @@ impl Module {
 impl Drop for Module {
     fn drop(&mut self) {
         #[cfg(windows)]
+        // SAFETY: The handle owns one loader reference, released exactly once here after the last use of its
+        // exports.
         unsafe {
             FreeLibrary(self.handle);
         }
         #[cfg(target_os = "linux")]
+        // SAFETY: The handle owns one loader reference, released exactly once here after the last use of its
+        // exports.
         unsafe {
             dlclose(self.handle);
         }
@@ -249,6 +275,7 @@ impl Drop for Module {
 
 #[cfg(target_os = "linux")]
 #[link(name = "dl")]
+// SAFETY: These signatures match the Linux libdl ABI; callers provide live handles and C strings.
 unsafe extern "C" {
     fn dlopen(filename: *const std::ffi::c_char, flags: i32) -> *mut c_void;
     fn dlsym(handle: *mut c_void, symbol: *const std::ffi::c_char) -> *mut c_void;
@@ -257,6 +284,7 @@ unsafe extern "C" {
 
 #[cfg(windows)]
 #[link(name = "kernel32")]
+// SAFETY: These signatures match the Win32 loader ABI, including the system calling convention.
 unsafe extern "system" {
     fn LoadLibraryW(name: *const u16) -> *mut c_void;
     fn GetProcAddress(module: *mut c_void, name: *const std::ffi::c_char) -> *mut c_void;

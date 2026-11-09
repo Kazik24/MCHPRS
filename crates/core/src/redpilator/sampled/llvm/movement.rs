@@ -205,6 +205,8 @@ impl super::LlvmRuntime {
             position: None,
             reason: "invalid LLVM graph snapshot",
         };
+        // SAFETY: The runtime retains initialized state and its blob; snapshot_words traverses native lists
+        // without concurrent mutation.
         let words = unsafe { (self.library.snapshot_words)(self.state.as_ptr().cast()) } as usize;
         let program = std::sync::Arc::clone(&runtime.program);
         let p = &program;
@@ -224,6 +226,8 @@ impl super::LlvmRuntime {
             return Err(invalid());
         }
         let mut snapshot = vec![0u32; words];
+        // SAFETY: snapshot has exactly the queried number of u32s; state has not changed and C checks the count
+        // before writing.
         self.call_status(unsafe { (self.library.read_snapshot)(self.state.as_ptr().cast(), snapshot.as_mut_ptr(), words as u32) })?;
         let s = &snapshot;
         let n = s[0] as usize;

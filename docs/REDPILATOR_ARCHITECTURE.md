@@ -12,6 +12,10 @@ The compiler scans components, traces wiring and finds piston groups. It probes 
 
 The compiler stores separate instruction sequences for rising and falling signals. It also stores electrical links and connections that depend on piston positions. The instructions preserve callback order, including short pulses and piston notifications.
 
+Arrangement sampling keeps shared token mappings intact while dense tables fit the existing 768 MiB estimated-table budget. On the first overflow, it compacts retained and subsequent candidates by folding token digits whose input rows match across every combination of the other axes. It retains the token axes and physical-to-electrical mappings, then rebuilds retained-table sizes and ranks. This avoids splitting shared movement groups when compaction is unnecessary. Admission estimates wire visits saved per retained byte, assuming uniform token movement frequency; it is not profile-guided. A bounded selection replaces lower-benefit tables within the budget, then restores reader discovery order before lowering. Other readers retain graph routing. The budget does not bound total compiler or process memory.
+
+Movement lowering uses stable first-seen group and condition IDs with hash indexes for lookup. Emission still follows the stored vectors, and completed movement buffers release spare capacity.
+
 Before activating the result, the plot checks that its state still matches the snapshot. A failed, cancelled or stale compilation never becomes the active runtime.
 
 Source-order probes can reuse observations from an earlier compilation. Each record stores ordered callbacks by world position and a certificate for the source's graph dependencies and the scratch chunks it read or wrote. The compiler checks those certificates against the current quiet probe basis, then lowers reusable observations into the fresh program's numeric IDs. Wiring, piston arrangements and movement validation still rebuild from the current snapshot.
@@ -27,6 +31,8 @@ The program stores components, links, instructions and movement rules. Component
 Inputs and scheduled ticks run the stored instructions. While Redpilator is active, it advances the circuit and the plot's interpreter stays paused.
 
 Pistons can change electrical connections by moving blocks. The compiler records movable blocks, the cells they can occupy and the connections for supported arrangements. During execution, movement selects the current arrangement and sends its recorded notifications.
+
+A bounded Rust connectivity-cache prototype was tested separately from table compaction. Three paired PM1 comparisons did not establish a repeatable throughput gain, so it is not part of the runtime. The standalone [experiment patch](../scraps/experiments/pm1-connectivity-cache.patch) is retained for further investigation.
 
 ## Publishing and reset
 

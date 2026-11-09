@@ -50,6 +50,8 @@ fn llvm_notification_tags_validate_physical_piston_routes() {
     });
     let encoded = LlvmProgram::encode(&program).unwrap();
     let library = Library::load().unwrap();
+    // SAFETY: The descriptor and entire byte slice stay live; C rejects misalignment and validates malformed
+    // contents before typed reads.
     let native_size = |blob: &[u8]| unsafe { (library.state_size)(&encoded.descriptor, blob.as_ptr(), blob.len() as u32, 0) };
     assert!(native_size(&encoded.blob) > 0);
     let directory = encoded.descriptor.source_offset as usize + encoded.descriptor.source_count as usize * 4;
@@ -168,6 +170,8 @@ fn compare_execution(mut program: Program, controls: &[(usize, usize)], ticks: u
         );
         let mut states = vec![0u8; positions.len()];
         assert_eq!(
+            // SAFETY: The runtime retains initialized state; states has one writable byte per component and C
+            // checks the exact count.
             unsafe { (native.library.read_state)(native.state.as_ptr().cast(), states.as_mut_ptr(), states.len() as u32) },
             0
         );
@@ -741,6 +745,8 @@ fn llvm_repeaters_match_rust_delays_pulses_and_pending_work() {
                         native.tick().unwrap();
                         let mut states = [0u8; 3];
                         assert_eq!(
+                            // SAFETY: The runtime retains initialized state; states has three writable bytes
+                            // and C rejects a count mismatch before writing.
                             unsafe { (native.library.read_state)(native.state.as_ptr().cast(), states.as_mut_ptr(), 3) },
                             0
                         );

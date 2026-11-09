@@ -25,7 +25,12 @@ pub(super) struct Api {
 
 #[cfg(any(windows, target_os = "linux"))]
 impl Api {
+    /// # Safety
+    /// The module must export the generated command API with the signatures declared above;
+    /// it must remain loaded until the last call through this API.
     pub(super) unsafe fn load(module: &super::library::Module) -> Result<Self, ScratchError> {
+        // SAFETY: The trusted command_engine.c/engine.c exports match these extern C fields; names end in NUL
+        // and Library retains module.
         unsafe {
             Ok(Self {
                 state_size: module.symbol(b"ne_command_state_size\0")?,
@@ -75,11 +80,14 @@ impl State {
         let now = std::time::Instant::now();
         let tables = encoded.serialize_at(now)?;
         let count = id(encoded.blocks.len())?;
+        // SAFETY: ne_command_state_size takes scalar counts only; api belongs to the live runtime library.
         let bytes = unsafe { (api.state_size)(count, 0) };
         if bytes == 0 || bytes > 256 * 1024 * 1024 {
             return Err(invalid());
         }
         let mut memory = crate::redpilator::memory::zeroed::<u64>(bytes.div_ceil(8))?;
+        // SAFETY: The u64 storage covers bytes; serialize_at emits count full block/spec rows and six output
+        // words. bind_commands supplies live components; Self retains tables.
         let status = unsafe {
             (api.init)(
                 memory.as_mut_ptr().cast(),
@@ -102,6 +110,8 @@ impl State {
         }
         let mut component_commands = vec![u32::MAX; program.initial.len()];
         let mut previous_next = vec![u32::MAX; encoded.blocks.len().checked_mul(2).ok_or_else(invalid)?];
+        // SAFETY: Both writable u32 buffers have the passed lengths; C checks lengths before filling them, and
+        // Self retains their allocations.
         let status = unsafe {
             (api.prepare_indices)(
                 memory.as_mut_ptr().cast(),
@@ -115,6 +125,8 @@ impl State {
             return Err(invalid());
         }
         let (rows, targets) = super::command_notifications::encode(program)?;
+        // SAFETY: bind_commands supplies the live engine; encode emits two row words per component and three
+        // words per target. Self retains every bound buffer.
         let status = unsafe {
             (api.bind)(
                 engine,
@@ -148,7 +160,11 @@ impl State {
     /// Read the pending effect count and per-tick bound, grow the buffer with checked arithmetic, rebind
     /// it when moved and send the current time/logical base to native code.
     pub(super) fn prepare_tick(&mut self, api: &Api, engine: *mut c_void) -> Result<(), ScratchError> {
+        // SAFETY: Self owns initialized command memory and retained tables; the matching library remains
+        // loaded.
         let current = unsafe { (api.effect_words)(self.memory.as_ptr().cast()) } as usize;
+        // SAFETY: The sole caller passes its initialized engine, with this command state bound and all
+        // referenced allocations still live.
         let additional = usize::try_from(unsafe { (api.effect_bound)(engine) }).map_err(|_| invalid())?;
         let needed = current.checked_add(additional.checked_mul(8).ok_or_else(invalid)?).ok_or_else(invalid)?;
         if needed > self.effects.len() {
@@ -156,10 +172,14 @@ impl State {
             let capacity = id(length / 8)?;
             self.effects.try_reserve(length - self.effects.len()).map_err(|_| invalid())?;
             self.effects.resize(length, 0);
+            // SAFETY: The writable allocation contains capacity * 8 words; C retains it, and each later growth
+            // rebinds before native execution.
             if unsafe { (api.effect_buffer)(self.memory.as_mut_ptr().cast(), self.effects.as_mut_ptr(), capacity) } != 0 {
                 return Err(invalid());
             }
         }
+        // SAFETY: The sole caller supplies the initialized engine under an exclusive runtime borrow; clock only
+        // updates scalar time fields.
         unsafe {
             (api.clock)(engine, self.started.elapsed().as_nanos().min(u64::MAX as u128) as u64, self.logical_base);
         }
@@ -180,6 +200,8 @@ impl State {
     /// entities and append decoded emissions and output-window state.
     pub(super) fn sync(&self, api: &Api, runtime: &mut crate::redpilator::sampled::Runtime) -> Result<(), ScratchError> {
         let mut words = vec![0; self.blocks.len().checked_mul(11).ok_or_else(invalid)?];
+        // SAFETY: The initialized state has blocks.len() records; words holds eleven u32s per record and C
+        // checks the exact word count.
         if unsafe { (api.read_state)(self.memory.as_ptr().cast(), words.as_mut_ptr(), id(words.len())?) } != 0 {
             return Err(invalid());
         }
@@ -219,11 +241,14 @@ impl State {
             };
             entities.push((pos, Some(entity)));
         }
+        // SAFETY: Self retains initialized command memory; this query only reads its effect count.
         let count = unsafe { (api.effect_words)(self.memory.as_ptr().cast()) } as usize;
         if count % 8 != 0 || count > self.effects.len() {
             return Err(invalid());
         }
         let mut effect_words = vec![0; count];
+        // SAFETY: count is checked against the retained effect buffer; the separate output has count u32s and C
+        // checks its exact length.
         if unsafe { (api.read_effects)(self.memory.as_ptr().cast(), effect_words.as_mut_ptr(), id(count)?) } != 0 {
             return Err(invalid());
         }
@@ -249,6 +274,8 @@ impl State {
             });
         }
         let mut output = [0; 6];
+        // SAFETY: The command state is initialized and retained; output is a separate writable array of the six
+        // u32s required by C.
         if unsafe {
             (api.read_output)(
                 self.memory.as_ptr().cast(),
@@ -287,6 +314,8 @@ impl State {
     }
 
     pub(super) fn acknowledge(&mut self, api: &Api, queued: usize) {
+        // SAFETY: Self exclusively borrows initialized command memory; C changes only counters, and the
+        // remaining arguments are scalars.
         unsafe {
             (api.ack)(
                 self.memory.as_mut_ptr().cast(),
