@@ -2,7 +2,7 @@
 
 This is the production code map for Redpilator and its plot command/compilation integration. It includes Rust functions and methods, Rust structs/enums/traits/type aliases, C function definitions and C structs. Test functions and external OS function declarations are excluded; test locations are listed at the end. Conditional platform implementations are listed separately.
 
-The index contains **570 function definitions** and **123 type declarations** across **47 source files**. Function documentation describes purpose and inputs, with implementation details where they clarify the behavior. Each module lists documented functions first, then its remaining functions and methods.
+The index contains **579 function definitions** and **123 type declarations** across **48 source files**. Function documentation describes purpose and inputs, with implementation details where they clarify the behavior. Each module lists documented functions first, then its remaining functions and methods.
 
 ## Start here
 
@@ -83,6 +83,7 @@ An **actor** is a piston base. A **token** is a block that pistons can move. An 
 | [sampled/llvm/llvm_movement.c](../crates/core/src/redpilator/sampled/llvm/llvm_movement.c) | Native movement validation, token/routing changes, piston events, motion and snapshots. |
 | [sampled/llvm/mod.rs](../crates/core/src/redpilator/sampled/llvm/mod.rs) | Native runtime ownership, component admission, controls and pending-tick translation. |
 | [sampled/llvm/movement.rs](../crates/core/src/redpilator/sampled/llvm/movement.rs) | Native movement-table encoding and checked state projection into Rust. |
+| [sampled/llvm/publication.rs](../crates/core/src/redpilator/sampled/llvm/publication.rs) | Checked control/output component and queued-effect transfers without a full runtime snapshot. |
 | [sampled/llvm/routing.rs](../crates/core/src/redpilator/sampled/llvm/routing.rs) | Native encoding of wire and reader routing tables. |
 | [sampled/llvm/shapes.rs](../crates/core/src/redpilator/sampled/llvm/shapes.rs) | Native encoding of sampled geometry-shape programs. |
 
@@ -685,7 +686,9 @@ Types: [`Axis`](../crates/core/src/redpilator/sampled/routing.rs#L10) (enum), [`
 | [`WireGraph::compile`](../crates/core/src/redpilator/sampled/routing.rs#L418) | Build movement-sensitive wire connectivity tables. |
 | [`WireGraph::compile_readers`](../crates/core/src/redpilator/sampled/routing.rs#L505) | Add reader contact tables and their token dependencies to the wire graph. |
 | [`WireGraph::reader_sources`](../crates/core/src/redpilator/sampled/routing.rs#L602) | Resolve the currently connected sources of one routed reader. |
-| [`WireGraph::sources`](../crates/core/src/redpilator/sampled/routing.rs#L632) | Find power sources connected to a wire in the current arrangement. |
+| [`WireGraph::reader_attenuations`](../crates/core/src/redpilator/sampled/routing.rs#L628) | Append conditional-link attenuation updates directly into reusable runtime storage, retaining reader/link order. |
+| [`WireGraph::sources`](../crates/core/src/redpilator/sampled/routing.rs#L666) | Find power sources connected to a wire in the current arrangement. |
+| [`WireGraph::visit_sources`](../crates/core/src/redpilator/sampled/routing.rs#L678) | Traverse numeric wire roots with shared BFS accounting and emit source distances without an intermediate map. |
 
 Other functions and methods:
 
@@ -964,9 +967,12 @@ Types: [`NEMotion`](../crates/core/src/redpilator/sampled/llvm/engine.c#L16) (st
 | [`ne_create`](../crates/core/src/redpilator/sampled/llvm/engine.c#L1071) | Initialize a native engine in caller-owned memory. |
 | [`ne_tick`](../crates/core/src/redpilator/sampled/llvm/engine.c#L1211) | Advance the native engine by one game tick. |
 | [`ne_set_input`](../crates/core/src/redpilator/sampled/llvm/engine.c#L1247) | Set a native external input to the requested power state. |
-| [`ne_read_pending`](../crates/core/src/redpilator/sampled/llvm/engine.c#L1311) | Export scheduled callbacks without consuming them. |
-| [`command_notify`](../crates/core/src/redpilator/sampled/llvm/engine.c#L1363) | Replay a command block's surrounding update recipients. |
-| [`ne_bind_commands`](../crates/core/src/redpilator/sampled/llvm/engine.c#L1415) | Attach checked command state and callback tables to an engine. |
+| [`ne_read_components`](../crates/core/src/redpilator/sampled/llvm/engine.c#L1298) | Validate requested component IDs and copy their native states into a caller-owned buffer. |
+| [`ne_note_count`](../crates/core/src/redpilator/sampled/llvm/engine.c#L1310) | Return the number of queued native note events without consuming them. |
+| [`ne_read_notes`](../crates/core/src/redpilator/sampled/llvm/engine.c#L1315) | Copy queued note records after checking the exact requested event count. |
+| [`ne_read_pending`](../crates/core/src/redpilator/sampled/llvm/engine.c#L1337) | Export scheduled callbacks without consuming them. |
+| [`command_notify`](../crates/core/src/redpilator/sampled/llvm/engine.c#L1389) | Replay a command block's surrounding update recipients. |
+| [`ne_bind_commands`](../crates/core/src/redpilator/sampled/llvm/engine.c#L1441) | Attach checked command state and callback tables to an engine. |
 
 Other functions and methods:
 
@@ -1099,6 +1105,8 @@ Other functions and methods:
 - [`LlvmRuntime::acknowledge_effects`](../crates/core/src/redpilator/sampled/llvm/mod.rs#L353)
 - [`LlvmRuntime::initialize_tick`](../crates/core/src/redpilator/sampled/llvm/mod.rs#L356)
 - [`LlvmRuntime::new`](../crates/core/src/redpilator/sampled/llvm/mod.rs#L359)
+- [`LlvmRuntime::sync_io`](../crates/core/src/redpilator/sampled/llvm/mod.rs#L367) (unsupported-platform stub)
+- [`LlvmRuntime::sync_effects`](../crates/core/src/redpilator/sampled/llvm/mod.rs#L368) (unsupported-platform stub)
 - [`LlvmRuntime::sync_projection`](../crates/core/src/redpilator/sampled/llvm/mod.rs#L362)
 - [`LlvmRuntime::sync_publication`](../crates/core/src/redpilator/sampled/llvm/mod.rs#L365)
 - [`LlvmRuntime::tick`](../crates/core/src/redpilator/sampled/llvm/mod.rs#L368)
@@ -1127,6 +1135,15 @@ Other functions and methods:
 - [`range`](../crates/core/src/redpilator/sampled/llvm/movement.rs#L22)
 - [`super::LlvmRuntime::sync_projection`](../crates/core/src/redpilator/sampled/llvm/movement.rs#L187)
 - [`super::LlvmRuntime::sync_publication`](../crates/core/src/redpilator/sampled/llvm/movement.rs#L191)
+
+### [sampled/llvm/publication.rs](../crates/core/src/redpilator/sampled/llvm/publication.rs)
+
+Checked control/output component and queued-effect transfers without a full runtime snapshot. Full projection and reset remain in movement.rs.
+
+| Function or method | Purpose |
+| --- | --- |
+| [`LlvmRuntime::sync_io`](../crates/core/src/redpilator/sampled/llvm/publication.rs#L8) | Read and validate compiled IO component states, mark changed output cells and synchronize queued effects. |
+| [`LlvmRuntime::sync_effects`](../crates/core/src/redpilator/sampled/llvm/publication.rs#L61) | Validate queued notes, synchronize command state and refresh effect/clock projection without geometry or scheduler reconstruction. |
 
 ### [sampled/llvm/routing.rs](../crates/core/src/redpilator/sampled/llvm/routing.rs)
 

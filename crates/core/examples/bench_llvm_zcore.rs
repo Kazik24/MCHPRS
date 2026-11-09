@@ -7,7 +7,7 @@ use mchprs_core::redpilator::CompilerOptions;
 use mchprs_core::world::World;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 fn cpu(index: usize) -> cpus::Cpu {
     if index == 0 {
@@ -39,10 +39,10 @@ fn prepare() -> u32 {
     panic!("ZCore loading did not settle");
 }
 
-fn run(llvm: bool, ticks: u32, preparation: u32, index: usize) -> (Value, Value) {
+fn run(llvm: bool, ticks: u32, preparation: u32, index: usize, io_only: bool, flush_every: u32) -> (Value, Value) {
     let cpu = cpu(index);
     let world = cpus::load_cpu(cpu);
-    let (mut world, mut compiler, wall) = cpus::compile_cpu_with_options(world, cpu, CompilerOptions { llvm, ..Default::default() });
+    let (mut world, mut compiler, wall) = cpus::compile_cpu_with_options(world, cpu, CompilerOptions { llvm, io_only, ..Default::default() });
     let setup = compiler.stats().unwrap().duration;
     compiler.try_on_use_block(cpu.origin + cpu.start).unwrap();
     for _ in 0..preparation {
@@ -51,17 +51,32 @@ fn run(llvm: bool, ticks: u32, preparation: u32, index: usize) -> (Value, Value)
     if index == 3 {
         compiler.try_on_use_block(cpu.origin + BlockPos::new(207, 10, 154)).unwrap();
     }
-    let start = Instant::now();
-    for _ in 0..ticks {
-        compiler.tick().unwrap();
+    let mut elapsed = Duration::ZERO;
+    let mut publication = Duration::ZERO;
+    let mut publication_calls = 0;
+    let mut remaining = ticks;
+    while remaining > 0 {
+        let batch = if flush_every == 0 { remaining } else { remaining.min(flush_every) };
+        let start = Instant::now();
+        for _ in 0..batch {
+            compiler.tick().unwrap();
+        }
+        elapsed += start.elapsed();
+        remaining -= batch;
+        if flush_every > 0 {
+            let start = Instant::now();
+            compiler.try_flush(&mut world).unwrap();
+            publication += start.elapsed();
+            publication_calls += 1;
+        }
     }
-    let elapsed = start.elapsed();
     assert!(compiler.is_active());
     if index == 0 {
         for _ in 0..4 {
             compiler.tick().unwrap();
         }
     }
+    let publication_mode = compiler.current_flags().unwrap().publication_mode().name();
     let reset = Instant::now();
     compiler.try_reset(&mut world, (cpu.origin, cpu.origin)).unwrap();
     let reset_ms = reset.elapsed().as_secs_f64() * 1000.0;
@@ -69,7 +84,10 @@ fn run(llvm: bool, ticks: u32, preparation: u32, index: usize) -> (Value, Value)
     let hash = format!("{:x}", Sha256::digest(serde_json::to_vec(&output).unwrap()));
     let mut record = json!({"backend":if llvm {"llvm"} else {"rust"},"ticks":ticks,"preparation_ticks":preparation,
         "setup_ms":setup.as_secs_f64()*1000.0,"admission_ms":wall.as_secs_f64()*1000.0,"kernel_ms":elapsed.as_secs_f64()*1000.0,
-        "tps":ticks as f64/elapsed.as_secs_f64(),"reset_ms":reset_ms,"screen_sha256":hash});
+        "tps":ticks as f64/elapsed.as_secs_f64(),"reset_ms":reset_ms,"screen_sha256":hash,
+        "publication_mode":publication_mode,
+        "flush_every_ticks":flush_every,"publication_calls":publication_calls,"publication_ms":publication.as_secs_f64()*1000.0,
+        "tick_and_publication_tps":ticks as f64/(elapsed+publication).as_secs_f64()});
     if index == 0 {
         let expected = cpus::reference(cpus::CPUS[0]);
         let expected: Vec<_> = expected.chat_trace.iter().filter(|(tick, _)| *tick <= 12_051).map(|(_, text)| text.as_str()).collect();
@@ -93,11 +111,15 @@ fn main() {
     let index = if std::env::args().any(|s| s == "--pm1") { 0 } else if std::env::args().any(|s| s == "--anpu") { 1 } else { 3 };
     let rust_only = std::env::args().any(|s| s == "--rust-only");
     let llvm_only = std::env::args().any(|s| s == "--llvm-only");
+    let io_only = std::env::args().any(|s| s == "--io-only");
+    // Zero keeps the original uninterrupted kernel timing; positive intervals also time publication.
+    let flush_every = std::env::args().find_map(|s| s.strip_prefix("--flush-every=").map(|n|n.parse::<u32>().unwrap())).unwrap_or(0);
     assert!(!(rust_only && llvm_only), "choose one backend");
     if index == 0 { assert_eq!(ticks, 11_752, "PM1 times program ticks 300..=12051"); }
     let preparation = if index == 3 { prepare() } else if index == 0 { 299 } else { 0 };
     let name = if index == 3 { "zcore" } else if index == 0 { "pm1_sort" } else { "anpu" };
     let suffix = if rust_only { "rust-profile" } else if llvm_only { "llvm-only" } else { "llvm-paired" };
+    let suffix = format!("{suffix}{}{}", if io_only { "-io" } else { "" }, if flush_every == 0 { String::new() } else { format!("-flush-{flush_every}") });
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(format!("../../target/redpilator-bench-results/{name}-{suffix}.json"));
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     let mut results = Vec::new();
@@ -113,7 +135,7 @@ fn main() {
             &[true, false]
         };
         for &llvm in backends {
-            let (mut result, output) = run(llvm, ticks, preparation, index);
+            let (mut result, output) = run(llvm, ticks, preparation, index, io_only, flush_every);
             if let Some(expected) = &expected {
                 assert_eq!(&output, expected, "{name} output mismatch in pair {pair}, llvm={llvm}");
             } else {
@@ -121,7 +143,8 @@ fn main() {
             }
             result["pair"] = json!(pair + 1);
             results.push(result);
-            let report = json!({"fixture":cpu(index).schematic,"fixture_sha256":cpu(index).sha256,"mode":"kernel-only; snapshots outside timing",
+            let report = json!({"fixture":cpu(index).schematic,"fixture_sha256":cpu(index).sha256,
+                "mode":if flush_every == 0 { "kernel-only; snapshots outside timing" } else { "tick-and-publication; snapshots outside timing" },
                 "ticks":ticks,"requested_pairs":pairs,"alternating_order":!rust_only && !llvm_only,"results":results});
             std::fs::write(&path, serde_json::to_vec_pretty(&report).unwrap()).unwrap();
         }

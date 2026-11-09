@@ -13,6 +13,7 @@ mod effects;
 mod encoding;
 mod library;
 mod movement;
+mod publication;
 mod routing;
 mod shapes;
 use crate::redpilator::memory;
@@ -127,6 +128,10 @@ pub(in crate::redpilator) struct LlvmRuntime {
     commands: Option<command::State>,
     imported_pending: Vec<TickEntry>,
     pending_capacity: u32,
+    io_components: Vec<u32>,
+    io_states: Vec<u8>,
+    note_events: Vec<u32>,
+    note_seen: Vec<bool>,
 }
 
 #[cfg(any(windows, target_os = "linux"))]
@@ -168,6 +173,11 @@ impl LlvmRuntime {
             .enumerate()
             .map(|(index, &source)| (program.positions[source], index as u32))
             .collect();
+        let io_components: Vec<_> = program.initial.iter().enumerate().filter_map(|(id, &block)| {
+            (matches!(block, Block::Lever { .. } | Block::StoneButton { .. } | Block::RedstoneLamp { .. })
+                || block.is_copper_bulb() || block.pressure_plate_powered().is_some()).then_some(id as u32)
+        }).collect();
+        let io_states = memory::zeroed(io_components.len())?;
         let mut runtime = Self {
             library,
             state,
@@ -179,6 +189,10 @@ impl LlvmRuntime {
             commands: None,
             imported_pending: ticks.to_vec(),
             pending_capacity: initial_ticks.capacity,
+            io_components,
+            io_states,
+            note_events: Vec::new(),
+            note_seen: Vec::new(),
         };
         runtime.bind_commands(program)?;
         runtime.import_initial_ticks(&initial_ticks.entries)?;
@@ -350,6 +364,8 @@ pub(in crate::redpilator) struct LlvmRuntime;
 
 #[cfg(not(any(windows, target_os = "linux")))]
 impl LlvmRuntime {
+    pub(in crate::redpilator) fn sync_io(&mut self, _: &mut super::Runtime) -> Result<(), ScratchError> { unreachable!() }
+    pub(in crate::redpilator) fn sync_effects(&mut self, _: &mut super::Runtime) -> Result<(), ScratchError> { unreachable!() }
     pub(in crate::redpilator) fn acknowledge_effects(&mut self, _: usize) {
         unreachable!()
     }

@@ -653,3 +653,42 @@ fn io_only_flush_then_reset_restores_full_extension_and_retraction_projection() 
         ));
     }
 }
+
+#[test]
+#[cfg(any(windows, target_os = "linux"))]
+fn llvm_io_and_effects_flush_preserve_reset_and_clock() {
+    let (mut reference, lever, _, _, _, _, lamp, bounds) = piston_world();
+    let (mut native, _, _, _, _, _, _, _) = piston_world();
+    let mut rust = Compiler::default();
+    let mut llvm = Compiler::default();
+    for (compiler, world, is_native) in [(&mut rust, &reference, false), (&mut llvm, &native, true)] {
+        compiler.compile(world, bounds, CompilerOptions { llvm: is_native, io_only: true, ..Default::default() }, vec![], Arc::new(TaskMonitor::default())).unwrap();
+    }
+    for _ in 0..2 {
+        rust.try_on_use_block(lever).unwrap();
+        llvm.try_on_use_block(lever).unwrap();
+        for _ in 0..4 {
+            rust.tick().unwrap();
+            llvm.tick().unwrap();
+            rust.flush_effects(&mut reference);
+            llvm.flush_effects(&mut native);
+            rust.try_flush(&mut reference).unwrap();
+            llvm.try_flush(&mut native).unwrap();
+            llvm.try_flush(&mut native).unwrap();
+            assert_eq!(reference.get_block(lever), native.get_block(lever));
+            assert_eq!(reference.get_block(lamp), native.get_block(lamp));
+            assert_eq!(rust.runtime.as_ref().unwrap().logical_tick(), llvm.runtime.as_ref().unwrap().logical_tick());
+        }
+    }
+    rust.try_reset(&mut reference, bounds).unwrap();
+    llvm.try_reset(&mut native, bounds).unwrap();
+    for y in bounds.0.y..=bounds.1.y {
+        for z in bounds.0.z..=bounds.1.z {
+            for x in bounds.0.x..=bounds.1.x {
+                let pos = BlockPos::new(x, y, z);
+                assert_eq!(reference.get_block(pos), native.get_block(pos), "reset at {pos:?}");
+            }
+        }
+    }
+    assert_eq!(reference.scheduler().iter_entries().collect::<Vec<_>>(), native.scheduler().iter_entries().collect::<Vec<_>>());
+}

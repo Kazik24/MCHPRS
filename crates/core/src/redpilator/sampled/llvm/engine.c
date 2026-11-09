@@ -1009,7 +1009,7 @@ static size_t align8(size_t value) {
 }
 
 MchprsNativeApiDescriptor ne_api_descriptor(void) {
-    MchprsNativeApiDescriptor value = {3u, 16u, 26u};
+    MchprsNativeApiDescriptor value = {3u, 16u, 27u};
     return value;
 }
 
@@ -1293,6 +1293,32 @@ uint32_t ne_read_state(const void *memory, uint8_t *out, uint32_t count) {
 uint64_t ne_tick_count(const void *memory) {
     const NEEngine *engine = (const NEEngine *)memory;
     return engine ? engine->tick_count : 0u;
+}
+
+uint32_t ne_read_components(const void *memory, const uint32_t *ids, uint8_t *out, uint32_t count) {
+    const NEEngine *e = (const NEEngine *)memory;
+    if (!e || !ids || !out || count > e->program->component_count)
+        return NE_INVALID;
+    for (uint32_t i = 0; i < count; ++i)
+        if (ids[i] >= e->program->component_count)
+            return NE_INVALID;
+    for (uint32_t i = 0; i < count; ++i)
+        out[i] = e->component_state[ids[i]];
+    return NE_OK;
+}
+
+uint32_t ne_note_count(const void *memory) {
+    const NEEngine *e = (const NEEngine *)memory;
+    return e ? e->note_count : 0u;
+}
+
+uint32_t ne_read_notes(const void *memory, uint32_t *out, uint32_t count) {
+    const NEEngine *e = (const NEEngine *)memory;
+    if (!e || !out || count != e->note_count || count > e->program->component_count || count > UINT32_MAX / 3u)
+        return NE_INVALID;
+    for (uint32_t i = 0; i < count * 3u; ++i)
+        out[i] = e->note_events[i];
+    return NE_OK;
 }
 
 uint32_t ne_pending_count(const void *memory) {

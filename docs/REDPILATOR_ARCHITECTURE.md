@@ -34,6 +34,8 @@ The runtime's state is separate from the plot world. Publishing copies results b
 
 Publication can include all blocks and piston motion, redstone components, or just controls and visible outputs. Changing publication mode does not advance simulation.
 
+LLVM IO publication reads only the compiled control/output component list. Effects flushing reads queued notes and command state without reconstructing piston geometry, electrical inputs or pending ticks. Both paths validate native records before publishing or acknowledging effects. Redstone/full publication and reset retain the complete snapshot path.
+
 `/rp reset` and `/rp off` export the current state and pending work to the interpreter. This includes piston state. They continue from the current state rather than restarting the circuit.
 
 `/rp reset` (including `/rp r` and `/rp off`) discards the plot's prepared executor and sampling cache and cancels pending compilation. `/rp clear` also discards the shared LLVM build cache. Active runtimes on other plots keep running. Internal handoffs can retain the prepared executor and sampling data; recompilation resumes the executor only when the world and compiler options still match.
@@ -68,6 +70,7 @@ Compilation and execution share the server process. A native fault or an OS OOM 
 | [Scheduler](../crates/core/src/redpilator/sampled/scheduler.rs) | Bounded timing queues and host tick import/export |
 | [Diagnostics](../crates/core/src/redpilator/sampled/diagnostics.rs) | Optional memory and routing reports |
 | [LLVM runtime](../crates/core/src/redpilator/sampled/llvm/mod.rs) | Native state, controls and pending ticks |
+| [LLVM publication](../crates/core/src/redpilator/sampled/llvm/publication.rs) | Checked IO component and queued-effect transfers |
 | [LLVM encoding](../crates/core/src/redpilator/sampled/llvm/encoding.rs) | Binary tables, alignment and validation |
 | [LLVM library](../crates/core/src/redpilator/sampled/llvm/library.rs) | Native exports, ABI checks and library ownership |
 | [Allocation helpers](../crates/core/src/redpilator/memory.rs) | Fallible native-buffer allocation |

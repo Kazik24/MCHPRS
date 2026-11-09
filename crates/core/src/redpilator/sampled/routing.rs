@@ -144,6 +144,7 @@ pub(super) struct Search {
     distances: Vec<u8>,
     visited: Vec<usize>,
     queue: VecDeque<usize>,
+    pub(super) updates: Vec<(usize, u8)>,
     pub(super) remaining: Option<usize>,
     pub(super) spent: usize,
 }
@@ -623,6 +624,39 @@ impl WireGraph {
         Ok(sources)
     }
 
+    /// Append link-ordered attenuation updates without constructing per-reader maps.
+    pub(super) fn reader_attenuations(
+        &self,
+        reader: usize,
+        links: &[super::program::ArrangementLink],
+        digit: impl Fn(Axis) -> usize + Copy,
+        search: &mut Search,
+        updates: &mut Vec<(usize, u8)>,
+    ) -> Result<(), ScratchError> {
+        let reader = &self.readers[reader];
+        let ports = reader.table.select(digit).ok_or(ScratchError {
+            position: Some(reader.position),
+            reason: "invalid routed reader state",
+        })?;
+        let start = updates.len();
+        updates.extend(reader.links.iter().map(|&link| (link, u8::MAX)));
+        let values = &mut updates[start..];
+        let mut record = |source, side, distance| {
+            for (index, attenuation) in values.iter_mut() {
+                if links[*index].source == source && links[*index].side == side {
+                    *attenuation = (*attenuation).min(distance);
+                }
+            }
+        };
+        for &(source, side) in &ports.direct {
+            record(source, side, 0);
+        }
+        for &(root, side) in &ports.roots {
+            self.visit_sources(root, digit, search, |source, distance| record(self.source_ids[&source], side, distance))?;
+        }
+        Ok(())
+    }
+
     /// Find power sources connected to a wire in the current arrangement.
     ///
     /// Inputs: The root world position, token-digit selector and reusable search/budget state.
@@ -630,19 +664,32 @@ impl WireGraph {
     /// Run breadth-first wire traversal through the selected local port rows, stop after attenuation 14,
     /// and return each source at its shortest discovered distance.
     pub(super) fn sources(&self, root: BlockPos, digit: impl Fn(Axis) -> usize, search: &mut Search) -> Result<Vec<(BlockPos, u8)>, ScratchError> {
+        let root = *self.index.get(&root).ok_or(ScratchError {
+            position: Some(root),
+            reason: "unrepresented routed wire root",
+        })?;
+        let mut found = BTreeMap::new();
+        self.visit_sources(root, digit, search, |source, distance| {
+            found.entry((source.x, source.y, source.z)).and_modify(|old: &mut u8| *old = (*old).min(distance)).or_insert(distance);
+        })?;
+        Ok(found.into_iter().map(|((x, y, z), attenuation)| (BlockPos::new(x, y, z), attenuation)).collect())
+    }
+
+    fn visit_sources(
+        &self,
+        root: usize,
+        digit: impl Fn(Axis) -> usize,
+        search: &mut Search,
+        mut emit: impl FnMut(BlockPos, u8),
+    ) -> Result<(), ScratchError> {
         for wire in search.visited.drain(..) {
             search.distances[wire] = u8::MAX;
         }
         search.distances.resize(self.nodes.len(), u8::MAX);
         search.queue.clear();
-        let root = *self.index.get(&root).ok_or(ScratchError {
-            position: Some(root),
-            reason: "unrepresented routed wire root",
-        })?;
         search.distances[root] = 0;
         search.visited.push(root);
         search.queue.push_back(root);
-        let mut found = BTreeMap::new();
         while let Some(wire) = search.queue.pop_front() {
             if let Some(remaining) = &mut search.remaining {
                 if *remaining == 0 {
@@ -674,10 +721,7 @@ impl WireGraph {
             })?;
             let distance = search.distances[wire];
             for &source in &ports.sources {
-                found
-                    .entry((source.x, source.y, source.z))
-                    .and_modify(|old: &mut u8| *old = (*old).min(distance))
-                    .or_insert(distance);
+                emit(source, distance);
             }
             if distance == 14 {
                 continue;
@@ -691,10 +735,7 @@ impl WireGraph {
                 search.queue.push_back(next);
             }
         }
-        Ok(found
-            .into_iter()
-            .map(|((x, y, z), attenuation)| (BlockPos::new(x, y, z), attenuation))
-            .collect())
+        Ok(())
     }
 }
 
@@ -703,6 +744,71 @@ mod tests {
     use super::*;
     use crate::redpilator::scratch::{ScratchEntry, discover_wire_sources};
     use mchprs_blocks::{BlockFace, blocks::RedstoneWire};
+
+    #[test]
+    fn direct_attenuations_match_maps_and_every_budget_failure() {
+        let positions = [0, 1, 2].map(|x| BlockPos::new(x, 10, 0));
+        let a = BlockPos::new(0, 11, 0);
+        let b = BlockPos::new(2, 11, 0);
+        let source_a = ArrangementSource::Component(5);
+        let source_b = ArrangementSource::Token(0);
+        let keys = [(source_a, false), (source_b, false), (source_a, true), (source_b, true), (ArrangementSource::Component(6), false)];
+        let links: Vec<_> = keys.iter().map(|&(source, side)| super::super::program::ArrangementLink {
+            target: 0, source, side, silent: false, attenuation: 0, group: 0, active: vec![true],
+        }).collect();
+        let mut graph = WireGraph {
+            positions: positions.to_vec(),
+            index: positions.into_iter().enumerate().map(|(i, pos)| (pos, i)).collect(),
+            token_cells: HashMap::new(),
+            nodes: (0..3).map(|i| Local {
+                axes: vec![],
+                ports: vec![Some(Ports {
+                    wires: if i < 2 { vec![i + 1] } else { vec![] },
+                    sources: if i == 1 { vec![a] } else if i == 2 { vec![b, a] } else { vec![] },
+                })],
+            }).collect(),
+            source_ids: HashMap::from([(a, source_a), (b, source_b)]),
+            readers: vec![Reader {
+                component: 0, position: positions[0], dependencies: vec![], links: vec![3, 1, 4, 0, 2],
+                table: Local { axes: vec![], ports: vec![Some(ReaderPorts {
+                    roots: vec![(0, false), (2, false), (0, true), (0, false)],
+                    direct: vec![(source_a, false)],
+                })] },
+            }],
+            by_component: vec![Some(0)], by_token: vec![],
+        };
+        for budget in 0..=12 {
+            let mut old_search = Search { remaining: Some(budget), ..Default::default() };
+            let mut new_search = Search { remaining: Some(budget), ..Default::default() };
+            let expected = graph.reader_sources(0, |_| 0, &mut old_search);
+            let mut updates = vec![(99, 7)];
+            let actual = graph.reader_attenuations(0, &links, |_| 0, &mut new_search, &mut updates);
+            assert_eq!(old_search.spent, new_search.spent);
+            assert_eq!(old_search.remaining, new_search.remaining);
+            assert_eq!(updates[0], (99, 7));
+            match (expected, actual) {
+                (Ok(expected), Ok(())) => assert_eq!(updates[1..], graph.links(0).iter().map(|&index| {
+                    (index, expected.get(&(links[index].source, links[index].side)).copied().unwrap_or(u8::MAX))
+                }).collect::<Vec<_>>()),
+                (Err(expected), Err(actual)) => {
+                    assert_eq!(actual.position, expected.position);
+                    assert_eq!(actual.reason, expected.reason);
+                }
+                _ => panic!("routing paths disagree at budget {budget}"),
+            }
+        }
+        graph.nodes[1].axes.push(Axis::Token(0, 1));
+        graph.nodes[1].ports.push(None);
+        for digit in [1, 2] {
+            let mut old_search = Search::default();
+            let mut new_search = Search::default();
+            let expected = graph.reader_sources(0, |_| digit, &mut old_search).unwrap_err();
+            let actual = graph.reader_attenuations(0, &links, |_| digit, &mut new_search, &mut Vec::new()).unwrap_err();
+            assert_eq!(actual.position, expected.position);
+            assert_eq!(actual.reason, expected.reason);
+            assert_eq!(new_search.spent, old_search.spent);
+        }
+    }
 
     #[test]
     fn parallel_topology_and_arrangements_match_serial_discovery() {

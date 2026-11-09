@@ -981,20 +981,24 @@ impl Runtime {
         let Some(graph) = &program.routing else {
             return Ok(Vec::new());
         };
-        let readers: Vec<_> = changed.map_or_else(|| (0..graph.reader_count()).collect(), |token| graph.readers_for_token(token).to_vec());
+        let reader_count = changed.map_or_else(|| graph.reader_count(), |token| graph.readers_for_token(token).len());
         #[cfg(feature = "redpilator-trace")]
         if changed.is_some() {
             self.routing_metrics[0] += 1;
-            self.routing_metrics[1] += readers.len() as u64;
+            self.routing_metrics[1] += reader_count as u64;
         }
         self.route_search.remaining = changed.map(|_| 1_000_000usize.saturating_sub(self.tick_operations));
         self.route_search.spent = 0;
-        let mut updates = Vec::new();
-        for reader in readers {
-            let values = graph.reader_sources(
+        let mut updates = std::mem::take(&mut self.route_search.updates);
+        updates.clear();
+        for offset in 0..reader_count {
+            let reader = changed.map_or(offset, |token| graph.readers_for_token(token)[offset]);
+            let result = graph.reader_attenuations(
                 reader,
+                &program.arrangement_links,
                 |super::routing::Axis::Token(token, _)| self.token_digits[token],
                 &mut self.route_search,
+                &mut updates,
             );
             if changed.is_some() {
                 #[cfg(feature = "redpilator-trace")]
@@ -1005,11 +1009,7 @@ impl Runtime {
                 self.operations += self.route_search.spent;
             }
             self.route_search.spent = 0;
-            let values = values?;
-            for &index in graph.links(reader) {
-                let link = &program.arrangement_links[index];
-                updates.push((index, values.get(&(link.source, link.side)).copied().unwrap_or(u8::MAX)));
-            }
+            result?;
         }
         Ok(updates)
     }
@@ -1017,9 +1017,10 @@ impl Runtime {
     pub(super) fn initialize_routing(&mut self) {
         match self.routed_values(None) {
             Ok(values) => {
-                for (index, attenuation) in values {
+                for &(index, attenuation) in &values {
                     self.routing_attenuations[index] = Some(attenuation);
                 }
+                self.route_search.updates = values;
             }
             Err(error) => self.failure = Some(error),
         }
@@ -1047,7 +1048,7 @@ impl Runtime {
                 return;
             }
         };
-        for (index, attenuation) in updates {
+        for &(index, attenuation) in &updates {
             let old = self.routing_attenuations[index].unwrap_or(u8::MAX);
             if old == attenuation {
                 continue;
@@ -1078,6 +1079,7 @@ impl Runtime {
                 switched.push(link.target);
             }
         }
+        self.route_search.updates = updates;
     }
 
     pub(super) fn arrangement_output(&self, source: ArrangementSource) -> u8 {

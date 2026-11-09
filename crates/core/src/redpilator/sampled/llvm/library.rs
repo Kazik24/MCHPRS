@@ -17,9 +17,13 @@ pub(super) struct Library {
     pub(super) use_control: unsafe extern "C" fn(*mut c_void, u32) -> u32,
     pub(super) set_input: unsafe extern "C" fn(*mut c_void, u32, u8) -> u32,
     pub(super) read_state: unsafe extern "C" fn(*const c_void, *mut u8, u32) -> u32,
+    pub(super) read_components: unsafe extern "C" fn(*const c_void, *const u32, *mut u8, u32) -> u32,
+    pub(super) note_count: unsafe extern "C" fn(*const c_void) -> u32,
+    pub(super) read_notes: unsafe extern "C" fn(*const c_void, *mut u32, u32) -> u32,
     pub(super) pending_count: unsafe extern "C" fn(*const c_void) -> u32,
     pub(super) read_pending: unsafe extern "C" fn(*const c_void, *mut NativePendingTick, u32) -> u32,
     pub(super) work_count: unsafe extern "C" fn(*const c_void) -> u64,
+    pub(super) tick_count: unsafe extern "C" fn(*const c_void) -> u64,
     pub(super) snapshot_words: unsafe extern "C" fn(*const c_void) -> u32,
     pub(super) read_snapshot: unsafe extern "C" fn(*const c_void, *mut u32, u32) -> u32,
     pub(super) ack_effects: unsafe extern "C" fn(*mut c_void),
@@ -60,9 +64,13 @@ impl Library {
                 use_control: module.symbol(b"ne_use_control\0")?,
                 set_input: module.symbol(b"ne_set_input\0")?,
                 read_state: module.symbol(b"ne_read_state\0")?,
+                read_components: module.symbol(b"ne_read_components\0")?,
+                note_count: module.symbol(b"ne_note_count\0")?,
+                read_notes: module.symbol(b"ne_read_notes\0")?,
                 pending_count: module.symbol(b"ne_pending_count\0")?,
                 read_pending: module.symbol(b"ne_read_pending\0")?,
                 work_count: module.symbol(b"ne_work_count\0")?,
+                tick_count: module.symbol(b"ne_tick_count\0")?,
                 snapshot_words: module.symbol(b"ne_snapshot_words\0")?,
                 read_snapshot: module.symbol(b"ne_read_snapshot\0")?,
                 ack_effects: module.symbol(b"ne_ack_effects\0")?,
@@ -74,7 +82,7 @@ impl Library {
 
     pub(super) fn validate_abi(&self) -> Result<(), ScratchError> {
         let descriptor = unsafe { (self.api_descriptor)() };
-        if descriptor.abi_version != ABI_VERSION || descriptor.descriptor_bytes != 16 || descriptor.semantic_version != 26 {
+        if descriptor.abi_version != ABI_VERSION || descriptor.descriptor_bytes != 16 || descriptor.semantic_version != 27 {
             return Err(ScratchError {
                 position: None,
                 reason: "LLVM DLL ABI/version mismatch",
