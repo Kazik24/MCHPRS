@@ -34,17 +34,84 @@ pub(super) struct MoveStep {
 #[derive(Clone, Copy)]
 pub(super) struct ArrangementFlip {
     /// component index into `Program::positions` whose input changes.
-    pub(super) target: usize,
+    pub(super) target: u32,
     /// component or token whose movement changes the input.
-    pub(super) source: ArrangementSource,
+    source: u32,
     /// signal attenuation for this source-to-target connection.
     pub(super) attenuation: u8,
     /// index into `Program::arrangement_links` for the connection being changed.
-    pub(super) link: usize,
+    pub(super) link: u32,
     /// indicating the source is entering the target's input footprint (`false` means leaving).
     pub(super) entering: bool,
     /// indicating this is a side input rather than the primary input.
     pub(super) side: bool,
+}
+
+impl ArrangementFlip {
+    fn new(target: usize, source: ArrangementSource, attenuation: u8, link: usize, entering: bool, side: bool) -> Result<Self, ScratchError> {
+        let overflow = || ScratchError {
+            position: None,
+            reason: "movement flip index overflow",
+        };
+        let (source, tag) = match source {
+            ArrangementSource::Component(index) => (index, 0),
+            ArrangementSource::Token(index) => (index, 0x8000_0000),
+        };
+        if source >= 0x8000_0000 {
+            return Err(overflow());
+        }
+        Ok(Self {
+            target: u32::try_from(target).map_err(|_| overflow())?,
+            source: source as u32 | tag,
+            attenuation,
+            link: u32::try_from(link).map_err(|_| overflow())?,
+            entering,
+            side,
+        })
+    }
+
+    #[inline]
+    pub(super) fn source(self) -> ArrangementSource {
+        let index = (self.source & 0x7fff_ffff) as usize;
+        if self.source & 0x8000_0000 == 0 {
+            ArrangementSource::Component(index)
+        } else {
+            ArrangementSource::Token(index)
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn compact_flips_preserve_ids_and_reject_overflow() {
+        assert_eq!(std::mem::size_of::<ArrangementFlip>(), 16);
+        for source in [
+            ArrangementSource::Component(0),
+            ArrangementSource::Component(0x7fff_ffff),
+            ArrangementSource::Token(0),
+            ArrangementSource::Token(0x7fff_ffff),
+        ] {
+            for entering in [false, true] {
+                for side in [false, true] {
+                    let flip = ArrangementFlip::new(u32::MAX as usize, source, 15, u32::MAX as usize, entering, side).unwrap();
+                    assert_eq!(flip.source(), source);
+                    assert_eq!(flip.target, u32::MAX);
+                    assert_eq!(flip.link, u32::MAX);
+                    assert_eq!((flip.attenuation, flip.entering, flip.side), (15, entering, side));
+                }
+            }
+        }
+        for source in [ArrangementSource::Component(0x8000_0000), ArrangementSource::Token(0x8000_0000)] {
+            assert!(ArrangementFlip::new(0, source, 0, 0, false, false).is_err());
+        }
+        if usize::BITS > 32 {
+            assert!(ArrangementFlip::new(usize::MAX, ArrangementSource::Component(0), 0, 0, false, false).is_err());
+            assert!(ArrangementFlip::new(0, ArrangementSource::Token(0), 0, usize::MAX, false, false).is_err());
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -217,7 +284,7 @@ impl Program {
         }
         drop(group_index);
         for (tokens, states, maps) in grouped {
-            let (group, entries) = self.movement_group(&tokens, &states, &maps, groups.len(), links.len(), &mut flips);
+            let (group, entries) = self.movement_group(&tokens, &states, &maps, groups.len(), links.len(), &mut flips)?;
             groups.push(group);
             links.extend(entries);
         }
@@ -245,7 +312,7 @@ impl Program {
                     .collect()
             }));
             let states = vec![(0..=cells.len()).collect()];
-            let (group, entries) = self.movement_group(&[token], &states, &maps, groups.len(), links.len(), &mut flips);
+            let (group, entries) = self.movement_group(&[token], &states, &maps, groups.len(), links.len(), &mut flips)?;
             groups.push(group);
             links.extend(entries);
         }
@@ -332,7 +399,7 @@ impl Program {
         group: usize,
         link_start: usize,
         flips: &mut Vec<ArrangementFlip>,
-    ) -> (MovementGroup, Vec<ArrangementLink>) {
+    ) -> Result<(MovementGroup, Vec<ArrangementLink>), ScratchError> {
         let mut conditions = Vec::new();
         let mut condition_ids = HashMap::new();
         let membership: Vec<HashSet<usize>> = maps
@@ -365,14 +432,8 @@ impl Program {
                     let start = flips.len();
                     for (index, &(target, source, attenuation, side, _silent)) in conditions.iter().enumerate() {
                         if membership[state].contains(&index) != membership[empty].contains(&index) {
-                            let flip = ArrangementFlip {
-                                target,
-                                source,
-                                attenuation,
-                                link: link_start + index,
-                                entering: membership[empty].contains(&index),
-                                side,
-                            };
+                            let flip =
+                                ArrangementFlip::new(target, source, attenuation, link_start + index, membership[empty].contains(&index), side)?;
                             flips.push(flip);
                         }
                     }
@@ -395,9 +456,9 @@ impl Program {
                     arrive,
                 };
                 stride *= radix;
-                axis
+                Ok(axis)
             })
-            .collect();
+            .collect::<Result<Vec<_>, ScratchError>>()?;
         let links = conditions
             .iter()
             .enumerate()
@@ -411,7 +472,7 @@ impl Program {
                 active: membership.iter().map(|map| map.contains(&index)).collect(),
             })
             .collect();
-        (MovementGroup { axes }, links)
+        Ok((MovementGroup { axes }, links))
     }
 
     /// Store sampled movement callbacks in flat runtime tables.
@@ -482,11 +543,11 @@ impl Program {
                     for flip in flips {
                         let link = self
                             .arrangement_links
-                            .get(flip.link)
+                            .get(flip.link as usize)
                             .ok_or_else(|| invalid("invalid movement flip link"))?;
                         if link.group != group
-                            || flip.target != link.target
-                            || flip.source != link.source
+                            || flip.target as usize != link.target
+                            || flip.source() != link.source
                             || flip.attenuation != link.attenuation
                             || flip.side != link.side
                         {

@@ -1183,23 +1183,24 @@ impl Runtime {
             self.group_arrangements[record.group] = after;
             for index in flips {
                 let flip = self.program.movement_flips[index];
-                if !self.consume_component_operation(flip.target) {
+                let target = flip.target as usize;
+                if !self.consume_component_operation(target) {
                     return;
                 }
-                let strength = self.arrangement_output(flip.source);
+                let strength = self.arrangement_output(flip.source());
                 self.set_arrangement_contribution(
-                    flip.link,
-                    flip.target,
+                    flip.link as usize,
+                    target,
                     flip.side,
                     if flip.entering { strength.saturating_sub(flip.attenuation) } else { 0 },
                 );
                 if strength > flip.attenuation {
-                    self.updated_in_phase[flip.target] = 0;
+                    self.updated_in_phase[target] = 0;
                 }
                 // WithMoveStep reserves -2 for pistons: flips do not deliver them.
-                if !matches!(self.blocks[flip.target], Block::Piston { .. }) && !self.switched[flip.target] {
-                    self.switched[flip.target] = true;
-                    switched.push(flip.target);
+                if !matches!(self.blocks[target], Block::Piston { .. }) && !self.switched[target] {
+                    self.switched[target] = true;
+                    switched.push(target);
                 }
                 self.operations += 1;
             }

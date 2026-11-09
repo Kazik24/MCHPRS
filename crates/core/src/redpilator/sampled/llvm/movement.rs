@@ -107,10 +107,10 @@ pub(super) fn encode_movement(p: &Program, t: &mut [Vec<u32>; AUX_TABLES]) -> Re
     }
     for r in &p.movement_flips {
         t[22].extend([
-            id(r.target)?,
-            source(r.source)?,
+            r.target,
+            source(r.source())?,
             u32::from(r.attenuation),
-            id(r.link)?,
+            r.link,
             u32::from(r.entering),
             u32::from(r.side),
         ]);
