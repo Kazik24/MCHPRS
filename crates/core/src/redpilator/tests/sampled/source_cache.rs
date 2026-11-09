@@ -131,11 +131,15 @@ fn canonical(program: &Program) -> BTreeMap<(i32, i32, i32), [Vec<String>; 2]> {
 }
 
 fn assert_execution_matches_native(world: &PlotWorld, warm: Program, cold: Program) {
-    assert_eq!(warm.positions, cold.positions, "fresh graph assigns the same component IDs");
+    assert_execution_matches_native_for(world, warm, cold, "");
+}
+
+fn assert_execution_matches_native_for(world: &PlotWorld, warm: Program, cold: Program, context: &str) {
+    assert_eq!(warm.positions, cold.positions, "{context} fresh graph assigns the same component IDs");
     assert_eq!(
         canonical(&warm),
         canonical(&cold),
-        "cached ordering or operand remapping differs from cold sampling"
+        "{context} cached ordering or operand remapping differs from cold sampling"
     );
     let mut native = world.activation_snapshot();
     let ticks: Vec<_> = world.scheduler().iter_entries().collect();
@@ -155,28 +159,28 @@ fn assert_execution_matches_native(world: &PlotWorld, warm: Program, cold: Progr
             assert_eq!(
                 warm.pending_entries(),
                 expected,
-                "warm ordered pending work control={control:?}, step={step}"
+                "{context} warm ordered pending work control={control:?}, step={step}"
             );
             assert_eq!(
                 cold.pending_entries(),
                 expected,
-                "cold ordered pending work control={control:?}, step={step}"
+                "{context} cold ordered pending work control={control:?}, step={step}"
             );
             for &pos in &warm.program.positions {
                 assert_eq!(
                     warm.project(pos),
                     Some(native.get_block(pos)),
-                    "warm block {pos:?}, control={control:?}, step={step}"
+                    "{context} warm block {pos:?}, control={control:?}, step={step}"
                 );
                 assert_eq!(
                     cold.project(pos),
                     Some(native.get_block(pos)),
-                    "cold block {pos:?}, control={control:?}, step={step}"
+                    "{context} cold block {pos:?}, control={control:?}, step={step}"
                 );
             }
         }
     }
-    assert_eq!(warm.operations, cold.operations, "reuse retains semantic work accounting");
+    assert_eq!(warm.operations, cold.operations, "{context} reuse retains semantic work accounting");
 }
 
 #[test]
@@ -194,6 +198,18 @@ fn deleting_wire_resamples_affected_source_and_reuses_independent_chunk() {
     );
     let warm = compile(&world, Some(cache));
     assert_eq!(reuse(&warm), (1, 1), "only the edited source's read/write chunks changed");
+    let cold = compile(&world, None);
+    assert_execution_matches_native(&world, warm, cold);
+}
+
+#[test]
+fn unrelated_chunk_edit_reuses_every_source() {
+    let mut world = fixture();
+    let before = compile(&world, None);
+    let cache = before.source_order_cache.as_ref().unwrap();
+    world.set_block(BlockPos::new(400, 20, 400), Block::RedstoneLamp { lit: true });
+    let warm = compile(&world, Some(cache));
+    assert_eq!(reuse(&warm), (2, 0), "a distant chunk is outside both source dependencies");
     let cold = compile(&world, None);
     assert_execution_matches_native(&world, warm, cold);
 }
@@ -294,4 +310,171 @@ fn independent_circuits_in_the_same_chunk_are_conservatively_invalidated_togethe
     );
     let cold = compile(&world, None);
     assert_execution_matches_native(&world, warm, cold);
+}
+
+#[test]
+fn solid_support_swaps_invalidate_only_their_dependency_chunks() {
+    let baseline = fixture();
+    let before = compile(&baseline, None);
+    let cache = before.source_order_cache.as_ref().unwrap().clone();
+    let support = |control| control + BlockPos::new(1, -1, 0);
+    let scenarios = [
+        (vec![support(CONTROLS[0])], (1, 1)),
+        (vec![support(CONTROLS[0]), support(CONTROLS[0]) + BlockPos::new(1, 0, 0)], (1, 1)),
+        (vec![support(CONTROLS[0]), support(CONTROLS[1])], (0, 2)),
+    ];
+
+    for (supports, expected) in scenarios {
+        let mut world = fixture();
+        for pos in supports {
+            assert_eq!(world.get_block(pos), Block::Stone {});
+            world.set_block(pos, Block::from_name("white_concrete").unwrap());
+            crate::redstone::update_surrounding_blocks(&mut world, pos);
+        }
+        assert!(world.scheduler().iter_entries().next().is_none());
+        let warm = compile(&world, Some(&cache));
+        assert_eq!(reuse(&warm), expected, "support edit at dependency chunk(s)");
+        let cold = compile(&world, None);
+        assert_execution_matches_native(&world, warm, cold);
+    }
+}
+
+#[test]
+fn deterministic_wire_removal_seeds_match_warm_cold_and_native_execution() {
+    let baseline = fixture();
+    let before = compile(&baseline, None);
+    let cache = before.source_order_cache.as_ref().unwrap().clone();
+    let candidates = [
+        BlockPos::new(6, 20, 8),
+        BlockPos::new(7, 20, 8),
+        BlockPos::new(8, 20, 8),
+        BlockPos::new(9, 20, 8),
+        BlockPos::new(41, 20, 8),
+        BlockPos::new(42, 20, 8),
+        BlockPos::new(43, 20, 8),
+        BlockPos::new(44, 20, 8),
+        BlockPos::new(7, 20, 9),
+        BlockPos::new(8, 20, 6),
+    ];
+
+    for seed in 0u32..20 {
+        let mut state = seed.wrapping_add(1);
+        let mut next_index = || {
+            state = state.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+            state as usize % candidates.len()
+        };
+        let count = 1 + next_index() % 2;
+        let mut removed = Vec::with_capacity(count);
+        while removed.len() < count {
+            let pos = candidates[next_index()];
+            if !removed.contains(&pos) {
+                removed.push(pos);
+            }
+        }
+
+        let mut world = fixture();
+        for &pos in &removed {
+            assert!(
+                matches!(world.get_block(pos), Block::RedstoneWire { .. }),
+                "seed={seed} action=remove {pos:?}"
+            );
+            world.set_block(pos, Block::Air);
+            crate::redstone::update_surrounding_blocks(&mut world, pos);
+        }
+        let context = format!("seed={seed} removed={removed:?}");
+        let warm = compile(&world, Some(&cache));
+        let cold = compile(&world, None);
+        assert_execution_matches_native_for(&world, warm, cold, &context);
+    }
+}
+
+#[test]
+fn source_cache_preserves_runtime_and_publication_across_backends() {
+    let before = compile(&fixture(), None);
+    let cache = before.source_order_cache.as_ref().unwrap().clone();
+
+    let leaf = BlockPos::new(7, 20, 9);
+    for llvm in [false, true] {
+        if llvm && !cfg!(any(windows, target_os = "linux")) {
+            continue;
+        }
+        for publication in [
+            crate::redpilator::PublicationMode::All,
+            crate::redpilator::PublicationMode::Redstone,
+            crate::redpilator::PublicationMode::Io,
+        ] {
+            let mut warm_world = fixture();
+            warm_world.set_block(leaf, Block::Air);
+            crate::redstone::update_surrounding_blocks(&mut warm_world, leaf);
+            let mut cold_world = fixture();
+            cold_world.set_block(leaf, Block::Air);
+            crate::redstone::update_surrounding_blocks(&mut cold_world, leaf);
+            let options = crate::redpilator::CompilerOptions {
+                llvm,
+                publication: Some(publication),
+                ..Default::default()
+            };
+            let mut warm = crate::redpilator::Compiler::default();
+            warm.compile_cached_with_sampling(
+                &warm_world,
+                BOUNDS,
+                options.clone(),
+                vec![],
+                std::sync::Arc::new(crate::redpilator::TaskMonitor::default()),
+                None,
+                Some(cache.clone()),
+            )
+            .unwrap();
+            let stats = warm.source_sampling_stats().unwrap();
+            assert_eq!((stats.0, stats.1), (1, 1));
+
+            let mut cold = crate::redpilator::Compiler::default();
+            cold.compile_cached_with_sampling(
+                &cold_world,
+                BOUNDS,
+                options,
+                vec![],
+                std::sync::Arc::new(crate::redpilator::TaskMonitor::default()),
+                None,
+                None,
+            )
+            .unwrap();
+            let stats = cold.source_sampling_stats().unwrap();
+            assert_eq!((stats.0, stats.1), (0, 2));
+
+            let positions = warm.cached_program().unwrap().positions.clone();
+            assert_eq!(warm.cached_program().unwrap().positions, cold.cached_program().unwrap().positions);
+            for control in [CONTROLS[0], CONTROLS[1], CONTROLS[0], CONTROLS[1]] {
+                warm.try_on_use_block(control).unwrap();
+                cold.try_on_use_block(control).unwrap();
+                for step in 0..=5 {
+                    if step != 0 {
+                        warm.tick().unwrap();
+                        cold.tick().unwrap();
+                    }
+                    warm.try_flush(&mut warm_world).unwrap();
+                    cold.try_flush(&mut cold_world).unwrap();
+                    let pending = |compiler: &crate::redpilator::Compiler| {
+                        compiler.llvm_runtime.as_ref().map_or_else(
+                            || compiler.runtime.as_ref().unwrap().pending_entries(),
+                            |native| native.pending_entries().unwrap(),
+                        )
+                    };
+                    assert_eq!(pending(&warm), pending(&cold), "llvm={llvm} {publication:?} {control:?} step={step}");
+                    assert_eq!(
+                        warm.runtime.as_ref().unwrap().projected_blocks(),
+                        cold.runtime.as_ref().unwrap().projected_blocks(),
+                        "runtime state llvm={llvm} {publication:?} {control:?} step={step}"
+                    );
+                    for &pos in &positions {
+                        assert_eq!(
+                            warm_world.get_block(pos),
+                            cold_world.get_block(pos),
+                            "published block llvm={llvm} {publication:?} at {pos:?}, {control:?} step={step}"
+                        );
+                    }
+                }
+            }
+        }
+    }
 }

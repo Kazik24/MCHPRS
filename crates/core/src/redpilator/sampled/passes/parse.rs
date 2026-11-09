@@ -12,6 +12,12 @@ use mchprs_blocks::{
     blocks::Block,
 };
 
+/// Capture and validate the circuit inventory before dependency discovery.
+///
+/// Inputs: The immutable capture context and phase reporter.
+///
+/// Create one scratch snapshot, discover piston actors and payloads from it, scan supported
+/// components/entities and group receiver positions while reporting progress.
 pub(in super::super) fn run(context: &Context<'_, impl World>, phases: &mut CompilePhases<'_>) -> Result<(ScratchWorld, Inventory), ScratchError> {
     let world = context.world;
     let bounds = context.bounds;

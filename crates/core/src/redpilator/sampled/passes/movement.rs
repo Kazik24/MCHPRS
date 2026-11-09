@@ -5,6 +5,12 @@ use crate::redpilator::sampled::{Program, ScratchError, ScratchWorld, group_prob
 use crate::world::World;
 use mchprs_blocks::{BlockPos, blocks::Block};
 
+/// Sample the ordered callbacks produced by payload departures and arrivals.
+///
+/// Inputs: The captured context, mutable program, position/notification indexes and phase reporter.
+///
+/// Probe every legal token cell in isolation, collect wire/piston/observer recipients, compile ordered
+/// movement steps and sample geometry-shape programs.
 pub(in super::super) fn run(
     context: &Context<'_, impl World>,
     program: &mut Program,
@@ -215,7 +221,7 @@ pub(in super::super) fn run(
                                     && watched_by_node[wire].is_some_and(|index| program.watched_wires[index].watchers.contains(&node))
                             })
                             .collect();
-                        crate::redpilator::sampled::program::MoveStepSpec {
+                        crate::redpilator::sampled::movement::MoveStepSpec {
                             node,
                             watcher: watchers.contains(&node),
                             wire: node & PISTON_HEAD_NOTIFICATION == 0 && watched_by_node[node].is_some(),

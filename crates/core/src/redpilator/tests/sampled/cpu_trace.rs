@@ -2,8 +2,10 @@
 pub(super) mod cpus;
 
 use super::{
-    ScratchEntry, compiler, pistons,
-    program::{ArrangementSource, ElectricalLink, InputArrangement, MoveStepSpec as MoveStep, Program, RepeaterRecord},
+    ScratchEntry, compiler,
+    movement::MoveStepSpec as MoveStep,
+    pistons,
+    program::{ArrangementSource, ElectricalLink, InputArrangement, Program, RepeaterRecord},
 };
 use crate::{
     plot::{PlotWorld, worldedit::load_schematic},

@@ -68,6 +68,11 @@ pub(crate) struct WirePorts {
 }
 
 /// One dust vertex, without flattening paths through other dust vertices.
+///
+/// Inputs: The world and wire position.
+///
+/// Follow native horizontal, climbing and descending dust rules, collect strong/weak power contacts, then
+/// sort and deduplicate the resulting ports.
 pub(crate) fn discover_wire_ports(world: &impl World, pos: BlockPos) -> Result<WirePorts, ScratchError> {
     let mut ports = WirePorts {
         wires: Vec::new(),
@@ -206,6 +211,12 @@ pub(crate) fn discover_watched_wire_sources(world: &impl World, bounds: (BlockPo
     Ok(WireDiscovery { watchers, sources })
 }
 
+/// Find wire changes that must notify piston bases or heads.
+///
+/// Inputs: The world, captured wire positions and piston base positions.
+///
+/// Index each base/head position, visit each wire's nearby notification footprint, and emit sorted
+/// deduplicated wire-to-piston watcher records.
 pub(crate) fn discover_wire_watchers(world: &impl World, wires: &[BlockPos], pistons: &[BlockPos]) -> Vec<WireWatcher> {
     let mut piston_index: HashMap<BlockPos, Vec<(usize, bool)>> = HashMap::new();
     for (index, &pos) in pistons.iter().enumerate() {
@@ -257,6 +268,12 @@ pub(crate) fn trace_wire_sources(world: &impl World, wires: &[BlockPos]) -> Resu
     discover_wire_sources_inner(world, wires, true, None)
 }
 
+/// Discover upstream sources and attenuation for each requested wire.
+///
+/// Inputs: The world, wire positions, trace flag and optional cancellation monitor.
+///
+/// Run a breadth-first search from every target wire, merge sources by their shortest distance, stop
+/// beyond usable signal range, and report progress.
 fn discover_wire_sources_inner(
     world: &impl World,
     wires: &[BlockPos],
@@ -371,6 +388,12 @@ fn wire_contact(world: &impl World, pos: BlockPos, expand: bool) -> Result<Vec<W
     }
 }
 
+/// Discover the electrical contacts powering a signal-reading block.
+///
+/// Inputs: The world and the receiver-specific positions/options supplied by its caller.
+///
+/// Inspect adjacent power sources and solid-block conduction using native power rules, optionally expand
+/// wire contacts, and merge repeated sources at minimum attenuation.
 fn discover_signal_contacts(
     world: &impl World,
     lamp: BlockPos,
@@ -451,6 +474,12 @@ pub(crate) fn discover_piston_ports(world: &impl World, pos: BlockPos, facing: m
     discover_piston_contacts(world, pos, facing, false)
 }
 
+/// Discover direct and quasi-connectivity power contacts for a piston.
+///
+/// Inputs: The world, piston base, facing direction and source-expansion mode.
+///
+/// Inspect the base and upper power neighborhoods while excluding the facing contact as required, resolve
+/// wire/conductor sources, and merge their attenuation.
 fn discover_piston_contacts(
     world: &impl World,
     pos: BlockPos,
@@ -821,7 +850,11 @@ mod tests {
     fn watched_wire_discovery_separates_dependencies_from_notifications() {
         let mut world = fixture();
         let discovery = discover_watched_wire_sources(&world, BOUNDS).unwrap();
-        assert!(discovery.watchers.contains(&WireWatcher { wire: WIRE, piston: PISTON, head: false }));
+        assert!(discovery.watchers.contains(&WireWatcher {
+            wire: WIRE,
+            piston: PISTON,
+            head: false
+        }));
         assert!(discovery.sources.contains(&WireSource {
             wire: WIRE,
             source: LEVER,
@@ -844,7 +877,11 @@ mod tests {
     #[test]
     fn changed_watched_wire_is_the_notification_condition() {
         let discovery = WireDiscovery {
-            watchers: vec![WireWatcher { wire: WIRE, piston: PISTON, head: false }],
+            watchers: vec![WireWatcher {
+                wire: WIRE,
+                piston: PISTON,
+                head: false,
+            }],
             sources: vec![],
         };
         assert_eq!(changed_wire_watchers(&discovery, &[(WIRE, 0)], &[(WIRE, 1)]), discovery.watchers);
@@ -853,7 +890,11 @@ mod tests {
     #[test]
     fn masked_source_change_does_not_change_wire_or_notify() {
         let discovery = WireDiscovery {
-            watchers: vec![WireWatcher { wire: WIRE, piston: PISTON, head: false }],
+            watchers: vec![WireWatcher {
+                wire: WIRE,
+                piston: PISTON,
+                head: false,
+            }],
             sources: vec![],
         };
         let before = max_attenuated_strength([(15, 1), (14, 2)]);
@@ -873,7 +914,11 @@ mod tests {
     #[test]
     fn nearby_power_dependency_without_wire_change_does_not_notify() {
         let discovery = WireDiscovery {
-            watchers: vec![WireWatcher { wire: WIRE, piston: PISTON, head: false }],
+            watchers: vec![WireWatcher {
+                wire: WIRE,
+                piston: PISTON,
+                head: false,
+            }],
             sources: vec![],
         };
         assert!(changed_wire_watchers(&discovery, &[(WIRE, 7)], &[(WIRE, 7)]).is_empty());
@@ -1141,6 +1186,12 @@ impl ScratchWorld {
         Self::from_world_monitored(source, bounds, entry, None)
     }
 
+    /// Create an isolated, bounded snapshot for interpreter probes.
+    ///
+    /// Inputs: The source world, capture bounds, scheduled/piston entry state and optional monitor.
+    ///
+    /// Validate coordinates and settled entry state, clone loaded chunks, record a reset baseline and
+    /// boundary-air contract, then restore pending ticks and configure scratch read tracking.
     pub(crate) fn from_world_monitored(
         source: &impl World,
         bounds: (BlockPos, BlockPos),
@@ -1376,6 +1427,12 @@ impl ScratchWorld {
         }
     }
 
+    /// Run independent probes with bounded reusable scratch snapshots.
+    ///
+    /// Inputs: The jobs, optional monitor and probe callback, using this scratch world as the basis.
+    ///
+    /// Partition work across the configured probe workers, restore isolated scratch state between jobs and
+    /// collect results in input order while propagating cancellation/errors.
     pub(crate) fn probe_jobs<J: Sync, R: Send>(
         &mut self,
         jobs: &[J],
@@ -1453,6 +1510,12 @@ impl ScratchWorld {
         results.into_iter().map(|(_, result)| result).collect()
     }
 
+    /// Restore a scratch probe to its captured baseline.
+    ///
+    /// Inputs: This scratch world's tracked modified positions and original blocks/entities, ticks and piston state.
+    ///
+    /// Restore changed block/entity records, reset probe bookkeeping and queues, then reinstall the
+    /// captured scheduled ticks without rebuilding the snapshot.
     pub(crate) fn revert(&mut self) {
         let (blocks, entities) = self.world.take_scratch_changes();
         let mut changed: Vec<_> = blocks.union(&entities).copied().collect();
@@ -1473,6 +1536,12 @@ impl ScratchWorld {
         }
     }
 
+    /// Reject probe reads or effects that leave the captured contract.
+    ///
+    /// Inputs: This scratch world's tracked boundary accesses, pending events, motion and scheduled work.
+    ///
+    /// Check boundary writes and reads plus every pending-work position, returning the first unsafe
+    /// position instead of accepting an incomplete observation.
     pub(crate) fn finish_probe(&self) -> Result<(), ScratchError> {
         if let Some(position) = self.world.take_scratch_boundary_effect() {
             return Err(ScratchError {

@@ -65,6 +65,12 @@ impl<T> Local<T> {
     }
 }
 
+/// Sample local connectivity for every relevant token placement.
+///
+/// Inputs: A reusable scratch world, token records, token axes, position, monitor and evaluator callback.
+///
+/// Bound the product of axis sizes, restore scratch before each arrangement, reject cell collisions,
+/// evaluate valid placements and fold a constant table to one row.
 pub(super) fn compile_local<T: PartialEq>(
     scratch: &mut ScratchWorld,
     tokens: &[PistonToken],
@@ -168,6 +174,12 @@ fn adjacent_positions(position: BlockPos) -> impl Iterator<Item = BlockPos> {
     .flatten()
 }
 
+/// Enumerate nearby positions within a taxi-cab distance.
+///
+/// Inputs: The center position and distance limit.
+///
+/// Visit offset triples whose absolute coordinate sum stays within the limit, using checked coordinate
+/// offsets to avoid overflow.
 fn manhattan_positions(center: BlockPos, radius: i32) -> Vec<BlockPos> {
     let mut positions = Vec::with_capacity(match radius {
         2 => 25,
@@ -235,6 +247,12 @@ fn piston_contact_cells(position: BlockPos, block: Block) -> Option<HashSet<Bloc
     Some(cells)
 }
 
+/// Collect the local cells that can conduct into a reader.
+///
+/// Inputs: The reader position, optional piston contact cells and fixed-wire index.
+///
+/// Enumerate the appropriate nearby/contact positions, retaining the cells needed to discover wire and
+/// conductor dependencies.
 fn reader_contact_positions(
     position: BlockPos,
     piston_cells: Option<&HashSet<BlockPos>>,
@@ -262,6 +280,12 @@ fn reader_contact_positions(
     contacts
 }
 
+/// Choose the tokens that can change a reader's direct connectivity.
+///
+/// Inputs: The reader position, token records, cell index and reader contact positions.
+///
+/// Collect tokens touching relevant contacts or piston power cells and turn their legal placement counts
+/// into arrangement axes.
 fn reader_token_axes(
     position: BlockPos,
     tokens: &[PistonToken],
@@ -301,6 +325,12 @@ impl WireGraph {
         self.readers.retain(|reader| targets.contains(&reader.component));
         self.reindex();
     }
+    /// Rebuild lookup lists after the routing reader list changes.
+    ///
+    /// Inputs: This graph's readers, their component IDs and token dependencies.
+    ///
+    /// Clear the reverse indexes, then record each reader under its component and every token that can
+    /// change its connectivity.
     fn reindex(&mut self) {
         self.by_component.fill(None);
         for readers in &mut self.by_token {
@@ -322,6 +352,11 @@ impl WireGraph {
     pub(super) fn links(&self, reader: usize) -> &[usize] {
         &self.readers[reader].links
     }
+    /// Attach lowered arrangement-link IDs to their routing readers.
+    ///
+    /// Inputs: The arrangement links and this graph's component-to-reader index.
+    ///
+    /// Clear existing bindings and assign each link to the reader responsible for its target component.
     pub(super) fn bind_links(&mut self, links: &[super::program::ArrangementLink]) {
         for reader in &mut self.readers {
             reader.links.clear();
@@ -333,6 +368,12 @@ impl WireGraph {
         }
     }
 
+    /// Find every source a reader could reach in any sampled arrangement.
+    ///
+    /// Inputs: The reader index and this graph's alternative local port tables.
+    ///
+    /// Start from all direct sources and wire roots, traverse the union of possible wire contacts up to
+    /// signal range, and merge the possible source/side identities.
     pub(super) fn potential_sources(&self, reader: usize) -> BTreeMap<(ArrangementSource, bool), u8> {
         let mut found = BTreeMap::new();
         let mut visited = HashSet::new();
@@ -368,6 +409,12 @@ impl WireGraph {
         found
     }
 
+    /// Build movement-sensitive wire connectivity tables.
+    ///
+    /// Inputs: The scratch world, fixed wire positions, movable tokens and optional monitor.
+    ///
+    /// Reject unsupported payloads/overlaps, sample each wire's local token arrangements in isolated jobs,
+    /// and enforce the retained local-table row limit.
     pub(super) fn compile(
         scratch: &mut ScratchWorld,
         positions: Vec<BlockPos>,
@@ -449,6 +496,12 @@ impl WireGraph {
         })
     }
 
+    /// Add reader contact tables and their token dependencies to the wire graph.
+    ///
+    /// Inputs: The scratch world, program, target component IDs, probe indexes and monitor.
+    ///
+    /// Sample each reader's direct/wire contacts, traverse all reachable wire alternatives to collect
+    /// token dependencies, then rebuild reverse indexes.
     pub(super) fn compile_readers(
         &mut self,
         scratch: &mut ScratchWorld,
@@ -540,6 +593,12 @@ impl WireGraph {
         Ok(())
     }
 
+    /// Resolve the currently connected sources of one routed reader.
+    ///
+    /// Inputs: The reader index, a callback selecting each token digit and reusable search state.
+    ///
+    /// Select its current contact row, seed direct sources, traverse each wire root and merge main/side
+    /// results using minimum attenuation.
     pub(super) fn reader_sources(
         &self,
         reader: usize,
@@ -564,6 +623,12 @@ impl WireGraph {
         Ok(sources)
     }
 
+    /// Find power sources connected to a wire in the current arrangement.
+    ///
+    /// Inputs: The root world position, token-digit selector and reusable search/budget state.
+    ///
+    /// Run breadth-first wire traversal through the selected local port rows, stop after attenuation 14,
+    /// and return each source at its shortest discovered distance.
     pub(super) fn sources(&self, root: BlockPos, digit: impl Fn(Axis) -> usize, search: &mut Search) -> Result<Vec<(BlockPos, u8)>, ScratchError> {
         for wire in search.visited.drain(..) {
             search.distances[wire] = u8::MAX;

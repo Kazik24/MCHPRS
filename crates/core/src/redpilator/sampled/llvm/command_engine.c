@@ -147,6 +147,14 @@ static uint32_t valid_optional_ref(uint32_t offset, uint32_t length, uint32_t by
     return offset == NE_CMD_NONE ? length == 0u : valid_ref(offset, length, bytes);
 }
 
+/**
+ * Check serialized command records before native initialization.
+ *
+ * Inputs: Component count, block/specification tables, strings and output-state metadata.
+ *
+ * Validate command kinds, component references, string slices, flags and queue/time fields, rejecting
+ * any table combination outside the native command contract.
+ */
 static uint32_t valid_tables(uint32_t component_count, const uint32_t *blocks, uint32_t block_count,
                              const uint32_t *specs, uint32_t spec_count, const uint8_t *strings, uint32_t string_bytes,
                              const uint32_t output_state[6]) {
@@ -195,6 +203,14 @@ static uint32_t valid_tables(uint32_t component_count, const uint32_t *blocks, u
     return 1u;
 }
 
+/**
+ * Compute bounded storage for native command state.
+ *
+ * Inputs: The number of command-block records and requested effect capacity.
+ *
+ * Use checked size arithmetic for the engine header, mutable entity rows and effect records, returning
+ * zero when counts or total size exceed supported bounds.
+ */
 MCHPRS_NATIVE_EXPORT size_t ne_command_state_size(uint32_t block_count, uint32_t effect_capacity) {
     size_t block_bytes, effect_bytes;
     if (block_count > UINT32_MAX / NE_CMD_STATE_WORDS || effect_capacity > UINT32_MAX / NE_CMD_EFFECT_WORDS ||
@@ -211,6 +227,14 @@ MCHPRS_NATIVE_EXPORT size_t ne_command_state_size(uint32_t block_count, uint32_t
     return bytes + effect_bytes;
 }
 
+/**
+ * Initialize native command execution in caller-owned memory.
+ *
+ * Inputs: The memory region, component/block/specification tables, strings and captured output state.
+ *
+ * Validate all tables and capacity, partition and clear mutable storage, retain immutable pointers and
+ * import each entity's flags, counters and output-window state.
+ */
 MCHPRS_NATIVE_EXPORT uint32_t ne_command_init(void *memory, size_t memory_bytes, uint32_t component_count,
                                               const MchprsNativeComponent *components, const uint32_t *block_rows,
                                               uint32_t block_count, const uint32_t *spec_rows, uint32_t spec_count,
@@ -280,6 +304,11 @@ static uint32_t command_at(const NECommandEngine *engine, int64_t x, int64_t y, 
     return NE_CMD_NONE;
 }
 
+/**
+ * Convert an encoded facing into a coordinate offset.
+ *
+ * Inputs: The facing value and mutable x/y/z output pointers.
+ */
 static void face_delta(uint32_t face, int32_t *x, int32_t *y, int32_t *z) {
     *x = *y = *z = 0;
     if (face == 0u)
@@ -296,6 +325,14 @@ static void face_delta(uint32_t face, int32_t *x, int32_t *y, int32_t *z) {
         *x = 1;
 }
 
+/**
+ * Build command component and previous/next chain lookups.
+ *
+ * Inputs: The initialized command engine and caller-provided index buffers with capacities.
+ *
+ * Validate buffer sizes, map command component IDs to their rows, then use positions and facing offsets
+ * to find each block's predecessor and successor.
+ */
 MCHPRS_NATIVE_EXPORT uint32_t ne_command_prepare_indices(void *memory, uint32_t *components, uint32_t component_count,
                                                          uint32_t *previous_next, uint32_t words) {
     NECommandEngine *engine = (NECommandEngine *)memory;
@@ -371,6 +408,14 @@ static uint32_t emit(NECommandEngine *engine, uint32_t index, uint64_t logical_t
     return NE_CMD_OK;
 }
 
+/**
+ * Execute one supported native command-block specification.
+ *
+ * Inputs: The command engine, block index, logical/wall clocks and executed output flag.
+ *
+ * Apply condition, once-per-tick and output-window rules, run the encoded command form, update
+ * success/last-output state and append any permitted message effect.
+ */
 static uint32_t execute_command(NECommandEngine *engine, uint32_t index, uint64_t logical_tick, uint64_t now_ns,
                                 uint8_t *ran) {
     const uint32_t *block = engine->block_rows + (size_t)index * NE_CMD_BLOCK_WORDS;
@@ -435,6 +480,14 @@ static uint32_t notify_command(NECommandEngine *engine, uint32_t index, const NE
     return hooks->notify(hooks->context, engine->block_rows[(size_t)index * NE_CMD_BLOCK_WORDS]);
 }
 
+/**
+ * React to a command block's current redstone power.
+ *
+ * Inputs: The command engine, component ID and host power/scheduling hooks.
+ *
+ * Resolve the command record, update its powered/condition flags and schedule supported impulse or
+ * repeating execution according to entity mode and automatic state.
+ */
 MCHPRS_NATIVE_EXPORT uint32_t ne_command_update(void *memory, uint32_t component, const NECommandHooks *hooks) {
     NECommandEngine *engine = (NECommandEngine *)memory;
     if (!engine || !hooks || !hooks->powered || !hooks->pending || !hooks->schedule)
@@ -470,6 +523,14 @@ MCHPRS_NATIVE_EXPORT uint32_t ne_command_update(void *memory, uint32_t component
     return NE_CMD_OK;
 }
 
+/**
+ * Execute a command-block tick and its enabled chain.
+ *
+ * Inputs: The command engine, component ID, logical/wall clocks and host callbacks.
+ *
+ * Execute the root, notify its changes, follow at most 256 eligible chain blocks in facing order and
+ * reschedule a repeating root when required.
+ */
 MCHPRS_NATIVE_EXPORT uint32_t ne_command_tick(void *memory, uint32_t component, uint64_t logical_tick, uint64_t now_ns,
                                               const NECommandHooks *hooks) {
     NECommandEngine *engine = (NECommandEngine *)memory;
@@ -523,6 +584,14 @@ MCHPRS_NATIVE_EXPORT uint32_t ne_command_tick(void *memory, uint32_t component, 
     return NE_CMD_OK;
 }
 
+/**
+ * Read a command block's comparator-visible success count.
+ *
+ * Inputs: The command engine, component ID and optional found output flag.
+ *
+ * Resolve an existing command entity, report whether it was found and clamp its stored success count to
+ * the redstone range 0 through 15.
+ */
 MCHPRS_NATIVE_EXPORT int32_t ne_command_success_count(const void *memory, uint32_t component, uint32_t *found) {
     const NECommandEngine *engine = (const NECommandEngine *)memory;
     if (found)

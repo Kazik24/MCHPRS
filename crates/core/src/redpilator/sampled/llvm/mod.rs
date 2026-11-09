@@ -46,6 +46,12 @@ struct InitialTicks {
 }
 
 impl InitialTicks {
+    /// Translate host pending ticks into native scheduler records.
+    ///
+    /// Inputs: The validated program and ordered TickEntry slice.
+    ///
+    /// Check count/delay/priority limits, resolve live matching component IDs, encode stale or passive
+    /// positions as imported-tick references and compute bounded queue capacity.
     fn encode(program: &Program, ticks: &[TickEntry]) -> Result<Self, ScratchError> {
         let count = u32::try_from(ticks.len()).map_err(|_| overflow())?;
         if count >= PASSIVE_TICK || program.component_count() >= PASSIVE_TICK as usize {
@@ -136,6 +142,12 @@ impl LlvmRuntime {
             commands.logical_base = tick;
         }
     }
+    /// Construct a native executor while retaining all backing storage.
+    ///
+    /// Inputs: The shared program data and imported host ticks.
+    ///
+    /// Check backend support, encode and align program tables, validate the loaded ABI, create owned
+    /// state, then bind commands and import ticks so failures release the partially built runtime.
     // Borrow the shared graph: cloning a large circuit here can exhaust server memory.
     pub(in crate::redpilator) fn new(program: &Program, ticks: &[TickEntry]) -> Result<Self, ScratchError> {
         log_program_diagnostics(program);
@@ -243,6 +255,12 @@ impl LlvmRuntime {
         Ok(())
     }
 
+    /// Export native pending work as host scheduler entries.
+    ///
+    /// Inputs: This runtime's native state, queue capacity and original passive tick records.
+    ///
+    /// Allocate a bounded read buffer, request pending records from the native API and decode each record
+    /// back into a checked world position, delay and priority.
     pub(in crate::redpilator) fn pending_entries(&self) -> Result<Vec<TickEntry>, ScratchError> {
         let count = unsafe { (self.library.pending_count)(self.state.as_ptr().cast()) };
         if count > self.pending_capacity {
@@ -257,6 +275,12 @@ impl LlvmRuntime {
         pending.into_iter().map(|entry| self.decode_pending_tick(entry)).collect()
     }
 
+    /// Validate and decode one pending native callback.
+    ///
+    /// Inputs: The encoded pending record and this runtime's component/passive-tick maps.
+    ///
+    /// Reject invalid delay/priority combinations, distinguish passive imported references from component
+    /// IDs and reconstruct the corresponding host TickEntry.
     fn decode_pending_tick(&self, entry: NativePendingTick) -> Result<TickEntry, ScratchError> {
         let invalid = || ScratchError {
             position: None,
@@ -358,6 +382,12 @@ impl LlvmRuntime {
     }
 }
 
+/// Collect representative components unsupported by the native backend.
+///
+/// Inputs: The compiled program's initial component blocks and metadata.
+///
+/// Check each represented block against backend restrictions, count all rejections and retain only the
+/// diagnostic examples needed by the caller.
 pub(in crate::redpilator) fn unsupported_components(program: &Program) -> (Vec<ScratchError>, usize) {
     let mut first = Vec::new();
     let mut count = 0;
@@ -396,6 +426,9 @@ pub(in crate::redpilator) fn unsupported_components(program: &Program) -> (Vec<S
     (first, count)
 }
 
+/// Find the first program-level native-backend admission failure.
+///
+/// Inputs: The compiled program and its supported-component/topology metadata.
 fn unsupported_reason(program: &Program) -> Option<ScratchError> {
     let error = |position, reason| Some(ScratchError { position, reason });
     if let Some(issue) = unsupported_components(program).0.into_iter().next() {

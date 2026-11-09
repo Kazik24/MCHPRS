@@ -4,6 +4,12 @@ use crate::player::PacketSender;
 use crate::redpilator::{CompilerOptions, PublicationMode};
 use mchprs_network::packets::clientbound::{CTabComplete, CTabCompleteMatch};
 
+/// Build tab-completion suggestions for Redpilator commands.
+///
+/// Inputs: The completion request ID and full command text.
+///
+/// Find the current argument, choose compile flags or publication values, filter already-used/nonmatching
+/// candidates and return UTF-16 replacement offsets required by the protocol.
 pub(in crate::plot) fn complete_redpilator(id: i32, text: &str) -> Option<CTabComplete> {
     let boundary = text.rfind(char::is_whitespace)?;
     let start = boundary + text[boundary..].chars().next()?.len_utf8();
@@ -161,6 +167,12 @@ mod tests {
 
 impl Plot {
     /// Handles a command that starts with `/redpilator` or `/rp`
+    ///
+    /// Inputs: The player index, parsed subcommand and remaining argument words; permission checks run in the command
+    /// dispatcher.
+    ///
+    /// Parse compile options/budget before resetting and starting a worker; handle reset/cache clearing or
+    /// immediate publication changes through the shared compiler lifecycle APIs.
     pub(super) fn handle_redpilator_command(&mut self, player: usize, command: &str, args: &[&str]) {
         match command {
             "compile" | "c" => {

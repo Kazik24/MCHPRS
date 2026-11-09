@@ -12,6 +12,12 @@ fn metadata(block: Block) -> u32 {
     (Instrument::from_block_below(block).get_id() << 1) | u32::from(block == Block::Air) | (u32::from(block.is_solid()) << 8)
 }
 
+/// Encode metadata needed for native note blocks and other visible effects.
+///
+/// Inputs: The program, auxiliary-table builder and checked integer encoder.
+///
+/// Walk effect-producing components, capture projected support/cover dependencies and write component-
+/// indexed metadata plus the corresponding lookup tables.
 pub(super) fn encode(p: &Program, t: &mut [Vec<u32>; AUX_TABLES]) -> Result<(), ScratchError> {
     for node in 0..p.initial.len() {
         t[43].extend([

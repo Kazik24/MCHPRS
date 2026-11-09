@@ -138,6 +138,11 @@ fn update_order() -> [mchprs_blocks::BlockFace; 6] {
 }
 
 /// Return notification targets in the order used by the native redstone updates.
+///
+/// Inputs: The source world position and block kind.
+///
+/// Use directional front updates for diodes/observers, include control support blocks, and use surrounding
+/// torch callbacks where native behavior requires them.
 fn update_footprint(pos: BlockPos, block: Block) -> Vec<BlockPos> {
     use mchprs_blocks::BlockFace;
     let neighbours = |pos: BlockPos| update_order().map(|face| pos.offset(face));

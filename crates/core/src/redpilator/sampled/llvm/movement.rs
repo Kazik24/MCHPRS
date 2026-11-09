@@ -23,6 +23,12 @@ fn range(value: &std::ops::Range<usize>) -> Result<[u32; 2], ScratchError> {
     Ok([id(value.start)?, id(value.len())?])
 }
 
+/// Serialize movement groups, payloads and callback plans for native execution.
+///
+/// Inputs: The program and mutable auxiliary-table collection.
+///
+/// Flatten token cells, piston bindings, arrangement masks/flips and ordered movement steps using checked
+/// IDs, then store their table-directory entries.
 pub(super) fn encode_movement(p: &Program, t: &mut [Vec<u32>; AUX_TABLES]) -> Result<(), ScratchError> {
     for (i, piston) in p.pistons.iter().enumerate() {
         let b = &p.piston_bindings[i];
@@ -186,6 +192,12 @@ impl super::LlvmRuntime {
         self.sync(runtime, false)
     }
 
+    /// Synchronize a checked native movement snapshot into the Rust projection.
+    ///
+    /// Inputs: This native runtime, the mutable Rust runtime and the selected synchronization scope.
+    ///
+    /// Read bounded component/token/piston/motion tables, validate their identities, ranges and
+    /// consistency, then update projected state, pending work and dirty/effect bookkeeping.
     fn sync(&self, runtime: &mut crate::redpilator::sampled::Runtime, for_execution: bool) -> Result<(), ScratchError> {
         use crate::redpilator::sampled::executor::{Motion, PistonEvent};
         use std::num::NonZeroUsize;

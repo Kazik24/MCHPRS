@@ -92,6 +92,12 @@ impl SourceSamplingMetrics {
 }
 
 impl Drop for SourceSamplingMetrics {
+    /// Print the final source-sampling timing and work counters when enabled.
+    ///
+    /// Inputs: The collected sampling metrics and their diagnostics flag.
+    ///
+    /// Skip output when disabled; otherwise emit accumulated phase durations, source counts and scratch-
+    /// work totals without changing the compiled program.
     fn drop(&mut self) {
         if self.enabled {
             eprintln!(
@@ -218,6 +224,12 @@ struct TokenSignature {
     cells: Vec<BlockPos>,
 }
 
+/// Fingerprint the dependencies used by a source-order probe.
+///
+/// Inputs: The current program, source component and its ordered operation list.
+///
+/// Serialize stable position-based component, token and operation descriptions, then hash them so reuse
+/// does not depend on freshly assigned numeric IDs.
 fn source_probe_signature(program: &Program, source: usize, targets: &[SourceTarget], racing: bool) -> Option<[u8; 32]> {
     let signature = SourceProbeSignature {
         source: *program.positions.get(source)?,
@@ -242,6 +254,12 @@ fn source_probe_signature(program: &Program, source: usize, targets: &[SourceTar
     Some(Sha256::digest(bincode::serialize(&signature).ok()?).into())
 }
 
+/// Describe an instruction using stable world identities.
+///
+/// Inputs: The program and a single lowered operation.
+///
+/// Decode the operation's link, watcher or receiver record and translate its referenced components/tokens
+/// into position-based signature records.
 fn operation_signature(program: &Program, operation: Operation) -> Option<OperationSignature> {
     let block_at = |target: usize| Some((*program.positions.get(target)?, program.initial.get(target)?.get_id()));
     Some(match operation {
@@ -315,6 +333,12 @@ fn token_signature(program: &Program, token: usize) -> Option<TokenSignature> {
     })
 }
 
+/// Describe a conditional-input group independently of runtime IDs.
+///
+/// Inputs: The program and the arrangement group to fingerprint.
+///
+/// Translate its target and token records to stable positions, preserve equivalent-state mappings, and
+/// encode each state's source/attenuation list.
 fn arrangement_group_signature(program: &Program, group: usize) -> Option<ArrangementGroupSignature> {
     let group = program.input_arrangements.get(group)?;
     Some(ArrangementGroupSignature {
@@ -342,6 +366,12 @@ fn arrangement_group_signature(program: &Program, group: usize) -> Option<Arrang
     })
 }
 
+/// Translate cached callback observations into the current program's instructions.
+///
+/// Inputs: The current program and probe indexes, cached edge observations and lowering metadata.
+///
+/// Resolve recorded callback positions through fresh component IDs, filter notifications that are not
+/// valid for the edge, and assemble their ordered operations.
 fn lower_edge(
     program: &Program,
     probe_indexes: &ProbeIndexes<'_>,
@@ -401,6 +431,12 @@ fn current_quiet_chunk(world: &crate::plot::PlotWorld, index: usize, cache: &mut
     Some(fingerprint)
 }
 
+/// Compile ordered rise/fall programs, reusing only certified probe observations.
+///
+/// Inputs: The capture context, mutable program, probe indexes, phase reporter and optional previous source cache.
+///
+/// Prepare a quiet basis, identify ordering-sensitive sources, validate reuse certificates or sample
+/// transitions, lower callback order and compare required scratch frames before retaining bounded cache records.
 pub(in super::super) fn run(
     context: &Context<'_, impl World>,
     program: &mut Program,
@@ -942,6 +978,12 @@ impl SourceIndex {
         &mut targets[index]
     }
 
+    /// Index each source's instruction-producing targets before ordering probes.
+    ///
+    /// Inputs: The discovered program and optional cancellation monitor.
+    ///
+    /// Collect fixed, conditional, side and reactive dependencies, keep piston targets first, and append
+    /// the required contribution and receiver instructions to each target record.
     fn new(program: &Program, monitor: Option<&TaskMonitor>) -> Result<Self, ScratchError> {
         let mut index = Self {
             targets: (0..program.initial.len()).map(|_| Vec::new()).collect(),

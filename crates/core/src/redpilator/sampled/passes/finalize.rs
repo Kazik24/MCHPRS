@@ -3,6 +3,12 @@ use super::{CompilePhases, check_cancelled};
 use crate::redpilator::sampled::{Operation, Program, ScratchError};
 use mchprs_blocks::blocks::Block;
 
+/// Validate the discovered program and prepare runtime projection indexes.
+///
+/// Inputs: The mutable program and phase reporter carrying cancellation state.
+///
+/// Check cancellation, validate the records, build projection indexes and optionally report the final
+/// component/instruction/storage census.
 pub(in super::super) fn run(program: &mut Program, phases: &mut CompilePhases<'_>) -> Result<(), ScratchError> {
     phases.next("program finalization");
     check_cancelled(phases.monitor)?;
@@ -41,7 +47,7 @@ pub(in super::super) fn run(program: &mut Program, phases: &mut CompilePhases<'_
             std::mem::size_of::<crate::redpilator::sampled::input::InputState>(),
             std::mem::size_of::<crate::redpilator::sampled::input::Histogram>(),
             program.movement_flips.len(),
-            std::mem::size_of::<crate::redpilator::sampled::program::ArrangementFlip>()
+            std::mem::size_of::<crate::redpilator::sampled::movement::ArrangementFlip>()
         );
     }
     Ok(())

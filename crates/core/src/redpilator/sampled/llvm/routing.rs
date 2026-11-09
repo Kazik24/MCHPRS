@@ -6,6 +6,12 @@ fn id(n: usize) -> Result<u32, ScratchError> {
     u32::try_from(n).map_err(|_| overflow())
 }
 
+/// Encode one local connectivity lookup table.
+///
+/// Inputs: The sampled local axes/port rows and the auxiliary buffers receiving their records.
+///
+/// Translate token axes and optional rows into checked offsets, preserving invalid arrangements and
+/// flattening each row's direct/wire contacts.
 fn local<T>(
     local: &Local<T>,
     tables: &mut [Vec<u32>; AUX_TABLES],
@@ -34,6 +40,12 @@ fn local<T>(
     Ok(())
 }
 
+/// Serialize the optional wire-routing graph.
+///
+/// Inputs: The program's routing graph and auxiliary-table builder.
+///
+/// Encode wire nodes and reader contact tables, flatten link/token reverse indexes and write empty routing
+/// tables when the program has no graph.
 pub(super) fn encode(program: &Program, tables: &mut [Vec<u32>; AUX_TABLES]) -> Result<(), ScratchError> {
     let Some(graph) = &program.routing else {
         return Ok(());

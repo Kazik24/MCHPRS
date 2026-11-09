@@ -1,4 +1,5 @@
 use super::program::{ArrangementSource, ComparatorInput, PISTON_HEAD_NOTIFICATION, notification_component};
+use super::scheduler::ScheduledComponentTick;
 use super::{Operation, Program, ScratchError};
 use mchprs_blocks::blocks::Block;
 use mchprs_world::TickPriority;
@@ -57,14 +58,6 @@ pub(super) struct Motion {
     pub(super) piston_done: bool,
     /// indicating the carried token has completed its part of the motion.
     pub(super) token_done: bool,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) struct ScheduledComponentTick {
-    /// component index into `Program::positions` whose scheduled tick will run.
-    pub(super) component: usize,
-    /// block identity used to discard stale ticks after the component changes type.
-    pub(super) block_type: Option<u32>,
 }
 
 pub(crate) struct Runtime {
@@ -212,6 +205,11 @@ pub(super) fn compare(rear: u8, side: u8, mode: mchprs_blocks::blocks::Comparato
 
 impl Runtime {
     /// Run scheduled updates, then piston events and movement, for one game tick.
+    ///
+    /// Inputs: This runtime's pending ticks, piston events, active motions and stored failure.
+    ///
+    /// Drain the current and next half-tick queues, process piston events and motion landings, and stop
+    /// after any phase that records a failure.
     pub(crate) fn tick(&mut self) -> Result<(), ScratchError> {
         if let Some(error) = &self.failure {
             return Err(error.clone());
@@ -281,16 +279,12 @@ impl Runtime {
         self.set_input(source_index, powered)
     }
 
-    pub(crate) fn projected_blocks(&self) -> Vec<(mchprs_blocks::BlockPos, Block)> {
-        self.program
-            .projection_positions
-            .iter()
-            .enumerate()
-            .filter_map(|(cell, &pos)| self.project_cell(cell).map(|block| (pos, block)))
-            .collect()
-    }
-
     /// Apply an input slot from `program.sources`; the slot maps to a component ID.
+    ///
+    /// Inputs: An index into program.sources, the desired power state and this runtime.
+    ///
+    /// Resolve the input slot to a component, ignore unchanged values, update its block state and button
+    /// release tick, then execute its edge program and watchers.
     pub(crate) fn set_input(&mut self, source_index: usize, powered: bool) -> Result<(), ScratchError> {
         if let Some(error) = &self.failure {
             return Err(error.clone());
@@ -366,6 +360,12 @@ impl Runtime {
         self.mark_dirty(self.program.piston_bindings[piston].home_cell);
     }
 
+    /// Deliver the recorded callbacks for a component output change.
+    ///
+    /// Inputs: The source component ID and flags selecting shape or ordinary updates.
+    ///
+    /// Walk watchers in stored order, charge each delivery to the operation limit, and dispatch observers
+    /// on shape changes and other receivers on update changes.
     pub(super) fn notify_source_watchers(&mut self, source: usize, shape: bool, update: bool) {
         for index in 0..self.program.source_watchers[source].len() {
             let watcher = self.program.source_watchers[source][index];
@@ -393,6 +393,12 @@ impl Runtime {
         }
     }
 
+    /// Notify components watching a piston's home cell.
+    ///
+    /// Inputs: The piston index, a shape-only flag and this runtime's watcher tables.
+    ///
+    /// Walk the recorded home watchers, count each operation, and deliver only callbacks allowed by the
+    /// requested notification kind.
     fn notify_home_watchers(&mut self, piston: usize, shape_only: bool) {
         let count = self.program.home_watchers.get(piston).map_or(0, |watchers| watchers.len());
         for index in 0..count {
@@ -406,59 +412,13 @@ impl Runtime {
             }
         }
     }
-    pub(crate) fn project(&self, position: mchprs_blocks::BlockPos) -> Option<Block> {
-        if let Some(&cell) = self.program.projection_indices.get(&position) {
-            self.project_cell(cell)
-        } else {
-            Some(self.program.geometry_indices.get(&position).copied().unwrap_or(Block::Air))
-        }
-    }
 
-    fn token_at(&self, cell: usize) -> Option<usize> {
-        self.program.cell_tokens[cell]
-            .iter()
-            .copied()
-            .find(|&token| self.token_positions[token] == Some(self.program.projection_positions[cell]))
-    }
-
-    pub(super) fn project_cell(&self, cell: usize) -> Option<Block> {
-        let position = self.program.projection_positions[cell];
-        if self.cell_motion[cell].is_some() {
-            return None;
-        }
-        let tokens = &self.program.cell_tokens[cell];
-        if let Some(index) = self.token_at(cell) {
-            return Some(self.program.tokens[index].block);
-        }
-        for &index in &self.program.cell_pistons[cell] {
-            let piston = &self.program.pistons[index];
-            if position == piston.base && self.piston_base_moving[index] {
-                return None;
-            }
-            if position == piston.home {
-                if self.piston_head_moving[index] {
-                    return None;
-                }
-                if self.piston_head_present[index] {
-                    return Some(Block::PistonHead {
-                        head: mchprs_blocks::blocks::RedstonePistonHead {
-                            facing: piston.facing,
-                            sticky: piston.sticky,
-                            short: false,
-                        },
-                    });
-                }
-            }
-        }
-        if tokens.iter().any(|&index| self.program.tokens[index].position == Some(position)) {
-            return Some(Block::Air);
-        }
-        Some(
-            self.program.cell_components[cell]
-                .map(|index| index.get() - 1)
-                .map_or(self.program.cell_geometry[cell], |component| self.blocks[component]),
-        )
-    }
+    /// Replay the shape changes caused by changing one projected cell.
+    ///
+    /// Inputs: The projection-cell index and this runtime's current token and block states.
+    ///
+    /// Use the sampled shape program when available; otherwise inspect neighboring observers and pistons,
+    /// preserving the recorded update order.
     fn notify_shape(&mut self, cell: usize) {
         let position = self.program.projection_positions[cell];
         if let Some(steps) = self.program.cell_shape_steps[cell].clone() {
@@ -563,6 +523,12 @@ impl Runtime {
         });
     }
 
+    /// Allocate or reuse a runtime motion slot.
+    ///
+    /// Inputs: The new motion record and this runtime's active/free slot lists.
+    ///
+    /// Reject capacity exhaustion, obtain a free or new slot, link it into motion order, and attach it to
+    /// the destination cell and piston indexes.
     fn insert_motion(&mut self, motion: Motion) -> Option<usize> {
         let slot = if let Some(slot) = self.free_motion_slots.pop() {
             self.motions[slot] = motion;
@@ -599,6 +565,12 @@ impl Runtime {
             .sort_by_key(|&slot| (self.motions[slot].landing, self.motions[slot].order));
     }
 
+    /// Decide whether a piston should queue an extension or retraction.
+    ///
+    /// Inputs: The piston component ID and its current input, geometry and motion state.
+    ///
+    /// Resolve the piston binding, inspect power and blocked cells, and queue the supported action while
+    /// suppressing duplicate pending actions.
     pub(super) fn update_piston(&mut self, component: usize) {
         let Some(index) = self.program.piston_by_component[component].map(|index| index.get() - 1) else {
             return;
@@ -643,6 +615,12 @@ impl Runtime {
         }
     }
 
+    /// Execute queued piston actions in their original order.
+    ///
+    /// Inputs: This runtime's piston event queue, payload positions and active motions.
+    ///
+    /// Recheck each action against current state, resolve interrupted or competing movement, then create
+    /// extension/retraction motions and deliver their notifications.
     fn run_piston_events(&mut self) {
         while let Some((index, event)) = self.piston_events.pop_front() {
             let extending = event == PistonEvent::Extend;
@@ -819,6 +797,12 @@ impl Runtime {
         }
     }
 
+    /// Complete the piston-head or base portion of a motion.
+    ///
+    /// Inputs: The motion slot, an interruption flag and this runtime's piston state.
+    ///
+    /// Mark that portion finished, restore the stationary head/base flags, dirty the affected cells and
+    /// send the required shape and home notifications.
     pub(super) fn finish_piston_part(&mut self, slot: usize, interrupted: bool) {
         let motion = self.motions[slot];
         if motion.piston_done {
@@ -851,6 +835,12 @@ impl Runtime {
         }
     }
 
+    /// Advance active piston motions and complete due landings.
+    ///
+    /// Inputs: This runtime's motion clock, ordered active slots and landing cursor.
+    ///
+    /// Walk active motions in order, finish due piston and token parts, preserve interruption ordering,
+    /// and return fully completed slots to the free list.
     fn tick_motions(&mut self) {
         self.motion_phase = true;
         // Every motion lands two ticks after insertion, so FIFO is also landing order.
@@ -980,6 +970,12 @@ impl Runtime {
         (link.target, link.side, value)
     }
 
+    /// Compute conditional input attenuation for the current geometry.
+    ///
+    /// Inputs: An optional changed token and this runtime's routing graph/search scratch space.
+    ///
+    /// Search either all readers or the readers affected by that token, apply the operation budget, and
+    /// return their updated link attenuation values.
     fn routed_values(&mut self, changed: Option<usize>) -> Result<Vec<(usize, u8)>, ScratchError> {
         let program = std::sync::Arc::clone(&self.program);
         let Some(graph) = &program.routing else {
@@ -1029,6 +1025,12 @@ impl Runtime {
         }
     }
 
+    /// Apply connectivity changes after a token moves.
+    ///
+    /// Inputs: The changed token index and a list collecting switched recipients.
+    ///
+    /// Recompute affected routing links, remove old contributions before adding new ones, invalidate
+    /// receiver update stamps and collect newly switched targets.
     fn refresh_routing(&mut self, token: usize, switched: &mut Vec<usize>) {
         if self
             .program
@@ -1091,6 +1093,12 @@ impl Runtime {
         }
     }
 
+    /// Move a payload and update the circuit connections it changes.
+    ///
+    /// Inputs: The token index, its new optional world position and current runtime state.
+    ///
+    /// Update its position and encoded digit, apply the recorded departure/arrival steps, refresh routing
+    /// and notify affected wires and receivers.
     pub(super) fn set_token_pos(&mut self, token: usize, position: Option<mchprs_blocks::BlockPos>) {
         let old = self.token_positions[token];
         if old == position {
@@ -1131,6 +1139,12 @@ impl Runtime {
         self.movement_changed_wires = changed_wires;
     }
 
+    /// Replay the sampled callbacks for a token leaving or entering a cell.
+    ///
+    /// Inputs: The token and cell indexes, arrival flag, and scratch lists for switched components and changed wires.
+    ///
+    /// Adjust arrangement groups and contributions, replay each callback with watcher suppression and
+    /// operation accounting, and collect follow-up updates in order.
     fn run_move_steps(&mut self, token: usize, cell: usize, arriving: bool, switched: &mut Vec<usize>, changed_wires: &mut Vec<usize>) {
         self.refresh_routing(token, switched);
         if self.failure.is_some() {
@@ -1283,6 +1297,12 @@ impl Runtime {
         true
     }
 
+    /// Change a wire's stored strength and dependent signals.
+    ///
+    /// Inputs: The wire component ID, new level and this runtime's electrical indexes.
+    ///
+    /// Update its block state, refresh outgoing fixed and conditional contributions, invalidate affected
+    /// receivers and propagate any reactive wire dependencies.
     pub(super) fn refresh_wire_power(&mut self, wire: usize, strength: u8) {
         let Block::RedstoneWire { wire: mut state } = self.blocks[wire] else {
             unreachable!()
@@ -1330,6 +1350,12 @@ impl Runtime {
         }
     }
 
+    /// Describe a receiver's conditional sources for a proposed token position.
+    ///
+    /// Inputs: The changed token ID, receiver component ID, hypothetical position and current runtime.
+    ///
+    /// Substitute the proposed placement, query routing when available or select the matching arrangement
+    /// rows, add unshadowed token sources and return the sorted source/attenuation pairs.
     // shortcut: receiver signatures omit geometry-dependent fixed links, extend arrangement groups to all readers.
     fn token_dependency_signature(
         &self,
@@ -1395,6 +1421,12 @@ impl Runtime {
         Ok(result)
     }
 
+    /// Read a component's current redstone output strength.
+    ///
+    /// Inputs: The source component ID and this runtime's block, comparator and token states.
+    ///
+    /// Dispatch by block kind, use stored analog values where needed, and suppress fixed redstone-block
+    /// output when a movable token owns that position.
     pub(super) fn output(&self, source: usize) -> u8 {
         match self.blocks[source] {
             block if block.pressure_plate_powered().is_some() => u8::from(block.pressure_plate_powered() == Some(true)) * 15,
@@ -1460,6 +1492,9 @@ impl Runtime {
         }
     }
 
+    /// Deliver one callback to the correct kind of receiver.
+    ///
+    /// Inputs: A component notification ID, possibly marked as a piston-head route.
     pub(super) fn dispatch_receiver(&mut self, receiver: usize) {
         self.deliveries += 1;
         let powered = self.has_input(receiver);
@@ -1505,6 +1540,12 @@ impl Runtime {
         }
     }
 
+    /// Update a note block and queue a note on a valid rising edge.
+    ///
+    /// Inputs: The note-block component ID, current input and projected support/cover blocks.
+    ///
+    /// Refresh powered state and instrument, then queue a note only when the input rises and the block
+    /// above allows playback.
     fn update_note_block(&mut self, component: usize) {
         let Block::NoteBlock { note, powered, .. } = self.blocks[component] else {
             unreachable!()
@@ -1533,6 +1574,9 @@ impl Runtime {
         );
     }
 
+    /// Toggle a copper bulb only on a rising input edge.
+    ///
+    /// Inputs: The bulb component ID and its current effective input.
     fn update_copper_bulb(&mut self, component: usize) {
         let block = self.blocks[component];
         let Some((mut lit, powered)) = block.copper_bulb_state() else {
@@ -1553,6 +1597,12 @@ impl Runtime {
         self.notify_source_watchers(component, true, true);
     }
 
+    /// Deliver a receiver update at most once for its current effective state.
+    ///
+    /// Inputs: The notification ID and this phase's component update stamps.
+    ///
+    /// Handle head routes separately, compare the receiver's stamp with the current phase, and dispatch
+    /// only when another delivery is needed.
     pub(super) fn update_once(&mut self, receiver: usize) {
         if receiver & PISTON_HEAD_NOTIFICATION != 0 {
             let component = notification_component(receiver);
@@ -1579,6 +1629,9 @@ impl Runtime {
         self.update(receiver);
     }
 
+    /// Apply an ordinary receiver callback and count its work.
+    ///
+    /// Inputs: The receiver notification ID and this runtime's operation budget.
     pub(super) fn update(&mut self, receiver: usize) {
         match self.blocks[receiver] {
             Block::RedstoneComparator { .. } => self.update_comparator(receiver),
@@ -1604,6 +1657,9 @@ impl Runtime {
         }
     }
 
+    /// Notify wire watchers when their observed signal level changes.
+    ///
+    /// Inputs: The watched-wire record index and current runtime strengths.
     pub(super) fn check_watched_wire(&mut self, record_index: usize) {
         let wire = self.program.watched_wires[record_index].wire;
         let new_strength = self.input_strength(wire);
@@ -1628,6 +1684,12 @@ impl Runtime {
         }
     }
 
+    /// Update a wire and the watchers associated with that component.
+    ///
+    /// Inputs: The wire component ID, effective input and watched-wire index.
+    ///
+    /// Refresh wire strength, invalidate repeated-update suppression when necessary, and check recorded
+    /// watchers after the electrical change.
     fn update_wire_watcher(&mut self, receiver: usize) {
         if receiver & PISTON_HEAD_NOTIFICATION != 0 {
             self.update_once(receiver);
@@ -1649,6 +1711,12 @@ impl Runtime {
         }
     }
 
+    /// Execute the stored instruction sequence for an output edge.
+    ///
+    /// Inputs: The emitting component ID, rising/falling state and this runtime's program.
+    ///
+    /// Walk that edge's operations in order, updating contributions and dispatching receivers, and stop
+    /// when the semantic operation budget is exhausted.
     pub(super) fn execute_output_program(&mut self, component: usize, powered: bool) {
         let reactive = self.program.has_reactive;
         let operations = self.program.output_programs[component][usize::from(powered)].clone();
@@ -1767,6 +1835,12 @@ impl Runtime {
         self.input_levels[component][1].maximum(&self.input_histograms)
     }
 
+    /// Compute the comparator's next strength and powered flag.
+    ///
+    /// Inputs: The comparator component ID, rear/side inputs and static or dynamic override records.
+    ///
+    /// Resolve the rear override or far override, read side strength, then apply compare/subtract mode
+    /// using the interpreter's comparison rule.
     fn comparator_result(&self, component: usize) -> (u8, bool) {
         let Block::RedstoneComparator { comparator } = self.blocks[component] else {
             unreachable!()
@@ -1797,6 +1871,12 @@ impl Runtime {
         compare(rear, self.side_strength(component), comparator.mode)
     }
 
+    /// Schedule a comparator tick when its desired result changes.
+    ///
+    /// Inputs: The comparator component ID and current effective inputs.
+    ///
+    /// Compute the desired level and powered flag, compare them with stored output, and schedule the
+    /// appropriate priority unless a tick is already pending.
     pub(super) fn update_comparator(&mut self, component: usize) {
         let Block::RedstoneComparator { comparator } = self.blocks[component] else {
             unreachable!()
@@ -1816,6 +1896,12 @@ impl Runtime {
         }
     }
 
+    /// Apply a scheduled comparator output change.
+    ///
+    /// Inputs: The comparator component ID and its current input/override state.
+    ///
+    /// Recompute the result at execution time, update its stored analog output and block flag, then run
+    /// output instructions and source notifications as required.
     fn tick_comparator(&mut self, component: usize) {
         let Block::RedstoneComparator { mut comparator } = self.blocks[component] else {
             unreachable!()
@@ -1842,6 +1928,12 @@ impl Runtime {
         self.notify_source_watchers(component, shape, true);
     }
 
+    /// Reconcile initially unsettled components affected by a source.
+    ///
+    /// Inputs: The changed source component ID and this program's reactive dependency indexes.
+    ///
+    /// Refresh dependent reactive wires, recompute their contributions and deliver the marked neighboring
+    /// components in the required order.
     fn update_reactive(&mut self, source: usize) {
         for offset in 0..self.program.reactive_by_source[source].len() {
             let index = self.program.reactive_by_source[source][offset];
@@ -1880,6 +1972,9 @@ impl Runtime {
         }
     }
 
+    /// Schedule a torch transition when its input disagrees with its lit state.
+    ///
+    /// Inputs: The torch component ID and current effective input.
     fn update_torch(&mut self, component: usize) {
         let lit = match self.blocks[component] {
             Block::RedstoneTorch { lit } | Block::RedstoneWallTorch { lit, .. } => lit,
@@ -1896,6 +1991,12 @@ impl Runtime {
         }
     }
 
+    /// Apply a scheduled redstone-torch transition.
+    ///
+    /// Inputs: The torch component ID and its input at tick execution time.
+    ///
+    /// Recheck power, update the lit flag if it must change, then run the matching edge instructions and
+    /// notify source watchers.
     fn tick_torch(&mut self, component: usize) {
         let lit = match self.blocks[component] {
             Block::RedstoneTorch { lit } | Block::RedstoneWallTorch { lit, .. } => lit,
@@ -1914,6 +2015,12 @@ impl Runtime {
         self.notify_source_watchers(component, true, true);
     }
 
+    /// Refresh repeater locking and schedule an output transition.
+    ///
+    /// Inputs: The repeater component ID, rear input, side inputs and captured diode metadata.
+    ///
+    /// Update its lock state, handle reactive and watched-wire inputs, and schedule the required delayed
+    /// edge with native-compatible priority.
     pub(super) fn update_repeater(&mut self, component: usize) {
         let Block::RedstoneRepeater { mut repeater } = self.blocks[component] else {
             unreachable!()
@@ -1999,34 +2106,12 @@ impl Runtime {
         }
     }
 
-    fn has_pending(&self, tick: ScheduledComponentTick) -> bool {
-        debug_assert_eq!(tick.block_type, Some(self.blocks[tick.component].registry_id()));
-        self.pending_counts[tick.component] != 0
-    }
-
-    fn schedule_tick(&mut self, tick: ScheduledComponentTick, delay: usize, priority: TickPriority) {
-        self.schedule_half_tick(tick, delay * 2, priority);
-    }
-
-    pub(super) fn schedule_half_tick(&mut self, tick: ScheduledComponentTick, delay: usize, priority: TickPriority) {
-        if let Err(reason) = self.pending.schedule_half_tick(tick, delay, priority) {
-            self.failure = Some(ScratchError {
-                position: Some(self.program.positions[tick.component]),
-                reason,
-            });
-        } else {
-            self.pending_counts[tick.component] += 1;
-        }
-    }
-
-    pub(super) fn pending_position(&self, component: usize) -> mchprs_blocks::BlockPos {
-        self.program
-            .positions
-            .get(component)
-            .copied()
-            .unwrap_or_else(|| self.pending_passive_positions[component - self.blocks.len()])
-    }
-
+    /// Execute every scheduled callback due in the current half-tick.
+    ///
+    /// Inputs: This runtime's ordered scheduler, component states and operation budget.
+    ///
+    /// Pop ticks by priority/FIFO order, discard stale block identities, and dispatch buttons, observers,
+    /// diodes, lamps and commands until empty or failed.
     pub(super) fn drain_ticks(&mut self) {
         while let Some(tick) = self.pending.pop_first() {
             let position = self.pending_position(tick.component);
@@ -2081,6 +2166,12 @@ impl Runtime {
         }
     }
 
+    /// Apply a scheduled repeater edge while preserving short pulses.
+    ///
+    /// Inputs: The repeater component ID and its current lock, input and output flags.
+    ///
+    /// Leave locked repeaters alone; turn powered repeaters off when input fell, or turn them on and
+    /// schedule a later fall if the initiating pulse has ended.
     fn tick_repeater(&mut self, component: usize) {
         #[cfg(any(test, feature = "redpilator-trace"))]
         if runtime_trace_enabled!(self) {
@@ -2121,5 +2212,310 @@ impl Runtime {
             self.set_component(receiver, Block::RedstoneLamp { lit: false });
             self.notify_source_watchers(receiver, true, false);
         }
+    }
+}
+
+pub(in crate::redpilator) fn start_runtime(
+    program: Program,
+    ticks: Vec<mchprs_world::TickEntry>,
+    piston: mchprs_world::PistonState,
+) -> Result<Runtime, ScratchError> {
+    start_shared_runtime(std::sync::Arc::new(program), ticks, piston)
+}
+
+pub(in crate::redpilator) fn start_shared_runtime(
+    program: std::sync::Arc<Program>,
+    ticks: Vec<mchprs_world::TickEntry>,
+    piston: mchprs_world::PistonState,
+) -> Result<Runtime, ScratchError> {
+    let mut runtime = program.runtime_from_prepared();
+    runtime.set_pending(ticks)?;
+    runtime.piston_state = piston;
+    Ok(runtime)
+}
+
+impl Program {
+    pub(super) fn start(&self) -> Runtime {
+        self.clone().into_runtime()
+    }
+
+    pub(super) fn into_runtime(mut self) -> Runtime {
+        self.prepare_projection();
+        self.into_runtime_prepared()
+    }
+
+    pub(super) fn into_runtime_prepared(self) -> Runtime {
+        Self::runtime_from_prepared(std::sync::Arc::new(self))
+    }
+
+    /// Create mutable execution state for an already indexed program.
+    ///
+    /// Inputs: An Arc owning the prepared program and its captured initial block states.
+    ///
+    /// Allocate bounded schedules, motion storage and per-component arrays, derive initial
+    /// token/arrangement states, then seed fixed, conditional and side-input histograms.
+    pub(super) fn runtime_from_prepared(self: std::sync::Arc<Self>) -> Runtime {
+        let cell_count = self.projection_positions.len();
+        let motion_capacity = self
+            .pistons
+            .len()
+            .checked_mul(2)
+            .and_then(|n| n.checked_add(self.tokens.len()))
+            .expect("validated motion capacity");
+        let mut runtime = Runtime {
+            blocks: self.initial.clone(),
+            contributions: self
+                .links
+                .iter()
+                .map(|link| {
+                    let strength: u8 = match self.initial[link.source] {
+                        block if block.pressure_plate_powered().is_some() => u8::from(block.pressure_plate_powered() == Some(true)) * 15,
+                        Block::Lever { lever } => {
+                            if lever.powered {
+                                15
+                            } else {
+                                0
+                            }
+                        }
+                        Block::StoneButton { button } => {
+                            if button.powered {
+                                15
+                            } else {
+                                0
+                            }
+                        }
+                        Block::RedstoneComparator { comparator } => {
+                            if comparator.powered {
+                                self.comparators
+                                    .iter()
+                                    .find(|record| record.component == link.source)
+                                    .map_or(0, |record| record.stored)
+                            } else {
+                                0
+                            }
+                        }
+                        Block::RedstoneWire { wire } => wire.power,
+                        Block::RedstoneBlock => {
+                            if self.tokens.iter().any(|token| token.position == Some(self.positions[link.source])) {
+                                0
+                            } else {
+                                15
+                            }
+                        }
+                        Block::Observer { observer } => {
+                            if observer.powered {
+                                15
+                            } else {
+                                0
+                            }
+                        }
+                        Block::RedstoneTorch { lit } | Block::RedstoneWallTorch { lit, .. } => {
+                            if lit {
+                                15
+                            } else {
+                                0
+                            }
+                        }
+                        Block::RedstoneRepeater { repeater } => {
+                            if repeater.powered {
+                                15
+                            } else {
+                                0
+                            }
+                        }
+                        _ => 0,
+                    };
+                    strength.saturating_sub(link.attenuation)
+                })
+                .collect(),
+            arrangement_contributions: vec![0; self.arrangement_links.len()],
+            routing_attenuations: if self.routing.is_some() {
+                vec![None; self.arrangement_links.len()]
+            } else {
+                Vec::new()
+            },
+            route_search: super::routing::Search::default(),
+            #[cfg(feature = "redpilator-trace")]
+            routing_metrics: [0; 3],
+            input_levels: vec![[super::input::InputState::default(); 2]; self.initial.len()],
+            input_histograms: Vec::new(),
+            comparator_outputs: {
+                let mut outputs = vec![0; self.initial.len()];
+                for record in &self.comparators {
+                    outputs[record.component] = record.stored;
+                }
+                outputs
+            },
+            reactive_wire_strengths: self
+                .reactive_wires
+                .iter()
+                .map(|record| match self.initial[record.wire] {
+                    Block::RedstoneWire { wire } => wire.power,
+                    _ => unreachable!(),
+                })
+                .collect(),
+            watched_strengths: self
+                .watched_wires
+                .iter()
+                .map(|record| match self.initial[record.wire] {
+                    Block::RedstoneWire { wire } => wire.power,
+                    _ => unreachable!(),
+                })
+                .collect(),
+            pending: super::scheduler::Scheduler::new(self.initial.len().checked_mul(2).expect("validated scheduled capacity").max(64)),
+            pending_counts: vec![0; self.initial.len()],
+            pending_passive_positions: Vec::new(),
+            phase: 1,
+            updated_in_phase: vec![0; self.initial.len()],
+            piston_state: mchprs_world::PistonState::default(),
+            piston_extended: self.pistons.iter().map(|p| p.extended).collect(),
+            piston_head_present: self.pistons.iter().map(|p| p.head_present).collect(),
+            piston_head_moving: vec![false; self.pistons.len()],
+            piston_base_moving: vec![false; self.pistons.len()],
+            token_positions: self.tokens.iter().map(|t| t.position).collect(),
+            token_digits: self
+                .tokens
+                .iter()
+                .map(|token| {
+                    token
+                        .position
+                        .and_then(|pos| token.cells.iter().position(|&cell| cell == pos))
+                        .map_or(0, |cell| cell + 1)
+                })
+                .collect(),
+            group_arrangements: self
+                .movement_groups
+                .iter()
+                .map(|group| {
+                    group
+                        .axes
+                        .iter()
+                        .map(|axis| {
+                            self.tokens[axis.token]
+                                .position
+                                .and_then(|pos| self.tokens[axis.token].cells.iter().position(|&cell| cell == pos))
+                                .map_or(0, |cell| axis.states[cell + 1])
+                                * axis.stride
+                        })
+                        .sum()
+                })
+                .collect(),
+            piston_events: std::collections::VecDeque::with_capacity(self.pistons.len() * 3),
+            queued_piston_events: vec![0; self.pistons.len()],
+            motions: Vec::with_capacity(motion_capacity),
+            active_motions: std::collections::VecDeque::with_capacity(motion_capacity),
+            free_motion_slots: Vec::with_capacity(motion_capacity),
+            piston_motion: vec![None; self.pistons.len()],
+            cell_motion: vec![None; cell_count],
+            motion_time: 0,
+            motion_phase: false,
+            landing_cursor: None,
+            movement_switched: Vec::with_capacity(self.initial.len()),
+            switched: vec![false; self.initial.len()],
+            movement_changed_wires: Vec::with_capacity(self.watched_wires.len()),
+            changed_wires: vec![false; self.initial.len()],
+            command_blocks: self.command_blocks.clone(),
+            command_output_state: self.command_output_state.clone(),
+            command_emissions: Vec::new(),
+            notes: Vec::with_capacity(self.initial.iter().filter(|block| matches!(block, Block::NoteBlock { .. })).count()),
+            note_queued: vec![false; self.initial.len()],
+            dirty_cells: (0..cell_count).collect(),
+            dirty: vec![true; cell_count],
+            needs_full_publication: false,
+            accepted_piston_actions: 0,
+            token_movements: 0,
+            motion_completions: 0,
+            operations: 0,
+            deliveries: 0,
+            scheduled_repeater_ticks: 0,
+            tick_operations: 0,
+            failure: None,
+            program: self,
+        };
+        for (component, block) in runtime.program.initial.iter().enumerate() {
+            let channels = match block {
+                Block::RedstoneComparator { .. } => 2,
+                Block::RedstoneWire { .. } => 1,
+                _ => 0,
+            };
+            if channels != 0 {
+                for state in &mut runtime.input_levels[component][..channels] {
+                    state.analog = u32::try_from(runtime.input_histograms.len()).expect("validated analog channel capacity");
+                    runtime.input_histograms.push(super::input::Histogram::default());
+                }
+            }
+        }
+        runtime.initialize_routing();
+        for index in 0..runtime.program.arrangement_links.len() {
+            runtime.arrangement_contributions[index] = runtime.arrangement_contribution(index).2;
+        }
+        for (index, link) in runtime.program.links.iter().enumerate() {
+            if runtime.program.effective_links[index] {
+                runtime.input_levels[link.target][0].change(0, runtime.contributions[index], &mut runtime.input_histograms);
+            }
+        }
+        for (index, link) in runtime.program.arrangement_links.iter().enumerate() {
+            runtime.input_levels[link.target][usize::from(link.side)].change(
+                0,
+                runtime.arrangement_contributions[index],
+                &mut runtime.input_histograms,
+            );
+        }
+        for source in 0..runtime.program.side_outputs.len() {
+            let level = runtime.output(source);
+            for index in 0..runtime.program.side_outputs[source].len() {
+                let (target, attenuation) = runtime.program.side_outputs[source][index];
+                runtime.input_levels[target][1].change(0, level.saturating_sub(attenuation), &mut runtime.input_histograms);
+            }
+        }
+        runtime
+    }
+}
+
+impl Runtime {
+    pub(in crate::redpilator) fn shared_program(&self) -> std::sync::Arc<Program> {
+        std::sync::Arc::clone(&self.program)
+    }
+    pub(in crate::redpilator) fn has_motions(&self) -> bool {
+        !self.active_motions.is_empty()
+    }
+
+    pub(in crate::redpilator) fn piston_state(&self) -> mchprs_world::PistonState {
+        self.piston_state.clone()
+    }
+
+    pub(in crate::redpilator) fn motion_time(&self) -> u64 {
+        self.motion_time
+    }
+
+    pub(in crate::redpilator) fn pending_piston_events(&self) -> Vec<mchprs_world::PistonEvent> {
+        self.pending_piston_event_iter().collect()
+    }
+
+    pub(in crate::redpilator) fn owns_piston(&self, pos: mchprs_blocks::BlockPos) -> bool {
+        self.program
+            .component_indices
+            .get(&pos)
+            .is_some_and(|&component| self.program.piston_by_component[component].is_some())
+    }
+
+    pub(in crate::redpilator) fn logical_tick(&self) -> u64 {
+        self.piston_state.logical_tick.saturating_add(self.motion_time)
+    }
+
+    pub(in crate::redpilator) fn pending_piston_event_iter(&self) -> impl Iterator<Item = mchprs_world::PistonEvent> + '_ {
+        self.piston_events.iter().map(|&(index, event)| {
+            let piston = &self.program.pistons[index];
+            mchprs_world::PistonEvent {
+                pos: piston.base,
+                sticky: piston.sticky,
+                facing: piston.facing.into(),
+                action: match event {
+                    PistonEvent::Extend => mchprs_world::PistonAction::Extend,
+                    PistonEvent::Retract => mchprs_world::PistonAction::Retract,
+                    PistonEvent::EarlyRetract => mchprs_world::PistonAction::RetractWithoutPull,
+                },
+            }
+        })
     }
 }

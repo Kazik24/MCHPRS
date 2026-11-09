@@ -1,7 +1,15 @@
-use super::executor::ScheduledComponentTick;
+use super::ScratchError;
 use crate::world::scheduler::NUM_QUEUES;
 use mchprs_world::TickPriority;
 use std::num::NonZeroUsize;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) struct ScheduledComponentTick {
+    /// component index into `Program::positions` whose scheduled tick will run.
+    pub(super) component: usize,
+    /// block identity used to discard stale ticks after the component changes type.
+    pub(super) block_type: Option<u32>,
+}
 
 #[derive(Clone, Copy, Default)]
 struct Queue {
@@ -56,6 +64,11 @@ impl Scheduler {
     }
 
     /// Append a tick to its delay and priority queue, or return an error without scheduling it.
+    ///
+    /// Inputs: The scheduled component tick, delay and tick priority.
+    ///
+    /// Validate delay, reuse a free slot or allocate below the limit, then append the slot to the selected
+    /// FIFO chain in the timing ring.
     pub(super) fn schedule_half_tick(&mut self, tick: ScheduledComponentTick, delay: usize, priority: TickPriority) -> Result<(), &'static str> {
         if delay >= NUM_QUEUES || (delay == 0 && priority != TickPriority::NanoTick) {
             return Err("invalid runtime scheduled delay or priority");
@@ -83,6 +96,11 @@ impl Scheduler {
     }
 
     /// Remove the next tick in the current half-tick, respecting priority and FIFO order.
+    ///
+    /// Inputs: This scheduler's current priority buckets and free-slot chain.
+    ///
+    /// Select the first nonempty priority queue, detach its head, repair the tail when emptied, and return
+    /// the slot to the free list.
     pub(super) fn pop_first(&mut self) -> Option<ScheduledComponentTick> {
         for queue in &mut self.queues[self.pos] {
             if let Some(slot) = queue.first {
@@ -197,5 +215,101 @@ mod tests {
         scheduler.schedule_half_tick(entry, 0, TickPriority::NanoTick).unwrap();
         assert_eq!(scheduler.pop_first(), Some(entry));
         assert_eq!(scheduler.pop_first(), None);
+    }
+}
+
+impl super::Runtime {
+    pub(in crate::redpilator) fn set_pending(&mut self, ticks: Vec<mchprs_world::TickEntry>) -> Result<(), ScratchError> {
+        // Pending work has a fixed admission limit; exhaustion is an execution error.
+        let limit = self
+            .blocks
+            .len()
+            .checked_mul(2)
+            .and_then(|n| n.checked_add(ticks.len()))
+            .ok_or(ScratchError {
+                position: None,
+                reason: "runtime scheduled tick capacity overflow",
+            })?
+            .max(64);
+        self.set_pending_with_capacity(ticks, limit)
+    }
+
+    /// Import host scheduled ticks into the runtime's bounded scheduler.
+    ///
+    /// Inputs: Host TickEntry records, the slot limit and this program's component-position index.
+    ///
+    /// Reset pending state, assign extra IDs to passive positions, enqueue every original delay/priority,
+    /// and count only ticks matching a live component's block identity.
+    pub(in crate::redpilator) fn set_pending_with_capacity(&mut self, ticks: Vec<mchprs_world::TickEntry>, limit: usize) -> Result<(), ScratchError> {
+        self.pending.reset(limit);
+        self.pending_counts.fill(0);
+        self.pending_passive_positions.clear();
+        let mut indices = self.program.component_indices.clone();
+        for tick in ticks {
+            let component = *indices.entry(tick.pos).or_insert_with(|| {
+                let id = self.blocks.len() + self.pending_passive_positions.len();
+                self.pending_passive_positions.push(tick.pos);
+                id
+            });
+            self.pending
+                .schedule_half_tick(
+                    ScheduledComponentTick {
+                        component,
+                        block_type: tick.block_type,
+                    },
+                    tick.ticks_left as usize,
+                    tick.tick_priority,
+                )
+                .map_err(|reason| ScratchError {
+                    position: Some(tick.pos),
+                    reason,
+                })?;
+            if component < self.blocks.len() && tick.block_type == Some(self.blocks[component].registry_id()) {
+                self.pending_counts[component] += 1;
+            }
+        }
+        Ok(())
+    }
+
+    pub(in crate::redpilator) fn pending_entries(&self) -> Vec<mchprs_world::TickEntry> {
+        self.pending
+            .iter()
+            .map(|(tick, delay, priority)| mchprs_world::TickEntry {
+                pos: self.pending_position(tick.component),
+                block_type: tick.block_type,
+                ticks_left: delay as u32,
+                tick_priority: priority,
+            })
+            .collect()
+    }
+}
+
+impl super::Runtime {
+    pub(super) fn has_pending(&self, tick: ScheduledComponentTick) -> bool {
+        debug_assert_eq!(tick.block_type, Some(self.blocks[tick.component].registry_id()));
+        self.pending_counts[tick.component] != 0
+    }
+
+    pub(super) fn schedule_tick(&mut self, tick: ScheduledComponentTick, delay: usize, priority: TickPriority) {
+        self.schedule_half_tick(tick, delay * 2, priority);
+    }
+
+    pub(super) fn schedule_half_tick(&mut self, tick: ScheduledComponentTick, delay: usize, priority: TickPriority) {
+        if let Err(reason) = self.pending.schedule_half_tick(tick, delay, priority) {
+            self.failure = Some(ScratchError {
+                position: Some(self.program.positions[tick.component]),
+                reason,
+            });
+        } else {
+            self.pending_counts[tick.component] += 1;
+        }
+    }
+
+    pub(super) fn pending_position(&self, component: usize) -> mchprs_blocks::BlockPos {
+        self.program
+            .positions
+            .get(component)
+            .copied()
+            .unwrap_or_else(|| self.pending_passive_positions[component - self.blocks.len()])
     }
 }

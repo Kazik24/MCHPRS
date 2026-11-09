@@ -29,6 +29,12 @@ pub(super) fn unpack(sides: u8, power: u8) -> RedstoneWire {
     }
 }
 
+/// Compile shape callbacks caused by movable geometry.
+///
+/// Inputs: The mutable program, reusable scratch world and optional monitor.
+///
+/// Find token and piston cells, probe nearby wire shapes for each local token arrangement, share identical
+/// side maps and record observer/wire callbacks in native order.
 pub(super) fn sample(program: &mut Program, scratch: &mut ScratchWorld, monitor: Option<&TaskMonitor>) -> Result<(), ScratchError> {
     program.shape_programs.clear();
     program.shape_steps.clear();

@@ -6,6 +6,12 @@ fn id(n: usize) -> Result<u32, ScratchError> {
     u32::try_from(n).map_err(|_| overflow())
 }
 
+/// Serialize the sampled geometry-shape update programs.
+///
+/// Inputs: The program's shape maps/steps and auxiliary-table builder.
+///
+/// Flatten local arrangement tables and ordered callback ranges, encode notification/component identities
+/// and write the checked cell-to-shape lookup records.
 pub(super) fn encode(p: &Program, t: &mut [Vec<u32>; AUX_TABLES]) -> Result<(), ScratchError> {
     id(p.shape_maps.len())?;
     for map in &p.shape_maps {

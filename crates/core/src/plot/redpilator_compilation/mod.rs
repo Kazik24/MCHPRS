@@ -7,6 +7,8 @@ use std::thread::JoinHandle;
 const PROGRESS_INTERVAL: Duration = Duration::from_secs(3);
 
 #[cfg(test)]
+mod benchmarks;
+#[cfg(test)]
 mod tests;
 
 pub(super) struct CompilationJob {
@@ -25,6 +27,12 @@ pub(super) struct CompilationJob {
 }
 
 impl CompilationJob {
+    /// Start compilation in a worker that owns an isolated plot snapshot.
+    ///
+    /// Inputs: The snapshot, entry version, options, time budget, start time and optional prepared cache.
+    ///
+    /// Create the deadline monitor, clone worker-owned metadata, spawn a named thread under the current
+    /// tracing span and retain the worker/entry handles for later polling.
     fn spawn(
         world: PlotWorld,
         entry: EntryVersion,
@@ -107,6 +115,12 @@ struct CompilationResult {
 }
 
 impl CompilationResult {
+    /// Prepare a compiler result without accessing the live plot.
+    ///
+    /// Inputs: The owned snapshot, captured entry version, options, monitor and optional cache.
+    ///
+    /// Reuse sampling only for matching options, resume an executor only for an unchanged entry, otherwise
+    /// compile with an optional matching program and return both snapshot and structured result.
     fn compile(world: PlotWorld, entry: EntryVersion, options: CompilerOptions, monitor: Arc<TaskMonitor>, cached: Option<CompilationCache>) -> Self {
         let mut compiler = Compiler::default();
         let cached = cached.filter(|cache| cache.options == options);
@@ -181,6 +195,12 @@ fn rejected_position(error: &CompileError) -> Option<BlockPos> {
     }
 }
 
+/// Format a positional compilation failure with its phase and recovery hint.
+///
+/// Inputs: The captured world, structured compilation error and task monitor.
+///
+/// Resolve a rejected block's name when available, choose the specific diagnostic, append the monitored
+/// phase and add a recognized recovery action.
 fn compilation_error(world: &PlotWorld, error: &CompileError, monitor: &TaskMonitor) -> String {
     let detail = if let CompileError::Unsupported(issue) = error
         && let Some(position) = issue.position
@@ -234,6 +254,12 @@ impl Plot {
         }
     }
 
+    /// Capture the plot and launch one background compilation job.
+    ///
+    /// Inputs: The requested options and optional duration budget, plus this live plot's world/cache state.
+    ///
+    /// Reject waveform capture or an existing worker, close containers, capture entry/world state, select
+    /// a compatible cache and spawn the worker while reporting snapshot progress.
     pub(super) fn start_redpilator_with_budget(&mut self, mut options: CompilerOptions, budget: Option<Duration>) {
         options.io_only = options.publication_mode() == crate::redpilator::PublicationMode::Io;
         if self.world.waveform.enabled() {
@@ -276,6 +302,12 @@ impl Plot {
         self.reset_timings();
     }
 
+    /// Poll compilation without blocking the plot's normal event loop.
+    ///
+    /// Inputs: This plot's optional worker, deadline monitor and current world version.
+    ///
+    /// Report timeout/progress, join only a finished worker, discard cancelled/panicked/failed/stale
+    /// results and activate only a successful result matching the live entry state.
     pub(super) fn poll_redpilator_compilation(&mut self) {
         if let Some(job) = &mut self.compilation
             && let Some(reason) = job.take_timeout_message()
@@ -323,6 +355,12 @@ impl Plot {
         }
     }
 
+    /// Install a worker's validated executor into the live plot.
+    ///
+    /// Inputs: The successful compilation result, matching entry version/options and original start time.
+    ///
+    /// Refresh drained command output, retain the prepared cache, transfer execution ownership, publish
+    /// activation changes and clear imported host ticks before updating containers/history/scoreboard state.
     fn activate_redpilator(&mut self, mut output: CompilationResult, entry: EntryVersion, options: CompilerOptions, started: Instant) {
         output.compiler.refresh_command_output_state(&self.world);
         self.redpilator_cache = output.compiler.cached_program().map(|program| CompilationCache {

@@ -56,6 +56,9 @@ impl TaskMonitor {
         self.status.lock().unwrap().counts = Some((nodes, wires, pistons));
     }
 
+    /// Describe compilation progress for logs and player messages.
+    ///
+    /// Inputs: The mutex-protected phase, detail, progress and component counts.
     pub(crate) fn status(&self) -> String {
         let status = self.status.lock().unwrap();
         let mut text = match status.phase_started {

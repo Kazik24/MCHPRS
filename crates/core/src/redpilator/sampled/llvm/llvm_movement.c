@@ -5,6 +5,14 @@ static uint32_t bounded(uint32_t start, uint32_t count, uint32_t limit) {
 static uint32_t valid_source(uint32_t source, uint32_t nodes, uint32_t tokens) {
     return (source & 0x80000000u) ? (source & 0x7fffffffu) < tokens : source < nodes;
 }
+/**
+ * Validate movement, projection, routing and shape tables before use.
+ *
+ * Inputs: The program descriptor, immutable blob and decoded auxiliary-table directory.
+ *
+ * Check every row's dimensions, component/token/cell IDs, flip/step ranges, routing ports and shape
+ * references, rejecting arithmetic overflow or inconsistent cross-table relationships.
+ */
 static uint32_t valid_movement(const MchprsNativeProgramDescriptor *p, const uint8_t *blob, const uint32_t **t,
                                const uint32_t *n) {
     if (n[7] % 10u || n[11] % 3u || n[16] % 7u || n[19] % 6u || n[20] % 5u || n[21] % 2u || n[22] % 6u || n[23] % 5u ||
@@ -232,6 +240,14 @@ static uint8_t *take_bytes(uint8_t **at, size_t count) {
 static uint8_t arrangement_output(const NEEngine *e, uint32_t source) {
     return source & 0x80000000u ? (uint8_t)table(e, 11u)[(source & 0x7fffffffu) * 3u + 1u] : output(e, source);
 }
+/**
+ * Replace one movement-dependent input contribution.
+ *
+ * Inputs: The engine, arrangement-link index, target, side/main selector and new level.
+ *
+ * Remove the old level and add the new level in the target's corresponding count/histogram, then
+ * invalidate repeated-update suppression when the effective input changes.
+ */
 static void set_arranged(NEEngine *e, uint32_t index, uint32_t target, uint32_t side, uint8_t value) {
     uint8_t old = e->arrangement_contributions[index];
     e->arrangement_contributions[index] = value;
@@ -298,6 +314,14 @@ static void route_source(NEEngine *e, const uint32_t *reader, uint32_t source, u
     }
 }
 
+/**
+ * Recompute the source distances for a routed reader.
+ *
+ * Inputs: The engine, reader index and operation-accounting flag.
+ *
+ * Select the reader's current ports, seed direct links and traverse each wire root breadth-first to
+ * attenuation 14, recording minimum source distances and clearing reusable search marks.
+ */
 static uint32_t route_reader(NEEngine *e, uint32_t reader_id, uint32_t account) {
     const uint32_t *reader = table(e, 38u) + reader_id * 3u;
     for (uint32_t i = 0; i < reader[2]; ++i)
@@ -342,6 +366,14 @@ static uint32_t route_reader(NEEngine *e, uint32_t reader_id, uint32_t account) 
     return NE_OK;
 }
 
+/**
+ * Apply routing changes caused by a token placement change.
+ *
+ * Inputs: The engine, token index and output counter for switched recipients.
+ *
+ * Recompute only dependent readers, remove stale contributions before adding new ones, update
+ * attenuation and collect each affected non-piston receiver once.
+ */
 static uint32_t route_refresh(NEEngine *e, uint32_t token, uint32_t *switched_count) {
     if (!table_words(e, 33u))
         return NE_OK;
@@ -381,6 +413,14 @@ static uint32_t route_refresh(NEEngine *e, uint32_t token, uint32_t *switched_co
     return NE_OK;
 }
 
+/**
+ * Initialize native movement/routing state in its allocated memory region.
+ *
+ * Inputs: The engine, writable buffer base/size and already validated immutable tables.
+ *
+ * Partition and clear buffers, index pistons/cells, derive initial token and arrangement digits,
+ * initialize motion free slots and seed conditional routing contributions.
+ */
 static uint32_t init_movement(NEEngine *e, uint8_t *base, size_t bytes) {
     if (bytes < movement_storage_bytes(e))
         return NE_CAPACITY;
@@ -477,6 +517,14 @@ static uint32_t token_at(const NEEngine *e, uint32_t cell) {
     }
     return NONE;
 }
+/**
+ * Resolve note playback metadata for the block currently projected at a cell.
+ *
+ * Inputs: The engine, projection-cell ID and fallback metadata for an absent cell reference.
+ *
+ * Handle active motion, resident tokens, moving piston bases/heads and vacated token homes, then return
+ * the appropriate stored geometry metadata.
+ */
 static uint32_t note_meta(const NEEngine *e, uint32_t cell, uint32_t fallback) {
     if (cell == NONE)
         return fallback;
@@ -501,6 +549,14 @@ static uint32_t note_meta(const NEEngine *e, uint32_t cell, uint32_t fallback) {
     }
     return table(e, 50u)[cell];
 }
+/**
+ * Apply a note block's input edge and queue its sound effect.
+ *
+ * Inputs: The engine and note component ID.
+ *
+ * Update its powered flag, resolve current instrument/cover metadata and append an effect only for an
+ * unblocked rising edge.
+ */
 static uint32_t update_note(NEEngine *e, uint32_t node) {
     uint8_t powered = (uint8_t)(e->input_count[node] != 0u);
     if (e->component_state[node] == powered)
@@ -520,6 +576,14 @@ static uint32_t update_note(NEEngine *e, uint32_t node) {
     set_component(e, node, powered);
     return NE_OK;
 }
+/**
+ * Replay geometry-shape callbacks for a projected cell.
+ *
+ * Inputs: The engine, cell index and current token/shape state.
+ *
+ * Select sampled wire-shape maps and observer callbacks, apply changed shapes and send their ordered
+ * recipients; retain fallback notifications for cells without sampled programs.
+ */
 static uint32_t notify_shape(NEEngine *e, uint32_t cell) {
     const uint32_t *steps = table(e, 53u) + cell * 2u;
     for (uint32_t i = 0; i < steps[1]; ++i) {
@@ -569,6 +633,11 @@ static uint32_t notify_shape(NEEngine *e, uint32_t cell) {
     }
     return NE_OK;
 }
+/**
+ * Notify components watching the home cell of a piston.
+ *
+ * Inputs: The engine and piston index.
+ */
 static uint32_t notify_home(NEEngine *e, uint32_t piston) {
     const uint32_t *r = table(e, 31u) + piston * 2u;
     for (uint32_t i = 0; i < r[1]; ++i) {
@@ -592,6 +661,14 @@ static uint32_t mark_wire(NEEngine *e, uint32_t node) {
     e->watched_strengths[index] = strength;
     return 1u;
 }
+/**
+ * Apply a payload departure or arrival and its recorded electrical effects.
+ *
+ * Inputs: The engine, token index and destination cell or NONE.
+ *
+ * Validate the transition, update token digits and routing, apply arrangement flips and ordered
+ * movement callbacks, then notify changed wires and switched recipients without duplicate deliveries.
+ */
 static uint32_t set_token_pos(NEEngine *e, uint32_t token, uint32_t position) {
     uint32_t old = e->token_cell[token];
     if (old == position)
@@ -741,6 +818,14 @@ static uint32_t request_piston(NEEngine *e, uint32_t piston, uint32_t event) {
     e->queued_pistons[piston] |= bit;
     return NE_OK;
 }
+/**
+ * Queue the piston action required by its current power and geometry.
+ *
+ * Inputs: The engine and piston component ID.
+ *
+ * Resolve the piston binding, inspect input and current extension/motion flags, and enqueue an allowed
+ * extension or retraction while suppressing duplicate actions.
+ */
 static uint32_t update_piston(NEEngine *e, uint32_t node) {
     uint32_t piston = e->piston_by_component[node];
     if (piston == NONE || (e->piston_flags[piston] & 8u))
@@ -759,6 +844,14 @@ static uint32_t update_piston(NEEngine *e, uint32_t node) {
     }
     return request_piston(e, piston, event);
 }
+/**
+ * Allocate and order a native piston animation record.
+ *
+ * Inputs: The engine, piston/token IDs, destination and motion direction/part flags.
+ *
+ * Take a free motion slot, compute landing time/order, initialize its completion flags and attach it to
+ * the active motion chain and cell/piston indexes.
+ */
 static uint32_t add_motion(NEEngine *e, uint32_t piston, uint32_t token, uint32_t destination, uint32_t extending,
                            uint32_t piston_part) {
     uint32_t slot = e->motion_free;
@@ -800,6 +893,14 @@ static uint32_t finish_token(NEEngine *e, uint32_t slot) {
     }
     return NE_OK;
 }
+/**
+ * Complete the piston portion of a native motion.
+ *
+ * Inputs: The engine, motion slot and interruption flag.
+ *
+ * Mark its piston part complete, restore stationary base/head flags and deliver shape and home
+ * notifications for the affected cells.
+ */
 static uint32_t finish_piston(NEEngine *e, uint32_t slot, uint32_t interrupted) {
     NEMotion m = e->motions[slot];
     if (m.flags & 2u)
@@ -831,6 +932,14 @@ static uint32_t heads_blocked(const NEEngine *e, uint32_t piston, uint32_t table
             return 1u;
     return 0u;
 }
+/**
+ * Execute queued native piston actions in their recorded order.
+ *
+ * Inputs: The engine's piston-event ring, payload positions and active motion records.
+ *
+ * Recheck power/extension conditions, resolve interrupted or overlapping actions, update token
+ * departures and create extension or retraction motions with their notifications.
+ */
 static uint32_t run_piston_events(NEEngine *e) {
     while (e->piston_event_count) {
         uint32_t at = e->piston_event_first, piston = e->piston_events[at * 2u], event = e->piston_events[at * 2u + 1u];
@@ -917,6 +1026,14 @@ static uint32_t run_piston_events(NEEngine *e) {
     }
     return NE_OK;
 }
+/**
+ * Advance native piston animations and finish due parts.
+ *
+ * Inputs: The engine's motion clock, active chain and landing cursor.
+ *
+ * Walk active motions in order, complete piston/token landings when due and recycle slots only after
+ * both parts finish, preserving same-tick interruption order.
+ */
 static uint32_t tick_motions(NEEngine *e) {
     e->motion_phase = 1u;
     while (e->motion_first != NONE) {
@@ -962,6 +1079,14 @@ uint32_t ne_snapshot_words(const void *memory) {
                     (uint64_t)e->note_count * 3u;
     return size <= UINT32_MAX ? (uint32_t)size : 0u;
 }
+/**
+ * Export a native movement snapshot into caller-owned arrays.
+ *
+ * Inputs: The engine, caller-owned output word buffer and its exact word count.
+ *
+ * Check the requested word count, write the snapshot header and component/token/piston arrays, emit
+ * ordered motions and queued events, then append electrical, note and wire-shape state.
+ */
 uint32_t ne_read_snapshot(const void *memory, uint32_t *out, uint32_t words) {
     const NEEngine *e = (const NEEngine *)memory;
     if (!e || !out || words != ne_snapshot_words(memory))

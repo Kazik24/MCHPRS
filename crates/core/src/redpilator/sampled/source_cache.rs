@@ -43,6 +43,12 @@ pub(super) struct CachedEdge {
 }
 
 impl SourceOrderCache {
+    /// Create a cache certificate for one captured compilation context.
+    ///
+    /// Inputs: The source world, bounds, ordered pending ticks, piston state and cursed-state flag.
+    ///
+    /// Capture the entry context and chunk-presence basis, then initialize empty source records and
+    /// retained-memory accounting.
     pub(super) fn new(world: &impl World, bounds: (BlockPos, BlockPos), scheduled: &[TickEntry], piston: &PistonState, cursed: bool) -> Option<Self> {
         #[derive(Serialize)]
         struct Context<'a> {
@@ -141,6 +147,13 @@ impl SourceOrderCache {
         &source.chunks
     }
 
+    /// Retain source observations only when their certificate and memory budget are valid.
+    ///
+    /// Inputs: The source position/block, dependency signature, sorted chunk IDs, sampled edges and fingerprint
+    /// callback.
+    ///
+    /// Reject malformed or duplicate records, estimate added storage, load missing chunk fingerprints and
+    /// insert the source only after every prerequisite succeeds.
     pub(super) fn insert_source(
         &mut self,
         pos: BlockPos,
@@ -260,6 +273,12 @@ pub(super) fn quiet_chunk_fingerprint(world: &PlotWorld, index: usize) -> Option
     chunk_fingerprint(chunk)
 }
 
+/// Hash a chunk's relevant state for later probe-cache validation.
+///
+/// Inputs: The captured Chunk, including coordinates, sections and block entities.
+///
+/// Hash every block ID, sort entities by world position and hash bounded serialized entity payloads;
+/// return no fingerprint when allocation or serialization fails.
 fn chunk_fingerprint(chunk: &Chunk) -> Option<[u8; 32]> {
     let mut hasher = Sha256::new();
     hasher.update(chunk.x.to_le_bytes());

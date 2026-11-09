@@ -14,7 +14,8 @@ The last two passes need only the program and phase reporter.
 After compilation, [`Runtime::tick`](../executor.rs) runs scheduled updates,
 then piston events and movement. Its tick and input entry points appear before
 the component-specific mechanics. Publication back to the world is handled by
-the public [`Compiler`](../../compiler.rs).
+the public [`Compiler`](../../compiler.rs), whose world writes and motion-identity
+reconciliation live in [`compiler/publication.rs`](../../compiler/publication.rs).
 
 | Pass | Input | Result |
 | --- | --- | --- |
@@ -37,6 +38,18 @@ checks and callback notification order. [`pistons.rs`](../pistons.rs) owns pisto
 records, payload discovery and grouping. The program and runtime use those
 records directly, without depending on the compiler entry point. Parsing shares
 its scratch snapshot with piston discovery instead of capturing the world twice.
+
+[`movement.rs`](../movement.rs) owns movement-table records, `compile_movement_flips`,
+its lowering helpers and its validation. This pass directory samples interpreter
+behavior; the shared movement module turns those observations into executable tables.
+[`program.rs`](../program.rs) owns the general program model and indexes;
+[`executor.rs`](../executor.rs) owns mutable runtime initialization and execution.
+Publication projection, scheduler import/export and diagnostics live in
+[`publication.rs`](../publication.rs), [`scheduler.rs`](../scheduler.rs) and
+[`diagnostics.rs`](../diagnostics.rs), respectively.
+
+The [complete function and type map](../../../../../../docs/REDPILATOR_CODE_MAP.md)
+lists the owners and entry points for Rust, native code and plot integration.
 
 Finalization prepares indexes before instruction sharing, preserving the existing
 compilation order. Rewrites that change component/link IDs or dependencies must

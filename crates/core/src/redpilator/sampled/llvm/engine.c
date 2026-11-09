@@ -117,6 +117,11 @@ static uint32_t read_u32(const uint8_t *data) {
     return (uint32_t)data[0] | ((uint32_t)data[1] << 8) | ((uint32_t)data[2] << 16) | ((uint32_t)data[3] << 24);
 }
 
+/**
+ * Read a component's native redstone output level.
+ *
+ * Inputs: The engine state and component ID.
+ */
 static uint8_t output(const NEEngine *engine, uint32_t component) {
     const MchprsNativeComponent *record = &components(engine)[component];
     if (record->kind == 3u)
@@ -137,6 +142,14 @@ static uint32_t has_pending(const NEEngine *engine, uint32_t component) {
     return engine->pending_count[component] != 0u;
 }
 
+/**
+ * Append one scheduled callback to the bounded timing ring.
+ *
+ * Inputs: The engine, component/passive-tick ID, half-tick delay and priority.
+ *
+ * Validate the record, take a slot from the free list, append it to the delay/priority FIFO and update
+ * pending counters; report capacity exhaustion as an engine error.
+ */
 static uint32_t enqueue(NEEngine *engine, uint32_t component, uint32_t delay, uint8_t priority) {
     if ((component & PASSIVE_TICK ? (component & ~PASSIVE_TICK) >= engine->initial_tick_count
                                   : component >= engine->program->component_count) ||
@@ -173,6 +186,14 @@ static uint32_t notification_component(uint32_t notification) {
     return notification & ~PISTON_HEAD_NOTIFICATION;
 }
 
+/**
+ * Check that a callback ID identifies a valid base or piston-head route.
+ *
+ * Inputs: The program descriptor/blob, auxiliary tables and encoded notification.
+ *
+ * Validate the component index; for a head route, verify the component kind, projected cell and piston
+ * binding records all identify the same base.
+ */
 static uint32_t valid_notification(const MchprsNativeProgramDescriptor *p, const uint8_t *blob, const uint32_t **t,
                                    const uint32_t *n, uint32_t notification) {
     uint32_t node = notification_component(notification);
@@ -199,6 +220,14 @@ static uint32_t valid_notification(const MchprsNativeProgramDescriptor *p, const
     return 0u;
 }
 
+/**
+ * Deliver a source's recorded watcher callbacks.
+ *
+ * Inputs: The engine, source component and shape/update selection flags.
+ *
+ * Walk the source's callback row in order, charge the operation budget and send observers shape
+ * callbacks and other recipients ordinary updates.
+ */
 static uint32_t notify(NEEngine *e, uint32_t source, uint8_t shape, uint8_t update) {
     const uint32_t *row = table(e, 2u) + (size_t)source * 2u, *ids = table(e, 4u);
     for (uint32_t i = 0; i < row[1]; ++i) {
@@ -215,6 +244,14 @@ static uint32_t notify(NEEngine *e, uint32_t source, uint8_t shape, uint8_t upda
     return NE_OK;
 }
 
+/**
+ * Update the side-input histograms fed by a changed source.
+ *
+ * Inputs: The engine, source component, previous level and new level.
+ *
+ * Walk outgoing side links, subtract the old attenuated contribution and add the new one to each
+ * target's powered count and strength histogram.
+ */
 static void change_side_outputs(NEEngine *e, uint32_t node, uint8_t old, uint8_t value) {
     if (old == value)
         return;
@@ -239,6 +276,14 @@ static void set_component(NEEngine *e, uint32_t node, uint8_t state) {
     change_side_outputs(e, node, old, output(e, node));
 }
 
+/**
+ * Replace one ordinary electrical link's current contribution.
+ *
+ * Inputs: The engine, link index and new signal level.
+ *
+ * Update the target's effective input count/histogram and clear its update stamp when the receiver can
+ * observe the strength change.
+ */
 static void set_contribution(NEEngine *e, uint32_t index, uint8_t value) {
     const uint8_t *link = links(e) + (size_t)index * 12u;
     uint32_t target = read_u32(link + 4);
@@ -299,6 +344,14 @@ static uint32_t update_comparator(NEEngine *e, uint32_t node) {
     return schedule(e, node, 2u, (table(e, 42u)[node * 4u] & 4u) ? 2u : 3u);
 }
 
+/**
+ * Propagate a wire's newly computed power to its outgoing links.
+ *
+ * Inputs: The engine and wire component ID.
+ *
+ * Compare effective input with stored strength, update the wire state, then refresh fixed and
+ * conditional outgoing contributions using each link's attenuation.
+ */
 static void refresh_wire(NEEngine *e, uint32_t wire) {
     uint8_t strength = input_strength(e, wire);
     if (e->component_state[wire] == strength)
@@ -315,6 +368,14 @@ static void refresh_wire(NEEngine *e, uint32_t wire) {
         refresh_arranged(e, table(e, 29u)[arr[0] + i]);
 }
 
+/**
+ * Update a repeater's lock state and schedule its next edge.
+ *
+ * Inputs: The engine, repeater component and encoded delay/diode metadata.
+ *
+ * Resolve side locking, compare rear input with output power and enqueue the required delayed
+ * transition with the interpreter-compatible priority.
+ */
 static uint32_t update_repeater(NEEngine *engine, uint32_t component) {
     const MchprsNativeComponent *record = &components(engine)[component];
     if (record->reserved[1] & 4u) {
@@ -335,6 +396,11 @@ static uint32_t update_repeater(NEEngine *engine, uint32_t component) {
     return schedule(engine, component, record->reserved[0] * 2u, priority);
 }
 
+/**
+ * Apply a lamp's immediate-on and delayed-off rules.
+ *
+ * Inputs: The engine and lamp component ID.
+ */
 static uint32_t dispatch_lamp(NEEngine *engine, uint32_t component) {
     if (engine->input_count[component] != 0u) {
         if (!engine->component_state[component]) {
@@ -348,6 +414,11 @@ static uint32_t dispatch_lamp(NEEngine *engine, uint32_t component) {
     return NE_OK;
 }
 
+/**
+ * Apply a bulb's rising-edge toggle in native state.
+ *
+ * Inputs: The engine, bulb component and current input count.
+ */
 static uint32_t update_copper_bulb(NEEngine *e, uint32_t node) {
     uint8_t state = e->component_state[node], powered = e->input_count[node] != 0u;
     if (((state >> 1u) & 1u) == powered)
@@ -362,6 +433,14 @@ static uint32_t update_copper_bulb(NEEngine *e, uint32_t node) {
     return notify(e, node, 1u, 1u);
 }
 
+/**
+ * Dispatch a native neighbor callback to the represented block behavior.
+ *
+ * Inputs: The engine and component ID.
+ *
+ * Select lamp, diode, torch, observer, piston, control, command or effect behavior by its encoded kind,
+ * returning the first scheduling/execution error.
+ */
 static uint32_t update_component(NEEngine *e, uint32_t node) {
     uint8_t kind = components(e)[node].kind;
     if (kind == 2u)
@@ -392,6 +471,14 @@ static uint32_t update_component(NEEngine *e, uint32_t node) {
         return schedule(e, node, 2u, 3u);
     return NE_OK;
 }
+/**
+ * Suppress duplicate callbacks within an execution phase.
+ *
+ * Inputs: The engine and notification ID, including optional piston-head routing.
+ *
+ * Handle head-route forwarding separately, compare the component's update stamp with the phase and
+ * dispatch only a newly required update.
+ */
 static uint32_t update_once(NEEngine *e, uint32_t node) {
     if (node & PISTON_HEAD_NOTIFICATION) {
         node = notification_component(node);
@@ -414,6 +501,11 @@ static uint32_t update_wire_watcher(NEEngine *e, uint32_t node) {
     return update_once(e, node);
 }
 
+/**
+ * Notify recorded recipients when a watched wire's output changes.
+ *
+ * Inputs: The engine and watched-wire record index.
+ */
 static uint32_t check_watched(NEEngine *e, uint32_t record) {
     const uint32_t *row = table(e, 3u) + (size_t)record * 3u, *ids = table(e, 4u);
     uint8_t strength = input_strength(e, row[0]);
@@ -428,6 +520,14 @@ static uint32_t check_watched(NEEngine *e, uint32_t record) {
     return NE_OK;
 }
 
+/**
+ * Execute one encoded output-program instruction.
+ *
+ * Inputs: The engine and pointer to the eight-byte operation record.
+ *
+ * Decode the opcode and operand, charge the work budget, then update contributions, wires or the
+ * corresponding receiver; reject unsupported opcodes.
+ */
 static uint32_t execute_operation(NEEngine *engine, const uint8_t *operation) {
     engine->work_count++;
     if (++engine->tick_operations > NE_MAX_TICK_OPERATIONS)
@@ -476,6 +576,14 @@ static uint32_t execute_operation(NEEngine *engine, const uint8_t *operation) {
     return engine->error = NE_UNSUPPORTED;
 }
 
+/**
+ * Refresh reactive wires and initially unsettled recipients.
+ *
+ * Inputs: The engine, changed source and reactive dependency tables.
+ *
+ * Recompute each dependent wire's strongest source level, dispatch recipients whose level changed, then
+ * send the recorded reactive neighbor callbacks with budget checks.
+ */
 static uint32_t update_reactive(NEEngine *e, uint32_t source) {
     const uint32_t *row = table(e, 43u) + source * 5u;
     for (uint32_t i = 0; i < row[2]; ++i) {
@@ -515,6 +623,14 @@ static uint32_t update_reactive(NEEngine *e, uint32_t source) {
     return NE_OK;
 }
 
+/**
+ * Run the instruction range for a component's rising or falling edge.
+ *
+ * Inputs: The engine, source component and powered flag.
+ *
+ * For reactive programs, stage contribution changes first; then replay eligible instructions in stored
+ * order and refresh reactive dependencies, stopping on any error.
+ */
 static uint32_t execute_output(NEEngine *engine, uint32_t component, uint8_t powered) {
     const MchprsNativeComponent *record = &components(engine)[component];
     uint32_t start = powered ? record->on_offset : record->off_offset;
@@ -554,6 +670,14 @@ static uint32_t execute_output(NEEngine *engine, uint32_t component, uint8_t pow
     return engine->has_reactive ? update_reactive(engine, component) : NE_OK;
 }
 
+/**
+ * Execute all native ticks due in the current half-tick.
+ *
+ * Inputs: The engine's priority/FIFO timing-ring queues, component state and operation budget.
+ *
+ * Recycle each selected event slot, skip passive records, execute the block-specific scheduled
+ * transition and propagate its output callbacks until no event remains or execution fails.
+ */
 static uint32_t drain(NEEngine *engine) {
     for (;;) {
         NEQueue *queue = 0;
@@ -658,6 +782,14 @@ static uint32_t drain(NEEngine *engine) {
     }
 }
 
+/**
+ * Validate the layout and indexes of native auxiliary tables.
+ *
+ * Inputs: The program descriptor, byte blob and auxiliary directory.
+ *
+ * Check table offsets, lengths and row widths, then validate component/link/watcher and reactive
+ * references before returning trusted table pointers.
+ */
 static uint32_t valid_aux(const MchprsNativeProgramDescriptor *p, const uint8_t *blob) {
     const uint32_t *directory = (const uint32_t *)(blob + p->source_offset + (size_t)p->source_count * 4u);
     uint64_t cursor = (uint64_t)p->source_offset + (uint64_t)p->source_count * 4u + NE_TABLES * 8u;
@@ -745,6 +877,14 @@ static uint32_t valid_aux(const MchprsNativeProgramDescriptor *p, const uint8_t 
     return valid_movement(p, blob, t, n);
 }
 
+/**
+ * Validate the entire encoded program at the native trust boundary.
+ *
+ * Inputs: The descriptor and untrusted program bytes.
+ *
+ * Check ABI/header and fixed-record ranges, validate sources, component/opcode/link references and
+ * auxiliary data, then delegate movement-table validation.
+ */
 static uint32_t valid_program(const MchprsNativeProgramDescriptor *program, const uint8_t *blob, uint32_t blob_bytes) {
     if (!program || !blob || (uintptr_t)blob % _Alignof(uint32_t) != 0u || blob_bytes < 16u ||
         program->abi_version != 3u || program->header_bytes != 16u || program->total_bytes != blob_bytes ||
@@ -873,6 +1013,14 @@ MchprsNativeApiDescriptor ne_api_descriptor(void) {
     return value;
 }
 
+/**
+ * Calculate bounded native execution storage for a program.
+ *
+ * Inputs: The program descriptor/blob and requested imported-tick capacity.
+ *
+ * Validate the program and checked count arithmetic, sum component/histogram/event/movement buffers and
+ * return zero when the layout cannot be represented safely.
+ */
 size_t ne_state_size(const MchprsNativeProgramDescriptor *program, const uint8_t *blob, uint32_t blob_bytes,
                      uint32_t initial_ticks) {
     if (!valid_program(program, blob, blob_bytes))
@@ -912,6 +1060,14 @@ size_t ne_state_size(const MchprsNativeProgramDescriptor *program, const uint8_t
     return bytes <= NE_MAX_STATE_BYTES ? bytes : 0u;
 }
 
+/**
+ * Initialize a native engine in caller-owned memory.
+ *
+ * Inputs: The destination buffer/size, program descriptor/blob and imported-tick count.
+ *
+ * Validate program and capacity, partition aligned buffers, initialize component/link/histogram state
+ * and queue free lists, then initialize movement and reactive state.
+ */
 uint32_t ne_create(const MchprsNativeProgramDescriptor *program, const uint8_t *blob, uint32_t blob_bytes, void *memory,
                    size_t memory_bytes, uint32_t initial_ticks) {
     size_t needed = ne_state_size(program, blob, blob_bytes, initial_ticks);
@@ -1044,6 +1200,14 @@ uint32_t ne_import_tick(void *memory, uint32_t component, uint32_t delay, uint8_
     return enqueue(engine, component, delay, priority);
 }
 
+/**
+ * Advance the native engine by one game tick.
+ *
+ * Inputs: The initialized engine state and its pending events/motions.
+ *
+ * Drain both half-tick queues in order, process piston events and movement in separate phases, and
+ * preserve the first runtime error or reset the per-tick work counter on success.
+ */
 uint32_t ne_tick(void *memory) {
     NEEngine *engine = (NEEngine *)memory;
     if (!engine || engine->error)
@@ -1072,6 +1236,14 @@ uint32_t ne_tick(void *memory) {
     return result;
 }
 
+/**
+ * Set a native external input to the requested power state.
+ *
+ * Inputs: The engine, source-slot index and desired powered byte.
+ *
+ * Validate the slot/block kind, ignore unchanged state, schedule button release when needed and execute
+ * the selected output edge and watcher callbacks.
+ */
 uint32_t ne_set_input(void *memory, uint32_t source_index, uint8_t powered) {
     NEEngine *engine = (NEEngine *)memory;
     if (!engine || engine->error || source_index >= engine->program->source_count)
@@ -1128,6 +1300,14 @@ uint32_t ne_pending_count(const void *memory) {
     return engine ? engine->event_count : 0u;
 }
 
+/**
+ * Export scheduled callbacks without consuming them.
+ *
+ * Inputs: The engine, caller output buffer and record capacity.
+ *
+ * Walk timing-ring buckets in remaining-delay and priority order, copy component/passive references
+ * with their delays, and fail rather than overflow the supplied storage.
+ */
 uint32_t ne_read_pending(const void *memory, MchprsNativePendingTick *out, uint32_t count) {
     const NEEngine *engine = (const NEEngine *)memory;
     if (!engine || (!out && count) || count != engine->event_count)
@@ -1172,6 +1352,14 @@ static uint32_t command_schedule(void *context, uint32_t component, uint32_t del
     return enqueue((NEEngine *)context, component, delay, priority);
 }
 
+/**
+ * Replay a command block's surrounding update recipients.
+ *
+ * Inputs: The engine and changed command component.
+ *
+ * Walk its encoded target rows in order, apply direction/diagonal filters and route ordinary, wire and
+ * comparator callbacks through native update functions.
+ */
 static uint32_t command_notify(void *context, uint32_t component) {
     NEEngine *e = (NEEngine *)context;
     const uint32_t *row = e->command_notify_rows + (size_t)component * 2u;
@@ -1216,6 +1404,14 @@ static uint32_t dispatch_command_tick(NEEngine *e, uint32_t component) {
     return status ? (e->error = status) : NE_OK;
 }
 
+/**
+ * Attach checked command state and callback tables to an engine.
+ *
+ * Inputs: The engine, command-memory pointer, notification rows/targets and target count.
+ *
+ * Validate row ranges and each encoded recipient route before retaining the command pointers for later
+ * native callbacks.
+ */
 uint32_t ne_bind_commands(void *memory, void *commands, const uint32_t *notify_rows, const uint32_t *notify_targets,
                           uint32_t target_count) {
     NEEngine *e = (NEEngine *)memory;

@@ -61,6 +61,12 @@ pub(super) struct State {
 
 #[cfg(any(windows, target_os = "linux"))]
 impl State {
+    /// Create and bind native command-block state for a program.
+    ///
+    /// Inputs: The program, command API, native engine pointer and component-table pointer.
+    ///
+    /// Encode command entities, allocate bounded native storage, initialize lookup indexes and
+    /// notification tables, and retain every buffer referenced by native pointers.
     pub(super) fn new(program: &Program, api: &Api, engine: *mut c_void, components: *const c_void) -> Result<Option<Self>, ScratchError> {
         let encoded = encode(program)?;
         if encoded.blocks.is_empty() {
@@ -135,6 +141,12 @@ impl State {
         }))
     }
 
+    /// Reserve enough effect output space and update the native clock.
+    ///
+    /// Inputs: The command API, native engine pointer and this command state's effect buffer/clock basis.
+    ///
+    /// Read the pending effect count and per-tick bound, grow the buffer with checked arithmetic, rebind
+    /// it when moved and send the current time/logical base to native code.
     pub(super) fn prepare_tick(&mut self, api: &Api, engine: *mut c_void) -> Result<(), ScratchError> {
         let current = unsafe { (api.effect_words)(self.memory.as_ptr().cast()) } as usize;
         let additional = usize::try_from(unsafe { (api.effect_bound)(engine) }).map_err(|_| invalid())?;
@@ -160,6 +172,12 @@ impl State {
         std::str::from_utf8(bytes).map(str::to_owned).map_err(|_| invalid())
     }
 
+    /// Copy checked native command state and effects into the Rust projection.
+    ///
+    /// Inputs: The command API and mutable Rust runtime.
+    ///
+    /// Read entity records, validate component identities/flags and string ranges, rebuild command
+    /// entities and append decoded emissions and output-window state.
     pub(super) fn sync(&self, api: &Api, runtime: &mut crate::redpilator::sampled::Runtime) -> Result<(), ScratchError> {
         let mut words = vec![0; self.blocks.len().checked_mul(11).ok_or_else(invalid)?];
         if unsafe { (api.read_state)(self.memory.as_ptr().cast(), words.as_mut_ptr(), id(words.len())?) } != 0 {
@@ -382,6 +400,11 @@ pub(super) struct CommandTables {
 impl EncodedCommands {
     /// Call with `Instant::now()` immediately before native state creation so
     /// compilation and DLL loading time count against the existing output window.
+    ///
+    /// Inputs: The encoded command set and the reference Instant used for cooldown timing.
+    ///
+    /// Assign checked string offsets, serialize block/specification rows and output state, and translate
+    /// host times relative to the supplied clock basis.
     pub(super) fn serialize_at(&self, now: std::time::Instant) -> Result<CommandTables, ScratchError> {
         const BLOCK_WORDS: usize = 10;
         const SPEC_WORDS: usize = 10;
@@ -519,6 +542,9 @@ fn recipient(command: ChatCommand, strings: &mut Vec<u8>) -> Result<(RecipientKi
     Ok((recipient, message))
 }
 
+/// Parse and encode one command block's command result.
+///
+/// Inputs: The command-block entity and shared string buffer.
 fn spec(entity: &CommandBlockEntity, strings: &mut Vec<u8>) -> Result<CommandSpec, ScratchError> {
     let command_len = id(entity.command.len())?;
     let source = crate::redstone::command_block::command_source(&entity.custom_name);
@@ -554,6 +580,11 @@ fn mode(block: Block) -> CommandBlockMode {
 /// Encode every command component in canonical Program order, including blocks
 /// without a saved entity. Parse outcomes become native bytecode rather than
 /// causing unsupported commands to disappear or reject the Program.
+///
+/// Inputs: The program's component positions, command blocks and captured output state.
+///
+/// Walk command components in program order, supply default entities when missing, parse each command and
+/// retain its specification and mutable captured state.
 pub(super) fn encode(program: &Program) -> Result<EncodedCommands, ScratchError> {
     let mut encoded = EncodedCommands::default();
     let mut entity_count = 0usize;

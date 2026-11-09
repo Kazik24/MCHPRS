@@ -25,6 +25,12 @@ impl LlvmProgram {
         Ok(aligned)
     }
 
+    /// Serialize a validated program into the native little-endian ABI.
+    ///
+    /// Inputs: The immutable program and its components, links, operations and auxiliary records.
+    ///
+    /// Validate program references, encode fixed records and auxiliary tables, build descriptor offsets
+    /// with checked arithmetic and retain an aligned-ready byte blob.
     pub(in crate::redpilator::sampled) fn encode(program: &Program) -> Result<Self, ScratchError> {
         if program.positions.len() >= PISTON_HEAD_NOTIFICATION {
             return Err(overflow());
@@ -104,6 +110,12 @@ impl LlvmProgram {
     }
 }
 
+/// Write native comparator modes, overrides and initial outputs.
+///
+/// Inputs: The program's comparator records and mutable auxiliary tables.
+///
+/// Encode each component's compare/subtract flags, static/dynamic override identities and captured
+/// strength, rejecting values that cannot fit the native representation.
 fn encode_comparators(program: &Program, table: &mut Vec<u32>) -> Result<(), ScratchError> {
     use crate::redpilator::sampled::program::ComparatorInput;
     let level = |input| match input {
@@ -140,6 +152,12 @@ fn encode_comparators(program: &Program, table: &mut Vec<u32>) -> Result<(), Scr
     Ok(())
 }
 
+/// Assemble the versioned program's auxiliary tables.
+///
+/// Inputs: The program, component/link metadata and auxiliary-table accumulator.
+///
+/// Flatten reverse indexes, notifications, movement, routing and effect records into checked integer
+/// tables and append the directory describing their offsets and lengths.
 fn encode_aux(program: &Program, blob: &mut Vec<u8>) -> Result<(), ScratchError> {
     let mut tables: [Vec<u32>; AUX_TABLES] = std::array::from_fn(|_| Vec::new());
     let id = |n: usize| u32::try_from(n).map_err(|_| overflow());
@@ -230,6 +248,12 @@ pub(super) fn encode_notification(program: &Program, notification: usize) -> Res
     Ok(encoded)
 }
 
+/// Validate a serialized native program before exposing its tables.
+///
+/// Inputs: The encoded blob and native program descriptor.
+///
+/// Check magic/version and byte ranges, verify alignment and table dimensions, then validate opcodes, link
+/// references, source IDs and auxiliary-table boundaries.
 pub(super) fn validate_blob(descriptor: &NativeProgramDescriptor, blob: &[u8]) -> Result<(), ScratchError> {
     let invalid = || ScratchError {
         position: None,
@@ -431,6 +455,12 @@ fn encode_operation(operation: Operation) -> Result<(u8, u32), ScratchError> {
     u32::try_from(operand).map(|operand| (tag, operand)).map_err(|_| overflow())
 }
 
+/// Encode a block's native component kind and mutable state byte.
+///
+/// Inputs: The captured block state.
+///
+/// Match its supported block kind and pack power, lock or signal fields into the C executor's state
+/// layout; use the unsupported kind marker for other blocks.
 pub(super) fn component_state(block: Block) -> (u8, u8) {
     match block {
         Block::Lever { lever } => (0, u8::from(lever.powered)),

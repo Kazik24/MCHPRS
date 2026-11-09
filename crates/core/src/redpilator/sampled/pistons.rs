@@ -45,6 +45,12 @@ pub(super) fn discover_piston_actors(
     discover_piston_actors_monitored(&scratch, bounds, None)
 }
 
+/// Capture stationary piston actors from an existing scratch snapshot.
+///
+/// Inputs: The scratch world, inclusive capture bounds and optional cancellation monitor.
+///
+/// Scan piston bases, read their contact cells, reject moving/mismatched heads or block entities, check
+/// scratch boundaries and group overlapping contacts.
 pub(super) fn discover_piston_actors_monitored(
     scratch: &ScratchWorld,
     bounds: (BlockPos, BlockPos),
@@ -113,6 +119,11 @@ pub(super) fn discover_piston_actors_monitored(
 }
 
 /// Capture movable blocks and their legal cells, rejecting groups the runtime cannot model.
+///
+/// Inputs: The captured world and discovered piston actors with contact-group IDs.
+///
+/// Collect each group's legal cells, distinguish fixed scenery from payloads, reject unsupported entities
+/// or movement domains, and enforce the cell/token limits.
 pub(super) fn discover_piston_tokens(world: &impl World, actors: &[PistonActor]) -> Result<Vec<PistonToken>, ScratchError> {
     let mut tokens = Vec::new();
     for group in 0..actors.iter().map(|p| p.group + 1).max().unwrap_or(0) {
@@ -207,6 +218,11 @@ pub(super) fn is_passive_geometry(block: Block) -> bool {
 }
 
 /// Group pistons whose contact cells overlap, including indirect overlaps.
+///
+/// Inputs: A mutable actor list containing each piston's home and far contact cells.
+///
+/// Use a union-find parent array to merge actors sharing a contact cell, compress parent paths, then
+/// assign compact group IDs in actor order.
 pub(super) fn assign_piston_groups(actors: &mut [PistonActor]) {
     let mut parents: Vec<_> = (0..actors.len()).collect();
     let mut owner_by_cell = std::collections::HashMap::new();

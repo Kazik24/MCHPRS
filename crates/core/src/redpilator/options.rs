@@ -52,6 +52,9 @@ impl CompilerOptions {
         }
     }
 
+    /// Parse compiler flags and reject conflicting publication modes.
+    ///
+    /// Inputs: The command-line flag string and this options value.
     pub fn parse(flags: &str) -> Result<CompilerOptions, String> {
         let mut options = Self::default();
         for option in flags.split_whitespace() {

@@ -4,6 +4,12 @@ use crate::redpilator::sampled::{Program, ScratchError, group_probe::ProbeIndexe
 use crate::world::World;
 use mchprs_blocks::{BlockPos, blocks::Block};
 
+/// Record the updates needed by initially unsettled components.
+///
+/// Inputs: The capture context, mutable program, component indexes and phase reporter.
+///
+/// Compare captured states with effective input, mark components needing reactions, then index the wires
+/// and native neighbor callbacks that can wake them.
 pub(in super::super) fn run(
     context: &Context<'_, impl World>,
     program: &mut Program,

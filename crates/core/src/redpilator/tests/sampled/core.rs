@@ -173,7 +173,7 @@ fn unchanged_comparator_output_notifies_reactive_neighbor() {
 }
 #[test]
 fn token_move_notifies_wire_watchers_only_when_strength_changes() {
-    use super::program::MoveStepSpec as MoveStep;
+    use super::movement::MoveStepSpec as MoveStep;
     let cell = BlockPos::new(10, 10, 10);
     for masked in [false, true] {
         let mut program = test_program(
@@ -233,7 +233,7 @@ fn token_move_notifies_wire_watchers_only_when_strength_changes() {
 
 #[test]
 fn token_move_distinguishes_dust_power_from_direct_observer_updates() {
-    use super::program::MoveStepSpec as MoveStep;
+    use super::movement::MoveStepSpec as MoveStep;
     let cell = BlockPos::new(10, 10, 10);
     for direct in [false, true] {
         let mut program = test_program(
@@ -1478,7 +1478,7 @@ fn landing_order_that_already_passed_requests_normal_retraction() {
 
 #[test]
 fn landing_callbacks_preserve_both_motion_orders() {
-    use super::{executor::PistonEvent, program::MoveStepSpec as MoveStep};
+    use super::{executor::PistonEvent, movement::MoveStepSpec as MoveStep};
 
     let base = BlockPos::new(15, 15, 15);
     let home = base.offset(BlockFace::East);

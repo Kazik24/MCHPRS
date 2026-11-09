@@ -9,6 +9,12 @@ use crate::world::World;
 use mchprs_blocks::{BlockPos, block_entities::BlockEntity, blocks::Block};
 use std::collections::HashMap;
 
+/// Build the initial program and its electrical dependency records.
+///
+/// Inputs: The captured context, isolated scratch world, parsed inventory, position index and phase reporter.
+///
+/// Discover source-to-reader power paths, translate positions to component IDs, record watchers and diode
+/// overrides, and capture fixed geometry and piston scenery.
 pub(in super::super) fn run<'a>(
     context: &Context<'_, impl World>,
     scratch: ScratchWorld,

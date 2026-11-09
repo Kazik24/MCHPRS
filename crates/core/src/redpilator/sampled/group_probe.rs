@@ -84,6 +84,12 @@ impl<'a> ProbeIndexes<'a> {
             })
         }
     }
+    /// Index component positions and movement-sensitive notification routes.
+    ///
+    /// Inputs: The component-position map, initial blocks, token records and optional monitor.
+    ///
+    /// Index wires and movable redstone sources, associate piston-head cells with their bases, and check
+    /// cancellation while building the lookups.
     pub(super) fn new(
         components: &'a HashMap<BlockPos, usize>,
         positions: &[BlockPos],
@@ -125,6 +131,9 @@ impl<'a> ProbeIndexes<'a> {
     }
 }
 
+/// Resolve either direct wire contacts or their upstream sources.
+///
+/// Inputs: The world, wire positions, monitor and expand flag.
 fn wire_sources(
     world: &impl World,
     wires: &[BlockPos],
@@ -172,6 +181,12 @@ pub(super) fn ports_of(
     discover_inputs(world, program, member, monitor, indexes, false)
 }
 
+/// Discover the main and side sources feeding a component.
+///
+/// Inputs: The world, program, component ID, monitor, position indexes and expansion mode.
+///
+/// Apply the receiver's native power rules, optionally traverse connected wires, then merge source
+/// identities using minimum attenuation and the required notification behavior.
 fn discover_inputs(
     world: &impl World,
     program: &Program,
@@ -275,6 +290,12 @@ fn discover_inputs(
     Ok(result)
 }
 
+/// Fold token positions that are electrically equivalent for one reader.
+///
+/// Inputs: The program, wire indexes, relevant token IDs and target component.
+///
+/// Keep absence as state zero; fold eligible concrete placements without reader/wire contacts into that
+/// state, and number the remaining distinct positions.
 fn electrical_states(program: &Program, indexes: &ProbeIndexes<'_>, tokens: &[usize], target: usize) -> Vec<Vec<usize>> {
     tokens
         .iter()
@@ -317,9 +338,16 @@ pub(super) struct Discovery {
     pub(super) routing: Option<super::routing::WireGraph>,
 }
 
+/// Estimate retained memory for a dense arrangement table.
+///
+/// Inputs: The input arrangement's state mappings, source lists and allocated capacities.
+///
+/// Count unique connections and departure/arrival differences, then use saturating arithmetic to include
+/// input rows, movement axes, transitions, masks and spare flip storage.
 // Estimate retained logical payload without assuming every input flips at every transition.
 fn dense_table_bytes(group: &InputArrangement) -> usize {
-    use super::program::{ArrangementFlip, ArrangementLink, MovementAxis, MovementGroup, MovementTransition};
+    use super::movement::{ArrangementFlip, MovementAxis, MovementGroup, MovementTransition};
+    use super::program::ArrangementLink;
     if group.token_states.len() != group.tokens.len() {
         return usize::MAX;
     }
@@ -418,6 +446,12 @@ pub(super) fn run(
     run_with_dense_budget(world, bounds, entry, program, indexes, monitor, MAX_DENSE_TABLE_BYTES)
 }
 
+/// Choose dense arrangement tables or routing for movement-dependent readers.
+///
+/// Inputs: The captured world/entry, program, indexes, monitor and retained-table byte budget.
+///
+/// Build local wire/reader graphs, enumerate bounded non-overlapping token states, retain affordable dense
+/// tables and keep graph routing for the remaining readers.
 fn run_with_dense_budget(
     world: &impl World,
     bounds: (BlockPos, BlockPos),
@@ -484,12 +518,12 @@ fn run_with_dense_budget(
             .any(|&cell| !occupied.insert(cell));
         let sources = graph.potential_sources(reader).len();
         let slots = states.map_or(usize::MAX, |states| states.saturating_mul(sources.max(1)));
-        if !overlaps && states.is_some_and(|states| states <= super::program::MAX_ARRANGEMENT_STATES) && slots <= MAX_TEMP_SLOTS {
+        if !overlaps && states.is_some_and(|states| states <= super::movement::MAX_ARRANGEMENT_STATES) && slots <= MAX_TEMP_SLOTS {
             jobs.push((reader, axes, states.unwrap(), slots));
         } else {
             if overlaps {
                 rejected_overlap += 1;
-            } else if states.is_none_or(|states| states > super::program::MAX_ARRANGEMENT_STATES) {
+            } else if states.is_none_or(|states| states > super::movement::MAX_ARRANGEMENT_STATES) {
                 rejected_states += 1;
             } else {
                 rejected_slots += 1;
@@ -627,7 +661,8 @@ mod tests {
 
     #[test]
     fn dense_budget_counts_sparse_and_attenuation_transitions() {
-        use super::super::program::{ArrangementFlip, ArrangementLink, MovementAxis, MovementGroup, MovementTransition};
+        use super::super::movement::{ArrangementFlip, MovementAxis, MovementGroup, MovementTransition};
+        use super::super::program::ArrangementLink;
         let source = ArrangementSource::Component(0);
         let token = ArrangementSource::Token(0);
         let make = |inputs| InputArrangement {

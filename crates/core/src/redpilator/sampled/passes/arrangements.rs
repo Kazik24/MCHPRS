@@ -3,6 +3,12 @@ use super::{CompilePhases, Context, check_cancelled};
 use crate::redpilator::sampled::{Program, ScratchError, group_probe::ProbeIndexes};
 use crate::world::World;
 
+/// Compile the movement-dependent input arrangements.
+///
+/// Inputs: The captured context, mutable program, component lookup indexes and phase reporter.
+///
+/// Probe joint token arrangements, attach their input tables, lower the movement flips and bind any
+/// routing graph to the resulting conditional links.
 pub(in super::super) fn run(
     context: &Context<'_, impl World>,
     program: &mut Program,

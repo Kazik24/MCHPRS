@@ -61,10 +61,17 @@ Compilation and execution share the server process. A native fault or an OS OOM 
 | [Compiler passes](../crates/core/src/redpilator/sampled/passes/README.md) | Discovery and instruction generation |
 | [Source probe cache](../crates/core/src/redpilator/sampled/source_cache.rs) | Dependency certificates, retained callback traces and memory reservations |
 | [Program](../crates/core/src/redpilator/sampled/program.rs) | Compiled circuit data |
+| [Movement tables](../crates/core/src/redpilator/sampled/movement.rs) | Movement records, arrangement lowering and movement validation |
 | [Rust executor](../crates/core/src/redpilator/sampled/executor.rs) | Mutable state and instruction execution |
+| [Runtime publication](../crates/core/src/redpilator/sampled/publication.rs) | Projected blocks, dirty cells and exported piston parts |
+| [World publication](../crates/core/src/redpilator/compiler/publication.rs) | World writes, motion identity reconciliation and effect publication |
+| [Scheduler](../crates/core/src/redpilator/sampled/scheduler.rs) | Bounded timing queues and host tick import/export |
+| [Diagnostics](../crates/core/src/redpilator/sampled/diagnostics.rs) | Optional memory and routing reports |
 | [LLVM runtime](../crates/core/src/redpilator/sampled/llvm/mod.rs) | Native state, controls and pending ticks |
 | [LLVM encoding](../crates/core/src/redpilator/sampled/llvm/encoding.rs) | Binary tables, alignment and validation |
 | [LLVM library](../crates/core/src/redpilator/sampled/llvm/library.rs) | Native exports, ABI checks and library ownership |
 | [Allocation helpers](../crates/core/src/redpilator/memory.rs) | Fallible native-buffer allocation |
 
-See the [README](../README.md#redpilator) for commands and setup, and the [redstone](REDSTONE_MODEL.md) and [piston](PISTON_MODEL.md) models for interpreter behavior.
+See the [complete function and type map](REDPILATOR_CODE_MAP.md) for code ownership,
+the [README](../README.md#redpilator) for commands and setup, and the
+[redstone](REDSTONE_MODEL.md) and [piston](PISTON_MODEL.md) models for interpreter behavior.

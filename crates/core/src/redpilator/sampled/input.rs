@@ -23,6 +23,8 @@ pub(super) struct Histogram {
 impl InputState {
     /// Replace one contribution and update the active count and analog histogram.
     /// Strength zero represents an absent contribution.
+    ///
+    /// Inputs: The previous and new signal levels, this input state and shared histogram storage.
     #[inline]
     pub(super) fn change(&mut self, old: u8, new: u8, histograms: &mut [Histogram]) {
         debug_assert!(old <= 15 && new <= 15);
@@ -52,6 +54,8 @@ impl InputState {
     }
 
     /// Return the strongest contribution, or 15 for any active digital input.
+    ///
+    /// Inputs: This input state and its shared strength histograms.
     pub(super) fn maximum(&self, histograms: &[Histogram]) -> u8 {
         match histograms.get(self.analog as usize) {
             Some(histogram) if histogram.levels != 0 => histogram.levels.ilog2() as u8,

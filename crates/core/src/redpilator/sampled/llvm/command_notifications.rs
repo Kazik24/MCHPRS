@@ -6,6 +6,12 @@ fn id(value: usize) -> Result<u32, ScratchError> {
     u32::try_from(value).map_err(|_| overflow())
 }
 
+/// Encode native callbacks caused by command-block output changes.
+///
+/// Inputs: The program's component positions, initial blocks and notification identities.
+///
+/// Follow the interpreter's surrounding-update rules, preserve observer/piston-head routes and comparator-
+/// through-solid callbacks, then flatten rows and checked recipient records.
 pub(super) fn encode(program: &Program) -> Result<(Vec<u32>, Vec<u32>), ScratchError> {
     let mut rows = Vec::with_capacity(program.initial.len() * 2);
     let mut targets = Vec::new();

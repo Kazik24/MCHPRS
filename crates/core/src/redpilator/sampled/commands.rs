@@ -1,5 +1,5 @@
 //! Run the interpreter's command-block lifecycle against compiled state.
-use super::{Runtime, executor::ScheduledComponentTick};
+use super::{Runtime, scheduler::ScheduledComponentTick};
 use crate::redstone::command_block::CommandBlockHost;
 use mchprs_blocks::{BlockFace, BlockPos, block_entities::CommandBlockEntity, blocks::Block};
 use mchprs_world::TickPriority;
@@ -65,6 +65,12 @@ impl CommandBlockHost for Runtime {
         Ok(())
     }
 
+    /// Deliver native-style neighbor updates after command-block output changes.
+    ///
+    /// Inputs: The changed command position and this runtime's block/position indexes.
+    ///
+    /// Walk surrounding callbacks with direction/diagonal filtering, refresh wire watchers and other
+    /// receivers, then check comparators through adjacent solid blocks.
     fn notify(&mut self, pos: BlockPos) {
         crate::redstone::surrounding_notifications(pos, |target, dir, diagonal| {
             let Some(&component) = self.program.component_indices.get(&target) else {
@@ -109,6 +115,12 @@ impl Runtime {
         self.command_output_state.as_ref().map_or(0, |state| state.queued)
     }
 
+    /// Transfer compiled command state and queued messages to the host world.
+    ///
+    /// Inputs: The mutable world, runtime command entities and the IO-only publication flag.
+    ///
+    /// Copy the relevant block entities and output-window state, then drain the runtime's recorded command
+    /// emissions into the world's output path.
     pub(crate) fn publish_commands(&mut self, world: &mut impl crate::world::World, io_only: bool) {
         if !io_only {
             for (&pos, entity) in &self.command_blocks {

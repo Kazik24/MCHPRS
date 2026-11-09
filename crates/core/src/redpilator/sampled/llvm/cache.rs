@@ -63,6 +63,12 @@ fn build_name(name: &str) -> bool {
     key.len() == 64 && key.bytes().all(|byte| byte.is_ascii_hexdigit()) && generation.is_none_or(|generation| generation.parse::<u64>().is_ok())
 }
 
+/// Verify that a native build directory is owned by this cache.
+///
+/// Inputs: The candidate directory and expected cache ownership markers.
+///
+/// Read and validate the directory markers and parent ownership before allowing cached artifacts to be
+/// reused or cleaned up.
 fn validate_build_directory(path: &Path) -> io::Result<()> {
     let metadata = fs::symlink_metadata(path)?;
     if !metadata.is_dir() || metadata.file_type().is_symlink() || path.canonicalize()? != path {
@@ -78,6 +84,12 @@ fn validate_build_directory(path: &Path) -> io::Result<()> {
 }
 
 impl Cache {
+    /// Invalidate the owned process-wide native artifact cache.
+    ///
+    /// Inputs: The initialized cache and its nonblocking build/module lock.
+    ///
+    /// Refuse a busy build, verify ownership, advance the cache generation and remove only artifacts owned
+    /// by the cache while active library handles remain valid.
     fn clear(&self) -> Result<String, String> {
         let mut module = self.module.try_lock().map_err(|error| match error {
             TryLockError::WouldBlock => "LLVM module build or load is busy; retry clearing after it finishes".to_owned(),
@@ -118,6 +130,12 @@ impl Cache {
     }
 }
 
+/// Initialize an owned native-cache root directory.
+///
+/// Inputs: The cache root path and expected ownership metadata.
+///
+/// Validate or create the owned directory structure and marker files, rejecting paths whose contents
+/// cannot safely be treated as this cache's artifacts.
 fn reset_root(root: &Path) -> io::Result<Cache> {
     fs::create_dir_all(root)?;
     let root = root.canonicalize()?;
@@ -178,6 +196,12 @@ fn absolute_executable(path: PathBuf) -> Result<PathBuf, String> {
     Ok(path)
 }
 
+/// Locate the native compiler or linker executable.
+///
+/// Inputs: The executable name and environment-variable override key.
+///
+/// Try the explicit override and supported installation/PATH locations, require a real executable file and
+/// return a descriptive failure if none is found.
 fn executable(name: &str, configured: &str) -> Result<PathBuf, String> {
     if let Some(path) = std::env::var_os(configured) {
         return absolute_executable(PathBuf::from(path)).map_err(|error| format!("{configured}: {error}"));
@@ -212,6 +236,12 @@ fn hash_file(hash: &mut Sha256, path: &Path) -> io::Result<()> {
     }
 }
 
+/// Run a native build tool and report its diagnostics.
+///
+/// Inputs: The executable path, argument list, working directory, log name and optional monitor.
+///
+/// Launch the tool with captured logs, poll for completion/cancellation, stop cancelled work and translate
+/// failed status or log output into a build error.
 fn run_tool(tool: &Path, args: &[OsString], directory: &Path, log: &str, monitor: Option<&TaskMonitor>) -> Result<(), String> {
     let path = directory.join(log);
     let mut command = Command::new(tool);
@@ -253,6 +283,12 @@ fn run_tool(tool: &Path, args: &[OsString], directory: &Path, log: &str, monitor
     }
 }
 
+/// Reuse or build the native executor library for the current sources.
+///
+/// Inputs: The optional monitor, cache state and supported compiler/linker environment overrides.
+///
+/// Honor an explicit library path; otherwise verify cache ownership, hash bundled sources/tool
+/// binaries/flags, build the missing module and retain its guarded path.
 pub(super) fn module_path(monitor: Option<&TaskMonitor>) -> Result<ModulePath, String> {
     if let Some(path) = std::env::var_os("MCHPRS_LLVM_DLL") {
         let path = PathBuf::from(path).canonicalize().map_err(|error| format!("MCHPRS_LLVM_DLL: {error}"))?;

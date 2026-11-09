@@ -29,6 +29,12 @@ pub(super) struct Library {
 
 #[cfg(any(windows, target_os = "linux"))]
 impl Library {
+    /// Load the native executor and resolve its required API.
+    ///
+    /// Inputs: The selected cache artifact or explicit library path.
+    ///
+    /// Open the module under an owning handle, resolve every required export and return a library value
+    /// whose drop keeps unload ownership well defined.
     pub(super) fn load() -> Result<Self, ScratchError> {
         let path = cache::module_path(None).map_err(|error| {
             tracing::warn!(%error, "LLVM module preparation failed");
@@ -77,6 +83,12 @@ impl Library {
         Ok(())
     }
 
+    /// Allocate and initialize native execution memory for an encoded program.
+    ///
+    /// Inputs: The native descriptor, aligned program blob and imported-tick count.
+    ///
+    /// Ask the library for required storage, enforce the size bound, allocate fallibly and invoke native
+    /// initialization; reject any reported status before returning ownership.
     pub(super) fn create_state(&self, descriptor: &NativeProgramDescriptor, blob: &[u64], initial_tick_count: u32) -> Result<Vec<u64>, ScratchError> {
         if blob
             .len()
@@ -162,6 +174,9 @@ unsafe impl Send for Module {}
 
 #[cfg(any(windows, target_os = "linux"))]
 impl Module {
+    /// Open a native module with an owning OS handle.
+    ///
+    /// Inputs: The module filesystem path.
     fn open(path: &Path) -> Result<Self, ScratchError> {
         #[cfg(windows)]
         let handle = {
@@ -192,6 +207,8 @@ impl Module {
     ///
     /// # Safety
     /// `name` must be NUL-terminated, and `T` must match the export's exact function-pointer ABI.
+    ///
+    /// Inputs: The owning module, a NUL-terminated export name and the caller-selected pointer type.
     pub(super) unsafe fn symbol<T: Copy>(&self, name: &'static [u8]) -> Result<T, ScratchError> {
         #[cfg(windows)]
         let address = unsafe { GetProcAddress(self.handle, name.as_ptr().cast()) };

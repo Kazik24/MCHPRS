@@ -4,7 +4,7 @@ use super::*;
 #[test]
 #[cfg(any(windows, target_os = "linux"))]
 fn llvm_notification_tags_validate_physical_piston_routes() {
-    use super::super::program::MoveStep;
+    use super::super::movement::MoveStep;
     use crate::world::World;
     use mchprs_blocks::{BlockFace, BlockFacing, blocks::RedstonePiston};
     let mut world = super::super::tests::host();

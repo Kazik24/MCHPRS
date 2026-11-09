@@ -21,6 +21,12 @@ pub(crate) fn compile_monitored(
     compile_monitored_with_source_cache(world, bounds, entry, monitor, None)
 }
 
+/// Compile a world snapshot into an indexed redstone program.
+///
+/// Inputs: The captured world and bounds, pending entry state, optional monitor and prior source observations.
+///
+/// Run inventory, electrical, movement, arrangement, reactive and source-order passes in order; validate
+/// the result and share identical instruction ranges.
 pub(crate) fn compile_monitored_with_source_cache(
     world: &impl World,
     bounds: (BlockPos, BlockPos),
