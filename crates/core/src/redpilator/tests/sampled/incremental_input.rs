@@ -11,6 +11,46 @@ fn wire(power: u8) -> Block {
 }
 
 #[test]
+fn unchanged_wire_refresh_preserves_state_and_changed_refresh_propagates() {
+    let program = Program::new(
+        vec![BlockPos::new(10, 10, 10), BlockPos::new(11, 10, 10)],
+        vec![wire(9), Block::RedstoneLamp { lit: false }],
+        vec![],
+        vec![[vec![], vec![]]; 2],
+        vec![ElectricalLink {
+            source: 0,
+            target: 1,
+            attenuation: 2,
+        }],
+        vec![],
+        vec![],
+    )
+    .unwrap();
+    let mut runtime = program.start();
+    runtime.dirty.fill(false);
+    runtime.dirty_cells.clear();
+    runtime.updated_in_phase.fill(77);
+    let blocks = runtime.blocks.clone();
+    let contributions = runtime.contributions.clone();
+    let operations = (runtime.operations, runtime.tick_operations);
+    runtime.refresh_wire_power(0, 9);
+    assert_eq!(runtime.blocks, blocks);
+    assert_eq!(runtime.contributions, contributions);
+    assert_eq!(runtime.input_levels[1][0].active, 1);
+    assert!(runtime.updated_in_phase.iter().all(|&stamp| stamp == 77));
+    assert!(runtime.dirty_cells.is_empty());
+    assert!(runtime.pending_entries().is_empty());
+    assert_eq!((runtime.operations, runtime.tick_operations), operations);
+
+    runtime.refresh_wire_power(0, 1);
+    assert_eq!(runtime.blocks[0], wire(1));
+    assert_eq!(runtime.contributions, [0]);
+    assert_eq!(runtime.input_levels[1][0].active, 0);
+    assert_eq!(runtime.updated_in_phase[1], 0);
+    assert!(!runtime.dirty_cells.is_empty());
+}
+
+#[test]
 fn equal_strength_rear_sources_survive_revalidation_and_independent_removal() {
     use super::program::ComparatorRecord;
 

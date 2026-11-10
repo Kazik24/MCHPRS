@@ -45,6 +45,8 @@ pub(super) struct ArrangementFlip {
     pub(super) entering: bool,
     /// indicating this is a side input rather than the primary input.
     pub(super) side: bool,
+    /// Immutable token output, or zero for component sources; uses the record's spare byte.
+    pub(super) token_strength: u8,
 }
 
 impl ArrangementFlip {
@@ -67,6 +69,7 @@ impl ArrangementFlip {
             link: u32::try_from(link).map_err(|_| overflow())?,
             entering,
             side,
+            token_strength: 0,
         })
     }
 
@@ -86,6 +89,78 @@ mod tests {
     use super::*;
 
     #[test]
+    fn lowered_flips_cache_token_outputs_and_preserve_inverse_records() {
+        use super::super::pistons::PistonToken;
+        use super::super::program::InputArrangement;
+        use mchprs_blocks::BlockPos;
+
+        let mut program = Program::new(
+            vec![BlockPos::new(10, 10, 10), BlockPos::new(11, 10, 10)],
+            vec![Block::RedstoneBlock, Block::RedstoneLamp { lit: false }],
+            vec![],
+            vec![[vec![], vec![]]; 2],
+            vec![],
+            vec![],
+            vec![],
+        )
+        .unwrap();
+        for (index, block) in [Block::RedstoneBlock, Block::Stone {}].into_iter().enumerate() {
+            program.tokens.push(PistonToken {
+                block,
+                position: None,
+                cells: vec![BlockPos::new(10 + index as i32, 11, 10)],
+            });
+        }
+        program.input_arrangements.push(InputArrangement {
+            target: 1,
+            side: false,
+            silent: false,
+            tokens: vec![0],
+            token_states: vec![vec![0, 1]],
+            conditional_sources: vec![ArrangementSource::Component(0), ArrangementSource::Token(0), ArrangementSource::Token(1)],
+            inputs: vec![
+                vec![],
+                vec![
+                    (ArrangementSource::Component(0), 2),
+                    (ArrangementSource::Token(0), 0),
+                    (ArrangementSource::Token(1), 3),
+                ],
+            ],
+        });
+        program.compile_movement_flips().unwrap();
+        program.validate().unwrap();
+        let axis = &program.movement_groups[0].axes[0];
+        let departing = &program.movement_flips[axis.depart[1].clone()];
+        let arriving = &program.movement_flips[axis.arrive[1].clone()];
+        assert_eq!(departing.len(), 3);
+        assert_eq!(arriving.len(), 3);
+        for (depart, arrive) in departing.iter().zip(arriving) {
+            let expected = match depart.source() {
+                ArrangementSource::Token(0) => 15,
+                _ => 0,
+            };
+            assert_eq!(depart.token_strength, expected);
+            assert_eq!(arrive.token_strength, expected);
+            assert_eq!(
+                (depart.target, depart.link, depart.source(), depart.attenuation, depart.side),
+                (arrive.target, arrive.link, arrive.source(), arrive.attenuation, arrive.side)
+            );
+            assert!(!depart.entering && arrive.entering);
+        }
+        let token_flip = axis.depart[1]
+            .clone()
+            .find(|&index| program.movement_flips[index].source() == ArrangementSource::Token(0))
+            .unwrap();
+        let mut corrupt = program.clone();
+        corrupt.movement_flips[token_flip].token_strength = 0;
+        assert_eq!(corrupt.validate().unwrap_err().reason, "invalid movement flip token strength");
+        let link = corrupt.movement_flips[token_flip].link as usize;
+        corrupt.movement_flips[token_flip].source = 0x8000_0063;
+        corrupt.arrangement_links[link].source = ArrangementSource::Token(99);
+        assert_eq!(corrupt.validate().unwrap_err().reason, "invalid movement flip token source");
+    }
+
+    #[test]
     fn compact_flips_preserve_ids_and_reject_overflow() {
         assert_eq!(std::mem::size_of::<ArrangementFlip>(), 16);
         for source in [
@@ -101,6 +176,7 @@ mod tests {
                     assert_eq!(flip.target, u32::MAX);
                     assert_eq!(flip.link, u32::MAX);
                     assert_eq!((flip.attenuation, flip.entering, flip.side), (15, entering, side));
+                    assert_eq!(flip.token_strength, 0);
                 }
             }
         }
@@ -432,8 +508,11 @@ impl Program {
                     let start = flips.len();
                     for (index, &(target, source, attenuation, side, _silent)) in conditions.iter().enumerate() {
                         if membership[state].contains(&index) != membership[empty].contains(&index) {
-                            let flip =
+                            let mut flip =
                                 ArrangementFlip::new(target, source, attenuation, link_start + index, membership[empty].contains(&index), side)?;
+                            if let ArrangementSource::Token(token) = source {
+                                flip.token_strength = u8::from(matches!(self.tokens[token].block, Block::RedstoneBlock)) * 15;
+                            }
                             flips.push(flip);
                         }
                     }
@@ -552,6 +631,16 @@ impl Program {
                             || flip.side != link.side
                         {
                             return Err(invalid("movement flip does not match its link"));
+                        }
+                        let token_strength = match flip.source() {
+                            ArrangementSource::Component(_) => 0,
+                            ArrangementSource::Token(token) => {
+                                let token = self.tokens.get(token).ok_or_else(|| invalid("invalid movement flip token source"))?;
+                                u8::from(matches!(token.block, Block::RedstoneBlock)) * 15
+                            }
+                        };
+                        if flip.token_strength != token_strength {
+                            return Err(invalid("invalid movement flip token strength"));
                         }
                     }
                 }

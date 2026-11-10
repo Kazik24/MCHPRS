@@ -1187,7 +1187,10 @@ impl Runtime {
                 if !self.consume_component_operation(target) {
                     return;
                 }
-                let strength = self.arrangement_output(flip.source());
+                let strength = match flip.source() {
+                    ArrangementSource::Component(node) => self.output(node),
+                    ArrangementSource::Token(_) => flip.token_strength,
+                };
                 self.set_arrangement_contribution(
                     flip.link as usize,
                     target,
@@ -1311,11 +1314,11 @@ impl Runtime {
             unreachable!()
         };
         let previous = state.power;
-        state.power = strength;
-        self.set_component(wire, Block::RedstoneWire { wire: state });
         if previous == strength {
             return;
         }
+        state.power = strength;
+        self.set_component(wire, Block::RedstoneWire { wire: state });
         for offset in 0..self.program.outgoing[wire].len() {
             let index = self.program.outgoing[wire][offset];
             let link = self.program.links[index];
