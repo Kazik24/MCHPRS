@@ -190,6 +190,6 @@ Velocity modern forwarding uses `[velocity]` with `secret_file` pointing to the 
 
 `/serverinfo`, `/serverinfo plots [page]`, `/serverinfo plot [x z]` and `/serverinfo settings` report running plots, timings, resources and compilation. They require explicit admin permission. `/whitelist add|remove <name>` manages access. Commands and operations log at INFO; file logs rotate between two 16 MiB files in `logs/`. `MCHPRS_LOG` selects filters; release builds omit debug/trace events.
 
-Headless tools can use Rust's `headless::Session` for loading, inputs, stepping, compilation and snapshots. `cargo run -p mroww-redgear-api --release` starts a separate JSON-lines TCP adapter at `127.0.0.1:8765`. Its [handler](crates/redgear-api/src/main.rs) defines requests; it only binds IPv4 loopback.
+Headless tools can use Rust's `headless::Session` for loading, inputs, stepping, compilation and snapshots. `cargo run -p mroww-redgear-api --release` starts the [protocol 4 API](docs/REDGEAR_API_V4.md) at `127.0.0.1:8765` over JSON-lines TCP on IPv4 loopback. It supports Rust, LLVM and interpreter sessions, compilation progress, timed power inputs and block projections. Incremental recompilation is currently advertised as unsupported.
 
 More references: [docs](docs/README.md). License: [MIT](LICENSE).

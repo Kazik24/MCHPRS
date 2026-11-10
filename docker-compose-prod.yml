@@ -36,6 +36,7 @@ services:
         bind:
           create_host_path: false
       - /home/minecraft/redstonefun_server/plugins/WorldEdit/schematics:/data/schems/rf:ro
+      - /home/minecraft-dev/main/data/plugins/WorldEdit/schematics:/data/schems/dev/:ro
 
   waveform-viewer:
     image: mroww-waveform-viewer:latest

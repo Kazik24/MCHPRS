@@ -30,6 +30,7 @@ pub struct Snapshot {
 pub enum Input {
     Use(BlockPos),
     Plate(BlockPos, bool),
+    Power(BlockPos, bool),
 }
 
 /// A session owns its world and compiler until it is dropped.
@@ -39,6 +40,7 @@ pub struct Session {
     compiler: Compiler,
     failed: bool,
     ticks: u64,
+    original_blocks: Vec<(BlockPos, u32)>,
 }
 
 fn contains((min, max): (BlockPos, BlockPos), p: BlockPos) -> bool {
@@ -145,6 +147,7 @@ impl Session {
     /// Validate all records before creating a fresh world.
     pub fn new(snapshot: Snapshot) -> Result<Self> {
         Self::validate_snapshot(&snapshot)?;
+        let original_blocks = snapshot.blocks.iter().map(|&(pos, block)| (pos, block.get_id())).collect();
         let bounds = (snapshot.min, snapshot.max);
         let chunks = (0..PLOT_WIDTH).flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x, z))).collect();
         let mut world = PlotWorld::from_chunks(0, 0, chunks, TickScheduler::default());
@@ -164,6 +167,7 @@ impl Session {
             compiler: Compiler::default(),
             failed: false,
             ticks: 0,
+            original_blocks,
         })
     }
 
@@ -176,16 +180,17 @@ impl Session {
 
     /// Compile once; a rejected compile leaves the interpreter snapshot intact.
     pub fn compile(&mut self, options: CompilerOptions) -> Result<&CompileStatistics> {
+        self.compile_with_monitor(options, Arc::new(TaskMonitor::default()))
+    }
+
+    pub fn compile_with_monitor(&mut self, options: CompilerOptions, monitor: Arc<TaskMonitor>) -> Result<&CompileStatistics> {
         self.ready()?;
         if self.compiler.is_active() {
             bail!("session is already compiled");
         }
-        if options.io_only {
-            bail!("headless sessions require full state projection");
-        }
         let ticks = self.world.scheduler().iter_entries().collect();
         self.compiler
-            .compile(&self.world, self.bounds, options, ticks, Arc::new(TaskMonitor::default()))
+            .compile(&self.world, self.bounds, options, ticks, monitor)
             .map_err(|error| anyhow::anyhow!("compile failed: {error:?}"))?;
         self.world.clear_scheduled_ticks();
         Ok(self.compiler.stats().expect("successful compile has statistics"))
@@ -220,9 +225,27 @@ impl Session {
         if self.ticks.checked_add(ticks).is_none() {
             bail!("tick count overflow");
         }
+        self.validate_inputs(inputs)?;
+        for input in inputs {
+            let result = match input {
+                Input::Use(pos) => self.use_block(*pos),
+                Input::Plate(pos, powered) => self.set_pressure_plate(*pos, *powered),
+                Input::Power(pos, powered) => self.set_power(*pos, *powered),
+            };
+            if let Err(error) = result {
+                self.failed = true;
+                return Err(error);
+            }
+        }
+        self.advance(ticks)
+    }
+
+    /// Validate the complete input batch without changing any control.
+    pub fn validate_inputs(&self, inputs: &[Input]) -> Result<()> {
+        self.ready()?;
         for input in inputs {
             let pos = match input {
-                Input::Use(pos) | Input::Plate(pos, _) => *pos,
+                Input::Use(pos) | Input::Plate(pos, _) | Input::Power(pos, _) => *pos,
             };
             let block = self.get(pos)?;
             let supported = match input {
@@ -237,23 +260,24 @@ impl Session {
                         | Block::NoteBlock { .. }
                 ),
                 Input::Plate(_, _) => block.pressure_plate_powered().is_some(),
+                Input::Power(_, _) => matches!(block, Block::Lever { .. }) || block.pressure_plate_powered().is_some(),
             };
             let supported = supported && (!self.compiler.is_active() || self.compiler.accepts_control(pos));
             if !supported {
                 bail!("unsupported input at {pos}");
             }
         }
-        for input in inputs {
-            let result = match input {
-                Input::Use(pos) => self.use_block(*pos),
-                Input::Plate(pos, powered) => self.set_pressure_plate(*pos, *powered),
-            };
-            if let Err(error) = result {
-                self.failed = true;
-                return Err(error);
-            }
+        Ok(())
+    }
+
+    /// Set binary control power; matching lever states do not toggle the source.
+    pub fn set_power(&mut self, pos: BlockPos, powered: bool) -> Result<()> {
+        self.validate_inputs(&[Input::Power(pos, powered)])?;
+        match self.get(pos)? {
+            Block::Lever { lever } if lever.powered != powered => self.use_block(pos),
+            Block::Lever { .. } => Ok(()),
+            _ => self.set_pressure_plate(pos, powered),
         }
-        self.advance(ticks)
     }
 
     pub fn use_block(&mut self, pos: BlockPos) -> Result<()> {
@@ -320,6 +344,11 @@ impl Session {
     /// Completed game ticks, including those completed before an execution failure.
     pub fn ticks(&self) -> u64 {
         self.ticks
+    }
+
+    /// Initial block states before schematic initialization; unspecified cells are air.
+    pub fn original_blocks(&self) -> &[(BlockPos, u32)] {
+        &self.original_blocks
     }
 
     pub fn block_entity(&self, pos: BlockPos) -> Result<Option<&BlockEntity>> {

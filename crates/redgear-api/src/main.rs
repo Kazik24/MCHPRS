@@ -1,40 +1,91 @@
+use base64::Engine;
 use mchprs_blocks::{BlockPos, blocks::Block};
 use mchprs_core::headless::{CompilerOptions, Input, Session};
+use mchprs_core::redpilator::TaskMonitor;
 use serde_json::{Value, json};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::io::{BufRead, BufReader, Read, Write};
-use std::net::{IpAddr, TcpListener, TcpStream};
+use std::net::{IpAddr, Shutdown, TcpListener, TcpStream};
 use std::sync::{
-    Arc,
+    Arc, Mutex,
     atomic::{AtomicBool, AtomicUsize, Ordering},
+    mpsc,
 };
 use std::time::Duration;
 
-const MAX_MESSAGE: u64 = 1_048_576;
-const MAX_CELLS: i32 = 30_000;
+const MAX_MESSAGE: u64 = 16_777_216;
+const MAX_CELLS: u32 = 30_000;
 const MAX_CLIENTS: usize = 4;
+const MAX_SESSIONS: usize = 4;
+const MAX_TICKS: u64 = 1_000_000;
 
-struct Connection {
-    session: Option<Session>,
-    size: [i32; 3],
-    origin: BlockPos,
-    hello: bool,
-    compiled: bool,
+struct ApiError {
+    code: &'static str,
+    message: String,
+}
+type ApiResult<T> = Result<T, ApiError>;
+fn error(code: &'static str, message: impl ToString) -> ApiError {
+    ApiError {
+        code,
+        message: message.to_string(),
+    }
 }
 
-fn pos(value: &Value, size: [i32; 3], origin: BlockPos) -> Result<BlockPos, String> {
-    let a = value.as_array().filter(|a| a.len() == 3).ok_or("invalid position")?;
-    let mut p = [0i32; 3];
+struct Output {
+    stream: Mutex<TcpStream>,
+    outstanding: Mutex<HashSet<u64>>,
+}
+impl Output {
+    fn send(&self, value: &Value, terminal: bool) -> std::io::Result<()> {
+        let bytes = serde_json::to_vec(value)?;
+        let mut stream = self.stream.lock().unwrap();
+        let mut outstanding = terminal.then(|| self.outstanding.lock().unwrap());
+        let result = if bytes.len() as u64 + 1 > MAX_MESSAGE {
+            Err(std::io::Error::other("API response exceeds limit"))
+        } else {
+            stream
+                .write_all(&bytes)
+                .and_then(|_| stream.write_all(b"\n"))
+                .and_then(|_| stream.flush())
+        };
+        if result.is_err() {
+            let _ = stream.shutdown(Shutdown::Both);
+        }
+        if let Some(outstanding) = outstanding.as_mut() {
+            if let Some(id) = value["id"].as_u64() {
+                outstanding.remove(&id);
+            }
+        }
+        result
+    }
+    fn failure(&self, request: &Value, session: Option<&str>, e: ApiError, terminal: bool) {
+        let mut value = json!({"type":"error", "code":e.code, "message":e.message});
+        identify(&mut value, request, session);
+        let _ = self.send(&value, terminal);
+    }
+}
+fn identify(value: &mut Value, request: &Value, session: Option<&str>) {
+    if let Some(id) = request.get("id") {
+        value["id"] = id.clone();
+    }
+    if let Some(session) = session {
+        value["session_id"] = json!(session);
+    }
+}
+fn position(value: &Value, size: [u32; 3], origin: BlockPos) -> ApiResult<BlockPos> {
+    let a = value
+        .as_array()
+        .filter(|a| a.len() == 3)
+        .ok_or_else(|| error("invalid_input", "Position must have three coordinates"))?;
+    let mut p = [0; 3];
     for i in 0..3 {
         p[i] = a[i]
-            .as_i64()
-            .and_then(|n| i32::try_from(n).ok())
-            .filter(|n| *n >= 0 && *n < size[i])
-            .ok_or("position outside region")?;
+            .as_u64()
+            .filter(|n| *n < size[i] as u64)
+            .ok_or_else(|| error("invalid_input", "Position is outside the schematic"))? as i32;
     }
     Ok(origin + BlockPos::new(p[0], p[1], p[2]))
 }
-
 fn block_string(block: Block) -> String {
     let name = block.get_name();
     let mut props: Vec<_> = mchprs_blocks::generated::STATE_PROPERTIES[block.get_id() as usize]
@@ -48,7 +99,6 @@ fn block_string(block: Block) -> String {
     let properties: Vec<_> = props.iter().map(|(key, value)| format!("{key}={value}")).collect();
     format!("minecraft:{name}[{}]", properties.join(","))
 }
-
 fn changes(items: Vec<(BlockPos, u32)>, origin: BlockPos) -> Value {
     let mut positions = BTreeMap::new();
     for (p, state) in items {
@@ -56,7 +106,7 @@ fn changes(items: Vec<(BlockPos, u32)>, origin: BlockPos) -> Value {
         positions.insert((p.x, p.y, p.z), state);
     }
     let mut states = Vec::<String>::new();
-    let mut indices = std::collections::HashMap::new();
+    let mut indices = HashMap::new();
     let changes: Vec<_> = positions
         .into_iter()
         .map(|((x, y, z), state)| {
@@ -71,230 +121,472 @@ fn changes(items: Vec<(BlockPos, u32)>, origin: BlockPos) -> Value {
     json!({"states":states,"changes":changes})
 }
 
-fn baseline(session: &Session, size: [i32; 3], origin: BlockPos) -> Result<Vec<(BlockPos, u32)>, String> {
-    let mut items = Vec::new();
-    for x in 0..size[0] {
-        for y in 0..size[1] {
-            for z in 0..size[2] {
-                let pos = origin + BlockPos::new(x, y, z);
-                let block = session.get(pos).map_err(|error| error.to_string())?;
-                items.push((pos, block.get_id()));
-            }
-        }
-    }
-    Ok(items)
+struct Release {
+    position: BlockPos,
+    tick: u64,
 }
-
-impl Connection {
-    fn handle(&mut self, request: &Value) -> Result<Value, String> {
-        let op = request["op"].as_str().ok_or("missing operation")?;
-        if op == "rawr" {
-            if self.hello || request["protocol"].as_u64() != Some(3) {
-                return Err("unsupported protocol or repeated handshake".into());
-            }
-            self.hello = true;
-            return Ok(
-                json!({"protocol":3,"engine":"mroww","version":env!("CARGO_PKG_VERSION"),"revision":option_env!("MROWW_API_REVISION").unwrap_or("unversioned"),"registry":"1.21.5","data_version":4325,"capabilities":{"schematic_load":true,"modes":["interpreter","compiled"]},"limits":{"message_bytes":MAX_MESSAGE,"cells":MAX_CELLS,"axis":64,"inputs":64,"ticks":64}}),
-            );
-        }
-        if !self.hello {
-            return Err("handshake required".into());
-        }
-        match op {
-            "load_schematic" => {
-                if self.session.is_some() {
-                    return Err("session already loaded".into());
-                }
-                if request["format"].as_str() != Some("sponge-v3") {
-                    return Err("format must be sponge-v3".into());
-                }
-                let encoded = request["schematic"].as_str().ok_or("missing schematic")?;
-                if encoded.len() > 900_000 {
-                    return Err("encoded schematic exceeds limit".into());
-                }
-                use base64::Engine;
-                let bytes = base64::engine::general_purpose::STANDARD
-                    .decode(encoded)
-                    .map_err(|_| "invalid schematic base64")?;
-                if bytes.len() > 675_000 {
-                    return Err("compressed schematic exceeds limit".into());
-                }
-                let (mut session, dims) =
-                    Session::from_sponge_schematic(&bytes, MAX_CELLS as u32).map_err(|e| format!("invalid schematic: {e:#}"))?;
-                let origin = BlockPos::new(4, 4, 4);
-                let baseline = baseline(&session, dims.map(|dimension| dimension as i32), origin)?;
-                if serde_json::to_vec(&changes(baseline, origin)).map_err(|e| e.to_string())?.len() + 64 > MAX_MESSAGE as usize {
-                    return Err("full baseline exceeds response limit".into());
-                }
-                session.drain_changes().map_err(|e| e.to_string())?;
-                self.session = Some(session);
-                self.size = dims.map(|n| n as i32);
-                self.origin = origin;
-                Ok(json!({"size":dims}))
-            }
-            "compile" => {
-                if self.compiled {
-                    return Err("session already compiled".into());
-                }
-                let s = self.session.as_mut().ok_or("no session")?;
-                match request["mode"].as_str() {
-                    Some("interpreter") => {
-                        self.compiled = true;
-                        Ok(json!({"mode":"interpreter"}))
+struct Simulation {
+    session: Session,
+    size: [u32; 3],
+    origin: BlockPos,
+    original: HashMap<BlockPos, u32>,
+    reference: HashMap<BlockPos, u32>,
+    releases: Vec<Release>,
+}
+impl Simulation {
+    fn projection(&mut self, baseline: bool) -> ApiResult<(Value, HashMap<BlockPos, u32>)> {
+        let reference = if baseline { &self.original } else { &self.reference };
+        let mut current = HashMap::new();
+        let mut changed = Vec::new();
+        for x in 0..self.size[0] as i32 {
+            for y in 0..self.size[1] as i32 {
+                for z in 0..self.size[2] as i32 {
+                    let p = self.origin + BlockPos::new(x, y, z);
+                    let state = self.session.get(p).map_err(|e| error("execution_failed", e))?.get_id();
+                    if state != reference.get(&p).copied().unwrap_or(Block::Air.get_id()) {
+                        changed.push((p, state));
                     }
-                    Some("compiled") => {
-                        if request.get("optimization").is_some() {
-                            return Err("compiled mode no longer accepts optimization levels".into());
+                    if state != Block::Air.get_id() {
+                        current.insert(p, state);
+                    }
+                }
+            }
+        }
+        self.session.drain_changes().map_err(|e| error("execution_failed", e))?;
+        Ok((changes(changed, self.origin), current))
+    }
+    fn advance(&mut self, request: &Value, monitor: &TaskMonitor) -> ApiResult<()> {
+        let ticks = request["ticks"]
+            .as_u64()
+            .filter(|n| *n <= MAX_TICKS)
+            .ok_or_else(|| error("invalid_request", "Invalid tick count or request limit exceeded"))?;
+        let end = self
+            .session
+            .ticks()
+            .checked_add(ticks)
+            .ok_or_else(|| error("invalid_request", "Tick count overflow"))?;
+        let inputs = request["inputs"]
+            .as_array()
+            .filter(|a| a.len() <= 64)
+            .ok_or_else(|| error("invalid_input", "Inputs must be an array of at most 64 actions"))?;
+        let mut parsed = Vec::new();
+        let mut actions = Vec::new();
+        for input in inputs {
+            let p = position(&input["pos"], self.size, self.origin)?;
+            let mut release = None;
+            let action = match input.get("kind") {
+                Some(kind) => {
+                    if input.get("power").is_some() || input.get("duration_ticks").is_some() {
+                        return Err(error("invalid_input", "Do not mix kind with power or duration_ticks"));
+                    }
+                    match kind.as_str() {
+                        Some("use") => Input::Use(p),
+                        Some("plate") => Input::Plate(
+                            p,
+                            input["powered"]
+                                .as_bool()
+                                .ok_or_else(|| error("invalid_input", "Missing Boolean plate state"))?,
+                        ),
+                        _ => return Err(error("invalid_input", "Unsupported input kind")),
+                    }
+                }
+                None => {
+                    let power = match input.get("power") {
+                        None => 15,
+                        Some(v) => v
+                            .as_u64()
+                            .filter(|n| *n <= 15)
+                            .ok_or_else(|| error("invalid_input", "Power must be an integer from 0 to 15"))?,
+                    };
+                    if let Some(duration) = input.get("duration_ticks") {
+                        let duration = duration
+                            .as_u64()
+                            .filter(|n| *n > 0)
+                            .ok_or_else(|| error("invalid_input", "Duration must be a positive integer"))?;
+                        let due = self
+                            .session
+                            .ticks()
+                            .checked_add(duration)
+                            .ok_or_else(|| error("invalid_input", "Release tick overflow"))?;
+                        if power > 0 {
+                            release = Some(due);
                         }
-                        s.compile(CompilerOptions::default()).map_err(|e| e.to_string())?;
-                        self.compiled = true;
-                        Ok(json!({"mode":"compiled"}))
                     }
-                    _ => Err("unsupported mode".into()),
+                    Input::Power(p, power > 0)
+                }
+            };
+            parsed.push(action);
+            actions.push((p, release));
+        }
+        self.session.validate_inputs(&parsed).map_err(|e| error("invalid_input", e))?;
+        for (action, (p, release)) in parsed.into_iter().zip(actions) {
+            self.session.advance_with_inputs(0, &[action]).map_err(|e| error("execution_failed", e))?;
+            self.releases.retain(|r| r.position != p);
+            if let Some(tick) = release {
+                self.releases.push(Release { position: p, tick });
+            }
+        }
+        while self.session.ticks() < end {
+            if monitor.cancelled() {
+                return Err(error("execution_failed", "Session was closed"));
+            }
+            let boundary = self.releases.iter().map(|r| r.tick).min().unwrap_or(end).min(end);
+            self.session
+                .advance((boundary - self.session.ticks()).min(16))
+                .map_err(|e| error("execution_failed", e))?;
+            let now = self.session.ticks();
+            let mut remaining = Vec::new();
+            for release in self.releases.drain(..) {
+                if release.tick <= now {
+                    self.session
+                        .set_power(release.position, false)
+                        .map_err(|e| error("execution_failed", e))?;
+                } else {
+                    remaining.push(release);
                 }
             }
-            "advance" => {
-                if !self.compiled {
-                    return Err("session is not compiled".into());
-                }
-                let ticks = request["ticks"].as_u64().filter(|n| *n <= 64).ok_or("invalid tick count")?;
-                let inputs = request["inputs"].as_array().filter(|a| a.len() <= 64).ok_or("invalid inputs")?;
-                let mut parsed = Vec::new();
-                for input in inputs {
-                    let p = pos(&input["pos"], self.size, self.origin)?;
-                    match input["kind"].as_str() {
-                        Some("use") => parsed.push(Input::Use(p)),
-                        Some("plate") => parsed.push(Input::Plate(p, input["powered"].as_bool().ok_or("missing plate state")?)),
-                        _ => return Err("unsupported input".into()),
-                    }
-                }
+            self.releases = remaining;
+        }
+        Ok(())
+    }
+    fn handle(&mut self, request: &Value, monitor: &TaskMonitor) -> ApiResult<(Value, Option<HashMap<BlockPos, u32>>)> {
+        let mut reference = None;
+        let mut value = match request["op"].as_str() {
+            Some("advance") => {
                 let projection = match request.get("projection") {
                     None => false,
-                    Some(value) => value.as_bool().ok_or("invalid projection flag")?,
+                    Some(v) => v.as_bool().ok_or_else(|| error("invalid_request", "Invalid projection flag"))?,
                 };
-                let s = self.session.as_mut().ok_or("no session")?;
-                s.advance_with_inputs(ticks, &parsed).map_err(|e| format!("session failed: {e}"))?;
-                let mut result = json!({"tick":s.ticks()});
+                self.advance(request, monitor)?;
                 if projection {
-                    let c = changes(s.drain_changes().map_err(|e| e.to_string())?, self.origin);
-                    result["states"] = c["states"].clone();
-                    result["changes"] = c["changes"].clone();
+                    let (v, r) = self.projection(false)?;
+                    reference = Some(r);
+                    v
+                } else {
+                    json!({})
                 }
-                Ok(result)
             }
-            "project" => {
-                let s = self.session.as_mut().ok_or("no session")?;
-                let items = match request["kind"].as_str() {
-                    Some("changes") => s.drain_changes().map_err(|e| e.to_string())?,
-                    Some("baseline") => {
-                        // Baseline owns the change stream through this point.
-                        s.drain_changes().map_err(|e| e.to_string())?;
-                        baseline(s, self.size, self.origin)?
-                    }
-                    _ => return Err("invalid projection kind".into()),
+            Some("project") => {
+                let baseline = match request["kind"].as_str() {
+                    Some("baseline") => true,
+                    Some("changes") => false,
+                    _ => return Err(error("invalid_request", "Invalid projection kind")),
                 };
-                let mut result = changes(items, self.origin);
-                result["tick"] = json!(s.ticks());
-                Ok(result)
+                let (v, r) = self.projection(baseline)?;
+                reference = Some(r);
+                v
             }
-            "close" => {
-                self.session = None;
-                Ok(json!({}))
-            }
-            _ => Err("unknown operation".into()),
-        }
+            // shortcut: advertise recompilation only once pending runtime state can be imported atomically.
+            Some("recompile") => return Err(error("unsupported_operation", "This backend does not support atomic recompilation")),
+            _ => return Err(error("invalid_request", "Unknown operation")),
+        };
+        value["type"] = json!("result");
+        value["tick"] = json!(self.session.ticks());
+        Ok((value, reference))
     }
 }
 
-fn read_request(reader: &mut BufReader<TcpStream>) -> std::io::Result<Option<(u64, Value)>> {
+struct Begin {
+    encoded: String,
+    options: CompilerOptions,
+    executor: &'static str,
+}
+fn parse_begin(request: &Value) -> ApiResult<Begin> {
+    if request["protocol"].as_u64() != Some(4) {
+        return Err(error("unsupported_protocol", "Protocol 4 is required"));
+    }
+    if request["format"].as_str() != Some("sponge-v3") {
+        return Err(error("invalid_request", "Format must be sponge-v3"));
+    }
+    let encoded = request["schematic"]
+        .as_str()
+        .ok_or_else(|| error("invalid_request", "Missing Base64 schematic"))?
+        .to_owned();
+    let settings = request["settings"]
+        .as_str()
+        .ok_or_else(|| error("invalid_settings", "Settings must be a string"))?;
+    let mut options = CompilerOptions::parse(settings).map_err(|e| error("invalid_settings", e))?;
+    let executor = match request["backend"].as_str() {
+        Some("redpilator") => {
+            if options.llvm {
+                "llvm"
+            } else {
+                "rust"
+            }
+        }
+        Some("mroww-redpilator") => {
+            if options.llvm {
+                return Err(error("invalid_settings", "mroww-redpilator conflicts with --llvm"));
+            }
+            "rust"
+        }
+        Some("mroww-llvm") => {
+            options.llvm = true;
+            "llvm"
+        }
+        Some("mroww-interpreter" | "mroww-interpteter") => {
+            if !settings.trim().is_empty() {
+                return Err(error("invalid_settings", "The interpreter does not accept compiler settings"));
+            }
+            "interpreter"
+        }
+        _ => return Err(error("invalid_request", "Unknown backend selector")),
+    };
+    Ok(Begin { encoded, options, executor })
+}
+enum Command {
+    Request(Value),
+    Close(Value),
+    Disconnect,
+}
+struct Worker {
+    sender: mpsc::SyncSender<Command>,
+    monitor: Arc<TaskMonitor>,
+    compiling: Arc<AtomicBool>,
+    alive: Arc<AtomicBool>,
+    closing: AtomicBool,
+    thread: std::thread::JoinHandle<()>,
+}
+fn compile(begin: Begin, monitor: Arc<TaskMonitor>) -> ApiResult<Simulation> {
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(&begin.encoded)
+        .map_err(|_| error("invalid_schematic", "Invalid schematic Base64"))?;
+    let (mut session, size) = Session::from_sponge_schematic(&bytes, MAX_CELLS).map_err(|e| error("invalid_schematic", format!("{e:#}")))?;
+    let original: HashMap<_, _> = session.original_blocks().iter().copied().collect();
+    if monitor.cancelled() {
+        return Err(error("cancelled", "Compilation cancelled"));
+    }
+    if begin.executor != "interpreter" {
+        session
+            .compile_with_monitor(begin.options, monitor.clone())
+            .map_err(|e| error(if monitor.cancelled() { "cancelled" } else { "compile_failed" }, e))?;
+    }
+    Ok(Simulation {
+        session,
+        size,
+        origin: BlockPos::new(4, 4, 4),
+        reference: original.clone(),
+        original,
+        releases: Vec::new(),
+    })
+}
+fn spawn_worker(session: String, request: Value, begin: Begin, output: Arc<Output>) -> Worker {
+    let (sender, receiver) = mpsc::sync_channel(64);
+    let monitor = Arc::new(TaskMonitor::default());
+    let compiling = Arc::new(AtomicBool::new(true));
+    let alive = Arc::new(AtomicBool::new(true));
+    let worker_monitor = monitor.clone();
+    let worker_compiling = compiling.clone();
+    let worker_alive = alive.clone();
+    let thread = std::thread::spawn(move || {
+        struct Lifetime(Arc<AtomicBool>);
+        impl Drop for Lifetime {
+            fn drop(&mut self) {
+                self.0.store(false, Ordering::Release);
+            }
+        }
+        let _lifetime = Lifetime(worker_alive.clone());
+        let executor = begin.executor;
+        let (stop, progress_stopped) = mpsc::channel();
+        let progress_output = output.clone();
+        let progress_session = session.clone();
+        let progress_monitor = worker_monitor.clone();
+        let progress = std::thread::spawn(move || {
+            loop {
+                if progress_output.send(&json!({"type":"progress", "session_id":progress_session, "phase":"compiling", "description":"Preparing simulation", "details":progress_monitor.status()}), false).is_err() { progress_monitor.cancel(); break; }
+                if progress_stopped.recv_timeout(Duration::from_secs(1)) != Err(mpsc::RecvTimeoutError::Timeout) {
+                    break;
+                }
+            }
+        });
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| compile(begin, worker_monitor.clone())))
+            .unwrap_or_else(|_| Err(error("compile_failed", "Compilation worker panicked")));
+        let _ = stop.send(());
+        let _ = progress.join();
+        let mut simulation = match result {
+            Ok(simulation) if !worker_monitor.cancelled() => {
+                let mut finished = json!({"type":"finished", "tick":0, "backend":executor});
+                identify(&mut finished, &request, Some(&session));
+                worker_compiling.store(false, Ordering::Release);
+                if output.send(&finished, true).is_err() {
+                    return;
+                }
+                Some(simulation)
+            }
+            result => {
+                let e = if worker_monitor.cancelled() {
+                    error("cancelled", "Compilation cancelled")
+                } else {
+                    result
+                        .err()
+                        .unwrap_or_else(|| error("compile_failed", "Compilation did not produce a session"))
+                };
+                worker_alive.store(false, Ordering::Release);
+                output.failure(&request, Some(&session), e, true);
+                None
+            }
+        };
+        while let Ok(command) = receiver.recv() {
+            match command {
+                Command::Disconnect => break,
+                Command::Close(request) => {
+                    drop(simulation.take());
+                    worker_alive.store(false, Ordering::Release);
+                    let mut result = json!({"type":"result", "state":"closed"});
+                    identify(&mut result, &request, Some(&session));
+                    let _ = output.send(&result, true);
+                    break;
+                }
+                Command::Request(request) => {
+                    let Some(current) = simulation.as_mut() else {
+                        output.failure(&request, Some(&session), error("unknown_session", "Session has ended"), true);
+                        continue;
+                    };
+                    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| current.handle(&request, &worker_monitor)))
+                        .unwrap_or_else(|_| Err(error("execution_failed", "Simulation worker panicked")));
+                    match result {
+                        Ok((mut value, reference)) => {
+                            identify(&mut value, &request, Some(&session));
+                            if output.send(&value, true).is_err() {
+                                break;
+                            }
+                            if let Some(reference) = reference {
+                                current.reference = reference;
+                            }
+                        }
+                        Err(e) => {
+                            let fatal = e.code == "execution_failed";
+                            output.failure(&request, Some(&session), e, true);
+                            if fatal {
+                                simulation = None;
+                                worker_alive.store(false, Ordering::Release);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    });
+    Worker {
+        sender,
+        monitor,
+        compiling,
+        alive,
+        closing: AtomicBool::new(false),
+        thread,
+    }
+}
+fn read_request(reader: &mut BufReader<TcpStream>) -> std::io::Result<Option<Value>> {
     let mut line = Vec::new();
     let count = reader.by_ref().take(MAX_MESSAGE + 1).read_until(b'\n', &mut line)?;
     if count == 0 {
         return Ok(None);
     }
     if count as u64 > MAX_MESSAGE || line.last() != Some(&b'\n') {
-        return Ok(None);
+        return Err(std::io::Error::other("Oversized or incomplete API message"));
     }
-    let request: Value = match serde_json::from_slice(&line) {
-        Ok(v) => v,
-        Err(_) => return Ok(None),
-    };
-    let Some(id) = request["id"].as_u64() else { return Ok(None) };
-    Ok(Some((id, request)))
+    let request: Value = serde_json::from_slice(&line)?;
+    if !request.is_object() {
+        return Err(std::io::Error::other("Expected a JSON object"));
+    }
+    Ok(Some(request))
 }
-
-fn response(id: u64, result: Result<Value, String>) -> (Value, bool) {
-    let (mut response, fatal) = match result {
-        Ok(value) => (value, false),
-        Err(error) => {
-            let fatal = error.starts_with("session failed:");
-            (json!({"error":error,"fatal":fatal}), fatal)
-        }
-    };
-    response["id"] = json!(id);
-    response["ok"] = json!(response.get("error").is_none());
-    (response, fatal)
-}
-
-fn start_watchdog(stream: &TcpStream) -> std::io::Result<(Arc<AtomicBool>, std::thread::JoinHandle<()>)> {
-    let finished = Arc::new(AtomicBool::new(false));
-    let watchdog_done = finished.clone();
-    let watchdog_stream = stream.try_clone()?;
-    let watchdog = std::thread::spawn(move || {
-        let deadline = std::time::Instant::now() + Duration::from_secs(30);
-        while !watchdog_done.load(Ordering::Acquire) {
-            let remaining = deadline.saturating_duration_since(std::time::Instant::now());
-            if remaining.is_zero() {
-                let _ = watchdog_stream.shutdown(std::net::Shutdown::Both);
-                break;
-            }
-            std::thread::park_timeout(remaining);
-        }
-    });
-    Ok((finished, watchdog))
-}
-
-fn serve(mut stream: TcpStream) -> std::io::Result<()> {
-    stream.set_read_timeout(Some(Duration::from_secs(300)))?;
+fn serve(stream: TcpStream) -> std::io::Result<()> {
     stream.set_write_timeout(Some(Duration::from_secs(30)))?;
     let mut reader = BufReader::new(stream.try_clone()?);
-    let mut connection = Connection {
-        session: None,
-        size: [0; 3],
-        origin: BlockPos::new(0, 0, 0),
-        hello: false,
-        compiled: false,
-    };
-    loop {
-        let Some((id, request)) = read_request(&mut reader)? else { break };
-        let close = request["op"] == "close";
-        let (finished, watchdog) = start_watchdog(&stream)?;
-        let result = connection.handle(&request);
-        finished.store(true, Ordering::Release);
-        watchdog.thread().unpark();
-        let _ = watchdog.join();
-        let (response, fatal) = response(id, result);
-        let bytes = serde_json::to_vec(&response)?;
-        if bytes.len() as u64 + 1 > MAX_MESSAGE {
-            break;
+    let output = Arc::new(Output {
+        stream: Mutex::new(stream),
+        outstanding: Mutex::new(HashSet::new()),
+    });
+    let mut workers: HashMap<String, Worker> = HashMap::new();
+    let mut next_session = 1u64;
+    let mut begun = false;
+    let result = (|| -> std::io::Result<()> {
+        while let Some(request) = read_request(&mut reader)? {
+            workers.retain(|_, worker| worker.alive.load(Ordering::Acquire));
+            if request.get("id").is_some_and(|v| v.as_u64().is_none()) {
+                output.failure(&json!({}), None, error("invalid_request", "id must be an unsigned integer"), false);
+                continue;
+            }
+            if let Some(id) = request["id"].as_u64() {
+                let inserted = output.outstanding.lock().unwrap().insert(id);
+                if !inserted {
+                    output.failure(&request, None, error("invalid_request", "Request id is already outstanding"), false);
+                    continue;
+                }
+            }
+            if request["op"] == "begin" {
+                let begin = match parse_begin(&request) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        output.failure(&request, None, e, true);
+                        continue;
+                    }
+                };
+                if workers.len() >= MAX_SESSIONS {
+                    output.failure(&request, None, error("resource_limit", "Connection session limit reached"), true);
+                    continue;
+                }
+                let session = format!("s{next_session}");
+                next_session += 1;
+                let mut accepted = json!({"type":"accepted", "protocol":4, "engine":"mroww", "capabilities":{"recompile":false}});
+                identify(&mut accepted, &request, Some(&session));
+                output.send(&accepted, false)?;
+                begun = true;
+                workers.insert(session.clone(), spawn_worker(session, request, begin, output.clone()));
+                continue;
+            }
+            let session = request["session_id"].as_str();
+            if !begun {
+                output.failure(&request, None, error("invalid_request", "First request must be begin"), true);
+                continue;
+            }
+            let Some(worker) = session
+                .and_then(|s| workers.get(s))
+                .filter(|w| w.alive.load(Ordering::Acquire) && !w.closing.load(Ordering::Acquire))
+            else {
+                output.failure(&request, session, error("unknown_session", "Unknown session"), true);
+                continue;
+            };
+            let close = request["op"] == "close";
+            let command = if close {
+                Command::Close(request.clone())
+            } else if worker.compiling.load(Ordering::Acquire) {
+                output.failure(&request, session, error("session_busy", "Session is compiling"), true);
+                continue;
+            } else {
+                Command::Request(request.clone())
+            };
+            match worker.sender.try_send(command) {
+                Ok(()) => {
+                    if close {
+                        worker.closing.store(true, Ordering::Release);
+                        worker.monitor.cancel();
+                    }
+                }
+                Err(mpsc::TrySendError::Full(_)) => output.failure(&request, session, error("resource_limit", "Session request queue is full"), true),
+                Err(mpsc::TrySendError::Disconnected(_)) => output.failure(&request, session, error("unknown_session", "Session has ended"), true),
+            }
         }
-        stream.write_all(&bytes)?;
-        stream.write_all(b"\n")?;
-        stream.flush()?;
-        if close || fatal {
-            break;
-        }
+        Ok(())
+    })();
+    for worker in workers.values() {
+        worker.monitor.cancel();
     }
-    Ok(())
+    for (_, worker) in workers {
+        let _ = worker.sender.send(Command::Disconnect);
+        let _ = worker.thread.join();
+    }
+    let _ = output.stream.lock().unwrap().shutdown(Shutdown::Both);
+    result
 }
-
 fn main() -> std::io::Result<()> {
     let address = std::env::args().nth(1).unwrap_or_else(|| "127.0.0.1:8765".into());
     let listener = TcpListener::bind(address)?;
     if !matches!(listener.local_addr()?.ip(), IpAddr::V4(ip) if ip.is_loopback()) {
         return Err(std::io::Error::other("loopback IPv4 required"));
     }
-    eprintln!("MROWW RedGear API listening on {}", listener.local_addr()?);
+    eprintln!("MROWW RedGear API v4 listening on {}", listener.local_addr()?);
     let active = Arc::new(AtomicUsize::new(0));
     for incoming in listener.incoming() {
         let stream = incoming?;

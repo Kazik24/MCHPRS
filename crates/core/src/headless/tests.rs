@@ -120,15 +120,14 @@ fn interpreter_controls_and_drain_use_plot_positions() {
 }
 
 #[test]
-fn compiled_session_requires_full_projection() {
+fn compiled_session_accepts_io_settings_with_complete_projection() {
     let mut session = Session::new(snapshot()).unwrap();
     let options = CompilerOptions {
         io_only: true,
         ..Default::default()
     };
-    assert!(session.compile(options).is_err());
+    session.compile(options).unwrap();
     assert_eq!(session.get(BlockPos::new(20, 4, 30)).unwrap(), Block::Air);
-    session.compile(CompilerOptions::default()).unwrap();
     session.advance(1).unwrap();
     assert!(session.drain_changes().unwrap().is_empty());
 }
@@ -216,14 +215,9 @@ fn compiled_reset_hands_pending_ticks_back_once() {
     });
     let mut session = Session::new(input).unwrap();
     let before = session.pending_ticks().unwrap();
-    assert!(
-        session
-            .compile(CompilerOptions {
-                io_only: true,
-                ..Default::default()
-            })
-            .is_err()
-    );
+    let monitor = Arc::new(TaskMonitor::default());
+    monitor.cancel();
+    assert!(session.compile_with_monitor(CompilerOptions::default(), monitor).is_err());
     assert_eq!(session.pending_ticks().unwrap(), before);
     session.compile(CompilerOptions::default()).unwrap();
     assert!(session.pending_ticks().is_err());
@@ -315,4 +309,48 @@ fn inspect_power_and_block_entity() {
     let session = Session::new(input).unwrap();
     assert_eq!(session.power(pos, BlockFace::Top).unwrap(), 15);
     assert!(session.block_entity(pos).unwrap().is_none());
+}
+
+#[test]
+#[cfg(any(windows, target_os = "linux"))]
+fn binary_power_is_explicit_ordered_and_validated_on_both_executors() {
+    let pos = BlockPos::new(21, 4, 30);
+    for llvm in [false, true] {
+        let mut input = snapshot();
+        input.min.y = 3;
+        input.blocks = vec![
+            (pos.offset(BlockFace::Bottom), Block::Stone {}),
+            (pos, Block::from_name("lever").unwrap()),
+            (pos.offset(BlockFace::East), Block::RedstoneWire { wire: Default::default() }),
+            (pos.offset(BlockFace::East).offset(BlockFace::Bottom), Block::Stone {}),
+        ];
+        let original = input.blocks.iter().map(|&(pos, block)| (pos, block.get_id())).collect::<Vec<_>>();
+        let mut session = Session::new(input).unwrap();
+        assert_eq!(session.original_blocks(), original);
+        session
+            .compile(CompilerOptions {
+                llvm,
+                io_only: true,
+                ..Default::default()
+            })
+            .unwrap();
+        assert!(
+            session
+                .validate_inputs(&[Input::Power(pos, true), Input::Power(BlockPos::new(20, 4, 30), true)])
+                .is_err()
+        );
+        assert!(matches!(session.get(pos).unwrap(), Block::Lever { lever } if !lever.powered));
+        session
+            .advance_with_inputs(1, &[Input::Power(pos, true), Input::Power(pos, true)])
+            .unwrap();
+        assert!(matches!(session.get(pos).unwrap(), Block::Lever { lever } if lever.powered));
+        assert!(matches!(session.get(pos.offset(BlockFace::East)).unwrap(), Block::RedstoneWire { wire } if wire.power == 15));
+        session
+            .advance_with_inputs(0, &[Input::Power(pos, false), Input::Power(pos, false)])
+            .unwrap();
+        assert!(matches!(session.get(pos).unwrap(), Block::Lever { lever } if !lever.powered));
+        assert!(matches!(session.get(pos.offset(BlockFace::East)).unwrap(), Block::RedstoneWire { wire } if wire.power == 0));
+        assert_eq!(session.ticks(), 1);
+        assert_eq!(session.original_blocks(), original);
+    }
 }

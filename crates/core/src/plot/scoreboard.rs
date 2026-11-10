@@ -23,7 +23,7 @@ impl RedpilatorState {
             RedpilatorState::Stopped => messages::SCOREBOARD_ENGINE_INTERPRETER,
             RedpilatorState::Compiling => messages::SCOREBOARD_ENGINE_COMPILING,
             RedpilatorState::Running => messages::SCOREBOARD_ENGINE_REDPILATOR,
-            RedpilatorState::RunningLlvm => messages::SCOREBOARD_ENGINE_REDPILATOR_LLVM,
+            RedpilatorState::RunningLlvm => messages::SCOREBOARD_ENGINE_LLVM,
         }
     }
 }
@@ -183,7 +183,7 @@ impl Scoreboard {
 
     fn lines(&self) -> Vec<String> {
         let mut lines = vec![
-            self.redpilator_state.to_str().to_owned(),
+            format!("{:<19}", self.redpilator_state.to_str()),
             self.metrics.tps.clone(),
             self.metrics.history.clone(),
             self.metrics.history_memory.clone(),
@@ -412,14 +412,15 @@ mod tests {
             &board.current_state[7..],
             &["Pistons: auto/off", "Screen only: on", "Git: very-long-b...",]
         );
-        for engine in [
-            RedpilatorState::Running,
-            RedpilatorState::RunningLlvm,
-            RedpilatorState::Compiling,
-            RedpilatorState::Stopped,
+        for (engine, heading) in [
+            (RedpilatorState::Running, "Engine: Redpilator"),
+            (RedpilatorState::RunningLlvm, "Engine: LLVM"),
+            (RedpilatorState::Compiling, "Engine: Compiling..."),
+            (RedpilatorState::Stopped, "Engine: Interpreter"),
         ] {
             board.set_redpilator_state(&[], engine);
             let lines = &board.current_state;
+            assert_eq!(lines[0].trim_end(), heading);
             assert!(lines.len() <= 15);
             assert!(lines.iter().all(|line| line.is_ascii() && line.len() <= lines[0].len()));
             assert_eq!(lines.iter().collect::<HashSet<_>>().len(), lines.len());

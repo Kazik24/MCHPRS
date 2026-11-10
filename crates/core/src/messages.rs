@@ -178,8 +178,8 @@ catalog! {
         HISTORY_DECODE_SIZE_INVALID = "This history pawprint has an invalid size.";
         SCOREBOARD_ENGINE_INTERPRETER = "Engine: Interpreter";
         SCOREBOARD_ENGINE_COMPILING = "Engine: Compiling...";
-        SCOREBOARD_ENGINE_REDPILATOR = "Engine: Redpilator ON";
-        SCOREBOARD_ENGINE_REDPILATOR_LLVM = "Engine: Redpilator-LLVM";
+        SCOREBOARD_ENGINE_REDPILATOR = "Engine: Redpilator";
+        SCOREBOARD_ENGINE_LLVM = "Engine: LLVM";
         SCOREBOARD_HISTORY_OFF = "Hist: Off :3";
         SCOREBOARD_VISUAL_OFF = "Visual: OFF :3";
         SCOREBOARD_ON = "on";
@@ -385,7 +385,7 @@ catalog! {
         PLOT_INFO_GIT_LOADING = "Loading";
         PLOT_INFO_ENGINE_INTERPRETER = "Interpreter";
         PLOT_INFO_ENGINE_REDPILATOR = "Redpilator";
-        PLOT_INFO_ENGINE_LLVM = "Redpilator-LLVM";
+        PLOT_INFO_ENGINE_LLVM = "LLVM";
         RESULT_ACTION_HOVER = "Boop to follow this trail.";
         ROTATE_AMOUNT_MUST_MULTIPLE = "These rotation paws turn in 90-degree steps. Choose a multiple of 90.";
         RTPS_SET = "The circuit's new tick pace is set. Awoo!";
