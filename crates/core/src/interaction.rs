@@ -12,6 +12,8 @@ use mchprs_blocks::items::{Item, ItemStack};
 use mchprs_blocks::{BlockFace, BlockPos};
 use mchprs_network::packets::clientbound::{COpenSignEditor, ClientBoundPacket};
 
+pub(crate) mod connections;
+
 fn can_interact(player: &Player, block: Block) -> bool {
     if !crate::permissions::dedicated_permissions() {
         return true;
@@ -347,13 +349,6 @@ pub fn get_state_for_placement(world: &impl World, pos: BlockPos, item: Item, co
                 extended: false,
             },
         },
-        Item::Snowball => Block::PistonHead {
-            head: RedstonePistonHead {
-                facing: context.player.get_block_facing().opposite(),
-                sticky: true,
-                short: true,
-            },
-        },
         item if matches!(item.get_name(), "bamboo_sign" | "cherry_sign" | "mangrove_sign") => {
             if context.block_face == BlockFace::Bottom {
                 return Block::Air;
@@ -386,6 +381,8 @@ pub fn get_state_for_placement(world: &impl World, pos: BlockPos, item: Item, co
 }
 
 pub fn place_in_world(block: Block, world: &mut impl World, pos: BlockPos, nbt: &Option<nbt::Blob>) {
+    let block = connections::state_at(block, world, pos);
+    let block = apply_item_properties(block, nbt);
     let previous = world.get_block(pos);
     if block.has_block_entity() {
         if let Some(nbt) = nbt {
@@ -550,7 +547,7 @@ pub fn is_valid_position(block: Block, world: &impl World, pos: BlockPos) -> boo
     }
 }
 
-pub fn change(block: Block, world: &mut impl World, pos: BlockPos, direction: BlockFace) {
+pub fn change(block: Block, world: &mut impl World, pos: BlockPos, direction: BlockFace, direct: bool) {
     if !is_valid_position(block, world, pos) {
         destroy(block, world, pos);
         return;
@@ -560,21 +557,23 @@ pub fn change(block: Block, world: &mut impl World, pos: BlockPos, direction: Bl
         if world.set_block(pos, Block::RedstoneWire { wire: new_state }) {
             redstone::update_wire_neighbors(world, pos);
         }
+    } else if direct && direction.is_horizontal() {
+        connections::update_side(block, world, pos, direction.opposite());
     }
 }
 
 fn change_surrounding_blocks(world: &mut impl World, pos: BlockPos) {
-    shape_notifications(pos, |target, direction| {
-        change(world.get_block(target), world, target, direction);
+    shape_notifications(pos, |target, direction, direct| {
+        change(world.get_block(target), world, target, direction, direct);
     });
 }
 
-pub(crate) fn shape_notifications(pos: BlockPos, mut visit: impl FnMut(BlockPos, BlockFace)) {
+fn shape_notifications(pos: BlockPos, mut visit: impl FnMut(BlockPos, BlockFace, bool)) {
     for direction in BlockFace::values() {
         let neighbor = pos.offset(direction);
-        visit(neighbor, direction);
-        visit(neighbor.offset(BlockFace::Top), direction);
-        visit(neighbor.offset(BlockFace::Bottom), direction);
+        visit(neighbor, direction, true);
+        visit(neighbor.offset(BlockFace::Top), direction, false);
+        visit(neighbor.offset(BlockFace::Bottom), direction, false);
     }
 }
 
@@ -636,7 +635,6 @@ pub fn use_item_on_block(item: &ItemStack, world: &mut PlotWorld, ctx: UseOnBloc
             return ItemUseResult::Cancelled;
         }
         let block = get_state_for_placement(world, block_pos, item.item_type, &ctx);
-        let block = apply_item_properties(block, &item.nbt);
 
         place_in_world(block, world, block_pos, &item.nbt);
         if block.is_sign() && !item.nbt.as_ref().is_some_and(|blob| blob.content.contains_key("BlockEntityTag")) {

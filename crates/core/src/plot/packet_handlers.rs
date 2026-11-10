@@ -52,7 +52,16 @@ impl Plot {
             return;
         }
         let max_length = if command { 32767 } else { 256 };
-        if message.encode_utf16().count() > max_length || message.chars().any(|c| c.is_control()) || !self.players[player].accept_chat_message() {
+        if message.encode_utf16().count() > max_length || message.chars().any(|c| c.is_control()) {
+            return;
+        }
+        let player_data = &mut self.players[player];
+        let accepted = if super::commands::animal_emote_sound(message.trim_end()).is_some() {
+            player_data.accept_animal_emote(Instant::now())
+        } else {
+            player_data.accept_chat_message()
+        };
+        if !accepted {
             return;
         }
         if command {
@@ -301,6 +310,12 @@ impl Plot {
             }
         }
 
+        // Java follows a non-consuming block click with Use Item for the throw.
+        if item_in_hand.as_ref().is_some_and(|item| item.item_type == Item::Snowball)
+            && (self.players[player].crouching || self.redpilator.is_active() || self.compiling_redpilator())
+        {
+            return;
+        }
         if let Err(error) = self.prepare_block_edit() {
             self.players[player].send_error_message(&error);
             cancel(self);
@@ -747,7 +762,9 @@ impl ServerBoundPacketHandler for Plot {
         if self.sword_git(player, packet.hand, packet.yaw, packet.pitch) {
             return;
         }
-        self.use_compass(player, packet.hand, packet.yaw, packet.pitch);
+        if !self.use_compass(player, packet.hand, packet.yaw, packet.pitch) {
+            self.throw_snowball(player, packet.hand, packet.yaw, packet.pitch);
+        }
     }
 
     fn handle_player_block_placement(&mut self, player_block_placement: SPlayerBlockPlacemnt, player: usize) {
@@ -1016,6 +1033,26 @@ impl ServerBoundPacketHandler for Plot {
 #[cfg(test)]
 mod movement_tests {
     use super::*;
+
+    #[test]
+    fn animal_emotes_share_a_ten_command_burst_and_refill_one_per_second() {
+        let (mut plot, _peer) = super::super::client_sync_tests::fixture(false);
+        let commands = ["/mrow", "/meow", "/woof"];
+        for index in 0..11 {
+            plot.handle_approved_chat_message(commands[index % commands.len()].into(), 0);
+        }
+        assert_eq!(plot.players[0].command_queue.len(), 10);
+
+        let now = Instant::now() + std::time::Duration::from_secs(1);
+        assert!(plot.players[0].accept_animal_emote(now));
+        assert!(!plot.players[0].accept_animal_emote(now));
+        assert!(plot.players[0].accept_animal_emote(now + std::time::Duration::from_secs(1)));
+
+        for _ in 0..6 {
+            plot.handle_approved_chat_message("/help".into(), 0);
+        }
+        assert_eq!(plot.players[0].command_queue.len(), 15);
+    }
 
     fn redbox_packet(uuid: u128, kind: &str, body: impl FnOnce(&mut Vec<u8>)) -> SPluginMessage {
         let mut data = Vec::new();

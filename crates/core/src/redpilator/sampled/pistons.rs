@@ -1,6 +1,7 @@
 //! Piston records, captured payloads and groups with overlapping contact cells.
 //! An actor is a piston base; a token is a block its group can move.
 use super::{ScratchEntry, ScratchError, ScratchWorld};
+use crate::interaction::connections::{SIDES, has_connections};
 use crate::{redpilator::TaskMonitor, world::World};
 use mchprs_blocks::{BlockFacing, BlockPos, blocks::Block};
 
@@ -137,6 +138,16 @@ pub(super) fn discover_piston_tokens(world: &impl World, actors: &[PistonActor])
             }
         }
         let at = members[0].base;
+        for pos in members.iter().map(|piston| piston.base).chain(cells.iter().copied()) {
+            for target in std::iter::once(pos).chain(SIDES.map(|(face, _)| pos.offset(face))) {
+                if has_connections(world.get_block(target)) {
+                    return Err(ScratchError {
+                        position: Some(target),
+                        reason: "piston movement can change a pane, iron bar or fence connection",
+                    });
+                }
+            }
+        }
         if cells.len() > 6 {
             return Err(ScratchError {
                 position: Some(at),
@@ -251,4 +262,39 @@ fn piston_group_root(parents: &mut [usize], mut index: usize) -> usize {
         index = parents[index];
     }
     index
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::plot::PlotWorld;
+    use crate::world::storage::Chunk;
+    use mchprs_blocks::BlockFace;
+
+    #[test]
+    fn piston_compilation_rejects_moving_geometry_next_to_a_fence() {
+        let mut world = PlotWorld::from_chunks(0, 0, vec![Chunk::empty(0, 0)], Default::default());
+        let base = BlockPos::new(8, 20, 8);
+        let home = base.offset(BlockFace::East);
+        let far = home.offset(BlockFace::East);
+        let actor = PistonActor {
+            id: 0,
+            base,
+            facing: BlockFacing::East,
+            sticky: true,
+            home,
+            far,
+            extended: false,
+            head_present: false,
+            group: 0,
+        };
+        world.set_block(home, Block::RedstoneBlock);
+        assert!(discover_piston_tokens(&world, &[actor]).is_ok());
+
+        let fence = far.offset(BlockFace::North);
+        world.set_block(fence, Block::from_name("oak_fence").unwrap());
+        let error = discover_piston_tokens(&world, &[actor]).unwrap_err();
+        assert_eq!(error.position, Some(fence));
+        assert!(error.reason.contains("fence connection"));
+    }
 }

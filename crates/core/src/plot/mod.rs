@@ -43,6 +43,7 @@ mod scoreboard;
 mod screen_updates;
 #[cfg(test)]
 mod sign_tests;
+mod snowballs;
 mod visuals;
 mod world;
 use redstone_tools::waveform;
@@ -51,7 +52,7 @@ pub mod worldedit;
 use crate::chat::ChatComponent;
 use crate::config::CONFIG;
 use crate::player::{EntityId, Gamemode, PacketSender, Player, PlayerPos};
-use crate::redpilator::{Compiler, CompilerOptions};
+use crate::redpilator::{Compiler, CompilerOptions, PublicationMode};
 use crate::redstone;
 use crate::server::{BroadcastMessage, Message, PrivMessage};
 use crate::utils::HyphenatedUUID;
@@ -127,6 +128,7 @@ pub struct Plot {
     // TODO Route plot-specific world packets through the active plot when a player enters it.
     pub world: PlotWorld,
     pub players: Vec<Player>,
+    snowballs: Vec<snowballs::Snowball>,
     pub redpilator: Compiler,
     /// In-flight compilation owns a snapshot; the live plot stays on this thread.
     compilation: Option<redpilator_compilation::CompilationJob>,
@@ -144,6 +146,7 @@ pub struct Plot {
     // Timings
     tps: Tps,
     world_send_rate: WorldSendRate,
+    publication_mode: Option<PublicationMode>,
     piston_animation: PistonAnimation,
     last_update_time: Instant,
     lag_time: Duration,
@@ -232,6 +235,14 @@ impl Plot {
         )
     }
 
+    fn visual_publication_mode(&self) -> PublicationMode {
+        self.redpilator
+            .current_flags()
+            .map(CompilerOptions::publication_mode)
+            .or(self.publication_mode)
+            .unwrap_or_else(|| CompilerOptions::default().publication_mode())
+    }
+
     fn refresh_sidebar(&mut self, force: bool) {
         if self.players.is_empty() || (!force && self.last_sidebar_update.elapsed() < Duration::from_secs(1)) {
             return;
@@ -243,7 +254,8 @@ impl Plot {
         } else {
             self.timings.generate_report().map(|report| report.two_s)
         };
-        let visual_update_rate = (self.world_send_rate.0 != 0).then(|| self.effective_send_rate());
+        let visual_update_rate = self.effective_send_rate();
+        let publication_mode = self.visual_publication_mode();
         // The sidebar lists only viewers allowed to read this repository.
         let git_readers = (0..self.players.len())
             .filter(|&player| self.git_access(player, "read"))
@@ -259,6 +271,7 @@ impl Plot {
             self.world.history.memory_bytes(),
             visual_update_rate,
             scoreboard::PlotStatus {
+                publication_mode,
                 piston_mode: self.piston_animation,
                 pistons_animated: !self.world.fast_rendering && !self.world.screen_only(),
                 screen_only: self.world.screen_only(),
@@ -509,6 +522,9 @@ impl Plot {
             Self::spawn_player(other, &player);
             Self::spawn_player(&player, other);
         }
+        for snowball in &self.snowballs {
+            player.send_packet(&snowball.spawn_packet());
+        }
 
         player.send_system_message(&messages::plot_entered(self.world.x, self.world.z));
         self.world.packet_senders.push(PlayerPacketSender::new(&player.client));
@@ -623,6 +639,7 @@ impl Plot {
 
             // reseting redpilator could cause a large amount of block updates
             self.reset_timings();
+            self.refresh_sidebar(true);
         }
         self.redpilator_handoff_failed = false;
         Ok(())
@@ -685,6 +702,7 @@ impl Plot {
                 .players
                 .iter()
                 .flat_map(|p| std::iter::once(p.entity_id as i32).chain(p.small_model.as_ref().map(|model| model.entity_id as i32)))
+                .chain(self.snowballs.iter().map(|snowball| snowball.entity_id))
                 .collect(),
         }
         .encode();
@@ -827,6 +845,15 @@ impl Plot {
                 BroadcastMessage::Chat(sender, message) => {
                     for player in &mut self.players {
                         player.send_chat_message(sender, &message);
+                    }
+                }
+                BroadcastMessage::Emote(message, sound_id) => {
+                    for player in &self.players {
+                        player.send_chat_message(0, &message);
+                        // Play at each listener so players anywhere on the server can hear it.
+                        if let Some(sound) = sound_id.and_then(|id| crate::sound::Emission::new(player.pos.block_pos(), id, 6, 1.0, 1.0, None)) {
+                            player.send_packet(&sound.packet());
+                        }
                     }
                 }
                 BroadcastMessage::PlayerJoinedInfo(player_join_info) => {
@@ -1088,6 +1115,8 @@ impl Plot {
                 let simulation_started = Instant::now();
                 let slice = if self.wire_tools_active() {
                     Duration::from_millis(5)
+                } else if !self.snowballs.is_empty() {
+                    Duration::from_millis(20)
                 } else {
                     Duration::from_millis(200)
                 };
@@ -1153,6 +1182,7 @@ impl Plot {
         }
 
         self.update_players();
+        self.update_snowballs();
         self.report_redbox_states();
 
         // Handle commands before removing players just in case they ran a command before leaving
@@ -1335,11 +1365,13 @@ impl Plot {
             message_sender: tx,
             priv_message_receiver: priv_rx,
             players: Vec::new(),
+            snowballs: Vec::new(),
             locked_players: HashSet::new(),
             running: true,
             auto_redpilator: CONFIG.auto_redpilator,
             tps,
             world_send_rate,
+            publication_mode: database::publication_mode(x, z).expect("Cannot load saved publication mode"),
             piston_animation: plot_data.piston_animation,
             always_running,
             redpilator: Default::default(),
@@ -1412,7 +1444,7 @@ impl Plot {
 
             let cadence = if self.compiling_redpilator() || self.interpreter_idle() {
                 Duration::from_millis(20)
-            } else if self.wire_tools_active() {
+            } else if self.wire_tools_active() || !self.snowballs.is_empty() {
                 self.sleep_time.min(Duration::from_millis(20))
             } else {
                 self.sleep_time

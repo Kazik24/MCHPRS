@@ -261,6 +261,9 @@ impl Plot {
     /// Reject waveform capture or an existing worker, close containers, capture entry/world state, select
     /// a compatible cache and spawn the worker while reporting snapshot progress.
     pub(super) fn start_redpilator_with_budget(&mut self, mut options: CompilerOptions, budget: Option<Duration>) {
+        if !options.io_only && options.publication.is_none() {
+            options.publication = self.publication_mode;
+        }
         options.io_only = options.publication_mode() == crate::redpilator::PublicationMode::Io;
         if self.world.waveform.enabled() {
             for player in &self.players {
@@ -396,6 +399,7 @@ impl Plot {
             "Redpilator completed"
         );
         self.reset_timings();
+        self.refresh_sidebar(true);
     }
 
     fn send_redpilator_diagnostic(&self, text: &str) {

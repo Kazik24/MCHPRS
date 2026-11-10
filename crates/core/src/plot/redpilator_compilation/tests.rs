@@ -45,6 +45,7 @@ fn blocked_compile(plot: &mut Plot) -> mpsc::Sender<()> {
 #[test]
 fn automatic_compilation_requires_an_authorized_editor() {
     let (mut plot, _peer) = fixture(false);
+    plot.publication_mode = Some(crate::redpilator::PublicationMode::Io);
     plot.players[0].set_test_permissions(&["commands.toggleautorp"]);
     plot.start_automatic_redpilator(Default::default());
     assert!(plot.compilation.is_none());
@@ -61,20 +62,47 @@ fn automatic_compilation_requires_an_authorized_editor() {
         assert_eq!(plot.compilation.as_ref().unwrap().budget, budget);
         plot.wait_for_redpilator();
         assert!(plot.redpilator.is_active());
+        assert_eq!(plot.visual_publication_mode(), crate::redpilator::PublicationMode::Io);
         plot.reset_redpilator().unwrap();
     }
 }
 
 #[test]
-fn manual_compilation_uses_the_requesting_players_budget() {
-    let (mut plot, _peer) = fixture(false);
-    plot.players[0].set_test_rank_permissions(&["commands.redpilator.compile"], crate::permissions::Rank::Advanced);
+fn manual_compile_flags_apply_until_reset_or_off() {
+    use crate::redpilator::PublicationMode;
+    use mchprs_network::{packets::PacketDecoderExt, test_support::read_frame};
+
+    let (mut plot, mut peer) = fixture(false);
+    plot.publication_mode = Some(PublicationMode::Io);
+    plot.players[0].set_test_rank_permissions(
+        &["commands.redpilator.compile", "commands.redpilator.reset"],
+        crate::permissions::Rank::Advanced,
+    );
     plot.owner = Some(plot.players[0].uuid);
-    plot.handle_command(0, "/rp", vec!["compile"]);
-    assert_eq!(plot.compilation.as_ref().unwrap().budget, Some(Duration::from_secs(30)));
-    plot.wait_for_redpilator();
-    assert!(plot.redpilator.is_active());
-    plot.reset_redpilator().unwrap();
+    let mut sees_publish_row = |mode: PublicationMode| {
+        let expected = format!("Publish: {}", mode.name());
+        (0..128).any(|_| {
+            let (id, mut body) = read_frame(&mut peer, false).unwrap();
+            id == 0x67 && body.read_string().unwrap() == expected
+        })
+    };
+    for (flag, mode, stop) in [
+        ("--publish-all", PublicationMode::All, "reset"),
+        ("--publish-redstone", PublicationMode::Redstone, "off"),
+    ] {
+        plot.handle_command(0, "/rp", vec!["compile", flag]);
+        assert_eq!(plot.compilation.as_ref().unwrap().budget, Some(Duration::from_secs(30)));
+        plot.wait_for_redpilator();
+        assert!(plot.redpilator.is_active());
+        assert_eq!(plot.visual_publication_mode(), mode);
+        assert!(sees_publish_row(mode));
+
+        plot.handle_command(0, "/rp", vec![stop]);
+        assert!(!plot.redpilator.is_active());
+        assert_eq!(plot.publication_mode, Some(PublicationMode::Io));
+        assert_eq!(plot.visual_publication_mode(), PublicationMode::Io);
+        assert!(sees_publish_row(PublicationMode::Io));
+    }
 }
 
 #[test]

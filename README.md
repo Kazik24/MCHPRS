@@ -33,14 +33,15 @@ Plots and movement:
 - Neighbor plots appear as read-only snapshots. Enter a plot to use its simulation.
 - `/tp <player>` or `/tp <x> <y> <z>`, `/setwarp <name>` and `/warp [name]` handle standalone travel and shared warps. With RedBox enabled, the proxy handles travel commands.
 - `/speed <0-10>` changes flying speed. `/gm creative|adventure|spectator` changes mode. Right-click a compass to jump through geometry to a safe spot.
-- `/small` makes you half-size to fit inside builds. `/small wolf|fox|cat|ocelot|baby` picks the animal other players see; baby is smaller again. `/small off` restores normal size when there is room. Your choice is saved.
+- `/small` makes you half-size to fit inside builds. `/small wolf|fox|cat|ocelot|baby|bat|enderdragon` picks the animal other players see; baby is smaller again. `/small off` restores normal size when there is room. Your choice is saved.
+- `/kiss` kisses the nearest other player on your plot. `/bark`, `/mrow`, `/meow`, `/woof` and `/rawr` announce furry emotes to everyone on the server, as does `/kiss`. `/mrow` and `/meow` play a cat sound, and `/woof` plays a wolf sound. These three share a burst of 10 uses per player and refill one use per second.
 
 Simulation:
 
 - `/tps 20` runs normally, `/tps 0` pauses, `/tps unlimited` runs as fast as possible. `/tps timings` shows timing data.
 - Pause, then `/adv 1` advances one game tick. `/adv nano 1` and `/adv pico 1` step interpreter operations inside a tick. Two game ticks make one redstone tick.
 - The interpreter handles supported dust, torches, repeaters, comparators, containers, lamps, copper bulbs, observers, BUD updates, pistons, moving blocks and instant piston circuits. Exact behavior is in the [redstone](docs/REDSTONE_MODEL.md) and [piston](docs/PISTON_MODEL.md) models.
-- `/visual pistons auto|on|off` controls piston animation. `/visual rate <0-1000>` changes client update frequency. `/visual displayonly on|off` limits updates to lamps. Rendering settings are separate from simulation speed.
+- `/visual pistons auto|on|off` controls piston animation. `/visual rate <0-1000>` changes client update frequency. `/visual displayonly on|off` limits simulation updates to lamps and copper bulbs. `/visual publish all|redstone|io` selects compiled publication.
 - `/rhistory on 100` records 100 interpreter ticks. `/rev 10` or `/rhistory rewind 10` goes back ten ticks. `/rhistory status` shows memory use; `/rhistory off` clears it. Rewind clears WorldEdit undo/redo. History clears on compilation, restart or an empty plot.
 - `/say <text>` and `/tellraw @a {"text":"hello"}` also work in command blocks. Messages stay on the executing plot. Other saved command-block commands do not run.
 
@@ -118,8 +119,8 @@ Rust is the default executor. The optional LLVM backend runs the same program in
 While Redpilator is active, plot edits are blocked in every publication mode. Levers and buttons still work. Run `/rp reset` before editing blocks, containers, signs, or using WorldEdit to change the world.
 
 - `/rp compile --llvm` selects the native backend. Install Clang and LLD on the server's PATH, or set `MCHPRS_LLVM_CLANG` and `MCHPRS_LLVM_LINKER` to their executable paths. Bundled native sources build on demand. `MCHPRS_LLVM_WORK_DIR` changes the work directory (default `./work/llvm`); `MCHPRS_LLVM_DLL` selects an already built matching library.
-- `--publish-all` shows all blocks and piston motion. `--publish-redstone` shows redstone components. `--publish-io` (or `--io-only`, `-i`) shows controls and visible outputs. Pick one. Standard builds default to redstone publication; use full publication to inspect moved payloads.
-- `/rp publish all|redstone|io` changes the publication level after compilation without recompiling or advancing simulation. The newly selected level is published immediately, including current piston motion in `all` mode. Lower levels leave piston geometry at its last published state; switching back to `all` catches it up.
+- `/visual publish all|redstone|io` saves the plot's publication mode and applies it to active compiled execution. `all` includes piston geometry and motion, `redstone` shows redstone components, and `io` shows controls and visible outputs. Standard builds default to `redstone`. Switching to `all` catches up piston geometry. `/rp publish` is an alias.
+- `--publish-all`, `--publish-redstone`, and `--publish-io` (also `--io-only`, `-i`) set the mode for the compiled run. `/rp reset` and `/rp off` restore the saved choice. `/visual publish` shows the current mode.
 - `--update` (`-u`) recalculates neighbors after reset. `/rp reset` exports state and pending work back to the interpreter.
 - `/rp reset` (aliases `/rp r` and `/rp off`) stops execution, cancels pending compilation and discards this plot's prepared executor and sampling cache. The next compile rebuilds the circuit from the exported interpreter state.
 - `/rp clear` does the same and also clears the process-shared owned LLVM artifact cache, forcing the next native module build; other plots' active executors keep running. A busy native build is reported immediately. Locked artifacts may remain until later cleanup, and a custom `MCHPRS_LLVM_DLL` is never deleted.

@@ -1276,7 +1276,13 @@ fn update_selection(plot: &mut PlotWorld, first_pos: BlockPos, second_pos: Block
         return Err(messages::UPDATE_SELECTION_OUTSIDE_HEIGHT);
     }
     crate::world::for_each_block_mut_optimized(plot, first_pos, second_pos, |plot, pos| {
-        redstone::update(plot.get_block(pos), plot, pos, None);
+        use crate::interaction::connections;
+        let block = plot.get_block(pos);
+        let updated = connections::state_at(block, plot, pos);
+        if updated != block {
+            connections::write_state(updated, plot, pos);
+        }
+        redstone::update(updated, plot, pos, None);
     });
     Ok(())
 }

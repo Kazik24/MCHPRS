@@ -303,6 +303,8 @@ fn small_animal_commands_spawn_generated_models_and_update_fox_equipment() {
         ("fox", SmallAnimal::Fox, mchprs_network::generated::FOX_ENTITY),
         ("cat", SmallAnimal::Cat, mchprs_network::generated::CAT_ENTITY),
         ("ocelot", SmallAnimal::Ocelot, mchprs_network::generated::OCELOT_ENTITY),
+        ("bat", SmallAnimal::Bat, mchprs_network::generated::BAT_ENTITY),
+        ("enderdragon", SmallAnimal::EnderDragon, mchprs_network::generated::ENDER_DRAGON_ENTITY),
     ] {
         assert!(!plot.handle_command(0, "/small", vec![name]));
         assert_eq!(plot.players[0].small_animal, animal);
@@ -312,6 +314,9 @@ fn small_animal_commands_spawn_generated_models_and_update_fox_equipment() {
         let model = plot.players[0].small_model.as_ref().unwrap().entity_id;
         assert_eq!(proxy_type(&mut viewer, false), expected_entity);
         packet(&mut viewer, false, 0x5c);
+        if animal == SmallAnimal::EnderDragon {
+            assert!(crate::player::allocate_entity_id().wrapping_sub(model) >= 9);
+        }
         if animal == SmallAnimal::Fox {
             let item = proxy_held_item(&mut viewer, model, false).unwrap();
             assert_eq!(item.item_id, Item::Sandstone {}.get_id() as i32);

@@ -348,6 +348,7 @@ fn finish(world: &mut impl World, pos: BlockPos, interrupted: bool) {
     if !interrupted {
         block = block.without_waterlogging();
     }
+    block = crate::interaction::connections::state_at(block, world, pos);
     let motion = world.piston_motion_index(pos, None);
     let carried_entity = motion.and_then(|i| world.piston_state().motions[i].carried_entity.clone());
     let identity = motion.map(|index| world.piston_state().motions[index].identity);
@@ -393,7 +394,7 @@ fn shape_changed(world: &mut impl World, pos: BlockPos) {
     shape_notifications(pos, |neighbor, face| {
         // interaction::change takes the direction from the changed block to
         // its neighbor; observer callbacks below take the opposite direction.
-        crate::interaction::change(world.get_block(neighbor), world, neighbor, face);
+        crate::interaction::change(world.get_block(neighbor), world, neighbor, face, true);
         // Observers watch shape/state changes, not ordinary neighbor power callbacks.
         let block = world.get_block(neighbor);
         if matches!(block, Block::Observer { .. }) {

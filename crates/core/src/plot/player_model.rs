@@ -73,7 +73,7 @@ impl Plot {
         self.players[player].small_animal = animal;
         if let Some(model) = self.players[player].small_model.take() {
             self.destroy_entity(model.entity_id);
-            self.players[player].small_model = Some(SmallModel::new());
+            self.players[player].small_model = Some(SmallModel::new(animal));
             let scale = (old_scale != self.players[player].scale()).then(|| {
                 CEntityScale {
                     entity_id: self.players[player].entity_id as i32,
@@ -114,7 +114,7 @@ impl Plot {
         if let Some(model) = self.players[player].small_model.take() {
             self.destroy_entity(model.entity_id);
         }
-        self.players[player].small_model = enabled.then(SmallModel::new);
+        self.players[player].small_model = enabled.then(|| SmallModel::new(self.players[player].small_animal));
         let current = &self.players[player];
         let scale = CEntityScale {
             entity_id: current.entity_id as i32,

@@ -1,7 +1,7 @@
 use crate::chat::{ChatComponentBuilder, ColorCode};
 use crate::messages;
 use crate::player::{PacketSender, Player};
-use crate::redpilator::CompilerOptions;
+use crate::redpilator::{CompilerOptions, PublicationMode};
 use mchprs_network::packets::clientbound::{CDisplayScoreboard, CScoreboardObjective, CUpdateScore, ClientBoundPacket};
 use mchprs_save_data::plot_data::{PistonAnimation, Tps};
 use std::collections::HashSet;
@@ -85,6 +85,7 @@ struct PlotMetrics {
     history: String,
     history_memory: String,
     visual_updates: String,
+    publication: String,
     pistons: String,
     screen_only: String,
     git: String,
@@ -96,7 +97,8 @@ impl Default for PlotMetrics {
             tps: messages::scoreboard_tps("-", "-"),
             history: messages::SCOREBOARD_HISTORY_OFF.into(),
             history_memory: messages::scoreboard_history_memory("0B"),
-            visual_updates: messages::SCOREBOARD_VISUAL_OFF.into(),
+            visual_updates: messages::scoreboard_visual_rate(0),
+            publication: messages::scoreboard_publication(CompilerOptions::default().publication_mode().name()),
             pistons: messages::scoreboard_pistons(PistonAnimation::Auto, messages::SCOREBOARD_ON),
             screen_only: messages::scoreboard_screen_only(messages::SCOREBOARD_OFF),
             git: messages::SCOREBOARD_GIT_LOADING.into(),
@@ -105,6 +107,7 @@ impl Default for PlotMetrics {
 }
 
 pub(super) struct PlotStatus<'a> {
+    pub publication_mode: PublicationMode,
     pub piston_mode: PistonAnimation,
     pub pistons_animated: bool,
     pub screen_only: bool,
@@ -157,7 +160,7 @@ fn visible_lines(lines: &[String], git_read: bool) -> Vec<&str> {
 pub struct Scoreboard {
     current_state: Vec<String>,
     redpilator_state: RedpilatorState,
-    compiler_flags: Vec<String>,
+    update_on_reset: bool,
     metrics: PlotMetrics,
     git_readers: HashSet<u128>,
 }
@@ -188,9 +191,10 @@ impl Scoreboard {
             self.metrics.history.clone(),
             self.metrics.history_memory.clone(),
             self.metrics.visual_updates.clone(),
+            self.metrics.publication.clone(),
         ];
-        if matches!(self.redpilator_state, RedpilatorState::Running | RedpilatorState::RunningLlvm) && !self.compiler_flags.is_empty() {
-            lines.extend(self.compiler_flags.iter().map(messages::scoreboard_flag));
+        if matches!(self.redpilator_state, RedpilatorState::Running | RedpilatorState::RunningLlvm) && self.update_on_reset {
+            lines.push(messages::scoreboard_flag("update"));
         }
         lines.extend([self.metrics.pistons.clone(), self.metrics.screen_only.clone(), self.metrics.git.clone()]);
         lines
@@ -284,29 +288,13 @@ impl Scoreboard {
     pub fn set_redpilator_state(&mut self, players: &[Player], state: RedpilatorState) {
         self.redpilator_state = state;
         if !matches!(state, RedpilatorState::Running | RedpilatorState::RunningLlvm) {
-            self.compiler_flags.clear();
+            self.update_on_reset = false;
         }
         self.refresh_lines(players);
     }
 
     pub fn set_redpilator_options(&mut self, players: &[Player], options: &CompilerOptions) {
-        self.compiler_flags.clear();
-        if options.io_only && options.publication != Some(crate::redpilator::PublicationMode::Io) {
-            self.compiler_flags.push("io-only".to_owned());
-        }
-        if let Some(mode) = options.publication {
-            self.compiler_flags.push(
-                match mode {
-                    crate::redpilator::PublicationMode::All => "publish-all",
-                    crate::redpilator::PublicationMode::Redstone => "publish-redstone",
-                    crate::redpilator::PublicationMode::Io => "publish-io",
-                }
-                .to_owned(),
-            );
-        }
-        if options.update {
-            self.compiler_flags.push("update".to_owned());
-        }
+        self.update_on_reset = options.update;
         self.refresh_lines(players);
     }
 
@@ -319,7 +307,7 @@ impl Scoreboard {
         history_ticks: usize,
         history_capacity: usize,
         history_memory_bytes: usize,
-        visual_update_rate: Option<u32>,
+        visual_update_rate: u32,
         status: PlotStatus<'_>,
     ) {
         let actual = match target_tps {
@@ -338,10 +326,8 @@ impl Scoreboard {
             messages::SCOREBOARD_HISTORY_OFF.to_owned()
         };
         self.metrics.history_memory = messages::scoreboard_history_memory(compact_memory(history_memory_bytes));
-        self.metrics.visual_updates = match visual_update_rate {
-            Some(rate) => messages::scoreboard_visual_rate(rate),
-            None => messages::SCOREBOARD_VISUAL_OFF.to_owned(),
-        };
+        self.metrics.visual_updates = messages::scoreboard_visual_rate(visual_update_rate);
+        self.metrics.publication = messages::scoreboard_publication(status.publication_mode.name());
         self.metrics.pistons = messages::scoreboard_pistons(
             status.piston_mode,
             if status.pistons_animated {
@@ -367,6 +353,7 @@ mod tests {
 
     fn status(head: Option<&str>) -> PlotStatus<'_> {
         PlotStatus {
+            publication_mode: PublicationMode::Io,
             piston_mode: PistonAnimation::Auto,
             pistons_animated: false,
             screen_only: true,
@@ -375,13 +362,6 @@ mod tests {
             git_recovery: false,
             git_readers: HashSet::new(),
         }
-    }
-
-    #[test]
-    fn explicit_io_publication_has_one_scoreboard_flag() {
-        let mut board = Scoreboard::default();
-        board.set_redpilator_options(&[], &CompilerOptions::parse("--publish-io").unwrap());
-        assert_eq!(board.compiler_flags, ["publish-io"]);
     }
 
     #[test]
@@ -404,10 +384,11 @@ mod tests {
             1200,
             2400,
             1024 * 1024 * 1024,
-            Some(20),
+            20,
             status(Some("very-long-branch-name")),
         );
         assert_eq!(board.current_state.len(), 10);
+        assert_eq!(&board.current_state[4..6], &["Visual: 20Hz", "Publish: io"]);
         assert_eq!(
             &board.current_state[7..],
             &["Pistons: auto/off", "Screen only: on", "Git: very-long-b...",]
@@ -444,17 +425,7 @@ mod tests {
     #[test]
     fn viewers_without_git_access_keep_plot_status_without_branch_details() {
         let mut board = Scoreboard::default();
-        board.update_plot_metrics(
-            &[],
-            Tps::Limited(20),
-            Some(20.0),
-            false,
-            0,
-            0,
-            0,
-            Some(20),
-            status(Some("secret-experiment")),
-        );
+        board.update_plot_metrics(&[], Tps::Limited(20), Some(20.0), false, 0, 0, 0, 20, status(Some("secret-experiment")));
         let allowed = visible_lines(&board.current_state, true);
         let denied = visible_lines(&board.current_state, false);
         assert_eq!(allowed.len(), denied.len());
@@ -471,10 +442,12 @@ mod tests {
         current.piston_mode = PistonAnimation::On;
         current.pistons_animated = true;
         current.screen_only = false;
-        board.update_plot_metrics(&[], Tps::Limited(20), Some(20.0), false, 0, 0, 0, Some(20), current);
+        current.publication_mode = PublicationMode::All;
+        board.update_plot_metrics(&[], Tps::Limited(20), Some(20.0), false, 0, 0, 0, 20, current);
+        assert_eq!(&board.current_state[4..6], &["Visual: 20Hz", "Publish: all"]);
         assert!(board.current_state.iter().any(|line| line == "Pistons: on/on"));
         assert!(board.current_state.iter().any(|line| line == "Screen only: off"));
-        board.update_plot_metrics(&[], Tps::Limited(20), Some(20.0), false, 0, 0, 0, Some(20), status(Some("experiment")));
+        board.update_plot_metrics(&[], Tps::Limited(20), Some(20.0), false, 0, 0, 0, 20, status(Some("experiment")));
         assert!(board.current_state.iter().any(|line| line == "Pistons: auto/off"));
         assert!(board.current_state.iter().any(|line| line == "Screen only: on"));
         assert_eq!(board.current_state.last().unwrap(), "Git: experiment");
@@ -484,9 +457,12 @@ mod tests {
     #[test]
     fn unlimited_idle_tps_displays_as_unlimited_and_paused_stays_zero() {
         let mut board = Scoreboard::default();
-        board.update_plot_metrics(&[], Tps::Unlimited, Some(f32::INFINITY), false, 0, 0, 0, None, status(None));
+        board.update_plot_metrics(&[], Tps::Unlimited, Some(f32::INFINITY), false, 0, 0, 0, 0, status(None));
         assert!(board.current_state.iter().any(|line| line == "TPS: oo/oo"));
-        board.update_plot_metrics(&[], Tps::Limited(0), Some(f32::INFINITY), false, 0, 0, 0, None, status(None));
+        let mut paused = status(None);
+        paused.publication_mode = PublicationMode::Redstone;
+        board.update_plot_metrics(&[], Tps::Limited(0), Some(f32::INFINITY), false, 0, 0, 0, 0, paused);
+        assert_eq!(&board.current_state[4..6], &["Visual: 0Hz", "Publish: redstone"]);
         assert!(board.current_state.iter().any(|line| line == "TPS: 0/0"));
     }
 }

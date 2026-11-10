@@ -276,3 +276,18 @@ fn invalid_update_bounds_are_rejected_before_any_callbacks() {
         assert_eq!(world.scheduler().iter_entries().count(), 0);
     }
 }
+
+#[test]
+fn update_repairs_pane_connections_after_raw_edits() {
+    let mut world = world();
+    let pos = BlockPos::new(15, 16, 16);
+    let pane = Block::from_name("glass_pane").unwrap();
+    let neighbor = pos.offset(mchprs_blocks::BlockFace::East);
+    world.set_block(pos, pane);
+    world.set_block(neighbor, Block::Stone {});
+    update_selection(&mut world, pos, pos).unwrap();
+    assert_eq!(world.get_block(pos).property("east"), Some("true"));
+    world.set_block(neighbor, Block::Air);
+    update_selection(&mut world, pos, pos).unwrap();
+    assert_eq!(world.get_block(pos), pane);
+}

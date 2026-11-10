@@ -94,11 +94,15 @@ waive its plot or packet validation.
 | --- | --- |
 | `/help`, `/version` | `mchprs.commands.help`, `.version` |
 | `/tp` (internal `--highlight` links only), `/speed` | `mchprs.commands.teleport`, `.speed` |
-| `/small [on|off]` | `mchprs.commands.small` |
+| `/small [on|off|wolf|fox|cat|ocelot|baby|bat|enderdragon]` | `mchprs.commands.small` |
+| `/kiss`, `/bark`, `/mrow`, `/woof`, `/rawr` | `mchprs.commands.kiss`, `.bark`, `.mrow`, `.woof`, `.rawr` |
+| `/meow` | `mchprs.commands.mrow` |
 | `/gm cat` | `mchprs.commands.gamemode`, `.gamemode.creative`, and `.small` |
 | `/tps` | `mchprs.commands.rtps.view` or `.set` |
 | `/adv` | `mchprs.commands.radvance` |
 | `/visual` | `mchprs.commands.visual` plus `.view` or `.set` |
+| `/visual publish <mode>` | Visual `.set` access plus `mchprs.commands.redpilator.compile` |
+| `/rp publish <mode>` | `mchprs.commands.redpilator.compile` |
 | `/rp`, `/redpilator` | `mchprs.commands.redpilator.analyze`, `.compile`, `.reset`, `.inspect`, or `.help` |
 | `/toggleautorp` | `mchprs.commands.toggleautorp` |
 | `/rhistory` | `mchprs.commands.rhistory` plus the requested subcommand node |

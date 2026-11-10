@@ -50,6 +50,8 @@ pub enum Message {
     /// This message is sent to the server thread when a player sends a chat message,
     /// It contains the uuid and name of the player and the raw message the player sent.
     ChatInfo(u128, String, String),
+    /// A command-generated emote announced to every plot, independently of native chat.
+    Emote(String, Option<&'static str>),
     /// This message is sent to the server thread when a player joins the server.
     PlayerJoined(Player),
     /// This message is sent to the server thread when a player leaves the server.
@@ -101,6 +103,7 @@ pub enum BroadcastMessage {
     /// This message is broadcasted for chat messages. It contains the uuid of the player and
     /// the raw json data to send to the clients.
     Chat(u128, Vec<ChatComponent>),
+    Emote(Vec<ChatComponent>, Option<i32>),
     /// This message is broadcasted when a player joins the server. It is used to update
     /// the tab-list on all connected clients.
     PlayerJoinedInfo(PlayerJoinInfo),
@@ -445,6 +448,11 @@ impl MinecraftServer {
                     player.client.close_connection();
                     self.handle_message(Message::PlayerLeft(player.uuid));
                 }
+            }
+            Message::Emote(message, sound) => {
+                info!("{message}");
+                self.broadcaster
+                    .broadcast(BroadcastMessage::Emote(ChatComponent::from_legacy_text(&format!("&d{message}")), sound.map(crate::sound::event_id)));
             }
             Message::ChatInfo(uuid, username, message) => {
                 if !CONFIG.native_chat {

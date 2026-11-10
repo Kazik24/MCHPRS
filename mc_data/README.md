@@ -11,3 +11,5 @@ Prismarine's shared `loginPacket` dataset points at 1.21.3, so it is deliberatel
 Rust lookup tables and protocol constants are expanded at compile time by `mchprs_proc_macros::minecraft_blocks!()` and `mchprs_proc_macros::minecraft_protocol!()`. The macros read the pinned JSON with `include_str!`, so Cargo tracks input changes; Python is not needed to build the Rust tables. The existing `generated` modules and their public statics/constants remain the API, with no JSON parsing at runtime. Macro tests fingerprint every table against the previous Python-generated output.
 
 `registries.bin` and `tags.bin` are rebuilt by running `python tools/generate_mc_data.py` from the repository root. The script only writes those binary assets. Configuration registry ordering is fixed by the checked-in input order. MCHPRS overrides the overworld dimension to preserve min Y 0, height/logical height 256 and the bright building environment.
+
+`connection_faces.bin` comes from the pinned Mojang 1.21.5 server. It stores one four-bit mask per block state ID in north, south, west, east order. The masks include vanilla's exceptions for pane and fence connections.

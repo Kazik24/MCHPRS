@@ -24,7 +24,7 @@ macro_rules! catalog {
 
 catalog! {
     fixed {
-        USAGE_SMALL = "Usage: /small [on|off|wolf|fox|cat|ocelot|baby]";
+        USAGE_SMALL = "Usage: /small [on|off|wolf|fox|cat|ocelot|baby|bat|enderdragon]";
         USAGE_SETWARP = "Usage: /setwarp <name> (creates or replaces a shared warp)";
         USAGE_WARP = "Usage: /warp [name] (omit the name to list shared warps)";
         INVALID_WARP_NAME = "Warp names must be 1-32 letters, digits, underscores or hyphens.";
@@ -34,7 +34,8 @@ catalog! {
         SMALL_ENABLED = "Smol paws mode on";
         SMALL_DISABLED = "Small mode off. You're back to your normal size.";
         SMALL_NO_ROOM = "There isn't room to return to full size here. Move into an open space first.";
-        HELP_SMALL = "Small mode\n/small toggles half-size movement and an animal appearance for other players.\n/small on and /small off select the mode explicitly.\n/small wolf|fox|cat|ocelot|baby changes your saved animal; ocelot is the default. Baby ocelot uses an even smaller model and hitbox.\n/gm cat enables creative play in small mode; other gamemodes restore normal size.\nYour own view stays a scaled player so the preview cannot block your clicks.\nMove into an open space before turning it off. Your mode and animal follow you between plots and are saved when you leave.";
+        KISS_NO_PLAYER = "No other furballs on this plot to smooch. Bring a friend! :3";
+        HELP_SMALL = "Small mode\n/small toggles half-size movement and an animal appearance for other players.\n/small on and /small off select the mode explicitly.\n/small wolf|fox|cat|ocelot|baby|bat|enderdragon changes your saved animal; ocelot is the default. Baby ocelot uses an even smaller model and hitbox.\n/gm cat enables creative play in small mode; other gamemodes restore normal size.\nYour own view stays a scaled player so the preview cannot block your clicks.\nMove into an open space before turning it off. Your mode and animal follow you between plots and are saved when you leave.";
         USAGE_GIT_REBASE = "Usage: /git rebase <branch>";
         GIT_REBASE_NAMED_BRANCH_REQUIRED = "Name this detached trail first with /git branch <name>, then /git checkout <name> before rebasing, pup.";
         GIT_REBASE_SOURCE_BRANCH_REQUIRED = "These paws need an existing source branch. Use /git branch to sniff out its name :3";
@@ -181,7 +182,6 @@ catalog! {
         SCOREBOARD_ENGINE_REDPILATOR = "Engine: Redpilator";
         SCOREBOARD_ENGINE_LLVM = "Engine: LLVM";
         SCOREBOARD_HISTORY_OFF = "Hist: Off :3";
-        SCOREBOARD_VISUAL_OFF = "Visual: OFF :3";
         SCOREBOARD_ON = "on";
         SCOREBOARD_OFF = "off";
         SCOREBOARD_GIT_LOADING = "Git: loading...";
@@ -191,7 +191,7 @@ catalog! {
         SCOREBOARD_GIT_HIDDEN = "Git: paws off :3";
         SIGN_FRONT_LABEL = "front";
         SIGN_BACK_LABEL = "back";
-        USAGE_VISUAL = "Usage: /visual [pistons [auto|on|off] | rate [0-1000] | displayonly [on|off]]";
+        USAGE_VISUAL = "Usage: /visual [pistons [auto|on|off] | rate [0-1000] | displayonly [on|off] | publish [all|redstone|io]]";
         SCREEN_ONLY_ON = "Screen-only updates ON: lamp pixels get booped; wire and piston animations stay still. Setting saved for this plot.";
         SCREEN_ONLY_OFF = "Screen-only updates OFF: all pending block states caught up with your paws. Setting saved for this plot.";
         DISPLAY_ONLY_BREAK_WARNING = "Display-only is enabled: block changes still happen, but may not appear to players.";
@@ -224,12 +224,12 @@ catalog! {
         ARGUMENT_INVALID_UINT = "expected an integer from 0 through 4294967295";
         ARGUMENT_UNKNOWN_DIRECTION = "unknown direction";
         CONTAINER_INVALID_POWER = "Pup, container power must be 0..15 or lowercase a..f.";
-        HELP_CHAT = "Chat and command blocks\n/say <text> sends a message to everyone.\n/tellraw @a {\"text\":\"Hello\"} sends formatted text.\nUse @a, @s or a player name; selector filters are ignored.\nCommand blocks support say and tellraw. They require creative mode and permission. Other commands are saved in schematics but do not run.";
+        HELP_CHAT = "Chat and command blocks\n/kiss smooches the nearest other player on your plot.\n/bark, /mrow, /meow, /woof and /rawr share furry emotes with the whole server. /kiss announces its smooch too.\n/mrow and /meow play a cat sound for everyone. /woof plays a wolf sound. These three share a burst of 10 per player and refill one use per second.\n/say <text> sends a message to everyone.\n/tellraw @a {\"text\":\"Hello\"} sends formatted text.\nUse @a, @s or a player name; selector filters are ignored.\nCommand blocks support say and tellraw. They require creative mode and permission. Other commands are saved in schematics but do not run.";
         HELP_HISTORY = "Tick history\n/rhistory on [ticks] records ticks (default 100); /rhistory off clears it.\n/rhistory shows count and memory. /rhistory rewind [ticks] rewinds; /rev [ticks] is the short form. Resume with /tps 20.\nRewind clears WorldEdit undo/redo. History needs the interpreter and resets when the plot becomes empty, on compile or restart.\nOld ticks drop at the shared 2 GiB limit. Admins can use /rhistory limit <MiB>.";
-        HELP_PISTONS = "Visual settings\n/visual shows this plot's settings.\n/visual pistons [auto|on|off] controls piston animation.\n/visual rate [0-1000] sets update speed; 0 stops periodic updates. Above the server TPS threshold (200 by default), updates cap at 10 Hz.\n/visual displayonly [on|off] sends only lamp updates. Block edits still happen, but may not appear to players.";
+        HELP_PISTONS = "Visual settings\n/visual shows this plot's settings.\n/visual pistons [auto|on|off] controls piston animation.\n/visual rate [0-1000] sets update speed; 0 stops periodic updates. Above the server TPS threshold (200 by default), updates cap at 10 Hz.\n/visual displayonly [on|off] limits simulation updates to lamps and copper bulbs.\n/visual publish [all|redstone|io] shows or sets the plot's compiled publication mode.";
         HELP_PLOTS = "Plots\n/p auto claims an empty plot; /p claim claims the plot you're in.\n/p info shows position, owner, players, TPS, engine, history and rendering status.\n/p middle goes to the centre.\n/p home visits your first plot; /p visit <player> [number] visits a plot.\n/p add <nick> and /p remove <nick> manage plot members.\n/p tp <x> <z> uses plot coordinates.\n/p lock and /p unlock control leaving. /p select selects the plot for WorldEdit.";
         HELP_QUICK_START = "MROWW — Minecraft Redstone o Wysokiej Wydajności\n/p auto claims a plot.\n/help plots - Claim and visit plots.\n/help warps - Save and visit shared destinations.\n/help tps - Control and step simulation.\n/help we - WorldEdit.\n/help tools - Redstone tools.\n/help wire - Draw redstone wires.\n/help schematics - Load and save builds.\n/help visual - Set visual representation.\n/help rewind - Tick history.\n/help git - Plot commits, branches and glowing diffs.\n/help chat - Chat and command blocks.\n/help redpilator - Compiled simulation.";
-        HELP_REDPILATOR = "Compiled simulation\n/rp compile starts sampled execution when the selected circuit is supported; /rp reset (or /rp off) returns it to the interpreter and clears this plot's prepared executor and sampling cache. /rp clear also discards shared owned LLVM artifacts; active engines on other plots keep running and custom DLL files are retained. Unsupported components and entry states leave native simulation active.\nPlot editing is blocked in every publication mode until /rp reset. Levers and buttons still work.\n--publish-all shows all blocks and piston motion; --publish-redstone shows redstone components; --publish-io (or --io-only) shows controls and visible outputs. /rp publish all|redstone|io changes this while compiled without restarting execution. Periodic publication follows /visual rate. --update recalculates blocks after reset. Use /tps 0 and /adv 1 to step compiled execution; nano/pico stepping requires /rp reset first. /toggleautorp toggles automatic compilation.";
+        HELP_REDPILATOR = "Compiled simulation\n/rp compile starts sampled execution when the selected circuit is supported; /rp reset (or /rp off) returns it to the interpreter and clears this plot's prepared executor and sampling cache. /rp clear also discards shared owned LLVM artifacts; active engines on other plots keep running and custom DLL files are retained. Unsupported components and entry states leave native simulation active.\nPlot editing is blocked in every publication mode until /rp reset. Levers and buttons still work.\n--publish-all shows all blocks and piston motion; --publish-redstone shows redstone components; --publish-io (or --io-only) shows controls and visible outputs. Those flags override the saved mode for one compilation. /visual publish all|redstone|io saves the mode and applies it to active compiled execution. /rp publish is an alias. Periodic publication follows /visual rate. --update recalculates blocks after reset. Use /tps 0 and /adv 1 to step compiled execution; nano/pico stepping requires /rp reset first. /toggleautorp toggles automatic compilation.";
         HELP_REDSTONE_TOOLS = "Redstone tools\n//find <block> searches your selection.\n//ss <regex> searches signs; -p <page> shows more.\n//rs [direction] [count] [spacing] stacks copies; -e expands selection; -w includes air.\n/autostack [direction] [count] [spacing] [-e] automatically stacks your placements and removals in the selected region; /autostack off stops it. Leaving the plot stops it.\n/wire draws dust with a live preview; /help wire explains controls and safety limits.\n/container <type> <0..15> creates a comparator container.\n/cursel toggles the selection sidebar.";
         HELP_WIRE = "Wire pen\nHold any carrot on a stick and right-click to draw. /wire gives a named pen or resets your route.\nRight-click a block to use it as the first support, with dust directly above, or existing dust to reuse that endpoint.\nAim on the drawing plane. Right-click builds the green preview and continues from its end.\nF cycles horizontal (X/Z), vertical X (X/Y), vertical Z (Y/Z), then Free aiming. Sneak + F changes the preferred bend. The action bar shows the aiming mode.\n/wire free aims directly at blocks in any direction; /wire plane restores horizontal aiming. These commands keep your current start. F returns from Free to horizontal.\nPlanes control aiming; the router can take safe 3D detours. Vertical dust routes use staircases. Build an intermediate point, then change plane to draw in 3D.\nSneak + right-click or changing held item cancels the route. Hold the pen and right-click to start again while enabled.\n/wire off disables the pen for this login, including after item or plot changes. /wire, /wire free, or /wire plane enables it again.\nNew supports copy the starting support's passive material and color. Clicking dust samples the block below it. Active blocks or blocks with stored data fall back to glass; transparent materials may need white wool on steps.\nNo repeaters or signal-range check. Unsafe or unsupported circuit interactions are refused.\n//undo restores the last segment's geometry; it does not rewind simulation.";
         WIRE_USAGE = "Usage: /wire [free|plane|off]";
@@ -372,10 +372,9 @@ catalog! {
         REDPILATOR_AUTO_DISABLED = "Automatic Redpilator compilation disabled. Give /rp compile a boop when you're ready.";
         REDPILATOR_AUTO_ENABLED = "Automatic Redpilator compilation enabled—I'll handle that trick for you.";
         REDPILATOR_INVALID_ARGUMENT = "/redpilator hasn't learned that trick. Check /help redpilator.";
-        REDPILATOR_PUBLICATION_USAGE = "Usage: /rp publish all|redstone|io";
+        REDPILATOR_PUBLICATION_USAGE = "Usage: /visual publish [all|redstone|io]";
         REDPILATOR_RESET_USAGE = "Usage: /rp off, /rp reset, or /rp clear (no arguments)";
         REDPILATOR_PLOT_CACHE_CLEARED = "Redpilator stopped; this plot's compilation cache was cleared.";
-        REDPILATOR_NOT_ACTIVE = "Redpilator is not active. Use /rp compile first.";
         PLOT_SIDEBAR_TITLE = "Plot monitor";
         PLOT_INFO_UNCLAIMED = "Unclaimed";
         PLOT_INFO_NO_SAMPLES = "Not sampled yet";
@@ -471,6 +470,12 @@ catalog! {
         warp_list(names: impl Display) = "Shared warps: {names}";
         teleport_player(player: impl Display) = "Following {player}'s scent—teleporting now.";
         small_animal(animal: impl Display) = "Small appearance set to {animal}.";
+        usage_emote(command: impl Display) = "Usage: {command}";
+        emote_kiss(player: impl Display, target: impl Display) = "{player} nuzzles {target} and plants a soft kiss on their snoot! Mwah~ uwu";
+        emote_bark(player: impl Display) = "{player} barks like a playful puppy! Arf arf~ :3";
+        emote_mrow(player: impl Display) = "{player} mrows like a cuddly kitty! Mrrp~ uwu";
+        emote_woof(player: impl Display) = "{player} woofs and wags their fluffy tail! Woof woof~ :3";
+        emote_rawr(player: impl Display) = "{player} rawrs like a tiger";
         git_rebased(branch: impl Display, source: impl Display, recovery: impl Display) = "Fetched {source}'s saved plot into {branch}'s working build. Branch tips unchanged; simulation paused. Edit, then /git commit <message> to tuck it away :3{recovery}";
         worldedit_work_limit(limit: u64) = "These WorldEdit paws can handle at most {limit} blocks.";
         advance_progress(advanced: u32, requested: u32, unit: impl Display) = "{advanced} of {requested} {unit}";
@@ -553,7 +558,8 @@ catalog! {
         scoreboard_flag(flag: impl Display) = "Flag: {flag}";
         scoreboard_tps(actual: impl Display, target: impl Display) = "TPS: {actual}/{target}";
         scoreboard_history_memory(memory: impl Display) = "Hist mem: {memory}";
-        scoreboard_visual_rate(rate: u32) = "Visual: {rate}hz";
+        scoreboard_visual_rate(rate: u32) = "Visual: {rate}Hz";
+        scoreboard_publication(mode: &str) = "Publish: {mode}";
         scoreboard_pistons(mode: impl Display, effective: impl Display) = "Pistons: {mode}/{effective}";
         scoreboard_screen_only(state: impl Display) = "Screen only: {state}";
         scoreboard_git_branch(branch: impl Display) = "Git: {branch}";
@@ -567,6 +573,7 @@ catalog! {
         clipboard_pasted(elapsed: Duration) = "Unpacked your clipboard onto the plot ({elapsed:.00?}).";
         redpilator_progress(elapsed: impl Display, status: &str) = "Redpilator compiling ({elapsed}s): {status}";
         redpilator_publication(mode: &str) = "Redpilator publication: {mode}";
+        redpilator_publication_flush_failed(mode: &str, error: impl Display) = "Saved publication mode {mode}, but could not publish the current state: {error}";
         redpilator_rejected(elapsed: Duration, reason: &str) = "Redpilator could not start ({elapsed:.1?}):\n{reason}";
         redpilator_fallback(reason: &str) = "Redpilator is switching to Interpreter: {reason}.";
         redpilator_handoff_failed(error: impl Display) = "Could not switch to Interpreter: {error}. Compiled state was kept and simulation is paused. Use /rp reset before resuming.";

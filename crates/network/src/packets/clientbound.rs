@@ -1257,13 +1257,19 @@ pub struct CEntityPositionSync {
 
 impl ClientBoundPacket for CEntityPositionSync {
     fn encode(&self) -> PacketEncoder {
+        self.encode_with_velocity([0.0; 3])
+    }
+}
+
+impl CEntityPositionSync {
+    pub fn encode_with_velocity(&self, velocity: [f64; 3]) -> PacketEncoder {
         let mut buf = Vec::new();
         buf.write_varint(self.entity_id);
         buf.write_double(self.x);
         buf.write_double(self.y);
         buf.write_double(self.z);
-        for _ in 0..3 {
-            buf.write_double(0.0);
+        for component in velocity {
+            buf.write_double(component);
         }
         buf.write_float(self.yaw);
         buf.write_float(self.pitch);

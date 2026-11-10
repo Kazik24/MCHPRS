@@ -82,12 +82,28 @@ pub(in crate::plot) fn ray_trace(
     read: &impl Fn(BlockPos) -> Option<Block>,
     bounds: &impl Fn(Block) -> Option<Bounds>,
 ) -> Option<RayHit> {
-    if !eye.is_valid() || !yaw.is_finite() || !pitch.is_finite() {
+    if !yaw.is_finite() || !pitch.is_finite() {
         return None;
     }
-    let yaw = f64::from(yaw).to_radians();
-    let pitch = f64::from(pitch).to_radians();
-    let direction = [-yaw.sin() * pitch.cos(), -pitch.sin(), yaw.cos() * pitch.cos()];
+    trace_direction(eye, look_direction(yaw, pitch), range, read, bounds)
+}
+
+pub(in crate::plot) fn look_direction(yaw: f32, pitch: f32) -> [f64; 3] {
+    let (sin_yaw, cos_yaw) = f64::from(yaw).to_radians().sin_cos();
+    let (sin_pitch, cos_pitch) = f64::from(pitch).to_radians().sin_cos();
+    [-sin_yaw * cos_pitch, -sin_pitch, cos_yaw * cos_pitch]
+}
+
+pub(in crate::plot) fn trace_direction(
+    eye: PlayerPos,
+    direction: [f64; 3],
+    range: f64,
+    read: &impl Fn(BlockPos) -> Option<Block>,
+    bounds: &impl Fn(Block) -> Option<Bounds>,
+) -> Option<RayHit> {
+    if !eye.is_valid() {
+        return None;
+    }
     let origin = [eye.x, eye.y, eye.z];
     let mut cell = [eye.x.floor() as i32, eye.y.floor() as i32, eye.z.floor() as i32];
 
@@ -153,6 +169,10 @@ pub(in crate::plot) struct RayHit {
 }
 
 impl RayHit {
+    pub(in crate::plot) fn position(&self) -> PlayerPos {
+        self.point(self.distance)
+    }
+
     fn point(&self, distance: f64) -> PlayerPos {
         PlayerPos::new(
             self.origin[0] + self.direction[0] * distance,
@@ -241,7 +261,7 @@ impl Bounds {
     }
 }
 
-fn collision_bounds(block: Block) -> Option<Bounds> {
+pub(in crate::plot) fn collision_bounds(block: Block) -> Option<Bounds> {
     let (bottom, top) = vertical_bounds(block)?;
     let mut bounds = Bounds {
         min: [0.0, bottom, 0.0],

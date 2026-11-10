@@ -6,6 +6,7 @@ fn native_chat_controls_public_output_without_losing_player_list_removal() {
     let (plot_sender, receiver) = mpsc::channel();
     let mut broadcaster = Bus::new(8);
     let mut messages = broadcaster.add_rx();
+    let mut other_plot = broadcaster.add_rx();
     let mut server = MinecraftServer {
         waveform_api: None,
         network,
@@ -17,6 +18,17 @@ fn native_chat_controls_public_output_without_losing_player_list_removal() {
         whitelist: None,
         pending_redbox: Default::default(),
     };
+    server.handle_message(Message::Emote("Lord225 mrows".into(), Some("entity.cat.ambient")));
+    for receiver in [&mut messages, &mut other_plot] {
+        let BroadcastMessage::Emote(components, sound) = receiver.try_recv().unwrap() else {
+            panic!("emotes must reach every plot, even when native chat is disabled");
+        };
+        assert_eq!(sound, Some(crate::sound::event_id("entity.cat.ambient")));
+        assert_eq!(
+            components.iter().map(|component| component.text.as_str()).collect::<String>(),
+            "Lord225 mrows"
+        );
+    }
     server.online_players.insert(
         1,
         PlayerListEntry {

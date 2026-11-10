@@ -129,6 +129,8 @@ pub(crate) enum SmallAnimal {
     #[default]
     Ocelot,
     BabyOcelot,
+    Bat,
+    EnderDragon,
 }
 
 impl SmallAnimal {
@@ -138,6 +140,8 @@ impl SmallAnimal {
             Self::Fox => mchprs_network::generated::FOX_ENTITY,
             Self::Cat => mchprs_network::generated::CAT_ENTITY,
             Self::Ocelot | Self::BabyOcelot => mchprs_network::generated::OCELOT_ENTITY,
+            Self::Bat => mchprs_network::generated::BAT_ENTITY,
+            Self::EnderDragon => mchprs_network::generated::ENDER_DRAGON_ENTITY,
         }
     }
 
@@ -148,6 +152,8 @@ impl SmallAnimal {
             Self::Cat => "cat",
             Self::Ocelot => "ocelot",
             Self::BabyOcelot => "baby ocelot",
+            Self::Bat => "bat",
+            Self::EnderDragon => "enderdragon",
         }
     }
 }
@@ -222,6 +228,7 @@ pub struct Player {
     next_permissions_refresh: Instant,
     chat_window: Instant,
     chat_count: u32,
+    animal_emote_refill: Instant,
     pub(crate) signed_velocity: crate::signed_velocity::Session,
     pub pos: PlayerPos,
     /// The last X chunk the player was in. This is used for updated view position.
@@ -238,6 +245,7 @@ pub struct Player {
     pub(crate) small_model: Option<SmallModel>,
     pub(crate) small_animal: SmallAnimal,
     pub(crate) last_compass_use: Option<Instant>,
+    pub(crate) last_snowball_throw: Option<Instant>,
     pub on_ground: bool,
     pub fly_speed: f32,
     pub walk_speed: f32,
@@ -282,9 +290,11 @@ pub(crate) struct SmallModel {
 }
 
 impl SmallModel {
-    pub fn new() -> Self {
+    pub fn new(animal: SmallAnimal) -> Self {
+        // The Java client gives a dragon's eight parts the IDs immediately after its own.
+        let entity_count = if animal == SmallAnimal::EnderDragon { 9 } else { 1 };
         Self {
-            entity_id: allocate_entity_id(),
+            entity_id: ENTITY_ID_COUNTER.fetch_add(entity_count, Ordering::Relaxed),
             uuid: rand::random(),
             last_pose: None,
             last_mouth_item: None,
@@ -436,6 +446,7 @@ impl Player {
             },
             chat_window: Instant::now(),
             chat_count: 0,
+            animal_emote_refill: Instant::now(),
             signed_velocity: Default::default(),
             pos: PlayerPos {
                 x: player_data.position[0],
@@ -453,9 +464,10 @@ impl Player {
             flying: player_data.flying,
             sprinting: false,
             crouching: false,
-            small_model: player_data.small.then(SmallModel::new),
+            small_model: player_data.small.then(|| SmallModel::new(player_data.small_animal)),
             small_animal: player_data.small_animal,
             last_compass_use: None,
+            last_snowball_throw: None,
             gamemode,
             on_ground: player_data.on_ground,
             walk_speed: player_data.walk_speed,
@@ -910,6 +922,17 @@ impl Player {
         true
     }
 
+    pub(super) fn accept_animal_emote(&mut self, now: Instant) -> bool {
+        // Each emote adds one second of refill time, up to ten seconds ahead.
+        let refill = std::time::Duration::from_secs(1);
+        let next = self.animal_emote_refill.max(now) + refill;
+        if next > now + refill * 10 {
+            return false;
+        }
+        self.animal_emote_refill = next;
+        true
+    }
+
     /// Refresh off the plot thread. A stale cache stops granting permissions
     /// after 30 seconds even if the database is slow or unavailable. With the
     /// proxy source the request travels over the RedBox bridge instead.
@@ -1233,6 +1256,26 @@ impl PacketSender for Player {
 #[cfg(test)]
 mod coordinate_security_tests {
     use super::*;
+    #[test]
+    fn small_animals_preserve_saved_variant_indices_and_round_trip() {
+        for (index, animal) in [
+            SmallAnimal::Wolf,
+            SmallAnimal::Fox,
+            SmallAnimal::Cat,
+            SmallAnimal::Ocelot,
+            SmallAnimal::BabyOcelot,
+            SmallAnimal::Bat,
+            SmallAnimal::EnderDragon,
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let bytes = bincode::serialize(&animal).unwrap();
+            assert_eq!(bytes, (index as u32).to_le_bytes());
+            assert_eq!(bincode::deserialize::<SmallAnimal>(&bytes).unwrap(), animal);
+        }
+    }
+
     #[test]
     fn player_saves_restore_small_mode_and_animal_and_upgrade_old_records() {
         let payload = bincode::serialize(&PlayerData {

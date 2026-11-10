@@ -1,4 +1,5 @@
 use crate::player::PlayerPos;
+use crate::redpilator::PublicationMode;
 use once_cell::sync::Lazy;
 use rusqlite::{Connection, OptionalExtension, params};
 use std::collections::HashSet;
@@ -129,6 +130,35 @@ pub fn set_screen_only(plot_x: i32, plot_z: i32, enabled: bool) -> rusqlite::Res
         "INSERT INTO plot_visual_settings(plot_x, plot_z, screen_only) VALUES(?1, ?2, ?3)
          ON CONFLICT(plot_x, plot_z) DO UPDATE SET screen_only=excluded.screen_only",
         params![plot_x, plot_z, enabled],
+    )?;
+    Ok(())
+}
+
+pub(super) fn publication_mode(x: i32, z: i32) -> rusqlite::Result<Option<PublicationMode>> {
+    publication_mode_in(&lock(), x, z)
+}
+
+fn publication_mode_in(conn: &Connection, x: i32, z: i32) -> rusqlite::Result<Option<PublicationMode>> {
+    let mode = conn
+        .query_row(
+            "SELECT publication FROM plot_visual_settings WHERE plot_x=?1 AND plot_z=?2",
+            params![x, z],
+            |row| row.get::<_, Option<String>>(0),
+        )
+        .optional()?
+        .flatten();
+    Ok(mode.as_deref().and_then(PublicationMode::parse))
+}
+
+pub(super) fn set_publication_mode(x: i32, z: i32, mode: PublicationMode) -> rusqlite::Result<()> {
+    set_publication_mode_in(&lock(), x, z, mode)
+}
+
+fn set_publication_mode_in(conn: &Connection, x: i32, z: i32, mode: PublicationMode) -> rusqlite::Result<()> {
+    conn.execute(
+        "INSERT INTO plot_visual_settings(plot_x, plot_z, publication) VALUES(?1, ?2, ?3)
+         ON CONFLICT(plot_x, plot_z) DO UPDATE SET publication=excluded.publication",
+        params![x, z, mode.name()],
     )?;
     Ok(())
 }
@@ -429,6 +459,30 @@ fn init_user_name_cache(conn: &Connection) -> rusqlite::Result<()> {
     Ok(())
 }
 
+fn init_visual_settings(conn: &Connection) -> rusqlite::Result<()> {
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS plot_visual_settings(
+            plot_x INTEGER NOT NULL,
+            plot_z INTEGER NOT NULL,
+            screen_only BOOLEAN NOT NULL DEFAULT FALSE,
+            PRIMARY KEY(plot_x, plot_z)
+        )",
+        [],
+    )?;
+    let has_publication: bool = conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM pragma_table_info('plot_visual_settings') WHERE name='publication')",
+        [],
+        |row| row.get(0),
+    )?;
+    if !has_publication {
+        conn.execute(
+            "ALTER TABLE plot_visual_settings ADD COLUMN publication TEXT CHECK(publication IN ('all', 'redstone', 'io'))",
+            [],
+        )?;
+    }
+    Ok(())
+}
+
 pub fn init() {
     let conn = lock();
     conn.pragma_update(None, "foreign_keys", true)
@@ -438,17 +492,7 @@ pub fn init() {
 
     init_warps(&conn).expect("Could not initialize saved warps");
     init_waveform(&conn).expect("Could not initialize waveform definitions");
-
-    conn.execute(
-        "CREATE TABLE IF NOT EXISTS plot_visual_settings(
-            plot_x INTEGER NOT NULL,
-            plot_z INTEGER NOT NULL,
-            screen_only BOOLEAN NOT NULL DEFAULT FALSE,
-            PRIMARY KEY(plot_x, plot_z)
-        )",
-        [],
-    )
-    .unwrap();
+    init_visual_settings(&conn).expect("Could not initialize plot visual settings");
 
     conn.execute(
         "CREATE TABLE IF NOT EXISTS user(
@@ -507,6 +551,30 @@ pub fn init() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn publication_setting_migrates_existing_visual_rows() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE plot_visual_settings(
+                plot_x INTEGER NOT NULL, plot_z INTEGER NOT NULL, screen_only BOOLEAN NOT NULL DEFAULT FALSE,
+                PRIMARY KEY(plot_x, plot_z));
+             INSERT INTO plot_visual_settings VALUES(-1, 2, TRUE);",
+        )
+        .unwrap();
+        init_visual_settings(&conn).unwrap();
+        assert_eq!(publication_mode_in(&conn, -1, 2).unwrap(), None);
+        set_publication_mode_in(&conn, -1, 2, PublicationMode::All).unwrap();
+        set_publication_mode_in(&conn, 0, 0, PublicationMode::Io).unwrap();
+        init_visual_settings(&conn).unwrap();
+        assert_eq!(publication_mode_in(&conn, -1, 2).unwrap(), Some(PublicationMode::All));
+        assert_eq!(publication_mode_in(&conn, 0, 0).unwrap(), Some(PublicationMode::Io));
+        assert!(
+            conn.query_row("SELECT screen_only FROM plot_visual_settings WHERE plot_x=-1 AND plot_z=2", [], |row| row
+                .get::<_, bool>(0))
+                .unwrap()
+        );
+    }
 
     #[test]
     fn waveform_definitions_survive_reopening_without_recorded_data() {

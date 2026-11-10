@@ -14,11 +14,9 @@ pub(in crate::plot) fn complete_redpilator(id: i32, text: &str) -> Option<CTabCo
     let boundary = text.rfind(char::is_whitespace)?;
     let start = boundary + text[boundary..].chars().next()?.len_utf8();
     let words: Vec<_> = text[..start].split_whitespace().collect();
-    if !matches!(words.first(), Some(&"/rp" | &"/redpilator")) {
-        return None;
-    }
+    let command = words.first().copied()?;
     let candidates: &[&str] = match words.get(1) {
-        Some(&"compile" | &"c") => &[
+        Some(&"compile" | &"c") if matches!(command, "/rp" | "/redpilator") => &[
             "--publish-all",
             "--publish-redstone",
             "--publish-io",
@@ -28,7 +26,7 @@ pub(in crate::plot) fn complete_redpilator(id: i32, text: &str) -> Option<CTabCo
             "-i",
             "-u",
         ],
-        Some(&"publish") if words.len() == 2 => &["all", "redstone", "io"],
+        Some(&"publish") if words.len() == 2 && matches!(command, "/visual" | "/rp" | "/redpilator") => &["all", "redstone", "io"],
         _ => return None,
     };
     let prefix = &text[start..];
@@ -61,8 +59,14 @@ mod tests {
 
     #[test]
     fn publication_command_requires_permission_and_catches_up_immediately() {
-        let (mut plot, _peer) = crate::plot::client_sync_tests::fixture(false);
+        use crate::plot::client_test_utils::decode_blocks;
+        use mchprs_network::test_support::read_frame;
+        use mchprs_save_data::plot_data::WorldSendRate;
+
+        let (mut plot, mut peer) = crate::plot::client_sync_tests::fixture(false);
         plot.owner = Some(plot.players[0].uuid);
+        plot.world.set_screen_only(false);
+        plot.world_send_rate = WorldSendRate(0);
         let lever = BlockPos::new(34, 21, 32);
         plot.world.set_block(lever.offset(BlockFace::Bottom), Block::Stone {});
         plot.world.set_block(
@@ -85,17 +89,34 @@ mod tests {
         plot.handle_command(0, "/rp", vec!["publish", "io"]);
         assert!(matches!(plot.world.get_block(lever), Block::Lever { lever } if !lever.powered));
 
-        plot.players[0].set_test_permissions(&["commands.redpilator.compile"]);
-        for mode in ["io", "redstone", "all"] {
-            plot.handle_command(0, "/rp", vec!["publish", mode]);
+        plot.players[0].set_test_permissions(&["commands.visual", "commands.visual.set"]);
+        plot.handle_command(0, "/visual", vec!["publish", "io"]);
+        assert_eq!(plot.publication_mode, None);
+        assert!(matches!(plot.world.get_block(lever), Block::Lever { lever } if !lever.powered));
+
+        plot.players[0].set_test_permissions(&["commands.redpilator.compile", "commands.visual", "commands.visual.set"]);
+        for (command, mode) in [("/visual", "io"), ("/rp", "redstone"), ("/redpilator", "all")] {
+            plot.handle_command(0, command, vec!["publish", mode]);
+            assert_eq!(plot.publication_mode, PublicationMode::parse(mode));
             assert_eq!(plot.redpilator.current_flags().unwrap().publication, PublicationMode::parse(mode));
             assert_eq!(plot.redpilator.current_flags().unwrap().io_only, mode == "io");
             assert!(matches!(plot.world.get_block(lever), Block::Lever { lever } if lever.powered));
+            if command == "/visual" {
+                let powered = plot.world.get_block_raw(lever);
+                loop {
+                    let (id, mut frame) = read_frame(&mut peer, false).unwrap();
+                    if matches!(id, 0x08 | 0x4d) && decode_blocks(id, &mut frame).contains(&(lever, powered)) {
+                        break;
+                    }
+                }
+            }
         }
         plot.handle_command(0, "/rp", vec!["publish", "invalid"]);
         assert_eq!(plot.redpilator.current_flags().unwrap().publication, Some(PublicationMode::All));
         plot.redpilator.try_reset(&mut plot.world, (lever, lever)).unwrap();
-        plot.handle_command(0, "/rp", vec!["publish", "io"]);
+        plot.handle_command(0, "/visual", vec!["publish", "io"]);
+        assert_eq!(plot.visual_publication_mode(), PublicationMode::Io);
+        assert_eq!(plot.publication_mode, Some(PublicationMode::Io));
         assert!(!plot.redpilator.is_active());
     }
 
@@ -166,6 +187,52 @@ mod tests {
 }
 
 impl Plot {
+    pub(super) fn handle_publication_command(&mut self, player: usize, args: &[&str]) {
+        if args.is_empty() {
+            self.players[player].send_system_message(&messages::redpilator_publication(self.visual_publication_mode().name()));
+            return;
+        }
+        let mode = match args {
+            [value] => PublicationMode::parse(value),
+            _ => None,
+        };
+        let Some(mode) = mode else {
+            self.players[player].send_error_message(messages::REDPILATOR_PUBLICATION_USAGE);
+            return;
+        };
+        if !self.players[player].has_permission("commands.redpilator.compile") {
+            self.players[player].send_no_permission_message();
+            return;
+        }
+        if self.compilation.is_some() {
+            self.players[player].send_error_message(messages::REDPILATOR_COMPILATION_BUSY);
+            return;
+        }
+        #[cfg(any(test, feature = "plot-bench"))]
+        let persist = !self.transient_test_fixture;
+        #[cfg(not(any(test, feature = "plot-bench")))]
+        let persist = true;
+        if persist
+            && self.publication_mode != Some(mode)
+            && let Err(error) = super::database::set_publication_mode(self.world.x, self.world.z, mode)
+        {
+            self.players[player].send_error_message(&messages::visual_setting_save_failed(error));
+            return;
+        }
+        self.publication_mode = Some(mode);
+        let result = if self.redpilator.set_publication_mode(mode) {
+            self.redpilator.try_flush(&mut self.world).map(|()| self.world.flush_block_changes())
+        } else {
+            Ok(())
+        };
+        self.refresh_sidebar(true);
+        if let Err(error) = result {
+            self.players[player].send_error_message(&messages::redpilator_publication_flush_failed(mode.name(), error));
+            return;
+        }
+        self.players[player].send_system_message(&messages::redpilator_publication(mode.name()));
+    }
+
     /// Handles a command that starts with `/redpilator` or `/rp`
     ///
     /// Inputs: The player index, parsed subcommand and remaining argument words; permission checks run in the command
@@ -219,27 +286,7 @@ impl Plot {
                     }
                 }
             }
-            "publish" => {
-                let mode = match args {
-                    [value] => PublicationMode::parse(value),
-                    _ => None,
-                };
-                let Some(mode) = mode else {
-                    self.players[player].send_error_message(messages::REDPILATOR_PUBLICATION_USAGE);
-                    return;
-                };
-                if !self.redpilator.set_publication_mode(mode) {
-                    self.players[player].send_error_message(messages::REDPILATOR_NOT_ACTIVE);
-                    return;
-                }
-                if let Err(error) = self.redpilator.try_flush(&mut self.world) {
-                    self.players[player].send_error_message(&error.to_string());
-                    return;
-                }
-                self.scoreboard
-                    .set_redpilator_options(&self.players, self.redpilator.current_flags().unwrap());
-                self.players[player].send_system_message(&messages::redpilator_publication(mode.name()));
-            }
+            "publish" => self.handle_publication_command(player, args),
             _ => self.players[player].send_error_message(messages::REDPILATOR_INVALID_ARGUMENT),
         }
     }

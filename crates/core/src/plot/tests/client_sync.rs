@@ -30,6 +30,33 @@ pub(super) fn fixture(compressed: bool) -> (Plot, TcpStream) {
 }
 
 #[test]
+fn animal_emote_sound_plays_at_each_listener() {
+    let (mut plot, mut first) = fixture(false);
+    let connection = connection(false).unwrap();
+    let mut distant = Player::test_player(connection.player);
+    distant.pos = PlayerPos::new(400.5, 80.0, 410.5);
+    plot.players.push(distant);
+    let mut second = connection.peer;
+    let mut bus = bus::Bus::new(4);
+    plot.message_receiver = bus.add_rx();
+    let sound_id = crate::sound::event_id("entity.wolf.ambient");
+    bus.broadcast(BroadcastMessage::Emote(crate::chat::ChatComponent::from_legacy_text("Woof!"), Some(sound_id)));
+    plot.handle_messages();
+
+    for (peer, player) in [(&mut first, &plot.players[0]), (&mut second, &plot.players[1])] {
+        assert_eq!(read_frame(peer, false).unwrap().0, 0x72);
+        let (id, mut sound) = read_frame(peer, false).unwrap();
+        assert_eq!(id, 0x6e);
+        assert_eq!(sound.read_varint().unwrap(), sound_id + 1);
+        assert_eq!(sound.read_varint().unwrap(), 6);
+        let pos = player.pos.block_pos();
+        for coordinate in [pos.x, pos.y, pos.z] {
+            assert_eq!(sound.read_int().unwrap(), coordinate * 8 + 4);
+        }
+    }
+}
+
+#[test]
 fn compiled_projection_waits_for_visual_deadline() {
     let (mut plot, _peer) = fixture(false);
     let connection = connection(false).unwrap();

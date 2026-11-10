@@ -329,10 +329,13 @@ pub fn protocol() -> Result<TokenStream, String> {
     let component_count = i32::try_from(entries(&ids, "minecraft:data_component_type")?.len()).map_err(|error| error.to_string())?;
     let entities = entries(&ids, "minecraft:entity_type")?;
     let player = protocol_id(entities.get("minecraft:player").ok_or("missing player entity")?)?;
+    let snowball = protocol_id(entities.get("minecraft:snowball").ok_or("missing snowball entity")?)?;
     let ocelot = protocol_id(entities.get("minecraft:ocelot").ok_or("missing ocelot entity")?)?;
     let wolf = protocol_id(entities.get("minecraft:wolf").ok_or("missing wolf entity")?)?;
     let fox = protocol_id(entities.get("minecraft:fox").ok_or("missing fox entity")?)?;
     let cat = protocol_id(entities.get("minecraft:cat").ok_or("missing cat entity")?)?;
+    let bat = protocol_id(entities.get("minecraft:bat").ok_or("missing bat entity")?)?;
+    let ender_dragon = protocol_id(entities.get("minecraft:ender_dragon").ok_or("missing ender dragon entity")?)?;
     let tags = concat!(env!("CARGO_MANIFEST_DIR"), "/../../mc_data/1.21.5/tags.bin");
     let registries = concat!(env!("CARGO_MANIFEST_DIR"), "/../../mc_data/1.21.5/registries.bin");
     Ok(quote! {
@@ -340,10 +343,13 @@ pub fn protocol() -> Result<TokenStream, String> {
         pub const ITEM_COUNT: i32 = #item_count;
         pub const COMPONENT_COUNT: i32 = #component_count;
         pub const PLAYER_ENTITY: i32 = #player;
+        pub const SNOWBALL_ENTITY: i32 = #snowball;
         pub const OCELOT_ENTITY: i32 = #ocelot;
         pub const WOLF_ENTITY: i32 = #wolf;
         pub const FOX_ENTITY: i32 = #fox;
         pub const CAT_ENTITY: i32 = #cat;
+        pub const BAT_ENTITY: i32 = #bat;
+        pub const ENDER_DRAGON_ENTITY: i32 = #ender_dragon;
         pub const TAGS: &[u8] = include_bytes!(#tags);
         pub const REGISTRIES: &[u8] = include_bytes!(#registries);
     })

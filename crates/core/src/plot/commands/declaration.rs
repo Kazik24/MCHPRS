@@ -17,7 +17,7 @@ pub(super) fn declared_command_nodes() -> Vec<Node<'static>> {
         // Root Node
         Node::root(&[
             1, 2, 7, 8, 10, 12, 14, 15, 16, 17, 18, 19, 20, 22, 25, 27, 29, 31, 32, 42, 44, 48, 55, 56, 58, 60, 61, 62, 69, 70, 77, 78, 80, 86, 96,
-            101, 106, 107, 108, 109, 110, 111, 113, 115, 119, 126, 130, 131, 138, 139, 140, 141, 142, 146, 153, 154, 157, 158, 167,
+            101, 106, 107, 108, 109, 110, 111, 113, 115, 119, 126, 130, 131, 138, 139, 140, 141, 142, 146, 153, 154, 157, 158, 169,
         ]),
         // /stop
         Node::literal("stop", &[]).executable(),
@@ -295,7 +295,7 @@ pub(super) fn declared_command_nodes() -> Vec<Node<'static>> {
         // /rv shares the server-completed git arguments.
         Node::literal("rv", &[105]).executable(),
         // /small and its explicit states.
-        Node::literal("small", &[159, 160, 162, 163, 164, 165, 166]).executable(),
+        Node::literal("small", &[159, 160, 162, 163, 164, 165, 166, 167, 168]).executable(),
         Node::literal("on", &[]).executable(),
         Node::literal("off", &[]).executable(),
         // /gm cat selects creative play with the small ocelot disguise.
@@ -306,6 +306,8 @@ pub(super) fn declared_command_nodes() -> Vec<Node<'static>> {
         Node::literal("cat", &[]).executable(),
         Node::literal("ocelot", &[]).executable(),
         Node::literal("baby", &[]).executable(),
+        Node::literal("bat", &[]).executable(),
+        Node::literal("enderdragon", &[]).executable(),
     ];
 
     let visual = nodes.len();
@@ -331,7 +333,6 @@ pub(super) fn declared_command_nodes() -> Vec<Node<'static>> {
     let visual_help = nodes.len();
     nodes.push(Node::literal("visual", &[]).executable());
 
-    nodes[visual].children = Box::leak(vec![pistons as i32, rate as i32, displayonly as i32].into_boxed_slice());
     nodes[pistons].children = Box::leak(vec![auto as i32, piston_on as i32, piston_off as i32].into_boxed_slice());
     nodes[rate].children = Box::leak(vec![hertz as i32].into_boxed_slice());
     nodes[displayonly].children = Box::leak(vec![display_on as i32, display_off as i32].into_boxed_slice());
@@ -346,10 +347,8 @@ pub(super) fn declared_command_nodes() -> Vec<Node<'static>> {
 
     let redpilator = nodes.iter().position(|node| node.name == Some("redpilator")).unwrap();
     let publish = nodes.len() as i32;
-    nodes.push(Node::literal(
-        "publish",
-        Box::leak(vec![publish + 1, publish + 2, publish + 3].into_boxed_slice()),
-    ));
+    nodes.push(Node::literal("publish", Box::leak(vec![publish + 1, publish + 2, publish + 3].into_boxed_slice())).executable());
+    nodes[visual].children = Box::leak(vec![pistons as i32, rate as i32, displayonly as i32, publish].into_boxed_slice());
     for mode in ["all", "redstone", "io"] {
         nodes.push(Node::literal(mode, &[]).executable());
     }
@@ -415,6 +414,10 @@ pub(super) fn declared_command_nodes() -> Vec<Node<'static>> {
         root_children.extend([warp, setwarp]);
     }
     root_children.push(super::super::waveform::command_node(&mut nodes));
+    for command in ["kiss", "bark", "mrow", "meow", "woof", "rawr"] {
+        root_children.push(nodes.len() as i32);
+        nodes.push(Node::literal(command, &[]).executable());
+    }
     nodes[0].children = Box::leak(root_children.into_boxed_slice());
     nodes
 }
@@ -436,6 +439,9 @@ mod tests {
         let nodes = declared_command_nodes();
         let root_names: Vec<_> = nodes[0].children.iter().map(|&id| nodes[id as usize].name.unwrap()).collect();
         assert!(root_names.contains(&"/sel"));
+        assert!(root_names.contains(&"visual"));
+        assert!(!root_names.contains(&"bat"));
+        assert!(!root_names.contains(&"enderdragon"));
         let help = nodes.iter().find(|node| node.name == Some("help")).unwrap();
         let topics: Vec<_> = help
             .children

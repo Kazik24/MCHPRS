@@ -37,6 +37,15 @@ pub(super) fn run_command_queue(commands: Vec<String>, mut handle: impl FnMut(&s
     }
     false
 }
+
+pub(super) fn animal_emote_sound(command: &str) -> Option<&'static str> {
+    match command {
+        "/mrow" | "/meow" => Some("entity.cat.ambient"),
+        "/woof" => Some("entity.wolf.ambient"),
+        _ => None,
+    }
+}
+
 impl RelativeCoordinate for i32 {
     fn checked_offset(self, offset: Self) -> Option<Self> {
         self.checked_add(offset)
@@ -267,11 +276,13 @@ impl Plot {
                 }
                 match args.as_slice() {
                     [] => self.players[player].send_system_message(&format!(
-                        "Visual settings: pistons {}; update rate {} Hz; display-only {}.",
+                        "Visual settings: pistons {}; update rate {} Hz; display-only {}; compiled publication {}.",
                         self.piston_animation,
                         self.world_send_rate.0,
                         if self.world.screen_only() { "on" } else { "off" },
+                        self.visual_publication_mode().name(),
                     )),
+                    ["publish", args @ ..] => self.handle_publication_command(player, args),
                     ["pistons"] => self.players[player].send_system_message(&messages::piston_animation(
                         self.piston_animation,
                         if self.world.fast_rendering { "off" } else { "on" },
@@ -663,17 +674,52 @@ impl Plot {
                 let command = args.remove(0);
                 self.handle_redpilator_command(player, command, &args);
             }
+            "/kiss" | "/bark" | "/mrow" | "/meow" | "/woof" | "/rawr" => {
+                if !args.is_empty() {
+                    self.players[player].send_error_message(&messages::usage_emote(command));
+                    return false;
+                }
+                let current = &self.players[player];
+                let message = match command {
+                    "/kiss" => {
+                        let closest = self
+                            .players
+                            .iter()
+                            .enumerate()
+                            .filter(|(index, _)| *index != player)
+                            .map(|(_, other)| {
+                                let distance = (other.pos.x - current.pos.x).powi(2)
+                                    + (other.pos.y - current.pos.y).powi(2)
+                                    + (other.pos.z - current.pos.z).powi(2);
+                                (other, distance)
+                            })
+                            .min_by(|(_, a), (_, b)| a.total_cmp(b));
+                        let Some((closest, _)) = closest else {
+                            current.send_error_message(messages::KISS_NO_PLAYER);
+                            return false;
+                        };
+                        messages::emote_kiss(&current.username, &closest.username)
+                    }
+                    "/bark" => messages::emote_bark(&current.username),
+                    "/mrow" | "/meow" => messages::emote_mrow(&current.username),
+                    "/woof" => messages::emote_woof(&current.username),
+                    _ => messages::emote_rawr(&current.username),
+                };
+                self.message_sender.send(Message::Emote(message, animal_emote_sound(command))).unwrap();
+            }
             "/small" => {
                 let enabled = match args.as_slice() {
                     [] => self.players[player].small_model.is_none(),
                     ["on"] => true,
                     ["off"] => false,
-                    ["wolf" | "fox" | "cat" | "ocelot" | "baby"] => {
+                    ["wolf" | "fox" | "cat" | "ocelot" | "baby" | "bat" | "enderdragon"] => {
                         let animal = match args[0] {
                             "wolf" => crate::player::SmallAnimal::Wolf,
                             "fox" => crate::player::SmallAnimal::Fox,
                             "cat" => crate::player::SmallAnimal::Cat,
                             "baby" => crate::player::SmallAnimal::BabyOcelot,
+                            "bat" => crate::player::SmallAnimal::Bat,
+                            "enderdragon" => crate::player::SmallAnimal::EnderDragon,
                             _ => crate::player::SmallAnimal::Ocelot,
                         };
                         self.set_small_animal(player, animal);
@@ -769,6 +815,8 @@ fn native_command_permission(command: &str, args: &[&str]) -> Option<String> {
         "/setwarp" if !crate::redbox::enabled() => "setwarp".to_owned(),
         "/speed" => "speed".to_owned(),
         "/small" => "small".to_owned(),
+        "/meow" => "mrow".to_owned(),
+        "/kiss" | "/bark" | "/mrow" | "/woof" | "/rawr" => command.trim_start_matches('/').to_owned(),
         "/gmsp" | "/gmc" | "/gamemode" | "/gm" => "gamemode".to_owned(),
         // These two use explicit Minecraft nodes in the admin guard below.
         "/stop" | "/whitelist" => return None,
@@ -815,6 +863,67 @@ use mchprs_network::packets::clientbound::ClientBoundPacket;
 
 #[cfg(test)]
 mod security_tests {
+    #[test]
+    fn emotes_announce_the_player_and_reject_arguments_and_missing_permissions() {
+        let (mut plot, _peer) = super::super::client_sync_tests::fixture(false);
+        plot.players[0].username = "Lord225".into();
+        let (sender, receiver) = std::sync::mpsc::channel();
+        plot.message_sender = sender;
+        let nodes = super::declared_command_nodes();
+        for (command, expected, sound) in [
+            ("/bark", "Lord225 barks like a playful puppy! Arf arf~ :3", None),
+            ("/mrow", "Lord225 mrows like a cuddly kitty! Mrrp~ uwu", Some("entity.cat.ambient")),
+            ("/meow", "Lord225 mrows like a cuddly kitty! Mrrp~ uwu", Some("entity.cat.ambient")),
+            ("/woof", "Lord225 woofs and wags their fluffy tail! Woof woof~ :3", Some("entity.wolf.ambient")),
+            ("/rawr", "Lord225 rawrs like a tiger", None),
+        ] {
+            assert!(!plot.handle_command(0, command, vec![]));
+            assert!(matches!(receiver.try_recv(), Ok(crate::server::Message::Emote(text, event)) if text == expected && event == sound));
+            assert!(!plot.handle_command(0, command, vec!["unexpected"]));
+            assert!(receiver.try_recv().is_err());
+        }
+        plot.players[0].set_test_permissions(&["mchprs.access.commands"]);
+        for command in ["/kiss", "/bark", "/mrow", "/meow", "/woof", "/rawr"] {
+            let name = command.trim_start_matches('/');
+            let permission = if name == "meow" { "mrow" } else { name };
+            assert_eq!(super::native_command_permission(command, &[]), Some(format!("commands.{permission}")));
+            assert!(!super::changes_plot(command, &[]));
+            assert!(nodes[0].children.iter().any(|&id| {
+                let node = &nodes[id as usize];
+                node.name == Some(name) && node.flags & 4 != 0 && node.children.is_empty()
+            }));
+            assert!(!plot.handle_command(0, command, vec![]));
+            assert!(receiver.try_recv().is_err());
+        }
+    }
+
+    #[test]
+    fn kiss_chooses_the_closest_other_player_in_three_dimensions() {
+        let (mut plot, mut peer) = super::super::client_sync_tests::fixture(false);
+        let (sender, receiver) = std::sync::mpsc::channel();
+        plot.message_sender = sender;
+        assert!(!plot.handle_command(0, "/kiss", vec![]));
+        assert!(receiver.try_recv().is_err());
+        assert_eq!(mchprs_network::test_support::read_frame(&mut peer, false).unwrap().0, 0x72);
+
+        plot.players[0].username = "Lord225".into();
+        plot.players[0].pos = crate::player::PlayerPos::new(32.0, 21.0, 32.0);
+        let mut peers = Vec::new();
+        for (name, pos) in [("Above", [32.0, 31.0, 32.0]), ("Nearby", [34.0, 21.0, 33.0])] {
+            let connection = mchprs_network::test_support::connection(false).unwrap();
+            peers.push(connection.peer);
+            let mut player = crate::player::Player::test_player(connection.player);
+            player.username = name.into();
+            player.pos = crate::player::PlayerPos::new(pos[0], pos[1], pos[2]);
+            plot.players.push(player);
+        }
+        assert!(!plot.handle_command(0, "/kiss", vec!["Above"]));
+        assert!(receiver.try_recv().is_err());
+        assert!(!plot.handle_command(0, "/kiss", vec![]));
+        assert!(matches!(receiver.try_recv(), Ok(crate::server::Message::Emote(text, None))
+            if text == "Lord225 nuzzles Nearby and plants a soft kiss on their snoot! Mwah~ uwu"));
+    }
+
     #[test]
     fn speed_command_sends_updated_creative_flight_speed() {
         use mchprs_network::packets::PacketDecoderExt;
@@ -981,7 +1090,7 @@ mod security_tests {
         for (crouching, small) in [(false, false), (true, false), (false, true), (true, true)] {
             let (mut plot, mut peer) = super::super::client_sync_tests::fixture(false);
             plot.players[0].crouching = crouching;
-            plot.players[0].small_model = small.then(crate::player::SmallModel::new);
+            plot.players[0].small_model = small.then(|| crate::player::SmallModel::new(plot.players[0].small_animal));
             let before = plot.players[0].pos;
             assert!(!plot.handle_command(0, "/tp", vec!["33.5", "21.5", "35.5", "--highlight-only"],));
             let after = plot.players[0].pos;
@@ -1103,7 +1212,7 @@ mod security_tests {
         let small = nodes.iter().find(|node| node.name == Some("small")).unwrap();
         assert_eq!(
             small.children.iter().map(|&id| nodes[id as usize].name.unwrap()).collect::<Vec<_>>(),
-            ["on", "off", "wolf", "fox", "cat", "ocelot", "baby"]
+            ["on", "off", "wolf", "fox", "cat", "ocelot", "baby", "bat", "enderdragon"]
         );
         let gm = nodes.iter().find(|node| node.name == Some("gamemode")).unwrap();
         assert!(gm.children.iter().any(|&id| nodes[id as usize].name == Some("cat")));
@@ -1380,6 +1489,7 @@ mod security_tests {
                 ],
             ),
             ("/rp publish ", vec!["all", "redstone", "io"]),
+            ("/visual publish ", vec!["all", "redstone", "io"]),
             ("/redpilator publish r", vec!["redstone"]),
             ("/rp compile --graph", vec![]),
         ] {
@@ -1401,6 +1511,14 @@ mod security_tests {
             publish.children.iter().map(|&id| nodes[id as usize].name.unwrap()).collect::<Vec<_>>(),
             ["all", "redstone", "io"]
         );
+        let visual = nodes[0]
+            .children
+            .iter()
+            .map(|&id| &nodes[id as usize])
+            .find(|node| node.name == Some("visual"))
+            .unwrap();
+        assert!(visual.children.iter().any(|&id| std::ptr::eq(&nodes[id as usize], publish)));
+        assert_ne!(publish.flags & 4, 0);
         for command in ["reset", "off", "clear"] {
             let node = redpilator
                 .children
