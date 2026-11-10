@@ -59,6 +59,10 @@ MCHPRS_NATIVE_EXPORT uint32_t ne_create(const MchprsNativeProgramDescriptor *pro
 MCHPRS_NATIVE_EXPORT uint32_t ne_import_tick(void *memory, uint32_t component, uint32_t delay, uint8_t priority);
 MCHPRS_NATIVE_EXPORT void ne_destroy(void *memory);
 MCHPRS_NATIVE_EXPORT uint32_t ne_tick(void *memory);
+/* Status 5 requests more command effect capacity before the next tick; completed excludes failures. */
+typedef uint64_t (*MchprsNativeClock)(const void *context);
+MCHPRS_NATIVE_EXPORT uint32_t ne_tick_batch(void *memory, uint32_t count, MchprsNativeClock clock,
+                                           const void *clock_context, uint64_t logical_base, uint32_t *completed);
 MCHPRS_NATIVE_EXPORT uint32_t ne_use_control(void *memory, uint32_t source_index);
 MCHPRS_NATIVE_EXPORT uint32_t ne_set_input(void *memory, uint32_t source_index, uint8_t powered);
 MCHPRS_NATIVE_EXPORT uint32_t ne_read_state(const void *memory, uint8_t *out, uint32_t count);

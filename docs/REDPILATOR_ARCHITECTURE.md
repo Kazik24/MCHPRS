@@ -30,6 +30,10 @@ The program stores components, links, instructions and movement rules. Component
 
 Inputs and scheduled ticks run the stored instructions. While Redpilator is active, it advances the circuit and the plot's interpreter stays paused.
 
+Normal LLVM execution runs fixed batches of sixteen game ticks when the configured rate is at least 100 TPS (or unlimited) and the observed tick cost is at most 10 ms. The runner waits for a full batch of tick credit and publishes at opportunities after execution returns; it does not add scalar ticks to meet a visual deadline. Stopped plots, lower rates, slower observed execution and exact manual advancement use scalar stepping.
+
+Each native batch retains the internal scheduler, event and movement phases of every tick. Command clocks remain live per tick. If command-effect storage needs to grow, execution returns before that tick, Rust grows and rebinds the buffer, and the batch resumes without repeating completed ticks. Failures retain the successful prefix. This requires native semantic version 28; rebuild an older DLL with `scripts/build-llvm-native.ps1`.
+
 Pistons can change electrical connections by moving blocks. The compiler records movable blocks, the cells they can occupy and the connections for supported arrangements. During execution, movement selects the current arrangement and sends its recorded notifications.
 
 A bounded Rust connectivity-cache prototype was tested separately from table compaction. Three paired PM1 comparisons did not establish a repeatable throughput gain, so it is not part of the runtime. The standalone [experiment patch](../scraps/experiments/pm1-connectivity-cache.patch) is retained for further investigation.

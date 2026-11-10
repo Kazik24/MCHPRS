@@ -16,6 +16,9 @@ mod redpilator_fallback_tests;
 #[cfg(test)]
 #[path = "tests/redpilator_notes.rs"]
 mod redpilator_notes_tests;
+#[cfg(test)]
+#[path = "tests/tick_batches.rs"]
+mod tick_batch_tests;
 use redstone_tools::compass;
 mod containers;
 mod data;
@@ -79,6 +82,21 @@ use std::thread;
 use std::time::{Duration, Instant};
 use tokio::runtime::Runtime;
 use tracing::{debug, error, info, warn};
+
+fn normal_tick_batch_width(tps: Tps, last_nspt: Option<Duration>, uses_llvm: bool) -> u32 {
+    if uses_llvm && matches!(tps, Tps::Unlimited | Tps::Limited(100..)) && last_nspt.is_none_or(|duration| duration <= Duration::from_millis(10)) {
+        16
+    } else {
+        1
+    }
+}
+
+fn normal_tick_budget(available: u64, max_batch_size: u64, width: u32) -> u32 {
+    let width = u64::from(width);
+    // Bound each slice while retaining enough credit for one complete native batch.
+    let budget = available.min(max_batch_size.max(width)).min(50_000);
+    (budget / width * width) as u32
+}
 
 pub use self::data::empty_plot;
 use self::data::sleep_time_for_tps;
@@ -296,6 +314,21 @@ impl Plot {
         }
 
         true
+    }
+
+    fn tick_batch_16(&mut self) -> (u32, bool) {
+        if self.compiling_redpilator() || self.redpilator_handoff_failed {
+            return (0, false);
+        }
+        let (completed, result) = self.redpilator.tick_batch_16();
+        self.timings.ticks(completed);
+        if let Err(error) = result {
+            tracing::error!(%error, "sampled execution failed");
+            self.auto_redpilator = false;
+            self.fallback_redpilator(&error.to_string());
+            return (completed, false);
+        }
+        (completed, true)
     }
 
     /// Send a block change to all connected players
@@ -1020,6 +1053,7 @@ impl Plot {
 
             let effective_send_rate = self.effective_send_rate();
             let world_send_rate = Duration::from_nanos(1_000_000_000 / effective_send_rate.max(1) as u64);
+            let batch_width = normal_tick_batch_width(self.tps, self.last_nspt, self.redpilator.uses_llvm());
 
             let max_batch_size = match self.last_nspt {
                 Some(Duration::ZERO) | None => 1,
@@ -1040,9 +1074,9 @@ impl Plot {
                     let dur_per_tick = Duration::from_nanos((1_000_000_000 / tps as u64).max(1));
                     self.lag_time += now - self.last_update_time;
                     let batch_size = (self.lag_time.as_nanos() / dur_per_tick.as_nanos()) as u64;
-                    batch_size.min(max_batch_size)
+                    normal_tick_budget(batch_size, max_batch_size, batch_width)
                 }
-                Tps::Unlimited => max_batch_size,
+                Tps::Unlimited => normal_tick_budget(u64::MAX, max_batch_size, batch_width),
                 _ => 0,
             };
 
@@ -1052,21 +1086,24 @@ impl Plot {
                 self.lag_time = Duration::ZERO;
             } else if batch_size != 0 {
                 let simulation_started = Instant::now();
-                // 50_000 (= 3.33 MHz) here is arbitrary.
-                // We just need a number that's not too high so we actually get around to sending block updates.
-                let batch_size = batch_size.min(50_000) as u32;
                 let slice = if self.wire_tools_active() {
                     Duration::from_millis(5)
                 } else {
                     Duration::from_millis(200)
                 };
                 let mut ticks_completed = 0;
-                for _ in 0..batch_size {
-                    if !self.tick() {
-                        break;
-                    }
-                    ticks_completed += 1;
-                    if simulation_started.elapsed() >= slice {
+                for _ in 0..batch_size / batch_width {
+                    let success = if batch_width == 16 {
+                        let (completed, success) = self.tick_batch_16();
+                        ticks_completed += completed;
+                        success
+                    } else if self.tick() {
+                        ticks_completed += 1;
+                        true
+                    } else {
+                        false
+                    };
+                    if !success || simulation_started.elapsed() >= slice {
                         break;
                     }
                 }

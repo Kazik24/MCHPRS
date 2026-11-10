@@ -215,6 +215,27 @@ impl Compiler {
         self.runtime.is_some() || self.llvm_runtime.is_some()
     }
 
+    pub(crate) fn uses_llvm(&self) -> bool {
+        self.llvm_runtime.is_some()
+    }
+
+    /// Run one normal native iteration, retaining the completed prefix if a tick fails.
+    pub(crate) fn tick_batch_16(&mut self) -> (u32, Result<(), ExecutionError>) {
+        let mut completed = 0;
+        let result = if let Some(native) = self.llvm_runtime.as_mut() {
+            native.tick_batch(16, &mut completed).map_err(ExecutionError)
+        } else {
+            (|| {
+                for _ in 0..16 {
+                    self.tick()?;
+                    completed += 1;
+                }
+                Ok(())
+            })()
+        };
+        (completed, result)
+    }
+
     pub fn current_flags(&self) -> Option<&CompilerOptions> {
         self.is_active().then_some(&self.options)
     }

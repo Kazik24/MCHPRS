@@ -9,7 +9,8 @@
 //!   Moving their Vec owners does not move the allocations. State/blob/tables are never resized;
 //!   the resizable command effect buffer is rebound before the next native execution.
 //! - Native code retains raw pointers, not Rust references. Calls are synchronous, with no native
-//!   worker threads or callbacks into Rust. Mutating calls require an exclusive runtime borrow;
+//!   worker threads. The batch clock callback only reads a separate immutable clock context;
+//!   it cannot access or reenter the runtime. Mutating calls require an exclusive runtime borrow;
 //!   shared calls only read native state. Output buffers are separate writable allocations.
 //! Each SAFETY comment gives the remaining argument/buffer proof for its individual call.
 use super::{
@@ -190,10 +191,17 @@ impl LlvmRuntime {
             .enumerate()
             .map(|(index, &source)| (program.positions[source], index as u32))
             .collect();
-        let io_components: Vec<_> = program.initial.iter().enumerate().filter_map(|(id, &block)| {
-            (matches!(block, Block::Lever { .. } | Block::StoneButton { .. } | Block::RedstoneLamp { .. })
-                || block.is_copper_bulb() || block.pressure_plate_powered().is_some()).then_some(id as u32)
-        }).collect();
+        let io_components: Vec<_> = program
+            .initial
+            .iter()
+            .enumerate()
+            .filter_map(|(id, &block)| {
+                (matches!(block, Block::Lever { .. } | Block::StoneButton { .. } | Block::RedstoneLamp { .. })
+                    || block.is_copper_bulb()
+                    || block.pressure_plate_powered().is_some())
+                .then_some(id as u32)
+            })
+            .collect();
         let io_states = memory::zeroed(io_components.len())?;
         let mut runtime = Self {
             library,
@@ -253,6 +261,62 @@ impl LlvmRuntime {
         // concurrent access and prepare_tick binds effect capacity.
         let status = unsafe { (self.library.tick)(self.state.as_mut_ptr().cast()) };
         self.call_status(status)
+    }
+
+    /// Advance at most sixteen ticks, retaining the successfully completed prefix on failure.
+    pub(in crate::redpilator) fn tick_batch(&mut self, count: u32, completed: &mut u32) -> Result<(), ScratchError> {
+        *completed = 0;
+        if count > 16 {
+            return Err(ScratchError {
+                position: None,
+                reason: "LLVM tick batch exceeds sixteen ticks",
+            });
+        }
+        let clock = self.commands.as_ref().map(command::State::clock_context);
+        let logical_base = self.commands.as_ref().map_or(0, |commands| commands.logical_base);
+        while *completed < count {
+            let mut prefix = 0;
+            // SAFETY: All engine buffers remain owned and bound; clock points to an independent immutable
+            // stack value, whose callback reads time only and cannot access or reenter this runtime.
+            let status = unsafe {
+                (self.library.tick_batch)(
+                    self.state.as_mut_ptr().cast(),
+                    count - *completed,
+                    clock
+                        .as_ref()
+                        .map(|_| command::ClockContext::read as unsafe extern "C" fn(*const std::ffi::c_void) -> u64),
+                    clock
+                        .as_ref()
+                        .map_or(std::ptr::null(), |clock| (clock as *const command::ClockContext).cast()),
+                    logical_base,
+                    &mut prefix,
+                )
+            };
+            if prefix > count - *completed {
+                return Err(ScratchError {
+                    position: None,
+                    reason: "invalid LLVM completed tick count",
+                });
+            }
+            *completed += prefix;
+            if status == 5 {
+                // Capacity was checked before the next tick; grow/rebind without replaying completed work.
+                let commands = self.commands.as_mut().ok_or(ScratchError {
+                    position: None,
+                    reason: "LLVM requested command capacity without commands",
+                })?;
+                commands.grow_batch_effects(&self.library.commands, self.state.as_mut_ptr().cast())?;
+            } else {
+                self.call_status(status)?;
+                if *completed != count {
+                    return Err(ScratchError {
+                        position: None,
+                        reason: "incomplete LLVM tick batch",
+                    });
+                }
+            }
+        }
+        Ok(())
     }
 
     pub(in crate::redpilator) fn use_control(&mut self, pos: BlockPos) -> Result<(), ScratchError> {
@@ -397,12 +461,23 @@ pub(in crate::redpilator) struct LlvmRuntime;
 
 #[cfg(not(any(windows, target_os = "linux")))]
 impl LlvmRuntime {
+    pub(in crate::redpilator) fn tick_batch(&mut self, _: u32, _: &mut u32) -> Result<(), ScratchError> {
+        unreachable!()
+    }
     #[cfg(feature = "plot-bench")]
-    pub(in crate::redpilator) fn benchmark_tick_batch(&mut self, _: u32, _: u32) -> Result<(), ScratchError> { unreachable!() }
+    pub(in crate::redpilator) fn benchmark_tick_batch(&mut self, _: u32, _: u32) -> Result<(), ScratchError> {
+        unreachable!()
+    }
     #[cfg(feature = "plot-bench")]
-    pub(in crate::redpilator) fn benchmark_snapshot(&self) -> Result<Vec<u32>, ScratchError> { unreachable!() }
-    pub(in crate::redpilator) fn sync_io(&mut self, _: &mut super::Runtime) -> Result<(), ScratchError> { unreachable!() }
-    pub(in crate::redpilator) fn sync_effects(&mut self, _: &mut super::Runtime) -> Result<(), ScratchError> { unreachable!() }
+    pub(in crate::redpilator) fn benchmark_snapshot(&self) -> Result<Vec<u32>, ScratchError> {
+        unreachable!()
+    }
+    pub(in crate::redpilator) fn sync_io(&mut self, _: &mut super::Runtime) -> Result<(), ScratchError> {
+        unreachable!()
+    }
+    pub(in crate::redpilator) fn sync_effects(&mut self, _: &mut super::Runtime) -> Result<(), ScratchError> {
+        unreachable!()
+    }
     pub(in crate::redpilator) fn acknowledge_effects(&mut self, _: usize) {
         unreachable!()
     }

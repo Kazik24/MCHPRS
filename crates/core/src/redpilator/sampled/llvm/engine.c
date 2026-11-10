@@ -6,6 +6,7 @@
 #define NE_UNSUPPORTED 2u
 #define NE_CAPACITY 3u
 #define NE_OPERATION_LIMIT 4u
+#define NE_NEED_EFFECT_CAPACITY 5u
 #define NE_MAX_TICK_OPERATIONS 1000000u
 #define NE_MAX_STATE_BYTES (256u * 1024u * 1024u)
 #define NE_TABLES 61u
@@ -1009,7 +1010,7 @@ static size_t align8(size_t value) {
 }
 
 MchprsNativeApiDescriptor ne_api_descriptor(void) {
-    MchprsNativeApiDescriptor value = {3u, 16u, 27u};
+    MchprsNativeApiDescriptor value = {3u, 16u, 28u};
     return value;
 }
 
@@ -1208,7 +1209,7 @@ uint32_t ne_import_tick(void *memory, uint32_t component, uint32_t delay, uint8_
  * Drain both half-tick queues in order, process piston events and movement in separate phases, and
  * preserve the first runtime error or reset the per-tick work counter on success.
  */
-uint32_t ne_tick(void *memory) {
+static inline __attribute__((always_inline)) uint32_t tick_one(void *memory) {
     NEEngine *engine = (NEEngine *)memory;
     if (!engine || engine->error)
         return engine ? engine->error : NE_INVALID;
@@ -1234,6 +1235,10 @@ uint32_t ne_tick(void *memory) {
     }
     engine->tick_operations = 0u;
     return result;
+}
+
+uint32_t ne_tick(void *memory) {
+    return tick_one(memory);
 }
 
 /**
@@ -1482,4 +1487,51 @@ uint64_t ne_command_effect_bound(const void *memory) {
         roots += e->pending_count[e->commands->block_rows[(size_t)i * NE_CMD_BLOCK_WORDS]];
     /* Each scheduled root can execute itself and the interpreter's 256 chain steps. */
     return roots * 257u;
+}
+
+/* Clock and capacity are refreshed for every internal tick, exactly as in scalar execution. */
+static inline __attribute__((always_inline)) uint32_t batch_step(NEEngine *e, MchprsNativeClock clock,
+                                                               const void *context, uint64_t logical_base) {
+    if (e->error)
+        return e->error;
+    if (e->commands) {
+        uint64_t needed = (uint64_t)e->commands->effect_count + ne_command_effect_bound(e);
+        if (needed > e->commands->effect_capacity)
+            return NE_NEED_EFFECT_CAPACITY;
+        e->command_now_ns = clock(context);
+        e->command_logical_base = logical_base;
+    }
+    return tick_one(e);
+}
+
+static inline __attribute__((always_inline)) uint32_t batch_impl(NEEngine *e, uint32_t count, MchprsNativeClock clock,
+                                                               const void *context, uint64_t logical_base, uint32_t *completed) {
+    uint32_t done = 0u;
+    /* Fixed straight-line steps allow LLVM to optimize the hidden intermediate state. */
+#define BATCH_STEP() do { \
+    if (done == count) { *completed = done; return NE_OK; } \
+    uint32_t status = batch_step(e, clock, context, logical_base); \
+    if (status != NE_OK) { *completed = done; return status; } \
+    ++done; \
+} while (0)
+    BATCH_STEP(); BATCH_STEP(); BATCH_STEP(); BATCH_STEP();
+    BATCH_STEP(); BATCH_STEP(); BATCH_STEP(); BATCH_STEP();
+    BATCH_STEP(); BATCH_STEP(); BATCH_STEP(); BATCH_STEP();
+    BATCH_STEP(); BATCH_STEP(); BATCH_STEP(); BATCH_STEP();
+#undef BATCH_STEP
+    *completed = done;
+    return NE_OK;
+}
+
+uint32_t ne_tick_batch(void *memory, uint32_t count, MchprsNativeClock clock,
+                       const void *context, uint64_t logical_base, uint32_t *completed) {
+    if (!completed)
+        return NE_INVALID;
+    *completed = 0u;
+    NEEngine *e = (NEEngine *)memory;
+    if (!e || count > 16u || (e->commands && !clock))
+        return NE_INVALID;
+    if (count == 16u)
+        return batch_impl(e, 16u, clock, context, logical_base, completed);
+    return batch_impl(e, count, clock, context, logical_base, completed);
 }

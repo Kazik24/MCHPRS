@@ -14,6 +14,8 @@ pub(super) struct Library {
     pub(super) import_tick: unsafe extern "C" fn(*mut c_void, u32, u32, u8) -> u32,
     pub(super) destroy: unsafe extern "C" fn(*mut c_void),
     pub(super) tick: unsafe extern "C" fn(*mut c_void) -> u32,
+    pub(super) tick_batch:
+        unsafe extern "C" fn(*mut c_void, u32, Option<unsafe extern "C" fn(*const c_void) -> u64>, *const c_void, u64, *mut u32) -> u32,
     #[cfg(feature = "plot-bench")]
     pub(super) benchmark_tick_batch: Option<unsafe extern "C" fn(*mut c_void, u32, u32) -> u32>,
     pub(super) use_control: unsafe extern "C" fn(*mut c_void, u32) -> u32,
@@ -65,6 +67,7 @@ impl Library {
                 import_tick: module.symbol(b"ne_import_tick\0")?,
                 destroy: module.symbol(b"ne_destroy\0")?,
                 tick: module.symbol(b"ne_tick\0")?,
+                tick_batch: module.symbol(b"ne_tick_batch\0")?,
                 #[cfg(feature = "plot-bench")]
                 benchmark_tick_batch: module.symbol(b"ne_benchmark_tick_batch\0").ok(),
                 use_control: module.symbol(b"ne_use_control\0")?,
@@ -90,7 +93,7 @@ impl Library {
         // SAFETY: ne_api_descriptor takes no arguments and returns the repr(C) descriptor from abi.h; self owns
         // the module.
         let descriptor = unsafe { (self.api_descriptor)() };
-        if descriptor.abi_version != ABI_VERSION || descriptor.descriptor_bytes != 16 || descriptor.semantic_version != 27 {
+        if descriptor.abi_version != ABI_VERSION || descriptor.descriptor_bytes != 16 || descriptor.semantic_version != 28 {
             return Err(ScratchError {
                 position: None,
                 reason: "LLVM DLL ABI/version mismatch",

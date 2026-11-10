@@ -124,7 +124,11 @@ impl TimingsMonitor {
     }
 
     pub fn tick(&self) {
-        self.data.ticks_passed.fetch_add(1, Ordering::Relaxed);
+        self.ticks(1);
+    }
+
+    pub fn ticks(&self, count: u32) {
+        self.data.ticks_passed.fetch_add(u64::from(count), Ordering::Relaxed);
     }
 
     pub fn is_running_behind(&self) -> bool {

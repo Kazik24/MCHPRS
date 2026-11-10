@@ -67,7 +67,34 @@ pub(super) struct State {
 }
 
 #[cfg(any(windows, target_os = "linux"))]
+pub(super) struct ClockContext {
+    started: std::time::Instant,
+    #[cfg(feature = "plot-bench")]
+    frozen: bool,
+}
+
+#[cfg(any(windows, target_os = "linux"))]
+impl ClockContext {
+    pub(super) unsafe extern "C" fn read(context: *const c_void) -> u64 {
+        // SAFETY: tick_batch passes a live immutable ClockContext until the synchronous native call returns.
+        let context = unsafe { &*context.cast::<Self>() };
+        #[cfg(feature = "plot-bench")]
+        if context.frozen {
+            return 0;
+        }
+        context.started.elapsed().as_nanos().min(u64::MAX as u128) as u64
+    }
+}
+
+#[cfg(any(windows, target_os = "linux"))]
 impl State {
+    pub(super) fn clock_context(&self) -> ClockContext {
+        ClockContext {
+            started: self.started,
+            #[cfg(feature = "plot-bench")]
+            frozen: self.benchmark_clock,
+        }
+    }
     /// Create and bind native command-block state for a program.
     ///
     /// Inputs: The program, command API, native engine pointer and component-table pointer.
@@ -194,6 +221,15 @@ impl State {
             #[cfg(not(feature = "plot-bench"))]
             let now = self.started.elapsed().as_nanos().min(u64::MAX as u128) as u64;
             (api.clock)(engine, now, self.logical_base);
+        }
+        Ok(())
+    }
+
+    pub(super) fn grow_batch_effects(&mut self, api: &Api, engine: *mut c_void) -> Result<(), ScratchError> {
+        let previous = self.effects.len();
+        self.prepare_tick(api, engine)?;
+        if self.effects.len() <= previous {
+            return Err(invalid());
         }
         Ok(())
     }
@@ -753,6 +789,206 @@ pub(super) fn encode(program: &Program) -> Result<EncodedCommands, ScratchError>
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(any(windows, target_os = "linux"))]
+    #[test]
+    fn llvm_tick_batches_preserve_repeating_commands_and_retry_capacity() {
+        use mchprs_world::{TickEntry, TickPriority};
+        let mut program = program(&[("repeating_command_block", "say retained", "\"@\"")]);
+        let pos = program.positions[0];
+        let entity = program.command_blocks.get_mut(&pos).unwrap();
+        entity.automatic = true;
+        entity.condition_met = true;
+        program.command_output_state = Some(crate::chat_commands::CommandBlockOutputState {
+            window: std::time::Instant::now(),
+            count: 0,
+            bytes: 0,
+            queued: 0,
+            limited: false,
+        });
+        program.prepare_projection();
+        let ticks = vec![TickEntry {
+            pos,
+            block_type: Some(program.initial[0].registry_id()),
+            ticks_left: 1,
+            tick_priority: TickPriority::Normal,
+        }];
+        for count in 0..=16 {
+            let mut scalar = super::super::LlvmRuntime::new(&program, &ticks).unwrap();
+            let mut batched = super::super::LlvmRuntime::new(&program, &ticks).unwrap();
+            for _ in 0..count {
+                scalar.tick().unwrap();
+            }
+            let mut completed = 99;
+            batched.tick_batch(count, &mut completed).unwrap();
+            assert_eq!(completed, count);
+            let mut a = program.clone().into_runtime_prepared();
+            let mut b = program.clone().into_runtime_prepared();
+            scalar.sync_projection(&mut a).unwrap();
+            batched.sync_projection(&mut b).unwrap();
+            assert_eq!(a.command_blocks, b.command_blocks, "count {count}");
+            let emissions = |r: &crate::redpilator::sampled::Runtime| {
+                r.command_emissions
+                    .iter()
+                    .map(|e| (e.tick, e.message.message.clone()))
+                    .collect::<Vec<_>>()
+            };
+            assert_eq!(emissions(&a), emissions(&b), "count {count}");
+            assert_eq!(scalar.pending_entries().unwrap(), batched.pending_entries().unwrap());
+            let snapshot = |native: &super::super::LlvmRuntime| {
+                let engine = native.state.as_ptr().cast();
+                let words = unsafe { (native.library.snapshot_words)(engine) };
+                let mut state = vec![0; words as usize];
+                assert_eq!(unsafe { (native.library.read_snapshot)(engine, state.as_mut_ptr(), words) }, 0);
+                state
+            };
+            assert_eq!(snapshot(&scalar), snapshot(&batched), "native state count {count}");
+        }
+        let mut native = super::super::LlvmRuntime::new(&program, &ticks).unwrap();
+        let engine = native.state.as_mut_ptr().cast();
+        let bound = unsafe { (native.library.commands.effect_bound)(engine) } as usize;
+        let commands = native.commands.as_mut().unwrap();
+        commands.effects.resize(bound * 8, 0);
+        assert_eq!(
+            unsafe { (native.library.commands.effect_buffer)(commands.memory.as_mut_ptr().cast(), commands.effects.as_mut_ptr(), bound as u32) },
+            0
+        );
+        unsafe extern "C" fn zero(_: *const c_void) -> u64 {
+            0
+        }
+        let mut prefix = 99;
+        assert_eq!(
+            unsafe { (native.library.tick_batch)(engine, 16, Some(zero), std::ptr::null(), 0, &mut prefix) },
+            5
+        );
+        assert_eq!(prefix, 1, "capacity request must precede the second tick");
+        assert_eq!(unsafe { (native.library.tick_count)(engine) }, 1);
+        let mut resumed = 99;
+        native.tick_batch(15, &mut resumed).unwrap();
+        assert_eq!(resumed, 15);
+        let mut projection = program.into_runtime_prepared();
+        native.sync_projection(&mut projection).unwrap();
+        assert_eq!(projection.command_emissions.len(), 16);
+        assert_eq!(
+            projection.command_emissions.iter().map(|e| e.tick).collect::<Vec<_>>(),
+            (1..=16).collect::<Vec<_>>()
+        );
+    }
+
+    #[cfg(any(windows, target_os = "linux"))]
+    #[test]
+    fn llvm_tick_batch_stops_after_first_runtime_error_and_preserves_completed_prefix() {
+        use mchprs_world::{TickEntry, TickPriority};
+        let mut program = program(&[("repeating_command_block", "say retained", "\"@\"")]);
+        let pos = program.positions[0];
+        let entity = program.command_blocks.get_mut(&pos).unwrap();
+        entity.automatic = true;
+        entity.condition_met = true;
+        program.command_output_state = Some(crate::chat_commands::CommandBlockOutputState {
+            window: std::time::Instant::now(),
+            count: 0,
+            bytes: 0,
+            queued: u32::MAX as usize - 1,
+            limited: false,
+        });
+        program.prepare_projection();
+        let ticks = vec![TickEntry {
+            pos,
+            block_type: Some(program.initial[0].registry_id()),
+            ticks_left: 1,
+            tick_priority: TickPriority::Normal,
+        }];
+        let mut scalar = super::super::LlvmRuntime::new(&program, &ticks).unwrap();
+        let mut batched = super::super::LlvmRuntime::new(&program, &ticks).unwrap();
+        scalar.tick().unwrap();
+        let scalar_error = scalar.tick().unwrap_err();
+        let mut completed = 99;
+        let error = batched.tick_batch(16, &mut completed).unwrap_err();
+        assert_eq!(completed, 1);
+        assert_eq!(error.reason, scalar_error.reason);
+        assert!(error.reason.contains("capacity"));
+        let snapshot = |native: &super::super::LlvmRuntime| {
+            let engine = native.state.as_ptr().cast();
+            assert_eq!(
+                unsafe { (native.library.tick_count)(engine) },
+                2,
+                "failing tick started; later ticks did not"
+            );
+            let words = unsafe { (native.library.snapshot_words)(engine) };
+            let mut state = vec![0; words as usize];
+            assert_eq!(unsafe { (native.library.read_snapshot)(engine, state.as_mut_ptr(), words) }, 0);
+            state
+        };
+        assert_eq!(snapshot(&scalar), snapshot(&batched));
+        assert_eq!(scalar.pending_entries().unwrap(), batched.pending_entries().unwrap());
+        let mut a = program.clone().into_runtime_prepared();
+        let mut b = program.into_runtime_prepared();
+        scalar.sync_projection(&mut a).unwrap();
+        batched.sync_projection(&mut b).unwrap();
+        assert_eq!(a.command_blocks, b.command_blocks);
+        assert_eq!(a.command_emissions.len(), 1);
+        assert_eq!(b.command_emissions.len(), 1);
+        assert_eq!(a.command_emissions[0].tick, b.command_emissions[0].tick);
+        completed = 99;
+        assert!(batched.tick_batch(16, &mut completed).is_err());
+        assert_eq!(completed, 0, "sticky failure must not restart ticks");
+        assert_eq!(unsafe { (batched.library.tick_count)(batched.state.as_ptr().cast()) }, 2);
+    }
+
+    #[cfg(any(windows, target_os = "linux"))]
+    #[test]
+    fn llvm_tick_batch_refreshes_live_output_window_for_each_internal_tick() {
+        use mchprs_world::{TickEntry, TickPriority};
+        let mut program = program(&[("repeating_command_block", "say retained", "\"@\"")]);
+        let pos = program.positions[0];
+        let entity = program.command_blocks.get_mut(&pos).unwrap();
+        entity.automatic = true;
+        entity.condition_met = true;
+        program.command_output_state = Some(crate::chat_commands::CommandBlockOutputState {
+            window: std::time::Instant::now() + std::time::Duration::from_secs(3600),
+            count: 64,
+            bytes: 0,
+            queued: 0,
+            limited: true,
+        });
+        program.prepare_projection();
+        let ticks = vec![TickEntry {
+            pos,
+            block_type: Some(program.initial[0].registry_id()),
+            ticks_left: 1,
+            tick_priority: TickPriority::Normal,
+        }];
+        let mut native = super::super::LlvmRuntime::new(&program, &ticks).unwrap();
+        let engine = native.state.as_mut_ptr().cast();
+        native.commands.as_mut().unwrap().prepare_tick(&native.library.commands, engine).unwrap();
+        // Callback records invocations in independent test-only storage; it never touches engine state.
+        let calls = std::cell::Cell::new(0u64);
+        unsafe extern "C" fn clock(context: *const c_void) -> u64 {
+            let calls = unsafe { &*context.cast::<std::cell::Cell<u64>>() };
+            let value = calls.get();
+            calls.set(value + 1);
+            value * 1_000_000_000
+        }
+        let mut completed = 99;
+        assert_eq!(
+            unsafe { (native.library.tick_batch)(engine, 2, Some(clock), (&calls as *const std::cell::Cell<u64>).cast(), 0, &mut completed) },
+            0
+        );
+        assert_eq!(completed, 2);
+        assert_eq!(calls.get(), 2);
+        let mut projection = program.into_runtime_prepared();
+        native.sync_projection(&mut projection).unwrap();
+        assert_eq!(
+            projection.command_emissions.len(),
+            1,
+            "first tick rate-limited; second tick enters a fresh window"
+        );
+        assert_eq!(projection.command_emissions[0].tick, 2);
+        completed = 99;
+        assert!(native.tick_batch(17, &mut completed).is_err());
+        assert_eq!(completed, 0);
+        assert_eq!(unsafe { (native.library.tick_count)(engine) }, 2);
+    }
 
     #[cfg(any(windows, target_os = "linux"))]
     #[test]
