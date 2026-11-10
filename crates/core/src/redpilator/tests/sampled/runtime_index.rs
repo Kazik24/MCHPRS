@@ -393,8 +393,8 @@ fn sealed_program_validation_rejects_bad_output_ranges_and_flip_links() {
     assert_eq!(bad_side.validate().unwrap_err().reason, "movement flip does not match its link");
 
     let mut bad_strength = make_program();
-    bad_strength.movement_flips[0].token_strength = 15;
-    assert_eq!(bad_strength.validate().unwrap_err().reason, "invalid movement flip token strength");
+    bad_strength.movement_flips[0].token_contribution = 15;
+    assert_eq!(bad_strength.validate().unwrap_err().reason, "invalid movement flip token contribution");
 
     let mut bad_plan = make_program();
     bad_plan.movement_transitions[0].delta += 1;

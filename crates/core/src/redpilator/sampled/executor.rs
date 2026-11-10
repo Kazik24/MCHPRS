@@ -1177,7 +1177,13 @@ impl Runtime {
                 });
                 return;
             };
-            let state = if arriving { after } else { before };
+            let state = if record.fixed_state != usize::MAX {
+                record.fixed_state
+            } else if arriving {
+                after
+            } else {
+                before
+            };
             let base = if arriving { record.arrive } else { record.depart };
             let flips = self.program.movement_ranges[base + state].clone();
             self.group_arrangements[record.group] = after;
@@ -1187,17 +1193,17 @@ impl Runtime {
                 if !self.consume_component_operation(target) {
                     return;
                 }
-                let strength = match flip.source() {
-                    ArrangementSource::Component(node) => self.output(node),
-                    ArrangementSource::Token(_) => flip.token_strength,
+                let contribution = match flip.source() {
+                    ArrangementSource::Component(node) => self.output(node).saturating_sub(flip.attenuation),
+                    ArrangementSource::Token(_) => flip.token_contribution,
                 };
                 self.set_arrangement_contribution(
                     flip.link as usize,
                     target,
                     flip.side,
-                    if flip.entering { strength.saturating_sub(flip.attenuation) } else { 0 },
+                    if flip.entering { contribution } else { 0 },
                 );
-                if strength > flip.attenuation {
+                if contribution != 0 {
                     self.updated_in_phase[target] = 0;
                 }
                 // WithMoveStep reserves -2 for pistons: flips do not deliver them.

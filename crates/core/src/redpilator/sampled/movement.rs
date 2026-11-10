@@ -31,7 +31,7 @@ pub(super) struct MoveStep {
     pub(super) wires: std::ops::Range<usize>,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) struct ArrangementFlip {
     /// component index into `Program::positions` whose input changes.
     pub(super) target: u32,
@@ -45,8 +45,8 @@ pub(super) struct ArrangementFlip {
     pub(super) entering: bool,
     /// indicating this is a side input rather than the primary input.
     pub(super) side: bool,
-    /// Immutable token output, or zero for component sources; uses the record's spare byte.
-    pub(super) token_strength: u8,
+    /// Attenuated immutable token output, or zero for component sources; uses the spare byte.
+    pub(super) token_contribution: u8,
 }
 
 impl ArrangementFlip {
@@ -69,7 +69,7 @@ impl ArrangementFlip {
             link: u32::try_from(link).map_err(|_| overflow())?,
             entering,
             side,
-            token_strength: 0,
+            token_contribution: 0,
         })
     }
 
@@ -87,6 +87,140 @@ impl ArrangementFlip {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn transition_program(conditional: bool) -> Program {
+        use super::super::{pistons::PistonToken, program::InputArrangement};
+        use mchprs_blocks::BlockPos;
+        let mut program = Program::new(
+            vec![BlockPos::new(10, 10, 10), BlockPos::new(11, 10, 10)],
+            vec![Block::RedstoneBlock, Block::RedstoneLamp { lit: false }],
+            vec![],
+            vec![[vec![], vec![]]; 2],
+            vec![],
+            vec![],
+            vec![],
+        )
+        .unwrap();
+        for (block, cells) in [
+            (Block::RedstoneBlock, vec![BlockPos::new(12, 11, 10), BlockPos::new(13, 11, 10)]),
+            (Block::Stone {}, vec![BlockPos::new(14, 11, 10)]),
+        ] {
+            program.tokens.push(PistonToken {
+                block,
+                position: None,
+                cells,
+            });
+        }
+        let token = ArrangementSource::Token(0);
+        let component = ArrangementSource::Component(0);
+        program.input_arrangements.push(InputArrangement {
+            target: 1,
+            side: false,
+            silent: false,
+            tokens: vec![0, 1],
+            token_states: vec![vec![0, 1, 0], vec![0, 1]],
+            conditional_sources: vec![token, component],
+            inputs: vec![
+                vec![],
+                vec![(token, 7)],
+                vec![(component, 3)],
+                vec![(token, if conditional { 8 } else { 7 }), (component, 3)],
+            ],
+        });
+        program.compile_movement_flips().unwrap();
+        program.validate().unwrap();
+        program
+    }
+
+    #[test]
+    fn sparse_transitions_and_fixed_rows_preserve_every_applicable_ordered_sequence() {
+        for conditional in [false, true] {
+            let program = transition_program(conditional);
+            assert!(program.movement_cells[0][1].is_empty());
+            assert_eq!(program.token_movement_groups[0], vec![(0, 0)]);
+            for token in 0..2 {
+                let record = &program.movement_transitions[program.movement_cells[token][0].start];
+                let axis = &program.movement_groups[0].axes[token];
+                assert_eq!(record.fixed_state, if conditional { usize::MAX } else { record.delta });
+                let radix = axis.states.iter().copied().max().unwrap() + 1;
+                for row in 0..axis.depart.len() {
+                    if row / axis.stride % radix != 1 {
+                        continue;
+                    }
+                    let selected = if record.fixed_state == usize::MAX { row } else { record.fixed_state };
+                    for rows in [&axis.depart, &axis.arrive] {
+                        assert!(program.movement_flips[rows[row].clone()] == program.movement_flips[rows[selected].clone()]);
+                    }
+                }
+                let mut corrupt = program.clone();
+                corrupt.movement_transitions[program.movement_cells[token][0].start].fixed_state =
+                    if conditional { record.delta } else { usize::MAX };
+                assert_eq!(corrupt.validate().unwrap_err().reason, "invalid fixed movement state");
+            }
+            for cell in [0, 1] {
+                let mut corrupt = program.clone();
+                corrupt.movement_cells[0][cell] = if cell == 0 { 0..0 } else { program.movement_cells[0][0].clone() };
+                assert_eq!(corrupt.validate().unwrap_err().reason, "invalid movement plan length");
+            }
+            let mut corrupt = program.clone();
+            let occupied = corrupt.movement_groups[0].axes[0].depart[1].clone();
+            let base = corrupt.movement_transitions[corrupt.movement_cells[0][0].start].depart;
+            corrupt.movement_ranges[base] = occupied.clone();
+            corrupt.movement_groups[0].axes[0].depart[0] = occupied;
+            assert_eq!(corrupt.validate().unwrap_err().reason, "nonempty zero movement transition");
+        }
+    }
+
+    #[test]
+    fn fixed_replay_matches_original_selection_for_movements_and_every_budget_prefix() {
+        for conditional in [false, true] {
+            let program = transition_program(conditional);
+            for first in 0..3 {
+                for second in 0..2 {
+                    for token in 0..2 {
+                        let digits = [first, second];
+                        let destinations: Vec<_> = if digits[token] == 0 {
+                            program.tokens[token].cells.iter().copied().map(Some).collect()
+                        } else {
+                            vec![None]
+                        };
+                        for destination in destinations {
+                            let mut initial = program.clone();
+                            for (record, digit) in initial.tokens.iter_mut().zip(digits) {
+                                record.position = if digit == 0 { None } else { Some(record.cells[digit - 1]) };
+                            }
+                            let mut reference = initial.clone();
+                            for record in &mut reference.movement_transitions {
+                                record.fixed_state = usize::MAX;
+                            }
+                            for allowance in 0..=program.movement_flips.len() + 2 {
+                                let mut actual = initial.start();
+                                let mut expected = reference.start();
+                                actual.tick_operations = 1_000_000 - allowance;
+                                expected.tick_operations = actual.tick_operations;
+                                actual.set_token_pos(token, destination);
+                                expected.set_token_pos(token, destination);
+                                assert_eq!(actual.failure, expected.failure);
+                                assert_eq!(
+                                    (actual.operations, actual.tick_operations),
+                                    (expected.operations, expected.tick_operations)
+                                );
+                                assert_eq!(actual.blocks, expected.blocks);
+                                assert_eq!(actual.arrangement_contributions, expected.arrangement_contributions);
+                                assert_eq!(actual.group_arrangements, expected.group_arrangements);
+                                assert_eq!(actual.token_positions, expected.token_positions);
+                                assert_eq!(actual.updated_in_phase, expected.updated_in_phase);
+                                assert_eq!(actual.switched, expected.switched);
+                                assert_eq!(actual.pending_entries(), expected.pending_entries());
+                                assert_eq!(actual.input_strength(1), expected.input_strength(1));
+                                assert_eq!(actual.input_levels[1][0].active, expected.input_levels[1][0].active);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     #[test]
     fn lowered_flips_cache_token_outputs_and_preserve_inverse_records() {
@@ -123,6 +257,8 @@ mod tests {
                 vec![
                     (ArrangementSource::Component(0), 2),
                     (ArrangementSource::Token(0), 0),
+                    (ArrangementSource::Token(0), 1),
+                    (ArrangementSource::Token(0), 15),
                     (ArrangementSource::Token(1), 3),
                 ],
             ],
@@ -132,15 +268,15 @@ mod tests {
         let axis = &program.movement_groups[0].axes[0];
         let departing = &program.movement_flips[axis.depart[1].clone()];
         let arriving = &program.movement_flips[axis.arrive[1].clone()];
-        assert_eq!(departing.len(), 3);
-        assert_eq!(arriving.len(), 3);
+        assert_eq!(departing.len(), 5);
+        assert_eq!(arriving.len(), 5);
         for (depart, arrive) in departing.iter().zip(arriving) {
             let expected = match depart.source() {
-                ArrangementSource::Token(0) => 15,
+                ArrangementSource::Token(0) => 15u8.saturating_sub(depart.attenuation),
                 _ => 0,
             };
-            assert_eq!(depart.token_strength, expected);
-            assert_eq!(arrive.token_strength, expected);
+            assert_eq!(depart.token_contribution, expected);
+            assert_eq!(arrive.token_contribution, expected);
             assert_eq!(
                 (depart.target, depart.link, depart.source(), depart.attenuation, depart.side),
                 (arrive.target, arrive.link, arrive.source(), arrive.attenuation, arrive.side)
@@ -152,8 +288,8 @@ mod tests {
             .find(|&index| program.movement_flips[index].source() == ArrangementSource::Token(0))
             .unwrap();
         let mut corrupt = program.clone();
-        corrupt.movement_flips[token_flip].token_strength = 0;
-        assert_eq!(corrupt.validate().unwrap_err().reason, "invalid movement flip token strength");
+        corrupt.movement_flips[token_flip].token_contribution = 0;
+        assert_eq!(corrupt.validate().unwrap_err().reason, "invalid movement flip token contribution");
         let link = corrupt.movement_flips[token_flip].link as usize;
         corrupt.movement_flips[token_flip].source = 0x8000_0063;
         corrupt.arrangement_links[link].source = ArrangementSource::Token(99);
@@ -176,7 +312,7 @@ mod tests {
                     assert_eq!(flip.target, u32::MAX);
                     assert_eq!(flip.link, u32::MAX);
                     assert_eq!((flip.attenuation, flip.entering, flip.side), (15, entering, side));
-                    assert_eq!(flip.token_strength, 0);
+                    assert_eq!(flip.token_contribution, 0);
                 }
             }
         }
@@ -210,6 +346,8 @@ pub(super) struct MovementTransition {
     pub(super) depart: usize,
     pub(super) arrive: usize,
     pub(super) states: usize,
+    /// Canonical selected row for fixed ordered flips, or usize::MAX for state-dependent selection.
+    pub(super) fixed_state: usize,
 }
 
 #[derive(Clone)]
@@ -219,6 +357,28 @@ pub(super) struct MovementGroup {
 }
 
 pub(super) const MAX_ARRANGEMENT_STATES: usize = 4096;
+
+fn empty_zero_rows(axis: &MovementAxis) -> bool {
+    let radix = axis.states.iter().copied().max().unwrap_or(0) + 1;
+    (0..axis.depart.len())
+        .filter(|&state| state / axis.stride % radix == 0)
+        .all(|state| axis.depart[state].is_empty() && axis.arrive[state].is_empty())
+}
+
+fn fixed_movement_state(axis: &MovementAxis, delta: usize, flips: &[ArrangementFlip]) -> usize {
+    let radix = axis.states.iter().copied().max().unwrap_or(0) + 1;
+    let digit = delta / axis.stride;
+    let depart = &flips[axis.depart[delta].clone()];
+    let arrive = &flips[axis.arrive[delta].clone()];
+    if (0..axis.depart.len())
+        .filter(|&state| state / axis.stride % radix == digit)
+        .all(|state| flips[axis.depart[state].clone()] == *depart && flips[axis.arrive[state].clone()] == *arrive)
+    {
+        delta
+    } else {
+        usize::MAX
+    }
+}
 
 fn valid_states(states: &[usize], physical: usize) -> bool {
     states.len() == physical
@@ -441,6 +601,15 @@ impl Program {
                         position: self.tokens[token].position,
                         reason: "movement transition capacity overflow",
                     })?;
+                    if delta == 0 {
+                        if !empty_zero_rows(axis_record) {
+                            return Err(ScratchError {
+                                position: self.tokens[token].position,
+                                reason: "nonempty zero movement transition",
+                            });
+                        }
+                        continue;
+                    }
                     let (depart, arrive) = tables[group][axis];
                     self.movement_transitions.push(MovementTransition {
                         group,
@@ -448,6 +617,7 @@ impl Program {
                         depart,
                         arrive,
                         states: axis_record.depart.len(),
+                        fixed_state: fixed_movement_state(axis_record, delta, &self.movement_flips),
                     });
                 }
                 cells.push(start..self.movement_transitions.len());
@@ -511,7 +681,8 @@ impl Program {
                             let mut flip =
                                 ArrangementFlip::new(target, source, attenuation, link_start + index, membership[empty].contains(&index), side)?;
                             if let ArrangementSource::Token(token) = source {
-                                flip.token_strength = u8::from(matches!(self.tokens[token].block, Block::RedstoneBlock)) * 15;
+                                flip.token_contribution =
+                                    (u8::from(matches!(self.tokens[token].block, Block::RedstoneBlock)) * 15).saturating_sub(attenuation);
                             }
                             flips.push(flip);
                         }
@@ -632,15 +803,15 @@ impl Program {
                         {
                             return Err(invalid("movement flip does not match its link"));
                         }
-                        let token_strength = match flip.source() {
+                        let token_contribution = match flip.source() {
                             ArrangementSource::Component(_) => 0,
                             ArrangementSource::Token(token) => {
                                 let token = self.tokens.get(token).ok_or_else(|| invalid("invalid movement flip token source"))?;
-                                u8::from(matches!(token.block, Block::RedstoneBlock)) * 15
+                                (u8::from(matches!(token.block, Block::RedstoneBlock)) * 15).saturating_sub(flip.attenuation)
                             }
                         };
-                        if flip.token_strength != token_strength {
-                            return Err(invalid("invalid movement flip token strength"));
+                        if flip.token_contribution != token_contribution {
+                            return Err(invalid("invalid movement flip token contribution"));
                         }
                     }
                 }
@@ -660,15 +831,26 @@ impl Program {
                     .get(range.clone())
                     .ok_or_else(|| invalid("invalid movement plan range"))?;
                 let associations = &self.token_movement_groups[token];
-                if records.len() != associations.len() {
-                    return Err(invalid("invalid movement plan length"));
-                }
-                for (record, &(group, axis)) in records.iter().zip(associations) {
+                let mut records = records.iter();
+                for &(group, axis) in associations {
                     let axis = self
                         .movement_groups
                         .get(group)
                         .and_then(|g| g.axes.get(axis))
                         .ok_or_else(|| invalid("invalid movement plan axis"))?;
+                    if axis.token != token {
+                        return Err(invalid("invalid movement plan axis"));
+                    }
+                    let delta = axis.states[cell + 1]
+                        .checked_mul(axis.stride)
+                        .ok_or_else(|| invalid("invalid movement plan transition"))?;
+                    if delta == 0 {
+                        if !empty_zero_rows(axis) {
+                            return Err(invalid("nonempty zero movement transition"));
+                        }
+                        continue;
+                    }
+                    let record = records.next().ok_or_else(|| invalid("invalid movement plan length"))?;
                     let depart = record
                         .depart
                         .checked_add(record.states)
@@ -679,12 +861,19 @@ impl Program {
                         .and_then(|end| self.movement_ranges.get(record.arrive..end));
                     if axis.token != token
                         || record.group != group
-                        || axis.states[cell + 1].checked_mul(axis.stride) != Some(record.delta)
+                        || record.delta != delta
+                        || record.states != axis.depart.len()
                         || depart != Some(axis.depart.as_slice())
                         || arrive != Some(axis.arrive.as_slice())
                     {
                         return Err(invalid("invalid movement plan transition"));
                     }
+                    if record.fixed_state != fixed_movement_state(axis, delta, &self.movement_flips) {
+                        return Err(invalid("invalid fixed movement state"));
+                    }
+                }
+                if records.next().is_some() {
+                    return Err(invalid("invalid movement plan length"));
                 }
             }
         }

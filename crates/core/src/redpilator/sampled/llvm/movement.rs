@@ -183,6 +183,18 @@ pub(super) fn encode_movement(p: &Program, t: &mut [Vec<u32>; AUX_TABLES]) -> Re
 }
 
 #[cfg(any(windows, target_os = "linux"))]
+fn group_states_match(program: &Program, token_digits: &[usize], states: &[u32]) -> bool {
+    states.len() == program.movement_groups.len()
+        && program.movement_groups.iter().zip(states).all(|(group, &state)| {
+            group.axes.iter().try_fold(0usize, |expected, axis| {
+                let physical = *token_digits.get(axis.token)?;
+                let digit = *axis.states.get(physical)?;
+                expected.checked_add(digit.checked_mul(axis.stride)?)
+            }) == Some(state as usize)
+        })
+}
+
+#[cfg(any(windows, target_os = "linux"))]
 impl super::LlvmRuntime {
     pub(in crate::redpilator) fn sync_projection(&self, runtime: &mut crate::redpilator::sampled::Runtime) -> Result<(), ScratchError> {
         self.sync(runtime, true)
@@ -278,6 +290,13 @@ impl super::LlvmRuntime {
                     .ok_or_else(invalid)?
                     + 1
             });
+        }
+        if for_execution {
+            let groups_start = event_end + p.links.len() + p.arrangement_links.len();
+            let groups = s.get(groups_start..groups_start + p.movement_groups.len()).ok_or_else(invalid)?;
+            if !group_states_match(p, &token_digits, groups) {
+                return Err(invalid());
+            }
         }
         if s[piston_start..motion_start].iter().any(|&flags| flags > 15) {
             return Err(invalid());
@@ -541,5 +560,35 @@ impl super::LlvmRuntime {
         runtime.set_pending_with_capacity(self.pending_entries()?, self.pending_capacity as usize)?;
         self.sync_commands(runtime)?;
         Ok(())
+    }
+}
+
+#[cfg(all(test, any(windows, target_os = "linux")))]
+mod tests {
+    use super::*;
+    use crate::redpilator::sampled::movement::{MovementAxis, MovementGroup};
+
+    #[test]
+    fn imported_group_states_match_compressed_physical_digits() {
+        let mut program = Program::new(vec![], vec![], vec![], vec![], vec![], vec![], vec![]).unwrap();
+        program.movement_groups.push(MovementGroup {
+            axes: vec![
+                MovementAxis { token: 0, stride: 1, states: vec![0, 0, 1], depart: vec![], arrive: vec![] },
+                MovementAxis { token: 1, stride: 2, states: vec![0, 1, 2], depart: vec![], arrive: vec![] },
+            ],
+        });
+        assert!(group_states_match(&program, &[0, 1], &[2]));
+        assert!(group_states_match(&program, &[1, 1], &[2]));
+        assert!(group_states_match(&program, &[2, 1], &[3]));
+        assert!(group_states_match(&program, &[2, 2], &[5]));
+        // An in-bounds stale group after a partial move is unsuitable for resumed execution.
+        assert!(!group_states_match(&program, &[2, 1], &[2]));
+        assert!(!group_states_match(&program, &[2, 1], &[6]));
+        assert!(!group_states_match(&program, &[3, 1], &[3]));
+        assert!(!group_states_match(&program, &[2], &[3]));
+        assert!(!group_states_match(&program, &[2, 1], &[]));
+        program.movement_groups.push(MovementGroup { axes: vec![] });
+        assert!(group_states_match(&program, &[2, 1], &[3, 0]));
+        assert!(!group_states_match(&program, &[2, 1], &[3, 1]));
     }
 }
