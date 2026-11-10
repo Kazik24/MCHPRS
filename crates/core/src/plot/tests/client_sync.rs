@@ -40,7 +40,10 @@ fn animal_emote_sound_plays_at_each_listener() {
     let mut bus = bus::Bus::new(4);
     plot.message_receiver = bus.add_rx();
     let sound_id = crate::sound::event_id("entity.wolf.ambient");
-    bus.broadcast(BroadcastMessage::Emote(crate::chat::ChatComponent::from_legacy_text("Woof!"), Some(sound_id)));
+    bus.broadcast(BroadcastMessage::Emote(
+        crate::chat::ChatComponent::from_legacy_text("Woof!"),
+        Some(sound_id),
+    ));
     plot.handle_messages();
 
     for (peer, player) in [(&mut first, &plot.players[0]), (&mut second, &plot.players[1])] {

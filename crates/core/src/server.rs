@@ -451,8 +451,10 @@ impl MinecraftServer {
             }
             Message::Emote(message, sound) => {
                 info!("{message}");
-                self.broadcaster
-                    .broadcast(BroadcastMessage::Emote(ChatComponent::from_legacy_text(&format!("&d{message}")), sound.map(crate::sound::event_id)));
+                self.broadcaster.broadcast(BroadcastMessage::Emote(
+                    ChatComponent::from_legacy_text(&format!("&d{message}")),
+                    sound.map(crate::sound::event_id),
+                ));
             }
             Message::ChatInfo(uuid, username, message) => {
                 if !CONFIG.native_chat {

@@ -874,7 +874,11 @@ mod security_tests {
             ("/bark", "Lord225 barks like a playful puppy! Arf arf~ :3", None),
             ("/mrow", "Lord225 mrows like a cuddly kitty! Mrrp~ uwu", Some("entity.cat.ambient")),
             ("/meow", "Lord225 mrows like a cuddly kitty! Mrrp~ uwu", Some("entity.cat.ambient")),
-            ("/woof", "Lord225 woofs and wags their fluffy tail! Woof woof~ :3", Some("entity.wolf.ambient")),
+            (
+                "/woof",
+                "Lord225 woofs and wags their fluffy tail! Woof woof~ :3",
+                Some("entity.wolf.ambient"),
+            ),
             ("/rawr", "Lord225 rawrs like a tiger", None),
         ] {
             assert!(!plot.handle_command(0, command, vec![]));
