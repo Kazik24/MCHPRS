@@ -62,6 +62,8 @@ pub(super) struct State {
     _previous_next: Vec<u32>,
     started: std::time::Instant,
     pub(super) logical_base: u64,
+    #[cfg(feature = "plot-bench")]
+    benchmark_clock: bool,
 }
 
 #[cfg(any(windows, target_os = "linux"))]
@@ -150,6 +152,8 @@ impl State {
             _previous_next: previous_next,
             started: now,
             logical_base: 0,
+            #[cfg(feature = "plot-bench")]
+            benchmark_clock: false,
         }))
     }
 
@@ -181,9 +185,68 @@ impl State {
         // SAFETY: The sole caller supplies the initialized engine under an exclusive runtime borrow; clock only
         // updates scalar time fields.
         unsafe {
-            (api.clock)(engine, self.started.elapsed().as_nanos().min(u64::MAX as u128) as u64, self.logical_base);
+            #[cfg(feature = "plot-bench")]
+            let now = if self.benchmark_clock {
+                0
+            } else {
+                self.started.elapsed().as_nanos().min(u64::MAX as u128) as u64
+            };
+            #[cfg(not(feature = "plot-bench"))]
+            let now = self.started.elapsed().as_nanos().min(u64::MAX as u128) as u64;
+            (api.clock)(engine, now, self.logical_base);
         }
         Ok(())
+    }
+
+    #[cfg(feature = "plot-bench")]
+    pub(super) fn benchmark_prepare(&mut self, api: &Api, engine: *mut c_void) -> Result<(), ScratchError> {
+        if self.tables.output_state[1] != 0 {
+            return Err(ScratchError {
+                position: None,
+                reason: "batch experiment requires unlimited command output",
+            });
+        }
+        if !self.benchmark_clock {
+            // shortcut: bounded experiment buffer; overflow fails the native tick instead of dropping effects.
+            const WORDS: usize = 65_536 * 8;
+            if self.effects.len() < WORDS {
+                self.effects.try_reserve(WORDS - self.effects.len()).map_err(|_| invalid())?;
+                self.effects.resize(WORDS, 0);
+                // SAFETY: State owns this writable buffer; it stays bound until State is dropped or resized.
+                if unsafe { (api.effect_buffer)(self.memory.as_mut_ptr().cast(), self.effects.as_mut_ptr(), id(self.effects.len() / 8)?) } != 0 {
+                    return Err(invalid());
+                }
+            }
+            self.benchmark_clock = true;
+        }
+        // SAFETY: Same live initialized engine as prepare_tick; benchmark output limits are disabled.
+        unsafe { (api.clock)(engine, 0, self.logical_base) };
+        Ok(())
+    }
+
+    #[cfg(feature = "plot-bench")]
+    pub(super) fn benchmark_snapshot(&self, api: &Api) -> Result<Vec<u32>, ScratchError> {
+        let mut state = vec![0; self.blocks.len().checked_mul(11).ok_or_else(invalid)?];
+        // SAFETY: Sizes match the retained native command records and C verifies them.
+        if unsafe { (api.read_state)(self.memory.as_ptr().cast(), state.as_mut_ptr(), id(state.len())?) } != 0 {
+            return Err(invalid());
+        }
+        let words = unsafe { (api.effect_words)(self.memory.as_ptr().cast()) };
+        let mut effects = vec![0; words as usize];
+        // SAFETY: Read-only calls with exactly sized writable output allocations.
+        if unsafe { (api.read_effects)(self.memory.as_ptr().cast(), effects.as_mut_ptr(), words) } != 0 {
+            return Err(invalid());
+        }
+        let mut output = [0u32; 6];
+        if unsafe { (api.read_output)(self.memory.as_ptr().cast(), 0, output.as_mut_ptr()) } != 0 {
+            return Err(invalid());
+        }
+        // Unlimited replay ignores window age; its initial value includes untimed setup wall time.
+        output[5] = 0;
+        state.push(words);
+        state.extend(effects);
+        state.extend(output);
+        Ok(state)
     }
 
     fn text(&self, offset: u32, len: u32) -> Result<String, ScratchError> {

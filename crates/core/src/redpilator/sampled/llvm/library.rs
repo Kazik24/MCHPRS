@@ -14,6 +14,8 @@ pub(super) struct Library {
     pub(super) import_tick: unsafe extern "C" fn(*mut c_void, u32, u32, u8) -> u32,
     pub(super) destroy: unsafe extern "C" fn(*mut c_void),
     pub(super) tick: unsafe extern "C" fn(*mut c_void) -> u32,
+    #[cfg(feature = "plot-bench")]
+    pub(super) benchmark_tick_batch: Option<unsafe extern "C" fn(*mut c_void, u32, u32) -> u32>,
     pub(super) use_control: unsafe extern "C" fn(*mut c_void, u32) -> u32,
     pub(super) set_input: unsafe extern "C" fn(*mut c_void, u32, u8) -> u32,
     pub(super) read_state: unsafe extern "C" fn(*const c_void, *mut u8, u32) -> u32,
@@ -63,6 +65,8 @@ impl Library {
                 import_tick: module.symbol(b"ne_import_tick\0")?,
                 destroy: module.symbol(b"ne_destroy\0")?,
                 tick: module.symbol(b"ne_tick\0")?,
+                #[cfg(feature = "plot-bench")]
+                benchmark_tick_batch: module.symbol(b"ne_benchmark_tick_batch\0").ok(),
                 use_control: module.symbol(b"ne_use_control\0")?,
                 set_input: module.symbol(b"ne_set_input\0")?,
                 read_state: module.symbol(b"ne_read_state\0")?,

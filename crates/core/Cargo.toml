@@ -16,6 +16,10 @@ criterion = "0.4"
 reqwest = { version = "0.11", features = ["blocking", "json"] }
 mchprs_network = { path = "../network", features = ["test-support"] }
 
+[[example]]
+name = "bench_llvm_batches"
+required-features = ["plot-bench"]
+
 [[bench]]
 name = "bitbuffer"
 harness = false

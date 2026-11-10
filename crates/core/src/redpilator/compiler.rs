@@ -174,6 +174,39 @@ pub struct Compiler {
 }
 
 impl Compiler {
+    /// Experimental benchmark helper: the unticked seed and pristine world must describe the same fixture.
+    #[cfg(feature = "plot-bench")]
+    pub fn benchmark_restart<W: World>(&self, pristine: &W, bounds: (BlockPos, BlockPos), ticks: Vec<TickEntry>) -> Result<Self, CompileError> {
+        let mut fresh = Self::default();
+        fresh.compile_cached(
+            pristine,
+            bounds,
+            self.options.clone(),
+            ticks,
+            Arc::new(TaskMonitor::default()),
+            self.cached_program(),
+        )?;
+        Ok(fresh)
+    }
+
+    #[cfg(feature = "plot-bench")]
+    pub fn benchmark_tick_batch(&mut self, count: u32, mode: u32) -> Result<(), ExecutionError> {
+        self.llvm_runtime
+            .as_mut()
+            .expect("batch experiment requires LLVM")
+            .benchmark_tick_batch(count, mode)
+            .map_err(ExecutionError)
+    }
+
+    #[cfg(feature = "plot-bench")]
+    pub fn benchmark_snapshot(&self) -> Result<Vec<u32>, ExecutionError> {
+        self.llvm_runtime
+            .as_ref()
+            .expect("batch experiment requires LLVM")
+            .benchmark_snapshot()
+            .map_err(ExecutionError)
+    }
+
     pub fn stats(&self) -> Option<&CompileStatistics> {
         self.statistics.as_ref()
     }

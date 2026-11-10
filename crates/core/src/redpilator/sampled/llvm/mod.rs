@@ -19,6 +19,8 @@ use super::{
 use mchprs_blocks::BlockPos;
 use mchprs_blocks::blocks::Block;
 use mchprs_world::{TickEntry, TickPriority};
+#[cfg(all(feature = "plot-bench", any(windows, target_os = "linux")))]
+mod benchmark;
 mod cache;
 mod command;
 mod command_notifications;
@@ -395,6 +397,10 @@ pub(in crate::redpilator) struct LlvmRuntime;
 
 #[cfg(not(any(windows, target_os = "linux")))]
 impl LlvmRuntime {
+    #[cfg(feature = "plot-bench")]
+    pub(in crate::redpilator) fn benchmark_tick_batch(&mut self, _: u32, _: u32) -> Result<(), ScratchError> { unreachable!() }
+    #[cfg(feature = "plot-bench")]
+    pub(in crate::redpilator) fn benchmark_snapshot(&self) -> Result<Vec<u32>, ScratchError> { unreachable!() }
     pub(in crate::redpilator) fn sync_io(&mut self, _: &mut super::Runtime) -> Result<(), ScratchError> { unreachable!() }
     pub(in crate::redpilator) fn sync_effects(&mut self, _: &mut super::Runtime) -> Result<(), ScratchError> { unreachable!() }
     pub(in crate::redpilator) fn acknowledge_effects(&mut self, _: usize) {
