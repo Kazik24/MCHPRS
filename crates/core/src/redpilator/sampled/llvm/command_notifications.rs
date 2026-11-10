@@ -1,9 +1,37 @@
 //! Ordered command notifications, with live solidity guards for far comparators.
 use super::{Program, ScratchError, overflow};
-use mchprs_blocks::{BlockFace, blocks::Block};
+use mchprs_blocks::{BlockFace, BlockPos, blocks::Block};
 
 fn id(value: usize) -> Result<u32, ScratchError> {
     u32::try_from(value).map_err(|_| overflow())
+}
+
+pub(super) struct CommandNotifications {
+    pub(super) rows: Vec<u32>,
+    pub(super) targets: Vec<u32>,
+}
+
+struct NotificationTarget {
+    component: usize,
+    solidity_guard: Option<usize>,
+    fallback_is_solid: bool,
+}
+
+impl NotificationTarget {
+    fn encode(self) -> Result<[u32; 3], ScratchError> {
+        let component = id(self.component)?;
+        let solidity_guard = self.solidity_guard.map(id).transpose()?.unwrap_or(u32::MAX);
+        // Bit 8 is the native callback's fallback-solidity flag.
+        let flags = u32::from(self.fallback_is_solid) << 8;
+        Ok([component, solidity_guard, flags])
+    }
+}
+
+fn captured_block_at(program: &Program, pos: BlockPos) -> Block {
+    if let Some(&component) = program.component_indices.get(&pos) {
+        return program.initial[component];
+    }
+    program.geometry_indices.get(&pos).copied().unwrap_or(Block::Air)
 }
 
 /// Encode native callbacks caused by command-block output changes.
@@ -12,11 +40,11 @@ fn id(value: usize) -> Result<u32, ScratchError> {
 ///
 /// Follow the interpreter's surrounding-update rules, preserve observer/piston-head routes and comparator-
 /// through-solid callbacks, then flatten rows and checked recipient records.
-pub(super) fn encode(program: &Program) -> Result<(Vec<u32>, Vec<u32>), ScratchError> {
+pub(super) fn encode(program: &Program) -> Result<CommandNotifications, ScratchError> {
     let mut rows = Vec::with_capacity(program.initial.len() * 2);
     let mut targets = Vec::new();
     for (node, &block) in program.initial.iter().enumerate() {
-        let start = targets.len() / 3;
+        let start = targets.len();
         if block.is_command_block() {
             let pos = program.positions[node];
             crate::redstone::surrounding_notifications(pos, |target, dir, diagonal| {
@@ -24,15 +52,19 @@ pub(super) fn encode(program: &Program) -> Result<(Vec<u32>, Vec<u32>), ScratchE
                     return;
                 };
                 let block = program.initial[component];
-                if diagonal && (matches!(block, Block::Observer { .. } | Block::Piston { .. }) || target == pos && block.is_copper_bulb()) {
+                let skips_diagonal = matches!(block, Block::Observer { .. } | Block::Piston { .. });
+                let is_source_bulb = target == pos && block.is_copper_bulb();
+                if diagonal && (skips_diagonal || is_source_bulb) {
                     return;
                 }
                 if matches!(block, Block::Observer { observer } if observer.facing != dir.into()) {
                     return;
                 }
-                targets.push(component);
-                targets.push(usize::MAX);
-                targets.push(0x100);
+                targets.push(NotificationTarget {
+                    component,
+                    solidity_guard: None,
+                    fallback_is_solid: true,
+                });
             });
             for face in [BlockFace::North, BlockFace::South, BlockFace::East, BlockFace::West] {
                 let adjacent = pos.offset(face);
@@ -42,33 +74,60 @@ pub(super) fn encode(program: &Program) -> Result<(Vec<u32>, Vec<u32>), ScratchE
                 if !matches!(program.initial[component], Block::RedstoneComparator { .. }) {
                     continue;
                 }
-                let fallback = program
-                    .component_indices
-                    .get(&adjacent)
-                    .map(|&node| program.initial[node])
-                    .or_else(|| program.geometry_indices.get(&adjacent).copied())
-                    .unwrap_or(Block::Air);
-                targets.extend([
+                let fallback = captured_block_at(program, adjacent);
+                targets.push(NotificationTarget {
                     component,
-                    program.projection_indices.get(&adjacent).copied().unwrap_or(usize::MAX),
-                    if fallback.is_solid() { 0x100 } else { 0 },
-                ]);
+                    solidity_guard: program.projection_indices.get(&adjacent).copied(),
+                    fallback_is_solid: fallback.is_solid(),
+                });
             }
         }
-        rows.extend([id(start)?, id(targets.len() / 3 - start)?]);
+        rows.extend([id(start)?, id(targets.len() - start)?]);
     }
-    let targets = targets
-        .into_iter()
-        .map(|value| if value == usize::MAX { Ok(u32::MAX) } else { id(value) })
-        .collect::<Result<_, _>>()?;
-    Ok((rows, targets))
+    let mut encoded_targets = Vec::with_capacity(targets.len() * 3);
+    for target in targets {
+        encoded_targets.extend(target.encode()?);
+    }
+    Ok(CommandNotifications {
+        rows,
+        targets: encoded_targets,
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::world::World;
-    use mchprs_blocks::BlockPos;
+
+    #[test]
+    fn notification_guards_encode_absence_flags_and_checked_ids() {
+        let unconditional = NotificationTarget {
+            component: 7,
+            solidity_guard: None,
+            fallback_is_solid: true,
+        };
+        assert_eq!(unconditional.encode().unwrap(), [7, u32::MAX, 0x100]);
+        let guarded = NotificationTarget {
+            component: 7,
+            solidity_guard: Some(3),
+            fallback_is_solid: false,
+        };
+        assert_eq!(guarded.encode().unwrap(), [7, 3, 0]);
+        if let Some(too_large) = (u32::MAX as usize).checked_add(1) {
+            let invalid = NotificationTarget {
+                component: too_large,
+                solidity_guard: None,
+                fallback_is_solid: true,
+            };
+            assert!(invalid.encode().is_err());
+            let invalid_guard = NotificationTarget {
+                component: 7,
+                solidity_guard: Some(too_large),
+                fallback_is_solid: true,
+            };
+            assert!(invalid_guard.encode().is_err());
+        }
+    }
 
     #[test]
     fn far_comparator_guards_preserve_solid_and_transparent_geometry() {
@@ -91,7 +150,7 @@ mod tests {
                 None,
             )
             .unwrap();
-            let (rows, targets) = encode(&program).unwrap();
+            let CommandNotifications { rows, targets } = encode(&program).unwrap();
             let node = program.component_indices[&command];
             let start = rows[node * 2] as usize;
             let count = rows[node * 2 + 1] as usize;

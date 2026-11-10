@@ -13,6 +13,16 @@ pub(in crate::redpilator::sampled) struct LlvmProgram {
     pub(in crate::redpilator::sampled) blob: Vec<u8>,
 }
 
+struct NativeOperation {
+    opcode: u8,
+    operand: u32,
+}
+
+pub(super) struct NativeComponentState {
+    pub(super) kind: u8,
+    pub(super) state: u8,
+}
+
 impl LlvmProgram {
     pub(super) fn into_aligned_blob(self) -> Result<Vec<u64>, ScratchError> {
         // The C executor reads u32 tables directly, so the backing allocation must be aligned.
@@ -35,30 +45,34 @@ impl LlvmProgram {
         if program.positions.len() >= PISTON_HEAD_NOTIFICATION {
             return Err(overflow());
         }
-        let initial_bytes = HEADER_BYTES
-            .checked_add(program.operations.len().checked_mul(OP_BYTES).ok_or_else(overflow)?)
-            .and_then(|size| size.checked_add(program.links.len().checked_mul(LINK_BYTES)?))
-            .and_then(|size| size.checked_add(program.positions.len().checked_mul(COMPONENT_BYTES)?))
-            .and_then(|size| size.checked_add(program.sources.len().checked_mul(4)?))
-            .ok_or_else(overflow)?;
+        let mut initial_bytes = HEADER_BYTES;
+        for (record_count, record_bytes) in [
+            (program.operations.len(), OP_BYTES),
+            (program.links.len(), LINK_BYTES),
+            (program.positions.len(), COMPONENT_BYTES),
+            (program.sources.len(), 4),
+        ] {
+            let table_bytes = record_count.checked_mul(record_bytes).ok_or_else(overflow)?;
+            initial_bytes = initial_bytes.checked_add(table_bytes).ok_or_else(overflow)?;
+        }
         let mut blob = Vec::new();
         memory::reserve(&mut blob, initial_bytes)?;
         blob.extend_from_slice(&MAGIC);
-        put_u32(&mut blob, ABI_VERSION)?;
-        put_u32(&mut blob, u32::try_from(HEADER_BYTES).map_err(|_| overflow())?)?;
+        put_u32(&mut blob, ABI_VERSION);
+        put_u32(&mut blob, u32::try_from(HEADER_BYTES).map_err(|_| overflow())?);
         // Filled after table serialization.
-        put_u32(&mut blob, 0)?;
+        put_u32(&mut blob, 0);
         let operation_offset = u32::try_from(blob.len()).map_err(|_| overflow())?;
         for operation in &program.operations {
-            let (opcode, operand) = encode_operation(*operation)?;
+            let NativeOperation { opcode, operand } = encode_operation(*operation)?;
             blob.push(opcode);
             blob.extend_from_slice(&[0; 3]);
-            put_u32(&mut blob, operand)?;
+            put_u32(&mut blob, operand);
         }
         let link_offset = u32::try_from(blob.len()).map_err(|_| overflow())?;
         for (index, link) in program.links.iter().enumerate() {
-            put_u32(&mut blob, u32::try_from(link.source).map_err(|_| overflow())?)?;
-            put_u32(&mut blob, u32::try_from(link.target).map_err(|_| overflow())?)?;
+            put_u32(&mut blob, u32::try_from(link.source).map_err(|_| overflow())?);
+            put_u32(&mut blob, u32::try_from(link.target).map_err(|_| overflow())?);
             blob.push(link.attenuation);
             blob.push(u8::from(program.effective_links[index]));
             blob.extend_from_slice(&[0; 2]);
@@ -68,24 +82,25 @@ impl LlvmProgram {
             blob.extend_from_slice(&position.x.to_le_bytes());
             blob.extend_from_slice(&position.y.to_le_bytes());
             blob.extend_from_slice(&position.z.to_le_bytes());
-            let (kind, state) = component_state(*block);
+            let NativeComponentState { kind, state } = component_state(*block);
             let (delay, flags) = if let Block::RedstoneRepeater { repeater } = block {
-                let diode = program.repeater_by_component[index].is_some_and(|record| program.repeaters[record.get() - 1].output_is_diode);
-                let dynamic_lock =
-                    program.repeater_by_component[index].is_some_and(|record| program.repeaters[record.get() - 1].side_sources.is_some());
-                (repeater.delay, (u8::from(diode) << 1) | (u8::from(dynamic_lock) << 2))
+                let record = program.repeater_by_component[index].map(|record| &program.repeaters[record.get() - 1]);
+                let output_is_diode = record.is_some_and(|record| record.output_is_diode);
+                let has_dynamic_lock = record.is_some_and(|record| record.side_sources.is_some());
+                let flags = (u8::from(output_is_diode) << 1) | (u8::from(has_dynamic_lock) << 2);
+                (repeater.delay, flags)
             } else {
                 (0, 0)
             };
             blob.extend_from_slice(&[kind, state, delay, flags]);
             for range in [&program.output_programs[index][1], &program.output_programs[index][0]] {
-                put_u32(&mut blob, u32::try_from(range.start).map_err(|_| overflow())?)?;
-                put_u32(&mut blob, u32::try_from(range.len()).map_err(|_| overflow())?)?;
+                put_u32(&mut blob, u32::try_from(range.start).map_err(|_| overflow())?);
+                put_u32(&mut blob, u32::try_from(range.len()).map_err(|_| overflow())?);
             }
         }
         let source_offset = u32::try_from(blob.len()).map_err(|_| overflow())?;
         for &source in &program.sources {
-            put_u32(&mut blob, u32::try_from(source).map_err(|_| overflow())?)?;
+            put_u32(&mut blob, u32::try_from(source).map_err(|_| overflow())?);
         }
         encode_aux(program, &mut blob)?;
         let total_bytes = u32::try_from(blob.len()).map_err(|_| overflow())?;
@@ -117,8 +132,24 @@ impl LlvmProgram {
 /// Encode each component's compare/subtract flags, static/dynamic override identities and captured
 /// strength, rejecting values that cannot fit the native representation.
 fn encode_comparators(program: &Program, table: &mut Vec<u32>) -> Result<(), ScratchError> {
+    table.resize(program.initial.len().checked_mul(4).ok_or_else(overflow)?, 0);
+    for record in &program.comparators {
+        let Block::RedstoneComparator { comparator } = program.initial[record.component] else {
+            return Err(overflow());
+        };
+        table[record.component * 4..record.component * 4 + 4].copy_from_slice(&[
+            1 | (u32::from(comparator.mode == mchprs_blocks::blocks::ComparatorMode::Subtract) << 1) | (u32::from(record.output_is_diode) << 2),
+            encode_comparator_override(record.rear_override)?,
+            encode_comparator_override(record.far_override)?,
+            u32::from(record.stored),
+        ]);
+    }
+    Ok(())
+}
+
+fn encode_comparator_override(input: Option<crate::redpilator::sampled::program::ComparatorInput>) -> Result<u32, ScratchError> {
     use crate::redpilator::sampled::program::ComparatorInput;
-    let level = |input| match input {
+    match input {
         None => Ok(0),
         Some(ComparatorInput::Static(level)) => Ok(u32::from(level) + 1),
         Some(ComparatorInput::CopperBulb(source)) => {
@@ -136,20 +167,7 @@ fn encode_comparators(program: &Program, table: &mut Vec<u32>) -> Result<(), Scr
             }
             Ok(0x4000_0000 | source)
         }
-    };
-    table.resize(program.initial.len().checked_mul(4).ok_or_else(overflow)?, 0);
-    for record in &program.comparators {
-        let Block::RedstoneComparator { comparator } = program.initial[record.component] else {
-            return Err(overflow());
-        };
-        table[record.component * 4..record.component * 4 + 4].copy_from_slice(&[
-            1 | (u32::from(comparator.mode == mchprs_blocks::blocks::ComparatorMode::Subtract) << 1) | (u32::from(record.output_is_diode) << 2),
-            level(record.rear_override)?,
-            level(record.far_override)?,
-            u32::from(record.stored),
-        ]);
     }
-    Ok(())
 }
 
 /// Assemble the versioned program's auxiliary tables.
@@ -224,7 +242,7 @@ fn encode_aux(program: &Program, blob: &mut Vec<u8>) -> Result<(), ScratchError>
         blob[directory + index * 8..directory + index * 8 + 4].copy_from_slice(&offset.to_le_bytes());
         blob[directory + index * 8 + 4..directory + index * 8 + 8].copy_from_slice(&count.to_le_bytes());
         for &value in table {
-            put_u32(blob, value)?;
+            put_u32(blob, value);
         }
     }
     Ok(())
@@ -321,20 +339,21 @@ pub(super) fn validate_blob(descriptor: &NativeProgramDescriptor, blob: &[u8]) -
         let on_count = u32::from_le_bytes(component[20..24].try_into().unwrap()) as usize;
         let off_start = u32::from_le_bytes(component[24..28].try_into().unwrap()) as usize;
         let off_count = u32::from_le_bytes(component[28..32].try_into().unwrap()) as usize;
+        let max_state = match kind {
+            5 => 15,
+            4 | 13 => 3,
+            _ => 1,
+        };
+        let valid_timing = if kind == 4 {
+            let delay_ticks = component[14];
+            let flags = component[15];
+            (1..=4).contains(&delay_ticks) && flags <= 6 && flags & 1 == 0
+        } else {
+            component[14] == 0 && component[15] == 0
+        };
         if (kind > 15 && kind != u8::MAX)
-            || component[13]
-                > (if kind == 5 {
-                    15
-                } else if kind == 4 || kind == 13 {
-                    3
-                } else {
-                    1
-                })
-            || if kind == 4 {
-                !(1..=4).contains(&component[14]) || component[15] > 6 || component[15] & 1 != 0
-            } else {
-                component[14] != 0 || component[15] != 0
-            }
+            || component[13] > max_state
+            || !valid_timing
             || on_start.checked_add(on_count).is_none_or(|end| end > descriptor.operation_count as usize)
             || off_start
                 .checked_add(off_count)
@@ -435,7 +454,7 @@ pub(super) fn validate_blob(descriptor: &NativeProgramDescriptor, blob: &[u8]) -
     Ok(())
 }
 
-fn encode_operation(operation: Operation) -> Result<(u8, u32), ScratchError> {
+fn encode_operation(operation: Operation) -> Result<NativeOperation, ScratchError> {
     let (tag, operand) = match operation {
         Operation::Contribution(i) => (0, i),
         Operation::ArrangementContribution(i) => (1, i),
@@ -452,7 +471,8 @@ fn encode_operation(operation: Operation) -> Result<(u8, u32), ScratchError> {
         Operation::UpdateTorch(i) => (12, i),
         Operation::UpdateComparator(i) => (13, i),
     };
-    u32::try_from(operand).map(|operand| (tag, operand)).map_err(|_| overflow())
+    let operand = u32::try_from(operand).map_err(|_| overflow())?;
+    Ok(NativeOperation { opcode: tag, operand })
 }
 
 /// Encode a block's native component kind and mutable state byte.
@@ -461,8 +481,8 @@ fn encode_operation(operation: Operation) -> Result<(u8, u32), ScratchError> {
 ///
 /// Match its supported block kind and pack power, lock or signal fields into the C executor's state
 /// layout; use the unsupported kind marker for other blocks.
-pub(super) fn component_state(block: Block) -> (u8, u8) {
-    match block {
+pub(super) fn component_state(block: Block) -> NativeComponentState {
+    let (kind, state) = match block {
         Block::Lever { lever } => (0, u8::from(lever.powered)),
         Block::StoneButton { button } => (1, u8::from(button.powered)),
         Block::RedstoneLamp { lit } => (2, u8::from(lit)),
@@ -483,12 +503,12 @@ pub(super) fn component_state(block: Block) -> (u8, u8) {
             (13, u8::from(lit) | (u8::from(powered) << 1))
         }
         _ => (u8::MAX, 0),
-    }
+    };
+    NativeComponentState { kind, state }
 }
 
-fn put_u32(out: &mut Vec<u8>, value: u32) -> Result<(), ScratchError> {
+fn put_u32(out: &mut Vec<u8>, value: u32) {
     out.extend_from_slice(&value.to_le_bytes());
-    Ok(())
 }
 
 pub(super) fn read_u32(bytes: &[u8], offset: usize) -> Option<u32> {
@@ -499,5 +519,32 @@ pub(super) fn overflow() -> ScratchError {
     ScratchError {
         position: None,
         reason: "native Program exceeds ABI limits",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::redpilator::sampled::program::ComparatorInput;
+
+    #[test]
+    fn comparator_override_tags_preserve_levels_and_reject_overlapping_ids() {
+        assert_eq!(encode_comparator_override(None).unwrap(), 0);
+        for strength in 0..=15 {
+            assert_eq!(
+                encode_comparator_override(Some(ComparatorInput::Static(strength))).unwrap(),
+                u32::from(strength) + 1
+            );
+        }
+        for (input, expected) in [
+            (ComparatorInput::CopperBulb(0), 0x8000_0000),
+            (ComparatorInput::CopperBulb(0x7fff_ffff), 0xffff_ffff),
+            (ComparatorInput::CommandBlock(0), 0x4000_0000),
+            (ComparatorInput::CommandBlock(0x3fff_ffff), 0x7fff_ffff),
+        ] {
+            assert_eq!(encode_comparator_override(Some(input)).unwrap(), expected);
+        }
+        assert!(encode_comparator_override(Some(ComparatorInput::CopperBulb(0x8000_0000))).is_err());
+        assert!(encode_comparator_override(Some(ComparatorInput::CommandBlock(0x4000_0000))).is_err());
     }
 }

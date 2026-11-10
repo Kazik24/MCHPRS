@@ -153,14 +153,8 @@ fn update_footprint(pos: BlockPos, block: Block) -> Vec<BlockPos> {
             .collect()
     };
     match block {
-        Block::RedstoneRepeater { .. } | Block::RedstoneComparator { .. } => {
-            let rear = match block {
-                Block::RedstoneRepeater { repeater } => repeater.facing.block_face(),
-                Block::RedstoneComparator { comparator } => comparator.facing.block_face(),
-                _ => unreachable!(),
-            };
-            directional_targets(rear)
-        }
+        Block::RedstoneRepeater { repeater } => directional_targets(repeater.facing.block_face()),
+        Block::RedstoneComparator { comparator } => directional_targets(comparator.facing.block_face()),
         Block::Observer { observer } => directional_targets(observer.facing.into()),
         Block::Lever { lever } => {
             let support = match lever.face {

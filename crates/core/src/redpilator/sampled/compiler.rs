@@ -42,7 +42,7 @@ pub(crate) fn compile_monitored_with_source_cache(
         monitor,
     };
 
-    let (scratch, inventory) = passes::parse::run(&context, &mut phases)?;
+    let passes::parse::ParsedCircuit { scratch, inventory } = passes::parse::run(&context, &mut phases)?;
     let index_started = Instant::now();
     let position_index: HashMap<_, _> = inventory.positions.iter().enumerate().map(|(index, &pos)| (pos, index)).collect();
 
@@ -50,7 +50,8 @@ pub(crate) fn compile_monitored_with_source_cache(
         eprintln!("Redpilator compile position index: {} ms", index_started.elapsed().as_millis());
     }
 
-    let (mut program, probe_indexes) = passes::electrical::run(&context, scratch, inventory, &position_index, &mut phases)?;
+    let passes::electrical::ElectricalCircuit { mut program, probe_indexes } =
+        passes::electrical::run(&context, scratch, inventory, &position_index, &mut phases)?;
 
     passes::movement::run(&context, &mut program, &probe_indexes, &mut phases)?;
     passes::arrangements::run(&context, &mut program, &probe_indexes, &mut phases)?;

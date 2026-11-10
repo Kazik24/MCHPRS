@@ -12,13 +12,18 @@ use mchprs_blocks::{
     blocks::Block,
 };
 
+pub(in super::super) struct ParsedCircuit {
+    pub(in super::super) scratch: ScratchWorld,
+    pub(in super::super) inventory: Inventory,
+}
+
 /// Capture and validate the circuit inventory before dependency discovery.
 ///
 /// Inputs: The immutable capture context and phase reporter.
 ///
 /// Create one scratch snapshot, discover piston actors and payloads from it, scan supported
 /// components/entities and group receiver positions while reporting progress.
-pub(in super::super) fn run(context: &Context<'_, impl World>, phases: &mut CompilePhases<'_>) -> Result<(ScratchWorld, Inventory), ScratchError> {
+pub(in super::super) fn run(context: &Context<'_, impl World>, phases: &mut CompilePhases<'_>) -> Result<ParsedCircuit, ScratchError> {
     let world = context.world;
     let bounds = context.bounds;
     let entry = context.entry;
@@ -87,9 +92,11 @@ pub(in super::super) fn run(context: &Context<'_, impl World>, phases: &mut Comp
                     Block::PistonHead { .. } => {}
                     Block::Observer { .. } | Block::RedstoneTorch { .. } | Block::RedstoneWallTorch { .. } => positions.push(pos),
                     Block::RedstoneRepeater { repeater } => {
+                        let output_pos = pos.offset(repeater.facing.opposite().block_face());
+                        let output_is_diode = crate::redstone::is_diode(world.get_block(output_pos));
                         repeaters.push(RepeaterRecord {
                             component: positions.len(),
-                            output_is_diode: crate::redstone::is_diode(world.get_block(pos.offset(repeater.facing.opposite().block_face()))),
+                            output_is_diode,
                             side_sources: Some(Vec::new()),
                         });
                         positions.push(pos);
@@ -98,22 +105,7 @@ pub(in super::super) fn run(context: &Context<'_, impl World>, phases: &mut Comp
                     block => return Err(error(pos, block.get_name())),
                 }
 
-                if let Some(entity) = world.get_block_entity(pos) {
-                    let block = world.get_block(pos);
-                    let reason = match (block, entity) {
-                        (Block::RedstoneComparator { .. }, BlockEntity::Comparator { output_strength: 0..=15 }) => None,
-                        (Block::RedstoneComparator { .. }, BlockEntity::Comparator { .. }) => Some("comparator output strength exceeds 15"),
-                        (block, BlockEntity::Container { comparator_override, .. }) if ContainerType::from_block(block).is_some() => {
-                            (*comparator_override > 15).then_some("container comparator output exceeds 15")
-                        }
-                        (Block::MovingPiston { .. }, _) => Some("moving piston block entity is unsupported"),
-                        // The interpreter ignores stale entities attached to other block types.
-                        _ => None,
-                    };
-                    if let Some(reason) = reason {
-                        return Err(error(pos, reason));
-                    }
-                }
+                validate_block_entity(world, pos)?;
             }
         }
         if let Some(monitor) = monitor {
@@ -152,9 +144,9 @@ pub(in super::super) fn run(context: &Context<'_, impl World>, phases: &mut Comp
             copper_bulbs.len()
         );
     }
-    Ok((
+    Ok(ParsedCircuit {
         scratch,
-        Inventory {
+        inventory: Inventory {
             positions,
             sources,
             repeaters,
@@ -166,5 +158,26 @@ pub(in super::super) fn run(context: &Context<'_, impl World>, phases: &mut Comp
             pistons,
             tokens,
         },
-    ))
+    })
+}
+
+fn validate_block_entity(world: &impl World, pos: BlockPos) -> Result<(), ScratchError> {
+    let Some(entity) = world.get_block_entity(pos) else {
+        return Ok(());
+    };
+    let block = world.get_block(pos);
+    let reason = match (block, entity) {
+        (Block::RedstoneComparator { .. }, BlockEntity::Comparator { output_strength: 0..=15 }) => None,
+        (Block::RedstoneComparator { .. }, BlockEntity::Comparator { .. }) => Some("comparator output strength exceeds 15"),
+        (block, BlockEntity::Container { comparator_override, .. }) if ContainerType::from_block(block).is_some() => {
+            (*comparator_override > 15).then_some("container comparator output exceeds 15")
+        }
+        (Block::MovingPiston { .. }, _) => Some("moving piston block entity is unsupported"),
+        // The interpreter ignores stale entities attached to other block types.
+        _ => None,
+    };
+    match reason {
+        Some(reason) => Err(ScratchError { position: Some(pos), reason }),
+        None => Ok(()),
+    }
 }

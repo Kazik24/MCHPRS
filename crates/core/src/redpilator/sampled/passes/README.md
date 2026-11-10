@@ -10,6 +10,9 @@ Each world-discovery pass takes the same captured `Context` and phase reporter.
 handle. The passes fill in `Program`, which stores component IDs (indexes into
 `positions`) and instructions. `ProbeIndexes` maps world positions back to those IDs.
 The last two passes need only the program and phase reporter.
+Parsing returns `ParsedCircuit` (scratch snapshot and inventory); electrical
+discovery returns `ElectricalCircuit` (program and probe indexes). Repeater rear
+power discovery and block-entity admission each have one helper owning their rules.
 
 After compilation, [`Runtime::tick`](../executor.rs) runs scheduled updates,
 then piston events and movement. Its tick and input entry points appear before
@@ -63,3 +66,9 @@ transition diagnostics compare callback observations.
 Existing phase timing and cancellation checks remain at the discovery boundaries.
 Optimization timing has its own pass name. There are no runtime pass dispatches,
 new compile flags or additional dependencies.
+
+Native encoding keeps record fields named until serialization: component kind/state,
+operation opcode/operand, command notification targets and local routing ports.
+The byte layout and table IDs remain defined by the native ABI. Scheduler iterator
+entries name their delay in half-ticks; `schedule_tick` accepts whole redstone ticks
+and converts them at the scheduler boundary.

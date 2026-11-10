@@ -2,6 +2,21 @@
 use super::{AUX_TABLES, Program, ScratchError, overflow};
 use crate::redpilator::sampled::routing::{Axis, Local};
 
+const LOCAL_TABLES: usize = 33;
+const LOCAL_AXES: usize = 34;
+const LOCAL_ROWS: usize = 35;
+const WIRE_CONTACTS: usize = 36;
+const SOURCE_CONTACTS: usize = 37;
+const READER_LINK_ROWS: usize = 38;
+const READER_LINKS: usize = 39;
+const TOKEN_READER_ROWS: usize = 40;
+const TOKEN_READERS: usize = 41;
+
+struct EncodedPorts {
+    wire_contacts: Vec<(usize, bool)>,
+    source_contacts: Vec<(u32, bool)>,
+}
+
 fn id(n: usize) -> Result<u32, ScratchError> {
     u32::try_from(n).map_err(|_| overflow())
 }
@@ -12,29 +27,37 @@ fn id(n: usize) -> Result<u32, ScratchError> {
 ///
 /// Translate token axes and optional rows into checked offsets, preserving invalid arrangements and
 /// flattening each row's direct/wire contacts.
-fn local<T>(
+fn encode_local_table<T>(
     local: &Local<T>,
     tables: &mut [Vec<u32>; AUX_TABLES],
-    ports: impl Fn(&T) -> Result<(Vec<(usize, bool)>, Vec<(u32, bool)>), ScratchError>,
+    encode_ports: impl Fn(&T) -> Result<EncodedPorts, ScratchError>,
 ) -> Result<(), ScratchError> {
-    let axes = id(tables[34].len() / 2)?;
-    let rows = id(tables[35].len() / 4)?;
+    let axes_start = id(tables[LOCAL_AXES].len() / 2)?;
+    let rows_start = id(tables[LOCAL_ROWS].len() / 4)?;
     for &Axis::Token(token, cells) in &local.axes {
-        tables[34].extend([id(token)?, id(cells + 1)?]);
+        tables[LOCAL_AXES].extend([id(token)?, id(cells + 1)?]);
     }
-    tables[33].extend([axes, id(local.axes.len())?, rows, id(local.ports.len())?]);
+    tables[LOCAL_TABLES].extend([axes_start, id(local.axes.len())?, rows_start, id(local.ports.len())?]);
     for row in &local.ports {
         let Some(row) = row else {
-            tables[35].extend([u32::MAX, 0, 0, 0]);
+            tables[LOCAL_ROWS].extend([u32::MAX, 0, 0, 0]);
             continue;
         };
-        let (edges, sources) = ports(row)?;
-        tables[35].extend([id(tables[36].len() / 2)?, id(edges.len())?, id(tables[37].len() / 2)?, id(sources.len())?]);
-        for (wire, side) in edges {
-            tables[36].extend([id(wire)?, u32::from(side)]);
+        let EncodedPorts {
+            wire_contacts,
+            source_contacts,
+        } = encode_ports(row)?;
+        tables[LOCAL_ROWS].extend([
+            id(tables[WIRE_CONTACTS].len() / 2)?,
+            id(wire_contacts.len())?,
+            id(tables[SOURCE_CONTACTS].len() / 2)?,
+            id(source_contacts.len())?,
+        ]);
+        for (wire, side) in wire_contacts {
+            tables[WIRE_CONTACTS].extend([id(wire)?, u32::from(side)]);
         }
-        for (source, side) in sources {
-            tables[37].extend([source, u32::from(side)]);
+        for (source, side) in source_contacts {
+            tables[SOURCE_CONTACTS].extend([source, u32::from(side)]);
         }
     }
     Ok(())
@@ -50,39 +73,39 @@ pub(super) fn encode(program: &Program, tables: &mut [Vec<u32>; AUX_TABLES]) -> 
     let Some(graph) = &program.routing else {
         return Ok(());
     };
-    tables[33].push(id(graph.nodes.len())?);
+    tables[LOCAL_TABLES].push(id(graph.nodes.len())?);
     for node in &graph.nodes {
-        local(node, tables, |ports| {
-            Ok((
-                ports.wires.iter().map(|&wire| (wire, false)).collect(),
-                ports
+        encode_local_table(node, tables, |ports| {
+            Ok(EncodedPorts {
+                wire_contacts: ports.wires.iter().map(|&wire| (wire, false)).collect(),
+                source_contacts: ports
                     .sources
                     .iter()
                     .map(|pos| super::movement::source(graph.source_ids[pos]).map(|source| (source, false)))
                     .collect::<Result<_, _>>()?,
-            ))
+            })
         })?;
     }
     for (index, reader) in graph.readers.iter().enumerate() {
-        local(&reader.table, tables, |ports| {
-            Ok((
-                ports.roots.clone(),
-                ports
+        encode_local_table(&reader.table, tables, |ports| {
+            Ok(EncodedPorts {
+                wire_contacts: ports.roots.clone(),
+                source_contacts: ports
                     .direct
                     .iter()
                     .map(|&(source, side)| super::movement::source(source).map(|source| (source, side)))
                     .collect::<Result<_, _>>()?,
-            ))
+            })
         })?;
-        tables[38].extend([id(graph.nodes.len() + index)?, id(tables[39].len())?, id(reader.links.len())?]);
+        tables[READER_LINK_ROWS].extend([id(graph.nodes.len() + index)?, id(tables[READER_LINKS].len())?, id(reader.links.len())?]);
         for &link in &reader.links {
-            tables[39].push(id(link)?);
+            tables[READER_LINKS].push(id(link)?);
         }
     }
     for readers in &graph.by_token {
-        tables[40].extend([id(tables[41].len())?, id(readers.len())?]);
+        tables[TOKEN_READER_ROWS].extend([id(tables[TOKEN_READERS].len())?, id(readers.len())?]);
         for &reader in readers {
-            tables[41].push(id(reader)?);
+            tables[TOKEN_READERS].push(id(reader)?);
         }
     }
     Ok(())

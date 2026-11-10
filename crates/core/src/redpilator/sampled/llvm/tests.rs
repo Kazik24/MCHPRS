@@ -175,7 +175,7 @@ fn compare_execution(mut program: Program, controls: &[(usize, usize)], ticks: u
             unsafe { (native.library.read_state)(native.state.as_ptr().cast(), states.as_mut_ptr(), states.len() as u32) },
             0
         );
-        let expected: Vec<_> = rust.blocks.iter().map(|block| component_state(*block).1).collect();
+        let expected: Vec<_> = rust.blocks.iter().map(|block| component_state(*block).state).collect();
         assert_eq!(states, expected, "state tick {tick}");
         assert_eq!(native.pending_entries().unwrap(), rust.pending_entries(), "scheduler tick {tick}");
         native.sync_projection(&mut projection).unwrap();
@@ -750,7 +750,7 @@ fn llvm_repeaters_match_rust_delays_pulses_and_pending_work() {
                             unsafe { (native.library.read_state)(native.state.as_ptr().cast(), states.as_mut_ptr(), 3) },
                             0
                         );
-                        let expected: Vec<_> = rust.blocks.iter().map(|block| component_state(*block).1).collect();
+                        let expected: Vec<_> = rust.blocks.iter().map(|block| component_state(*block).state).collect();
                         assert_eq!(states.as_slice(), expected, "delay={delay} locked={locked} diode={diode} tick={tick}");
                         assert_eq!(native.pending_entries().unwrap(), rust.pending_entries(), "pending at tick {tick}");
                     }

@@ -2,7 +2,7 @@
 
 This is the production code map for Redpilator and its plot command/compilation integration. It includes Rust functions and methods, Rust structs/enums/traits/type aliases, C function definitions and C structs. Test functions and external OS function declarations are excluded; test locations are listed at the end. Conditional platform implementations are listed separately.
 
-The index contains **584 function definitions** and **124 type declarations** across **48 source files**. Function documentation describes purpose and inputs, with implementation details where they clarify the behavior. Each module lists documented functions first, then its remaining functions and methods.
+The index contains **590 function definitions** and **132 type declarations** across **48 source files**. Function documentation describes purpose and inputs, with implementation details where they clarify the behavior. Each module lists documented functions first, then its remaining functions and methods.
 
 ## Start here
 
@@ -513,9 +513,16 @@ Arrangement discovery and connection of shared movement lowering to optional rou
 
 Electrical links, ports, wire watchers, comparator overrides and fixed geometry.
 
+Types: [`ElectricalCircuit`](../crates/core/src/redpilator/sampled/passes/electrical.rs#L12) (struct).
+
 | Function or method | Purpose |
 | --- | --- |
-| [`run`](../crates/core/src/redpilator/sampled/passes/electrical.rs#L18) | Build the initial program and its electrical dependency records. |
+| [`run`](../crates/core/src/redpilator/sampled/passes/electrical.rs#L23) | Build the initial program and its electrical dependency records. |
+
+Other functions and methods:
+
+- [`discover_repeater_rear_sources`](../crates/core/src/redpilator/sampled/passes/electrical.rs#L295)
+- [`append_wire_sources`](../crates/core/src/redpilator/sampled/passes/electrical.rs#L339)
 
 ### [sampled/passes/finalize.rs](../crates/core/src/redpilator/sampled/passes/finalize.rs)
 
@@ -556,9 +563,15 @@ Interpreter probing for payload departures/arrivals and their ordered callbacks.
 
 Inventory capture and supported-component/entity admission.
 
+Types: [`ParsedCircuit`](../crates/core/src/redpilator/sampled/passes/parse.rs#L15) (struct).
+
 | Function or method | Purpose |
 | --- | --- |
-| [`run`](../crates/core/src/redpilator/sampled/passes/parse.rs#L21) | Capture and validate the circuit inventory before dependency discovery. |
+| [`run`](../crates/core/src/redpilator/sampled/passes/parse.rs#L26) | Capture and validate the circuit inventory before dependency discovery. |
+
+Other functions and methods:
+
+- [`validate_block_entity`](../crates/core/src/redpilator/sampled/passes/parse.rs#L164)
 
 ### [sampled/passes/reactive.rs](../crates/core/src/redpilator/sampled/passes/reactive.rs)
 
@@ -718,26 +731,26 @@ Other functions and methods:
 
 Bounded timing-ring queues plus host tick import/export.
 
-Types: [`Queue`](../crates/core/src/redpilator/sampled/scheduler.rs#L15) (struct), [`Slot`](../crates/core/src/redpilator/sampled/scheduler.rs#L22) (struct), [`Scheduler`](../crates/core/src/redpilator/sampled/scheduler.rs#L33) (struct), [`ScheduledComponentTick`](../crates/core/src/redpilator/sampled/scheduler.rs#L7) (struct).
+Types: [`Queue`](../crates/core/src/redpilator/sampled/scheduler.rs#L21) (struct), [`Slot`](../crates/core/src/redpilator/sampled/scheduler.rs#L28) (struct), [`Scheduler`](../crates/core/src/redpilator/sampled/scheduler.rs#L39) (struct), [`ScheduledComponentTick`](../crates/core/src/redpilator/sampled/scheduler.rs#L7) (struct), [`PendingTick`](../crates/core/src/redpilator/sampled/scheduler.rs#L14) (struct).
 
 | Function or method | Purpose |
 | --- | --- |
-| [`Scheduler::schedule_half_tick`](../crates/core/src/redpilator/sampled/scheduler.rs#L72) | Append a tick to its delay and priority queue, or return an error without scheduling it. |
-| [`Scheduler::pop_first`](../crates/core/src/redpilator/sampled/scheduler.rs#L104) | Remove the next tick in the current half-tick, respecting priority and FIFO order. |
-| [`Scheduler::end_last_tick_move_next`](../crates/core/src/redpilator/sampled/scheduler.rs#L121) | Advance the ring after all ticks in the current half-tick have been drained. |
-| [`Runtime::set_pending_with_capacity`](../crates/core/src/redpilator/sampled/scheduler.rs#L243) | Import host scheduled ticks into the runtime's bounded scheduler. |
+| [`Scheduler::schedule_half_tick`](../crates/core/src/redpilator/sampled/scheduler.rs#L78) | Append a tick to its delay and priority queue, or return an error without scheduling it. |
+| [`Scheduler::pop_first`](../crates/core/src/redpilator/sampled/scheduler.rs#L115) | Remove the next tick in the current half-tick, respecting priority and FIFO order. |
+| [`Scheduler::end_last_tick_move_next`](../crates/core/src/redpilator/sampled/scheduler.rs#L134) | Advance the ring after all ticks in the current half-tick have been drained. |
+| [`Runtime::set_pending_with_capacity`](../crates/core/src/redpilator/sampled/scheduler.rs#L278) | Import host scheduled ticks into the runtime's bounded scheduler. |
 
 Other functions and methods:
 
-- [`Scheduler::new`](../crates/core/src/redpilator/sampled/scheduler.rs#L47)
-- [`Scheduler::reset`](../crates/core/src/redpilator/sampled/scheduler.rs#L57)
-- [`Scheduler::iter`](../crates/core/src/redpilator/sampled/scheduler.rs#L126)
-- [`Runtime::set_pending`](../crates/core/src/redpilator/sampled/scheduler.rs#L222)
-- [`Runtime::pending_entries`](../crates/core/src/redpilator/sampled/scheduler.rs#L274)
-- [`Runtime::has_pending`](../crates/core/src/redpilator/sampled/scheduler.rs#L288)
-- [`Runtime::schedule_tick`](../crates/core/src/redpilator/sampled/scheduler.rs#L293)
-- [`Runtime::schedule_half_tick`](../crates/core/src/redpilator/sampled/scheduler.rs#L297)
-- [`Runtime::pending_position`](../crates/core/src/redpilator/sampled/scheduler.rs#L308)
+- [`Scheduler::new`](../crates/core/src/redpilator/sampled/scheduler.rs#L53)
+- [`Scheduler::reset`](../crates/core/src/redpilator/sampled/scheduler.rs#L63)
+- [`Scheduler::iter`](../crates/core/src/redpilator/sampled/scheduler.rs#L139)
+- [`Runtime::set_pending`](../crates/core/src/redpilator/sampled/scheduler.rs#L257)
+- [`Runtime::pending_entries`](../crates/core/src/redpilator/sampled/scheduler.rs#L309)
+- [`Runtime::has_pending`](../crates/core/src/redpilator/sampled/scheduler.rs#L323)
+- [`Runtime::schedule_tick`](../crates/core/src/redpilator/sampled/scheduler.rs#L328)
+- [`Runtime::schedule_half_tick`](../crates/core/src/redpilator/sampled/scheduler.rs#L332)
+- [`Runtime::pending_position`](../crates/core/src/redpilator/sampled/scheduler.rs#L343)
 
 ### [sampled/shapes.rs](../crates/core/src/redpilator/sampled/shapes.rs)
 
@@ -826,27 +839,27 @@ Other functions and methods:
 
 Command specification encoding, native command-state ownership and effect decoding.
 
-Types: [`Api`](../crates/core/src/redpilator/sampled/llvm/command.rs#L11) (struct), [`State`](../crates/core/src/redpilator/sampled/llvm/command.rs#L54) (struct), [`StringRef`](../crates/core/src/redpilator/sampled/llvm/command.rs#L330) (struct), [`RecipientKind`](../crates/core/src/redpilator/sampled/llvm/command.rs#L336) (enum), [`CommandResult`](../crates/core/src/redpilator/sampled/llvm/command.rs#L343) (enum), [`CommandSpec`](../crates/core/src/redpilator/sampled/llvm/command.rs#L350) (struct), [`CommandBlockMode`](../crates/core/src/redpilator/sampled/llvm/command.rs#L358) (enum), [`CommandBlockRecord`](../crates/core/src/redpilator/sampled/llvm/command.rs#L365) (struct), [`EncodedCommands`](../crates/core/src/redpilator/sampled/llvm/command.rs#L384) (struct), [`EncodedOutputState`](../crates/core/src/redpilator/sampled/llvm/command.rs#L395) (struct), [`CommandTables`](../crates/core/src/redpilator/sampled/llvm/command.rs#L422) (struct).
+Types: [`Api`](../crates/core/src/redpilator/sampled/llvm/command.rs#L11) (struct), [`State`](../crates/core/src/redpilator/sampled/llvm/command.rs#L54) (struct), [`StringRef`](../crates/core/src/redpilator/sampled/llvm/command.rs#L429) (struct), [`RecipientKind`](../crates/core/src/redpilator/sampled/llvm/command.rs#L435) (enum), [`CommandResult`](../crates/core/src/redpilator/sampled/llvm/command.rs#L442) (enum), [`CommandSpec`](../crates/core/src/redpilator/sampled/llvm/command.rs#L449) (struct), [`CommandBlockMode`](../crates/core/src/redpilator/sampled/llvm/command.rs#L457) (enum), [`CommandBlockRecord`](../crates/core/src/redpilator/sampled/llvm/command.rs#L464) (struct), [`EncodedCommands`](../crates/core/src/redpilator/sampled/llvm/command.rs#L483) (struct), [`EncodedOutputState`](../crates/core/src/redpilator/sampled/llvm/command.rs#L494) (struct), [`CommandTables`](../crates/core/src/redpilator/sampled/llvm/command.rs#L521) (struct).
 
 | Function or method | Purpose |
 | --- | --- |
-| [`State::new`](../crates/core/src/redpilator/sampled/llvm/command.rs#L75) | Create and bind native command-block state for a program. |
-| [`State::prepare_tick`](../crates/core/src/redpilator/sampled/llvm/command.rs#L162) | Reserve enough effect output space and update the native clock. |
-| [`State::sync`](../crates/core/src/redpilator/sampled/llvm/command.rs#L201) | Copy checked native command state and effects into the Rust projection. |
-| [`EncodedCommands::serialize_at`](../crates/core/src/redpilator/sampled/llvm/command.rs#L437) | Call with `Instant::now()` immediately before native state creation so compilation and DLL loading time count against the existing output window. |
-| [`spec`](../crates/core/src/redpilator/sampled/llvm/command.rs#L577) | Parse and encode one command block's command result. |
-| [`encode`](../crates/core/src/redpilator/sampled/llvm/command.rs#L617) | Encode every command component in canonical Program order, including blocks without a saved entity. Parse outcomes become native bytecode rather than causing unsupported commands to disappear or reject the Program. |
+| [`State::new`](../crates/core/src/redpilator/sampled/llvm/command.rs#L104) | Create and bind native command-block state for a program. |
+| [`State::prepare_tick`](../crates/core/src/redpilator/sampled/llvm/command.rs#L193) | Reserve enough effect output space and update the native clock. |
+| [`State::sync`](../crates/core/src/redpilator/sampled/llvm/command.rs#L300) | Copy checked native command state and effects into the Rust projection. |
+| [`EncodedCommands::serialize_at`](../crates/core/src/redpilator/sampled/llvm/command.rs#L536) | Call with `Instant::now()` immediately before native state creation so compilation and DLL loading time count against the existing output window. |
+| [`spec`](../crates/core/src/redpilator/sampled/llvm/command.rs#L676) | Parse and encode one command block's command result. |
+| [`encode`](../crates/core/src/redpilator/sampled/llvm/command.rs#L716) | Encode every command component in canonical Program order, including blocks without a saved entity. Parse outcomes become native bytecode rather than causing unsupported commands to disappear or reject the Program. |
 
 Other functions and methods:
 
 - [`Api::load`](../crates/core/src/redpilator/sampled/llvm/command.rs#L31)
-- [`State::text`](../crates/core/src/redpilator/sampled/llvm/command.rs#L189)
-- [`State::acknowledge`](../crates/core/src/redpilator/sampled/llvm/command.rs#L316)
-- [`invalid`](../crates/core/src/redpilator/sampled/llvm/command.rs#L544)
-- [`id`](../crates/core/src/redpilator/sampled/llvm/command.rs#L551)
-- [`add_string`](../crates/core/src/redpilator/sampled/llvm/command.rs#L555)
-- [`recipient`](../crates/core/src/redpilator/sampled/llvm/command.rs#L564)
-- [`mode`](../crates/core/src/redpilator/sampled/llvm/command.rs#L601)
+- [`State::text`](../crates/core/src/redpilator/sampled/llvm/command.rs#L288)
+- [`State::acknowledge`](../crates/core/src/redpilator/sampled/llvm/command.rs#L415)
+- [`invalid`](../crates/core/src/redpilator/sampled/llvm/command.rs#L643)
+- [`id`](../crates/core/src/redpilator/sampled/llvm/command.rs#L650)
+- [`add_string`](../crates/core/src/redpilator/sampled/llvm/command.rs#L654)
+- [`recipient`](../crates/core/src/redpilator/sampled/llvm/command.rs#L663)
+- [`mode`](../crates/core/src/redpilator/sampled/llvm/command.rs#L700)
 
 ### [sampled/llvm/command_engine.c](../crates/core/src/redpilator/sampled/llvm/command_engine.c)
 
@@ -897,13 +910,17 @@ Other functions and methods:
 
 Native command-output notification tables.
 
+Types: [`CommandNotifications`](../crates/core/src/redpilator/sampled/llvm/command_notifications.rs#L9) (struct), [`NotificationTarget`](../crates/core/src/redpilator/sampled/llvm/command_notifications.rs#L14) (struct).
+
 | Function or method | Purpose |
 | --- | --- |
-| [`encode`](../crates/core/src/redpilator/sampled/llvm/command_notifications.rs#L15) | Encode native callbacks caused by command-block output changes. |
+| [`encode`](../crates/core/src/redpilator/sampled/llvm/command_notifications.rs#L43) | Encode native callbacks caused by command-block output changes. |
 
 Other functions and methods:
 
 - [`id`](../crates/core/src/redpilator/sampled/llvm/command_notifications.rs#L5)
+- [`NotificationTarget::encode`](../crates/core/src/redpilator/sampled/llvm/command_notifications.rs#L21)
+- [`captured_block_at`](../crates/core/src/redpilator/sampled/llvm/command_notifications.rs#L30)
 
 ### [sampled/llvm/effects.rs](../crates/core/src/redpilator/sampled/llvm/effects.rs)
 
@@ -922,24 +939,25 @@ Other functions and methods:
 
 Versioned little-endian program encoding and blob validation.
 
-Types: [`LlvmProgram`](../crates/core/src/redpilator/sampled/llvm/encoding.rs#L11) (struct).
+Types: [`LlvmProgram`](../crates/core/src/redpilator/sampled/llvm/encoding.rs#L11) (struct), [`NativeOperation`](../crates/core/src/redpilator/sampled/llvm/encoding.rs#L16) (struct), [`NativeComponentState`](../crates/core/src/redpilator/sampled/llvm/encoding.rs#L21) (struct).
 
 | Function or method | Purpose |
 | --- | --- |
-| [`LlvmProgram::encode`](../crates/core/src/redpilator/sampled/llvm/encoding.rs#L34) | Serialize a validated program into the native little-endian ABI. |
-| [`encode_comparators`](../crates/core/src/redpilator/sampled/llvm/encoding.rs#L119) | Write native comparator modes, overrides and initial outputs. |
-| [`encode_aux`](../crates/core/src/redpilator/sampled/llvm/encoding.rs#L161) | Assemble the versioned program's auxiliary tables. |
-| [`validate_blob`](../crates/core/src/redpilator/sampled/llvm/encoding.rs#L257) | Validate a serialized native program before exposing its tables. |
-| [`component_state`](../crates/core/src/redpilator/sampled/llvm/encoding.rs#L464) | Encode a block's native component kind and mutable state byte. |
+| [`LlvmProgram::encode`](../crates/core/src/redpilator/sampled/llvm/encoding.rs#L44) | Serialize a validated program into the native little-endian ABI. |
+| [`encode_comparators`](../crates/core/src/redpilator/sampled/llvm/encoding.rs#L134) | Write native comparator modes, overrides and initial outputs. |
+| [`encode_aux`](../crates/core/src/redpilator/sampled/llvm/encoding.rs#L179) | Assemble the versioned program's auxiliary tables. |
+| [`validate_blob`](../crates/core/src/redpilator/sampled/llvm/encoding.rs#L275) | Validate a serialized native program before exposing its tables. |
+| [`component_state`](../crates/core/src/redpilator/sampled/llvm/encoding.rs#L484) | Encode a block's native component kind and mutable state byte. |
 
 Other functions and methods:
 
-- [`LlvmProgram::into_aligned_blob`](../crates/core/src/redpilator/sampled/llvm/encoding.rs#L17)
-- [`encode_notification`](../crates/core/src/redpilator/sampled/llvm/encoding.rs#L233)
-- [`encode_operation`](../crates/core/src/redpilator/sampled/llvm/encoding.rs#L438)
-- [`put_u32`](../crates/core/src/redpilator/sampled/llvm/encoding.rs#L489)
-- [`read_u32`](../crates/core/src/redpilator/sampled/llvm/encoding.rs#L494)
-- [`overflow`](../crates/core/src/redpilator/sampled/llvm/encoding.rs#L498)
+- [`LlvmProgram::into_aligned_blob`](../crates/core/src/redpilator/sampled/llvm/encoding.rs#L27)
+- [`encode_notification`](../crates/core/src/redpilator/sampled/llvm/encoding.rs#L251)
+- [`encode_operation`](../crates/core/src/redpilator/sampled/llvm/encoding.rs#L457)
+- [`put_u32`](../crates/core/src/redpilator/sampled/llvm/encoding.rs#L510)
+- [`read_u32`](../crates/core/src/redpilator/sampled/llvm/encoding.rs#L514)
+- [`overflow`](../crates/core/src/redpilator/sampled/llvm/encoding.rs#L518)
+- [`encode_comparator_override`](../crates/core/src/redpilator/sampled/llvm/encoding.rs#L150)
 
 ### [sampled/llvm/engine.c](../crates/core/src/redpilator/sampled/llvm/engine.c)
 
@@ -1130,7 +1148,7 @@ Native movement-table encoding and checked state projection into Rust.
 | Function or method | Purpose |
 | --- | --- |
 | [`encode_movement`](../crates/core/src/redpilator/sampled/llvm/movement.rs#L32) | Serialize movement groups, payloads and callback plans for native execution. |
-| [`super::LlvmRuntime::sync`](../crates/core/src/redpilator/sampled/llvm/movement.rs#L201) | Synchronize a checked native movement snapshot into the Rust projection. |
+| [`super::LlvmRuntime::sync`](../crates/core/src/redpilator/sampled/llvm/movement.rs#L213) | Synchronize a checked native movement snapshot into the Rust projection. |
 
 Other functions and methods:
 
@@ -1138,8 +1156,8 @@ Other functions and methods:
 - [`optional`](../crates/core/src/redpilator/sampled/llvm/movement.rs#L9)
 - [`source`](../crates/core/src/redpilator/sampled/llvm/movement.rs#L12)
 - [`range`](../crates/core/src/redpilator/sampled/llvm/movement.rs#L22)
-- [`super::LlvmRuntime::sync_projection`](../crates/core/src/redpilator/sampled/llvm/movement.rs#L187)
-- [`super::LlvmRuntime::sync_publication`](../crates/core/src/redpilator/sampled/llvm/movement.rs#L191)
+- [`super::LlvmRuntime::sync_projection`](../crates/core/src/redpilator/sampled/llvm/movement.rs#L199)
+- [`super::LlvmRuntime::sync_publication`](../crates/core/src/redpilator/sampled/llvm/movement.rs#L203)
 
 ### [sampled/llvm/publication.rs](../crates/core/src/redpilator/sampled/llvm/publication.rs)
 
@@ -1154,14 +1172,16 @@ Checked control/output component and queued-effect transfers without a full runt
 
 Native encoding of wire and reader routing tables.
 
+Types: [`EncodedPorts`](../crates/core/src/redpilator/sampled/llvm/routing.rs#L15) (struct).
+
 | Function or method | Purpose |
 | --- | --- |
-| [`local`](../crates/core/src/redpilator/sampled/llvm/routing.rs#L15) | Encode one local connectivity lookup table. |
-| [`encode`](../crates/core/src/redpilator/sampled/llvm/routing.rs#L49) | Serialize the optional wire-routing graph. |
+| [`encode_local_table`](../crates/core/src/redpilator/sampled/llvm/routing.rs#L30) | Encode one local connectivity lookup table. |
+| [`encode`](../crates/core/src/redpilator/sampled/llvm/routing.rs#L72) | Serialize the optional wire-routing graph. |
 
 Other functions and methods:
 
-- [`id`](../crates/core/src/redpilator/sampled/llvm/routing.rs#L5)
+- [`id`](../crates/core/src/redpilator/sampled/llvm/routing.rs#L20)
 
 ### [sampled/llvm/shapes.rs](../crates/core/src/redpilator/sampled/llvm/shapes.rs)
 

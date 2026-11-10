@@ -9,6 +9,11 @@ use crate::world::World;
 use mchprs_blocks::{BlockPos, block_entities::BlockEntity, blocks::Block};
 use std::collections::HashMap;
 
+pub(in super::super) struct ElectricalCircuit<'a> {
+    pub(in super::super) program: Program,
+    pub(in super::super) probe_indexes: ProbeIndexes<'a>,
+}
+
 /// Build the initial program and its electrical dependency records.
 ///
 /// Inputs: The captured context, isolated scratch world, parsed inventory, position index and phase reporter.
@@ -21,7 +26,7 @@ pub(in super::super) fn run<'a>(
     inventory: Inventory,
     position_index: &'a HashMap<BlockPos, usize>,
     phases: &mut CompilePhases<'_>,
-) -> Result<(Program, ProbeIndexes<'a>), ScratchError> {
+) -> Result<ElectricalCircuit<'a>, ScratchError> {
     let world = context.world;
     let bounds = context.bounds;
     let monitor = context.monitor;
@@ -76,42 +81,9 @@ pub(in super::super) fn run<'a>(
             check_cancelled(monitor)?;
             let pos = positions[record.component];
             let Block::RedstoneRepeater { repeater } = world.get_block(pos) else {
-                unreachable!()
+                unreachable!("parsed repeater records must refer to repeaters")
             };
-            let face = repeater.facing.block_face();
-            let rear = pos.offset(face);
-            let block = scratch.world().get_block(rear);
-            if matches!(block, Block::RedstoneWire { .. }) {
-                for mut source in crate::redpilator::scratch::discover_wire_sources(scratch.world(), &[rear])? {
-                    source.wire = pos;
-                    dependencies.push(source);
-                }
-            } else if block.is_solid() {
-                for side in mchprs_blocks::BlockFace::values() {
-                    let at = rear.offset(side);
-                    let source = scratch.world().get_block(at);
-                    if crate::redstone::power::emits_strong_power(source, scratch.world(), at, side, true) {
-                        if matches!(source, Block::RedstoneWire { .. }) {
-                            for mut source in crate::redpilator::scratch::discover_wire_sources(scratch.world(), &[at])? {
-                                source.wire = pos;
-                                dependencies.push(source);
-                            }
-                            continue;
-                        }
-                        dependencies.push(crate::redpilator::scratch::WireSource {
-                            wire: pos,
-                            source: at,
-                            attenuation: 0,
-                        });
-                    }
-                }
-            } else if crate::redstone::power::emits_weak_power(block, scratch.world(), rear, face, true) {
-                dependencies.push(crate::redpilator::scratch::WireSource {
-                    wire: pos,
-                    source: rear,
-                    attenuation: 0,
-                });
-            }
+            discover_repeater_rear_sources(scratch.world(), pos, repeater.facing.block_face(), &mut dependencies)?;
             for side in [repeater.facing.rotate(), repeater.facing.rotate_ccw()] {
                 let at = pos.offset(side.block_face());
                 let block = world.get_block(at);
@@ -125,7 +97,11 @@ pub(in super::super) fn run<'a>(
                     if !matches!(block, Block::RedstoneRepeater { .. } | Block::RedstoneComparator { .. }) {
                         return Err(error(at, "unsupported repeater side source"));
                     }
-                    record.side_sources.as_mut().unwrap().push(source);
+                    record
+                        .side_sources
+                        .as_mut()
+                        .expect("parsed repeaters have dynamic side inputs")
+                        .push(source);
                 }
             }
         }
@@ -312,5 +288,63 @@ pub(in super::super) fn run<'a>(
             }
         }
     }
-    Ok((program, probe_indexes))
+    Ok(ElectricalCircuit { program, probe_indexes })
+}
+
+/// Discover power reaching a repeater directly or through its rear support block.
+fn discover_repeater_rear_sources(
+    world: &impl World,
+    repeater_pos: BlockPos,
+    rear_face: mchprs_blocks::BlockFace,
+    dependencies: &mut Vec<crate::redpilator::scratch::WireSource>,
+) -> Result<(), ScratchError> {
+    use crate::redpilator::scratch::WireSource;
+    use crate::redstone::power::{emits_strong_power, emits_weak_power};
+
+    let rear_pos = repeater_pos.offset(rear_face);
+    let rear_block = world.get_block(rear_pos);
+    if matches!(rear_block, Block::RedstoneWire { .. }) {
+        return append_wire_sources(world, rear_pos, repeater_pos, dependencies);
+    }
+    if !rear_block.is_solid() {
+        if emits_weak_power(rear_block, world, rear_pos, rear_face, true) {
+            dependencies.push(WireSource {
+                wire: repeater_pos,
+                source: rear_pos,
+                attenuation: 0,
+            });
+        }
+        return Ok(());
+    }
+
+    for face in mchprs_blocks::BlockFace::values() {
+        let source_pos = rear_pos.offset(face);
+        let source_block = world.get_block(source_pos);
+        if !emits_strong_power(source_block, world, source_pos, face, true) {
+            continue;
+        }
+        if matches!(source_block, Block::RedstoneWire { .. }) {
+            append_wire_sources(world, source_pos, repeater_pos, dependencies)?;
+        } else {
+            dependencies.push(WireSource {
+                wire: repeater_pos,
+                source: source_pos,
+                attenuation: 0,
+            });
+        }
+    }
+    Ok(())
+}
+
+fn append_wire_sources(
+    world: &impl World,
+    wire_pos: BlockPos,
+    receiver_pos: BlockPos,
+    dependencies: &mut Vec<crate::redpilator::scratch::WireSource>,
+) -> Result<(), ScratchError> {
+    for mut source in crate::redpilator::scratch::discover_wire_sources(world, &[wire_pos])? {
+        source.wire = receiver_pos;
+        dependencies.push(source);
+    }
+    Ok(())
 }

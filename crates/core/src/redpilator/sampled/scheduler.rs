@@ -11,6 +11,12 @@ pub(super) struct ScheduledComponentTick {
     pub(super) block_type: Option<u32>,
 }
 
+pub(super) struct PendingTick<'a> {
+    pub(super) tick: &'a ScheduledComponentTick,
+    pub(super) delay_half_ticks: usize,
+    pub(super) priority: TickPriority,
+}
+
 #[derive(Clone, Copy, Default)]
 struct Queue {
     /// first slot in this FIFO chain, encoded as its index plus one.
@@ -38,7 +44,7 @@ pub(super) struct Scheduler {
     /// ring buckets by delay and native tick priority.
     queues: [[Queue; TickPriority::COUNT]; NUM_QUEUES],
     /// current ring position representing this tick's delay-zero queue.
-    pos: usize,
+    current_bucket: usize,
     /// maximum number of allocated slot records accepted by this scheduler.
     limit: usize,
 }
@@ -49,7 +55,7 @@ impl Scheduler {
             slots: Vec::with_capacity(limit),
             free: None,
             queues: [[Queue::default(); TickPriority::COUNT]; NUM_QUEUES],
-            pos: 0,
+            current_bucket: 0,
             limit,
         }
     }
@@ -59,7 +65,7 @@ impl Scheduler {
         self.slots.reserve(limit);
         self.free = None;
         self.queues = [[Queue::default(); TickPriority::COUNT]; NUM_QUEUES];
-        self.pos = 0;
+        self.current_bucket = 0;
         self.limit = limit;
     }
 
@@ -69,8 +75,13 @@ impl Scheduler {
     ///
     /// Validate delay, reuse a free slot or allocate below the limit, then append the slot to the selected
     /// FIFO chain in the timing ring.
-    pub(super) fn schedule_half_tick(&mut self, tick: ScheduledComponentTick, delay: usize, priority: TickPriority) -> Result<(), &'static str> {
-        if delay >= NUM_QUEUES || (delay == 0 && priority != TickPriority::NanoTick) {
+    pub(super) fn schedule_half_tick(
+        &mut self,
+        tick: ScheduledComponentTick,
+        delay_half_ticks: usize,
+        priority: TickPriority,
+    ) -> Result<(), &'static str> {
+        if delay_half_ticks >= NUM_QUEUES || (delay_half_ticks == 0 && priority != TickPriority::NanoTick) {
             return Err("invalid runtime scheduled delay or priority");
         }
 
@@ -83,9 +94,9 @@ impl Scheduler {
                 return Err("runtime scheduled tick capacity exceeded");
             }
             self.slots.push(Slot { tick, next: None });
-            NonZeroUsize::new(self.slots.len()).unwrap()
+            NonZeroUsize::new(self.slots.len()).expect("a newly pushed slot has a nonzero one-based index")
         };
-        let queue = &mut self.queues[(self.pos + delay) % NUM_QUEUES][priority as usize];
+        let queue = &mut self.queues[(self.current_bucket + delay_half_ticks) % NUM_QUEUES][priority as usize];
         if let Some(last) = queue.last {
             self.slots[last.get() - 1].next = Some(slot);
         } else {
@@ -102,35 +113,41 @@ impl Scheduler {
     /// Select the first nonempty priority queue, detach its head, repair the tail when emptied, and return
     /// the slot to the free list.
     pub(super) fn pop_first(&mut self) -> Option<ScheduledComponentTick> {
-        for queue in &mut self.queues[self.pos] {
-            if let Some(slot) = queue.first {
-                queue.first = self.slots[slot.get() - 1].next;
-                if queue.first.is_none() {
-                    queue.last = None;
-                }
-                let tick = self.slots[slot.get() - 1].tick;
-                self.slots[slot.get() - 1].next = self.free;
-                self.free = Some(slot);
-                return Some(tick);
+        for queue in &mut self.queues[self.current_bucket] {
+            let Some(slot_id) = queue.first else {
+                continue;
+            };
+            let slot = &mut self.slots[slot_id.get() - 1];
+            queue.first = slot.next;
+            if queue.first.is_none() {
+                queue.last = None;
             }
+            let tick = slot.tick;
+            slot.next = self.free;
+            self.free = Some(slot_id);
+            return Some(tick);
         }
         None
     }
 
     /// Advance the ring after all ticks in the current half-tick have been drained.
     pub(super) fn end_last_tick_move_next(&mut self) {
-        debug_assert!(self.queues[self.pos].iter().all(|queue| queue.first.is_none()));
-        self.pos = (self.pos + 1) % NUM_QUEUES;
+        debug_assert!(self.queues[self.current_bucket].iter().all(|queue| queue.first.is_none()));
+        self.current_bucket = (self.current_bucket + 1) % NUM_QUEUES;
     }
 
-    pub(super) fn iter(&self) -> impl Iterator<Item = (&ScheduledComponentTick, usize, TickPriority)> {
-        (0..NUM_QUEUES).flat_map(move |delay| {
+    pub(super) fn iter(&self) -> impl Iterator<Item = PendingTick<'_>> {
+        (0..NUM_QUEUES).flat_map(move |delay_half_ticks| {
             TickPriority::ALL.into_iter().flat_map(move |priority| {
-                let mut slot = self.queues[(self.pos + delay) % NUM_QUEUES][priority as usize].first;
+                let mut slot = self.queues[(self.current_bucket + delay_half_ticks) % NUM_QUEUES][priority as usize].first;
                 std::iter::from_fn(move || {
                     let current = slot?;
                     slot = self.slots[current.get() - 1].next;
-                    Some((&self.slots[current.get() - 1].tick, delay, priority))
+                    Some(PendingTick {
+                        tick: &self.slots[current.get() - 1].tick,
+                        delay_half_ticks,
+                        priority,
+                    })
                 })
             })
         })
@@ -149,6 +166,20 @@ mod tests {
         assert_eq!(size_of::<Queue>(), 2 * size_of::<usize>());
         assert_eq!(size_of::<Slot>(), size_of::<ScheduledComponentTick>() + size_of::<usize>());
         assert!(size_of::<Slot>() < size_of::<(ScheduledComponentTick, Option<usize>)>());
+    }
+
+    #[test]
+    fn rejected_delays_leave_queued_work_unchanged() {
+        let mut scheduler = Scheduler::new(1);
+        let tick = ScheduledComponentTick {
+            component: 7,
+            block_type: Some(1),
+        };
+        scheduler.schedule_half_tick(tick, 0, TickPriority::NanoTick).unwrap();
+        assert!(scheduler.schedule_half_tick(tick, 0, TickPriority::Normal).is_err());
+        assert!(scheduler.schedule_half_tick(tick, NUM_QUEUES, TickPriority::NanoTick).is_err());
+        assert_eq!(scheduler.pop_first(), Some(tick));
+        assert_eq!(scheduler.pop_first(), None);
     }
 
     #[test]
@@ -185,7 +216,11 @@ mod tests {
                     }
                 }
             }
-            assert_eq!(compiled.iter().collect::<Vec<_>>(), native.iter().collect::<Vec<_>>());
+            let compiled_entries: Vec<_> = compiled
+                .iter()
+                .map(|entry| (entry.tick, entry.delay_half_ticks, entry.priority))
+                .collect();
+            assert_eq!(compiled_entries, native.iter().collect::<Vec<_>>());
         }
         assert_eq!(compiled.slots.capacity(), 256);
     }
@@ -274,11 +309,11 @@ impl super::Runtime {
     pub(in crate::redpilator) fn pending_entries(&self) -> Vec<mchprs_world::TickEntry> {
         self.pending
             .iter()
-            .map(|(tick, delay, priority)| mchprs_world::TickEntry {
-                pos: self.pending_position(tick.component),
-                block_type: tick.block_type,
-                ticks_left: delay as u32,
-                tick_priority: priority,
+            .map(|entry| mchprs_world::TickEntry {
+                pos: self.pending_position(entry.tick.component),
+                block_type: entry.tick.block_type,
+                ticks_left: entry.delay_half_ticks as u32,
+                tick_priority: entry.priority,
             })
             .collect()
     }
@@ -290,12 +325,12 @@ impl super::Runtime {
         self.pending_counts[tick.component] != 0
     }
 
-    pub(super) fn schedule_tick(&mut self, tick: ScheduledComponentTick, delay: usize, priority: TickPriority) {
-        self.schedule_half_tick(tick, delay * 2, priority);
+    pub(super) fn schedule_tick(&mut self, tick: ScheduledComponentTick, delay_ticks: usize, priority: TickPriority) {
+        self.schedule_half_tick(tick, delay_ticks * 2, priority);
     }
 
-    pub(super) fn schedule_half_tick(&mut self, tick: ScheduledComponentTick, delay: usize, priority: TickPriority) {
-        if let Err(reason) = self.pending.schedule_half_tick(tick, delay, priority) {
+    pub(super) fn schedule_half_tick(&mut self, tick: ScheduledComponentTick, delay_half_ticks: usize, priority: TickPriority) {
+        if let Err(reason) = self.pending.schedule_half_tick(tick, delay_half_ticks, priority) {
             self.failure = Some(ScratchError {
                 position: Some(self.program.positions[tick.component]),
                 reason,

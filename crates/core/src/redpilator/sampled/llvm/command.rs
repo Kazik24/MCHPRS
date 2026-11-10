@@ -153,7 +153,7 @@ impl State {
         if status != 0 {
             return Err(invalid());
         }
-        let (rows, targets) = super::command_notifications::encode(program)?;
+        let super::command_notifications::CommandNotifications { rows, targets } = super::command_notifications::encode(program)?;
         // SAFETY: bind_commands supplies the live engine; encode emits two row words per component and three
         // words per target. Self retains every bound buffer.
         let status = unsafe {

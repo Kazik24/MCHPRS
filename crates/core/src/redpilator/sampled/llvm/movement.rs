@@ -265,7 +265,7 @@ impl super::LlvmRuntime {
         let motion_start = piston_start + pistons;
         let event_end = motion_start + motions * 9 + events * 2;
         for (node, &state) in s[8..token_start].iter().enumerate() {
-            let kind = super::component_state(p.initial[node]).0;
+            let kind = super::component_state(p.initial[node]).kind;
             if state
                 > match kind {
                     4 | 13 => 3,
