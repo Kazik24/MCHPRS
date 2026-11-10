@@ -26,6 +26,10 @@ impl Server {
         drop(listener);
         let process = Command::new(env!("CARGO_BIN_EXE_mroww-redgear-api"))
             .arg(address.to_string())
+            .env(
+                "MCHPRS_LLVM_WORK_DIR",
+                format!("work/api-tests/{}-{}", std::process::id(), address.port()),
+            )
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .spawn()
@@ -127,6 +131,182 @@ fn states(response: &Value) -> BTreeMap<[i64; 3], String> {
 }
 fn powered(response: &Value, pos: [i64; 3]) -> bool {
     states(response).get(&pos).is_some_and(|state| state.contains("powered=true"))
+}
+
+fn describe(client: &mut BufReader<TcpStream>, id: Option<u64>) -> Value {
+    let mut value = json!({"op":"describe","protocol":4});
+    if let Some(id) = id {
+        value["id"] = json!(id);
+    }
+    let response = request(client, value);
+    assert_eq!(response["type"], "manifest", "{response}");
+    assert!(response.get("session_id").is_none());
+    response
+}
+
+#[test]
+fn discovery_advertises_selectable_backends_without_allocating_sessions() {
+    let (_server, mut client) = Server::start();
+    let manifest = describe(&mut client, Some(1));
+    assert_eq!(manifest["engine"], "mroww");
+    assert_eq!(manifest["protocol"], 4);
+    assert_eq!(
+        manifest["limits"],
+        json!({"axis":64,"cells":30000,"ticks":1000000,"inputs":64,"message_bytes":16777216})
+    );
+    let mut expected = vec!["mroww-redpilator", "mroww-interpreter"];
+    if cfg!(any(windows, target_os = "linux")) {
+        expected.push("mroww-llvm");
+    }
+    let mut ids = manifest["backends"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|b| b["id"].as_str().unwrap())
+        .collect::<Vec<_>>();
+    ids.sort_unstable();
+    expected.sort_unstable();
+    assert_eq!(ids, expected);
+    let default = if cfg!(any(windows, target_os = "linux")) {
+        "mroww-llvm"
+    } else {
+        "mroww-redpilator"
+    };
+    assert_eq!(manifest["default_backend"], default);
+    assert!(ids.contains(&default));
+    for id in [Some(1), None, Some(u64::MAX)] {
+        let mut repeated = describe(&mut client, id);
+        repeated["id"] = json!(1);
+        assert_eq!(repeated, manifest);
+    }
+    // Every advertised canonical selector works without client-side flag translation.
+    for backend in manifest["backends"].as_array().unwrap() {
+        let (session, finished) = begin(&mut client, Some(2), backend["id"].as_str().unwrap(), "");
+        assert!(backend["executors"].as_array().unwrap().contains(&finished["backend"]));
+        assert_eq!(backend["capabilities"]["recompile"], false);
+        request(&mut client, json!({"op":"close","session_id":session}));
+    }
+    // Discovery neither consumes session numbers nor reserves any of the four slots.
+    let mut sessions = Vec::new();
+    for _ in 0..4 {
+        sessions.push(begin(&mut client, None, "mroww-interpreter", "").0);
+    }
+    let first_number = manifest["backends"].as_array().unwrap().len() + 1;
+    assert_eq!(sessions[0], format!("s{first_number}"));
+    assert_eq!(describe(&mut client, Some(1)), manifest);
+    let full = request(&mut client, begin_request(Some(2), "mroww-interpreter", ""));
+    assert_eq!(full["code"], "resource_limit");
+}
+
+#[test]
+fn discovery_errors_and_session_discovery_preserve_ticks_inputs_and_projections() {
+    let (_server, mut client) = Server::start();
+    for protocol in [json!(3), json!(5)] {
+        let response = request(&mut client, json!({"id":1,"op":"describe","protocol":protocol}));
+        assert_eq!(response["code"], "unsupported_protocol");
+        assert!(response.get("session_id").is_none());
+    }
+    for protocol in [Value::Null, json!("4"), json!(4.5)] {
+        let response = request(&mut client, json!({"id":1,"op":"describe","protocol":protocol}));
+        assert_eq!(response["code"], "invalid_request");
+    }
+    assert_eq!(request(&mut client, json!({"op":"describe"}))["code"], "invalid_request");
+    send(&mut client, json!({"id":"bad","op":"describe","protocol":4}));
+    let malformed = receive(&mut client);
+    assert_eq!(malformed["code"], "invalid_request");
+    assert!(malformed.get("id").is_none());
+    let manifest = describe(&mut client, Some(1));
+    let (session, _) = begin(&mut client, Some(2), "mroww-interpreter", "");
+    assert_eq!(session, "s1");
+    project(&mut client, &session, "baseline");
+    advance(&mut client, &session, 2, json!([{"pos":[0,1,0],"duration_ticks":3}]), false);
+    assert_eq!(describe(&mut client, Some(1)), manifest);
+    let delta = project(&mut client, &session, "changes");
+    assert_eq!(delta["tick"], 2);
+    assert!(powered(&delta, [0, 1, 0]), "discovery must not consume the pending projection");
+    describe(&mut client, None);
+    assert!(states(&project(&mut client, &session, "changes")).is_empty());
+    let released = advance(&mut client, &session, 1, json!([]), true);
+    assert_eq!(released["tick"], 3);
+    assert!(states(&released)[&[0, 1, 0]].contains("powered=false"));
+    for invalid in [
+        json!({"op":"advance","session_id":session,"ticks":manifest["limits"]["ticks"].as_u64().unwrap()+1,"inputs":[]}),
+        json!({"op":"advance","session_id":session,"ticks":0,"inputs":vec![json!({"pos":[0,1,0]}); manifest["limits"]["inputs"].as_u64().unwrap() as usize+1]}),
+    ] {
+        assert_eq!(request(&mut client, invalid)["type"], "error");
+    }
+    assert_eq!(project(&mut client, &session, "changes")["tick"], 3);
+}
+
+#[test]
+fn discovery_during_preparation_obeys_outstanding_ids() {
+    let (_server, mut client) = Server::start();
+    send(&mut client, begin_request(Some(1), "mroww-redpilator", ""));
+    let accepted = receive(&mut client);
+    assert_eq!(accepted["type"], "accepted");
+    // One write makes the reused ID arrive while preparation is still outstanding.
+    writeln!(
+        client.get_mut(),
+        "{}\n{}",
+        json!({"id":1,"op":"describe","protocol":4}),
+        json!({"id":2,"op":"describe","protocol":4})
+    )
+    .unwrap();
+    client.get_mut().flush().unwrap();
+    let mut terminal = false;
+    let mut duplicate = false;
+    let mut manifest = false;
+    while !terminal || !duplicate || !manifest {
+        let value = receive(&mut client);
+        match value["type"].as_str().unwrap() {
+            "progress" => assert_eq!(value["session_id"], accepted["session_id"]),
+            "finished" => {
+                assert!(!terminal);
+                terminal = true;
+            }
+            "error" => {
+                assert_eq!(value["id"], 1);
+                assert_eq!(value["code"], "invalid_request");
+                duplicate = true;
+            }
+            "manifest" if value["id"] == 1 => {
+                // A fast compilation may already have released ID 1 before discovery is read.
+                assert!(terminal);
+                duplicate = true;
+            }
+            "manifest" => {
+                assert_eq!(value["id"], 2);
+                assert!(value.get("session_id").is_none());
+                manifest = true;
+            }
+            _ => panic!("{value}"),
+        }
+    }
+}
+
+#[test]
+fn discovery_message_limit_includes_the_terminating_newline() {
+    let (server, mut client) = Server::start();
+    let manifest = describe(&mut client, None);
+    let limit = manifest["limits"]["message_bytes"].as_u64().unwrap() as usize;
+    let prefix = "{\"op\":\"describe\",\"protocol\":4,\"padding\":\"";
+    let suffix = "\"}\n";
+    let payload = format!("{prefix}{}{suffix}", "x".repeat(limit - prefix.len() - suffix.len()));
+    assert_eq!(payload.len(), limit);
+    client.get_mut().write_all(payload.as_bytes()).unwrap();
+    assert_eq!(receive(&mut client), manifest);
+    let mut oversized = server.connect();
+    let _ = oversized.get_mut().write_all(payload.trim_end_matches('\n').as_bytes());
+    let _ = oversized.get_mut().write_all(b" \n");
+    let mut line = String::new();
+    match oversized.read_line(&mut line) {
+        Ok(count) => assert_eq!(count, 0),
+        Err(e) => assert!(
+            matches!(e.kind(), std::io::ErrorKind::ConnectionReset | std::io::ErrorKind::ConnectionAborted),
+            "{e}"
+        ),
+    }
+    assert_eq!(describe(&mut client, None), manifest);
 }
 
 #[test]

@@ -16,7 +16,13 @@ The current adapter limits each message to 16 MiB, including its terminating new
 
 ## Requests, sessions and identifiers
 
-The first request on a connection is `begin`. It performs the protocol handshake, supplies a schematic and settings, and starts compilation. No separate `rawr` message is required.
+The first request on a connection can be `describe` or `begin`. Discovery is optional for clients and required for every v4 server. A direct `begin` performs the protocol handshake, supplies a schematic and settings, and starts compilation. No separate `rawr` message is required.
+
+The terminology is:
+
+- **Engine**: service identity, such as `mroww`.
+- **Backend**: an opaque selectable implementation ID, sent unchanged in `begin.backend`.
+- **Executor**: the reported execution implementation, such as `rust`, `llvm`, or `interpreter`. Executor names are informational and opaque to clients.
 
 A connection can own multiple sessions. The server assigns each session an opaque `session_id`; the client uses it in subsequent requests. Session IDs are scoped to the connection. Disconnecting cancels its active compilations and releases its sessions.
 
@@ -24,7 +30,54 @@ A connection can own multiple sessions. The server assigns each session an opaqu
 
 When sending `begin` without an `id`, wait for its `accepted` or error response before sending another `begin` without an `id`. This makes it possible to match an acknowledgment to its request. For other requests without an `id`, wait for the response before sending another request for that session.
 
-Requests for a session execute in order. Different sessions may compile and run concurrently. While a session is compiling, operations other than `close` receive a `session_busy` error. An implementation may enforce resource limits and must report rejected requests with an error rather than silently starting a partial session.
+Requests for a session execute in order. Different sessions may compile and run concurrently. While a session is compiling, session operations other than `close` receive a `session_busy` error. Connection-level `describe` remains available. An implementation may enforce resource limits and must report rejected requests with an error rather than silently starting a partial session.
+
+## Discover available backends
+
+Clients can ask for a manifest before starting a session, repeatedly, or while sessions are compiling or running:
+
+```json
+{"id":1,"op":"describe","protocol":4}
+```
+
+Example response on a Windows or Linux build:
+
+```json
+{
+  "type":"manifest",
+  "id":1,
+  "protocol":4,
+  "engine":"mroww",
+  "default_backend":"mroww-llvm",
+  "backends":[
+    {"id":"mroww-redpilator","executors":["rust"],"capabilities":{"recompile":false}},
+    {"id":"mroww-llvm","executors":["llvm"],"capabilities":{"recompile":false}},
+    {"id":"mroww-interpreter","executors":["interpreter"],"capabilities":{"recompile":false}}
+  ],
+  "limits":{"axis":64,"cells":30000,"ticks":1000000,"inputs":64,"message_bytes":16777216}
+}
+```
+
+| Field | Meaning |
+| --- | --- |
+| `type` | `manifest`. Exactly one response, with no `accepted`, `progress`, or `finished` messages. |
+| `id` | Echoes the optional request ID; omitted when the request omits it. Normal outstanding-request ID rules apply. |
+| `protocol` | The integer `4`. |
+| `engine` | Service identity. |
+| `default_backend` | A canonical ID present in `backends`. MROWW selects `mroww-llvm` when supported by the build, otherwise `mroww-redpilator`. This recommendation does not change explicit backend requests or enable automatic execution fallback. |
+| `backends` | Available canonical selectable backend IDs. Compatibility and typo aliases are omitted. |
+| `backends[].id` | Opaque string usable directly as `begin.backend`. |
+| `backends[].executors` | Informational opaque executor names; clients must not translate them into compiler flags. |
+| `backends[].capabilities` | Implementation capabilities. `recompile` means atomic recompilation is supported; it does not promise every edit will succeed. An omitted capability means false. `accepted` remains authoritative for each session. |
+| `limits` | Positive integer hard ceilings: maximum schematic axis length and total cells, ticks and inputs per `advance`, and UTF-8 bytes per message including its terminating newline. |
+
+Discovery allocates no session or compilation capacity, imports no schematic, advances no ticks, and does not alter any projection reference. It neither requires nor returns `session_id`. It also works when all session slots are occupied.
+
+MROWW advertises Rust and interpreter backends on every build. It advertises LLVM only on Windows and Linux, matching its native runtime loader and the availability check used by `begin`. Native tool or library preparation and circuit-specific compilation can still fail during `begin`; discovery does not compile or probe a schematic. Canonical IDs from the manifest are accepted directly by `begin`, whose backend-owned settings validation still applies.
+
+Clients remain engine-independent: backend IDs and settings are sent unchanged, and discovery supplies availability checks and completion candidates. Clients must tolerate unknown fields, backend IDs, executor names, and capability keys. The MROWW selectors, aliases and compiler flags below describe server behavior, not client-side translation rules.
+
+An unsupported integer protocol receives `unsupported_protocol`. Missing or malformed `protocol` and invalid request IDs receive `invalid_request` through the normal error handling. Discovery errors have no `session_id` and leave existing sessions unchanged.
 
 ## Start a session
 
@@ -50,7 +103,7 @@ The client sends:
 | `mroww-llvm` | Redpilator with the LLVM executor. `--llvm` need not also appear in settings. |
 | `mroww-interpreter` | Physical interpreter. Requires empty settings. |
 | `mroww-interpteter` | Accepted alias for `mroww-interpreter`. |
-| `redpilator` | Compatibility selector used by the RedGear client. Uses Rust by default and LLVM when settings contain `--llvm`. |
+| `redpilator` | Legacy compatibility selector. Uses Rust by default and LLVM when settings contain `--llvm`. Not advertised by discovery. |
 
 Settings use the existing Redpilator option syntax, for example `""`, `"--publish-io"`, or `"--llvm --publish-io"`. Unknown or conflicting settings are errors. The string is parsed as options; it is not executed as a shell command. Selectors choose the simulation implementation; the server identity in `accepted` remains `mroww`.
 

@@ -18,6 +18,47 @@ const MAX_CELLS: u32 = 30_000;
 const MAX_CLIENTS: usize = 4;
 const MAX_SESSIONS: usize = 4;
 const MAX_TICKS: u64 = 1_000_000;
+const MAX_INPUTS: usize = 64;
+const MAX_AXIS: u32 = 64;
+const BACKENDS: [(&str, &str); 3] = [("mroww-redpilator", "rust"), ("mroww-llvm", "llvm"), ("mroww-interpreter", "interpreter")];
+
+fn executor_available(executor: &str) -> bool {
+    match executor {
+        "rust" | "interpreter" => true,
+        // Matches the platform-specific native loader in redpilator/sampled/llvm/library.rs.
+        "llvm" => cfg!(any(windows, target_os = "linux")),
+        _ => false,
+    }
+}
+
+fn capabilities() -> Value {
+    json!({"recompile":false})
+}
+
+fn default_backend() -> &'static str {
+    if executor_available("llvm") { "mroww-llvm" } else { "mroww-redpilator" }
+}
+
+fn describe(request: &Value) -> ApiResult<Value> {
+    let protocol = request["protocol"]
+        .as_u64()
+        .ok_or_else(|| error("invalid_request", "protocol must be an unsigned integer"))?;
+    if protocol != 4 {
+        return Err(error("unsupported_protocol", "Protocol 4 is required"));
+    }
+    let backends: Vec<_> = BACKENDS
+        .iter()
+        .filter(|(_, executor)| executor_available(executor))
+        .map(|(id, executor)| json!({"id":id,"executors":[executor],"capabilities":capabilities()}))
+        .collect();
+    let mut manifest = json!({
+        "type":"manifest", "protocol":4, "engine":"mroww", "default_backend":default_backend(),
+        "backends":backends,
+        "limits":{"axis":MAX_AXIS,"cells":MAX_CELLS,"ticks":MAX_TICKS,"inputs":MAX_INPUTS,"message_bytes":MAX_MESSAGE}
+    });
+    identify(&mut manifest, request, None);
+    Ok(manifest)
+}
 
 struct ApiError {
     code: &'static str,
@@ -167,7 +208,7 @@ impl Simulation {
             .ok_or_else(|| error("invalid_request", "Tick count overflow"))?;
         let inputs = request["inputs"]
             .as_array()
-            .filter(|a| a.len() <= 64)
+            .filter(|a| a.len() <= MAX_INPUTS)
             .ok_or_else(|| error("invalid_input", "Inputs must be an array of at most 64 actions"))?;
         let mut parsed = Vec::new();
         let mut actions = Vec::new();
@@ -332,6 +373,9 @@ fn parse_begin(request: &Value) -> ApiResult<Begin> {
         }
         _ => return Err(error("invalid_request", "Unknown backend selector")),
     };
+    if !executor_available(executor) {
+        return Err(error("unsupported_backend", "Selected backend is unavailable in this build"));
+    }
     Ok(Begin { encoded, options, executor })
 }
 enum Command {
@@ -352,6 +396,9 @@ fn compile(begin: Begin, monitor: Arc<TaskMonitor>) -> ApiResult<Simulation> {
         .decode(&begin.encoded)
         .map_err(|_| error("invalid_schematic", "Invalid schematic Base64"))?;
     let (mut session, size) = Session::from_sponge_schematic(&bytes, MAX_CELLS).map_err(|e| error("invalid_schematic", format!("{e:#}")))?;
+    if size.iter().any(|axis| *axis > MAX_AXIS) {
+        return Err(error("invalid_schematic", "Schematic exceeds the axis limit"));
+    }
     let original: HashMap<_, _> = session.original_blocks().iter().copied().collect();
     if monitor.cancelled() {
         return Err(error("cancelled", "Compilation cancelled"));
@@ -515,6 +562,13 @@ fn serve(stream: TcpStream) -> std::io::Result<()> {
                     continue;
                 }
             }
+            if request["op"] == "describe" {
+                match describe(&request) {
+                    Ok(manifest) => output.send(&manifest, true)?,
+                    Err(e) => output.failure(&request, None, e, true),
+                }
+                continue;
+            }
             if request["op"] == "begin" {
                 let begin = match parse_begin(&request) {
                     Ok(v) => v,
@@ -529,7 +583,7 @@ fn serve(stream: TcpStream) -> std::io::Result<()> {
                 }
                 let session = format!("s{next_session}");
                 next_session += 1;
-                let mut accepted = json!({"type":"accepted", "protocol":4, "engine":"mroww", "capabilities":{"recompile":false}});
+                let mut accepted = json!({"type":"accepted", "protocol":4, "engine":"mroww", "capabilities":capabilities()});
                 identify(&mut accepted, &request, Some(&session));
                 output.send(&accepted, false)?;
                 begun = true;
@@ -538,7 +592,7 @@ fn serve(stream: TcpStream) -> std::io::Result<()> {
             }
             let session = request["session_id"].as_str();
             if !begun {
-                output.failure(&request, None, error("invalid_request", "First request must be begin"), true);
+                output.failure(&request, None, error("invalid_request", "First request must be describe or begin"), true);
                 continue;
             }
             let Some(worker) = session
