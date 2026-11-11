@@ -151,15 +151,14 @@ fn command_lifecycle_output_and_comparators_match_reference() {
             published.disable_command_output_limits_for_replay();
             let bounds = (command - BlockPos::new(4, 4, 4), command + BlockPos::new(4, 4, 4));
             let mut compiler = Compiler::default();
-            compiler
-                .compile(
-                    &native,
-                    bounds,
-                    CompilerOptions { llvm, ..Default::default() },
-                    native.scheduler().iter_entries().collect(),
-                    Arc::new(TaskMonitor::default()),
-                )
-                .unwrap();
+            crate::redpilator::tests::compile_test_entry(
+                &mut compiler,
+                &native,
+                bounds,
+                CompilerOptions { llvm, ..Default::default() },
+                native.scheduler().iter_entries().collect(),
+            )
+            .unwrap();
             let mut rust_reference = llvm.then(|| {
                 let mut reference = Compiler::default();
                 reference
@@ -218,15 +217,14 @@ fn command_lifecycle_output_and_comparators_match_reference() {
                         published.scheduler().iter_entries().collect::<Vec<_>>(),
                         native.scheduler().iter_entries().collect::<Vec<_>>()
                     );
-                    compiler
-                        .compile(
-                            &published,
-                            bounds,
-                            CompilerOptions { llvm, ..Default::default() },
-                            published.scheduler().iter_entries().collect(),
-                            Arc::new(TaskMonitor::default()),
-                        )
-                        .unwrap();
+                    crate::redpilator::tests::compile_test_entry(
+                        &mut compiler,
+                        &published,
+                        bounds,
+                        CompilerOptions { llvm, ..Default::default() },
+                        published.scheduler().iter_entries().collect(),
+                    )
+                    .unwrap();
                     published.clear_scheduled_ticks();
                     if let Some(reference) = &mut rust_reference {
                         reference
@@ -276,15 +274,14 @@ fn compiled_command_output_limits_match_reference() {
         let mut published = native.activation_snapshot();
         let bounds = (pos - BlockPos::new(3, 3, 3), pos + BlockPos::new(3, 3, 3));
         let mut compiler = Compiler::default();
-        compiler
-            .compile(
-                &native,
-                bounds,
-                CompilerOptions { llvm, ..Default::default() },
-                native.scheduler().iter_entries().collect(),
-                Arc::new(TaskMonitor::default()),
-            )
-            .unwrap();
+        crate::redpilator::tests::compile_test_entry(
+            &mut compiler,
+            &native,
+            bounds,
+            CompilerOptions { llvm, ..Default::default() },
+            native.scheduler().iter_entries().collect(),
+        )
+        .unwrap();
         let mut rust_reference = llvm.then(|| {
             let mut reference = Compiler::default();
             reference

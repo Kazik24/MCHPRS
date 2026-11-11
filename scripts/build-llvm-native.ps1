@@ -1,6 +1,7 @@
 param(
     [string]$Clang = $env:MCHPRS_LLVM_CLANG,
-    [string]$Linker = $env:MCHPRS_LLVM_LINKER
+    [string]$Linker = $env:MCHPRS_LLVM_LINKER,
+    [string]$ProgramDirectory = ''
 )
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent $PSScriptRoot
@@ -23,8 +24,15 @@ $target = Join-Path $repo 'target'
 New-Item -ItemType Directory -Path $target -Force | Out-Null
 $object = Join-Path $target 'native_engine.obj'
 $dll = Join-Path $target 'native_engine.dll'
-$compileArgs = @('--target=x86_64-pc-windows-msvc', '-std=c11', '-O3', '-ffreestanding', '-fno-builtin', '-Werror', '-I', $include,
+$compileArgs = @('--target=x86_64-pc-windows-msvc', '-std=c23', '-O3', '-ffreestanding', '-fno-builtin', '-Werror', '-I', $include,
     '-c', (Join-Path $include 'engine.c'), '-o', $object)
+if ($ProgramDirectory) {
+    $ProgramDirectory = (Resolve-Path -LiteralPath $ProgramDirectory).Path
+    if (-not (Test-Path -LiteralPath (Join-Path $ProgramDirectory 'program.h'))) {
+        throw 'ProgramDirectory must contain the generated program.h and its binary tables.'
+    }
+    $compileArgs += @('-DMCHPRS_EMBEDDED_PROGRAM=1', '-I', $ProgramDirectory)
+}
 $linkArgs = @('/dll', '/noentry', '/nodefaultlib', '/machine:x64', "/out:$dll", $object)
 $timer = [System.Diagnostics.Stopwatch]::StartNew()
 & $Clang @compileArgs
@@ -44,10 +52,15 @@ $manifest = [ordered]@{
     linker_sha256 = (Get-FileHash -LiteralPath $Linker -Algorithm SHA256).Hash
     compile_args = $compileArgs; link_args = $linkArgs; sources = @($sourceInfo)
     build_ms = $timer.Elapsed.TotalMilliseconds
+    program_directory = $ProgramDirectory
     object_bytes = (Get-Item -LiteralPath $object).Length
     dll = $dll; dll_bytes = (Get-Item -LiteralPath $dll).Length
     dll_sha256 = (Get-FileHash -LiteralPath $dll -Algorithm SHA256).Hash
 }
 $manifest | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $target 'native-engine-build.json') -Encoding UTF8
 Write-Output ('Built {0} ({1} bytes) in {2:N1} ms' -f $dll, $manifest.dll_bytes, $manifest.build_ms)
-Write-Output ('Outside this repository, set MCHPRS_LLVM_DLL to {0}' -f $dll)
+if ($ProgramDirectory) {
+    Write-Output ('MCHPRS_LLVM_DLL may select this module only for its matching circuit: {0}' -f $dll)
+} else {
+    Write-Output 'Built a generic diagnostic reference. Normal LLVM execution compiles a circuit-specific module automatically.'
+}

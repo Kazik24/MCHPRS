@@ -289,21 +289,15 @@ fn run_tool(tool: &Path, args: &[OsString], directory: &Path, log: &str, monitor
 ///
 /// Honor an explicit library path; otherwise verify cache ownership, hash bundled sources/tool
 /// binaries/flags, build the missing module and retain its guarded path.
-pub(super) fn module_path(monitor: Option<&TaskMonitor>) -> Result<ModulePath, String> {
+pub(super) fn module_path(program: Option<&super::generated::GeneratedProgram>, monitor: Option<&TaskMonitor>) -> Result<ModulePath, String> {
     if let Some(path) = std::env::var_os("MCHPRS_LLVM_DLL") {
         let path = PathBuf::from(path).canonicalize().map_err(|error| format!("MCHPRS_LLVM_DLL: {error}"))?;
         return Ok(ModulePath { path, _guard: None });
     }
+    let identity = program.map(|program| program.identity);
     let cache = cache()?;
     let mut module = cache.module.lock().map_err(|_| "LLVM cache lock poisoned".to_owned())?;
     validate_owned_root(&cache.path).map_err(|error| error.to_string())?;
-    if let Some(path) = module.path.as_ref().filter(|path| path.is_file()) {
-        validate_build_directory(path.parent().unwrap()).map_err(|error| error.to_string())?;
-        return Ok(ModulePath {
-            path: path.clone(),
-            _guard: Some(module),
-        });
-    }
     #[cfg(windows)]
     let clang = executable("clang.exe", "MCHPRS_LLVM_CLANG")?;
     #[cfg(not(windows))]
@@ -327,8 +321,13 @@ pub(super) fn module_path(monitor: Option<&TaskMonitor>) -> Result<ModulePath, S
         ("command_engine.c", include_bytes!("command_engine.c")),
         ("abi.h", include_bytes!("abi.h")),
     ];
-    let flags = ["-std=c11", "-O3", "-ffreestanding", "-fno-builtin", "-Werror"];
+    let flags = ["-std=c23", "-O3", "-ffreestanding", "-fno-builtin", "-Werror"];
     let mut hash = Sha256::new();
+    hash.update(include_bytes!("generated.rs"));
+    hash.update([u8::from(program.is_some())]);
+    if let Some(identity) = identity {
+        hash.update(identity);
+    }
     for (name, data) in sources {
         hash.update(name);
         hash.update(data);
@@ -344,10 +343,29 @@ pub(super) fn module_path(monitor: Option<&TaskMonitor>) -> Result<ModulePath, S
     let directory = build_directory(cache, &key, module.generation);
     fs::create_dir_all(&directory).map_err(|e| e.to_string())?;
     validate_build_directory(&directory).map_err(|error| error.to_string())?;
+    #[cfg(windows)]
+    let completed_module = directory.join("engine.dll");
+    #[cfg(not(windows))]
+    let completed_module = directory.join("engine.so");
+    if completed_module.is_file() && directory.join("build.json").is_file() {
+        module.path = Some(completed_module.clone());
+        return Ok(ModulePath {
+            path: completed_module,
+            _guard: Some(module),
+        });
+    }
     for (name, data) in sources {
         fs::write(directory.join(name), data).map_err(|e| e.to_string())?;
     }
+    let emission_started = Instant::now();
+    if let Some(program) = program {
+        program.write(&directory, monitor)?;
+    }
+    let emission_ms = emission_started.elapsed().as_secs_f64() * 1000.0;
     let mut args: Vec<OsString> = flags.iter().map(OsString::from).collect();
+    if program.is_some() {
+        args.push(OsString::from("-DMCHPRS_EMBEDDED_PROGRAM=1"));
+    }
     let started = Instant::now();
     #[cfg(windows)]
     let filename = {
@@ -377,9 +395,9 @@ pub(super) fn module_path(monitor: Option<&TaskMonitor>) -> Result<ModulePath, S
     };
     let path = directory.join(filename);
     let version = Command::new(&clang).arg("--version").output().map_err(|e| e.to_string())?;
-    let manifest = serde_json::json!({"key":key,"clang":clang,"linker":linker,"flags":args,"target_arch":std::env::consts::ARCH,
+    let manifest = serde_json::json!({"key":key,"embedded_program":program.is_some(),"program_identity":identity,"program_bytes":program.map(|p|p.encoded.blob.len()),"clang":clang,"linker":linker,"flags":args,"target_arch":std::env::consts::ARCH,
         "target_os":std::env::consts::OS,"compiler_version":String::from_utf8_lossy(&version.stdout),
-        "build_ms":started.elapsed().as_secs_f64()*1000.0,"module_bytes":fs::metadata(&path).map_err(|e|e.to_string())?.len()});
+        "emission_ms":emission_ms,"build_ms":started.elapsed().as_secs_f64()*1000.0,"module_bytes":fs::metadata(&path).map_err(|e|e.to_string())?.len()});
     fs::write(
         directory.join("build.json"),
         serde_json::to_vec_pretty(&manifest).map_err(|e| e.to_string())?,

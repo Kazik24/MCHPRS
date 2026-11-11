@@ -51,20 +51,19 @@ fn compiled_pressure_plate_edges_match_native_for_both_backends_and_publication_
                     let mut native = make();
                     let mut compiled = make();
                     let mut compiler = Compiler::default();
-                    compiler
-                        .compile(
-                            &compiled,
-                            bounds,
-                            CompilerOptions {
-                                llvm,
-                                io_only,
-                                publication: Some(PublicationMode::All),
-                                ..Default::default()
-                            },
-                            compiled.scheduler().iter_entries().collect(),
-                            Default::default(),
-                        )
-                        .unwrap();
+                    compile_test_entry(
+                        &mut compiler,
+                        &compiled,
+                        bounds,
+                        CompilerOptions {
+                            llvm,
+                            io_only,
+                            publication: Some(PublicationMode::All),
+                            ..Default::default()
+                        },
+                        compiled.scheduler().iter_entries().collect(),
+                    )
+                    .unwrap();
                     // Activation transfers scheduled work to the compiler.
                     compiled.clear_scheduled_ticks();
                     assert!(compiler.accepts_control(plate));
@@ -216,6 +215,39 @@ fn llvm_handoff_errors_identify_pending_pistons_and_partial_ticks() {
 }
 
 #[test]
+fn llvm_fresh_compilation_requires_no_scheduled_component_ticks() {
+    let (world, pos, _, bounds) = button_world(ButtonFace::Floor, BlockDirection::North);
+    let before = world.get_block(pos);
+    let ticks = vec![TickEntry {
+        pos,
+        block_type: None,
+        ticks_left: 2,
+        tick_priority: TickPriority::Normal,
+    }];
+    let error = Compiler::default()
+        .compile(
+            &world,
+            bounds,
+            CompilerOptions {
+                llvm: true,
+                ..Default::default()
+            },
+            ticks.clone(),
+            Default::default(),
+        )
+        .unwrap_err();
+    let CompileError::Unsupported(error) = error else {
+        panic!("unexpected entry failure: {error}")
+    };
+    assert_eq!(error.position, Some(pos));
+    assert!(error.reason.contains("idle start"));
+    assert_eq!(world.get_block(pos), before, "admission must not advance or normalize the world");
+    Compiler::default()
+        .compile(&world, bounds, CompilerOptions::default(), ticks, Default::default())
+        .unwrap();
+}
+
+#[test]
 #[cfg(any(windows, target_os = "linux"))]
 fn llvm_accepts_completed_interpreter_tick_with_scheduler_advanced() {
     let (mut world, _, _, bounds) = button_world(ButtonFace::Floor, BlockDirection::North);
@@ -346,7 +378,7 @@ fn llvm_dll_executes_button_lamp_and_hands_off_reset_tick() {
 }
 
 #[test]
-fn llvm_imports_pending_button_release_and_hands_it_back() {
+fn llvm_continuation_imports_pending_button_release_and_hands_it_back() {
     if std::env::var_os("MCHPRS_LLVM_DLL").is_none()
         && !std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../target/native_engine.dll")
@@ -360,18 +392,17 @@ fn llvm_imports_pending_button_release_and_hands_it_back() {
     crate::interaction::use_redstone(candidate.get_block(button), &mut candidate, button, None);
     let pending = candidate.scheduler().iter_entries().collect();
     let mut compiler = Compiler::default();
-    compiler
-        .compile(
-            &candidate,
-            bounds,
-            CompilerOptions {
-                llvm: true,
-                ..Default::default()
-            },
-            pending,
-            Arc::new(TaskMonitor::default()),
-        )
-        .unwrap();
+    compile_test_entry(
+        &mut compiler,
+        &candidate,
+        bounds,
+        CompilerOptions {
+            llvm: true,
+            ..Default::default()
+        },
+        pending,
+    )
+    .unwrap();
     candidate.clear_scheduled_ticks();
     for tick in 1..=7 {
         reference.tick_interpreted();
@@ -394,7 +425,7 @@ fn llvm_imports_pending_button_release_and_hands_it_back() {
 }
 
 #[test]
-fn llvm_imported_ticks_preserve_priority_and_duplicates() {
+fn llvm_continuation_ticks_preserve_priority_and_duplicates() {
     if std::env::var_os("MCHPRS_LLVM_DLL").is_none()
         && !std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../target/native_engine.dll")
@@ -419,38 +450,55 @@ fn llvm_imported_ticks_preserve_priority_and_duplicates() {
     }
     let expected: Vec<_> = world.scheduler().iter_entries().collect();
     let mut compiler = Compiler::default();
-    compiler
-        .compile(
-            &world,
-            bounds,
-            CompilerOptions {
-                llvm: true,
-                ..Default::default()
-            },
-            expected.clone(),
-            Arc::new(TaskMonitor::default()),
-        )
-        .unwrap();
+    compile_test_entry(
+        &mut compiler,
+        &world,
+        bounds,
+        CompilerOptions {
+            llvm: true,
+            ..Default::default()
+        },
+        expected.clone(),
+    )
+    .unwrap();
     world.clear_scheduled_ticks();
     compiler.try_reset(&mut world, bounds).unwrap();
     assert_eq!(expected, world.scheduler().iter_entries().collect::<Vec<_>>());
     let mut stale = expected[0].clone();
     stale.block_type = None;
-    compiler
-        .compile(
-            &world,
-            bounds,
-            CompilerOptions {
-                llvm: true,
-                ..Default::default()
-            },
-            vec![stale.clone()],
-            Arc::new(TaskMonitor::default()),
-        )
-        .unwrap();
+    compile_test_entry(
+        &mut compiler,
+        &world,
+        bounds,
+        CompilerOptions {
+            llvm: true,
+            ..Default::default()
+        },
+        vec![stale.clone()],
+    )
+    .unwrap();
     world.clear_scheduled_ticks();
     compiler.try_reset(&mut world, bounds).unwrap();
     assert_eq!(world.scheduler().iter_entries().collect::<Vec<_>>(), vec![stale]);
+}
+
+// Continuation imports remain supported internally; fresh LLVM compilation requires an empty queue.
+pub(super) fn compile_test_entry(
+    compiler: &mut Compiler,
+    world: &PlotWorld,
+    bounds: (BlockPos, BlockPos),
+    mut options: CompilerOptions,
+    ticks: Vec<TickEntry>,
+) -> Result<(), CompileError> {
+    let continuation = options.llvm && !ticks.is_empty();
+    options.llvm &= !continuation;
+    compiler.compile(world, bounds, options, ticks.clone(), Default::default())?;
+    if continuation {
+        let mut native = sampled::LlvmRuntime::new(&compiler.cached_program().unwrap(), &ticks).map_err(CompileError::Unsupported)?;
+        native.initialize_tick(world.piston_state().logical_tick);
+        compiler.llvm_runtime = Some(native);
+    }
+    Ok(())
 }
 
 #[test]
@@ -488,15 +536,14 @@ fn compiled_pending_ticks_preserve_stale_passive_and_large_initial_queues() {
     let mut rust = Compiler::default();
     let mut native = Compiler::default();
     for (compiler, world, llvm) in [(&mut rust, &mut reference, false), (&mut native, &mut candidate, true)] {
-        compiler
-            .compile(
-                world,
-                bounds,
-                CompilerOptions { llvm, ..Default::default() },
-                world.scheduler().iter_entries().collect(),
-                Default::default(),
-            )
-            .unwrap();
+        compile_test_entry(
+            compiler,
+            world,
+            bounds,
+            CompilerOptions { llvm, ..Default::default() },
+            world.scheduler().iter_entries().collect(),
+        )
+        .unwrap();
         world.clear_scheduled_ticks();
         compiler.try_on_use_block(button).unwrap();
     }

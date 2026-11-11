@@ -1,0 +1,117 @@
+{
+  "status": "implemented_and_verified; performance_comparison_deferred",
+  "native_semantic_version": 36,
+  "recorded_at": "2026-11-11T23:23:54.171871+01:00",
+  "entry_contract": {
+    "fresh_compile": "between complete ticks, no scheduled component ticks, piston events, active motions or unfinished movement work",
+    "preserved": "powered components, memory, stationary extended pistons, dormant reactive behavior, all subsequent live scheduling/movement/history",
+    "busy_entry": "reject without advancing or normalizing world",
+    "internal_continuation": "explicit imported-tick capacity is compiled into module identity; unchanged prepared executors retain live state",
+    "default_rust_executor": "unchanged"
+  },
+  "specialization": [
+    "scheduler capacity",
+    "reactive capability",
+    "lazy wire power eligibility",
+    "piston/token/cell counts",
+    "motion capacity"
+  ],
+  "performance": {
+    "accepted_new_tps": null,
+    "status": "deferred: CPU very busy per user; incidental fixture runner timing discarded; no new paired performance run",
+    "preceding_static_program_results": "llvm_static_program_results.json",
+    "preliminary_context_probe": "earlier three-round native probe suggested about 2.8% median improvement, with one negative round; insufficient to claim a repeatable speed gain",
+    "compact_kind_layout": "scratch-only prototype; not adopted or timed under busy CPU"
+  },
+  "validation": {
+    "focused_tests": {
+      "passed": 285,
+      "failed": 0,
+      "ignored": 29
+    },
+    "examples": "release examples built; cargo check --features plot-bench --examples passed",
+    "zcore": {
+      "modes": [
+        "strict",
+        "relaxed"
+      ],
+      "lamps_per_frame": 800,
+      "matching_frames_per_mode": 50001,
+      "run_ticks": 50000,
+      "trace_sha256": "7ade7a6101ca8818aed319a331253a89769879c6da56398790594ddfc36dbb28",
+      "strict_final_native_snapshot_sha256": "c15bd62418578d8f777287f221bac707516543d5b767ac171cabb8926d9f139c",
+      "strict_snapshot_matches_previous_implementation": true
+    },
+    "pm1": {
+      "fixture": "pm1_redpilator.schem",
+      "ticks_to_halt": 12070,
+      "ram_pairs": 1792,
+      "lamps": 1452,
+      "ordered_messages": 1534,
+      "all_outputs_and_halt_match": true
+    },
+    "fpu": {
+      "matching_output_words": 10000,
+      "input_repetitions": 128,
+      "native_control_changes": 1108,
+      "distinct_output_words": 5,
+      "scope": "retained seeded protocol, opcode 010 only; not exhaustive; falling-edge parity unverified"
+    },
+    "linux_x86_64": {
+      "status": "compiled_and_linked",
+      "undefined_symbols": 0,
+      "runtime_executed": false,
+      "module_bytes": 105947520
+    },
+    "broader_check": "315 passed in earlier expanded run; six tests used superseded busy fresh-entry expectations and now pass through internal continuation coverage; unrelated pre-existing command-completion failure remains at plot/commands/mod.rs:1556",
+    "live_server": "not tested"
+  },
+  "modules": {
+    "zcore-strict": {
+      "dll_sha256": "7364ab5dad8b8095b7ebca497aaf46ffc5b64bf046ba8870d10ba7bd24914f72",
+      "bytes": 105942016,
+      "constants": {
+        "NE_STATIC_IMPORTED_TICK_CAPACITY": 0,
+        "NE_STATIC_EVENT_CAPACITY": 175572,
+        "NE_STATIC_HAS_REACTIVE": 0,
+        "NE_STATIC_LAZY_WIRE_POWER": 0
+      }
+    },
+    "zcore-relaxed": {
+      "dll_sha256": "75df208f3b1501ce860e8f7671ac80f6fcd100b9c75efebf31616f92ca396bf3",
+      "bytes": 100865024,
+      "constants": {
+        "NE_STATIC_IMPORTED_TICK_CAPACITY": 0,
+        "NE_STATIC_EVENT_CAPACITY": 175572,
+        "NE_STATIC_HAS_REACTIVE": 0,
+        "NE_STATIC_LAZY_WIRE_POWER": 1
+      }
+    },
+    "pm1": {
+      "dll_sha256": "16c963183510ffe6bc0ff9b72ed95d3b0b32f90160b7b586591292c3388624d8",
+      "bytes": 228273152,
+      "constants": {
+        "NE_STATIC_IMPORTED_TICK_CAPACITY": 0,
+        "NE_STATIC_EVENT_CAPACITY": 673638,
+        "NE_STATIC_HAS_REACTIVE": 1,
+        "NE_STATIC_LAZY_WIRE_POWER": 1
+      }
+    },
+    "fpu": {
+      "dll_sha256": "d59398798f6bec1070ec208db722e305cc6ac2c22461a9793b65465b19af2644",
+      "bytes": 67528704,
+      "constants": {
+        "NE_STATIC_IMPORTED_TICK_CAPACITY": 0,
+        "NE_STATIC_EVENT_CAPACITY": 93404,
+        "NE_STATIC_HAS_REACTIVE": 0,
+        "NE_STATIC_LAZY_WIRE_POWER": 1
+      }
+    }
+  },
+  "native_source_sha256": {
+    "engine.c": "3847c27199dab5500dd5cfafa70d60eeb6b403f601dfa07a00447683c68e4d77",
+    "llvm_movement.c": "b41bfd29d8405e3a084e371898962694c58b9452c12a17234fb836591cfc9140",
+    "command_engine.c": "b50bda357f9505c88273b599a422d648d85915576ccc1fd50c02c1f4d5baca7a",
+    "abi.h": "95d6e4b1a86e87c5409af3de9cf15c2cda1f6a35b5cd80ba6f0635f833f5be76"
+  }
+}

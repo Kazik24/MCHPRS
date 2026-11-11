@@ -88,12 +88,15 @@ impl CompileError {
         } else if matches!(
             reason,
             "LLVM DLL ABI/version mismatch"
+                | "LLVM module program identity mismatch"
                 | "LLVM DLL is missing a required export"
                 | "LLVM module is missing a required export"
                 | "could not load LLVM DLL (set MCHPRS_LLVM_DLL)"
                 | "could not load LLVM module"
         ) {
             Some(messages::REDPILATOR_REBUILD_LLVM)
+        } else if reason.starts_with("LLVM requires an idle start") {
+            Some(messages::REDPILATOR_RETRY_SETTLED)
         } else if reason.contains("outside compiled region") || reason.contains("outside captured boundary") {
             Some(messages::REDPILATOR_CAPTURE_WHOLE_CIRCUIT)
         } else if matches!(
@@ -357,6 +360,12 @@ impl Compiler {
         }
         if options.llvm {
             validate_llvm_entry(world.piston_state()).map_err(CompileError::Unsupported)?;
+            if let Some(tick) = ticks.first() {
+                return Err(CompileError::Unsupported(ScratchError {
+                    position: Some(tick.pos),
+                    reason: "LLVM requires an idle start with no scheduled component ticks; stop the clock and let the circuit settle before compiling",
+                }));
+            }
         }
         let entry = ScratchEntry {
             scheduled: ticks.clone(),
@@ -387,7 +396,7 @@ impl Compiler {
         let pending_ticks = ticks.len();
         let llvm = if options.llvm {
             monitor.set_phase("LLVM code generation and initialization");
-            Some(prepare_llvm_runtime(&program, &ticks, world.piston_state().logical_tick)?)
+            Some(prepare_llvm_runtime(&program, &ticks, world.piston_state().logical_tick, &monitor)?)
         } else {
             None
         };
@@ -520,12 +529,23 @@ fn validate_llvm_entry(piston: &mchprs_world::PistonState) -> Result<(), Scratch
     Err(ScratchError { position, reason })
 }
 
-fn prepare_llvm_runtime(program: &sampled::Program, ticks: &[TickEntry], logical_tick: u64) -> Result<LlvmRuntime, CompileError> {
+fn prepare_llvm_runtime(
+    program: &sampled::Program,
+    ticks: &[TickEntry],
+    logical_tick: u64,
+    monitor: &TaskMonitor,
+) -> Result<LlvmRuntime, CompileError> {
     let (first, total) = sampled::unsupported_components(program);
     if total > 1 {
         return Err(CompileError::UnsupportedComponents { first, total });
     }
-    let mut runtime = LlvmRuntime::new(program, ticks).map_err(CompileError::Unsupported)?;
+    let mut runtime = LlvmRuntime::new_with_monitor(program, ticks, Some(monitor)).map_err(|error| {
+        if monitor.cancelled() {
+            CompileError::Cancelled
+        } else {
+            CompileError::Unsupported(error)
+        }
+    })?;
     runtime.initialize_tick(logical_tick);
     Ok(runtime)
 }

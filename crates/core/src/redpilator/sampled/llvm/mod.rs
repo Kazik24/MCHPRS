@@ -3,10 +3,10 @@
 //! Shared safety invariants for the FFI calls below and in child modules:
 //! - The loaded module is trusted output of our native build; its signatures match abi.h and
 //!   command_engine.c. Version validation detects drift, but is not a proof of library trust.
-//! - Native descriptors use repr(C). State/blob allocations use u64 alignment; native creation
-//!   checks alignment and size before accessing state. C copies the stack descriptor into state.
-//! - LlvmRuntime retains the state, immutable blob, command tables and library until Drop finishes.
-//!   Moving their Vec owners does not move the allocations. State/blob/tables are never resized;
+//! - Native descriptors use repr(C). Instance allocations use u64 alignment; native creation
+//!   checks alignment/size. Generated static assertions verify immutable table layouts.
+//! - LlvmRuntime retains instance state and its library; the library owns immutable circuit tables.
+//!   Moving Vec owners does not move allocations. Native instance storage is never resized;
 //!   the resizable command effect buffer is rebound before the next native execution.
 //! - Native code retains raw pointers, not Rust references. Calls are synchronous, with no native
 //!   worker threads. The batch clock callback only reads a separate immutable clock context;
@@ -27,6 +27,7 @@ mod command;
 mod command_notifications;
 mod effects;
 mod encoding;
+mod generated;
 mod library;
 mod movement;
 mod publication;
@@ -136,8 +137,6 @@ pub(super) struct NativeProgramDescriptor {
 pub(in crate::redpilator) struct LlvmRuntime {
     library: Library,
     state: Vec<u64>,
-    descriptor: NativeProgramDescriptor,
-    blob: Vec<u64>,
     positions: Vec<BlockPos>,
     initial: Vec<Block>,
     sources: Vec<(BlockPos, u32)>,
@@ -184,7 +183,7 @@ impl LlvmRuntime {
             commands.logical_base = tick;
         }
     }
-    /// Construct a native executor while retaining all backing storage.
+    /// Construct a circuit-specific native executor with independent mutable state.
     ///
     /// Inputs: The shared program data and imported host ticks.
     ///
@@ -192,18 +191,34 @@ impl LlvmRuntime {
     /// state, then bind commands and import ticks so failures release the partially built runtime.
     // Borrow the shared graph: cloning a large circuit here can exhaust server memory.
     pub(in crate::redpilator) fn new(program: &Program, ticks: &[TickEntry]) -> Result<Self, ScratchError> {
+        Self::new_with_monitor(program, ticks, None)
+    }
+
+    pub(in crate::redpilator) fn new_with_monitor(
+        program: &Program,
+        ticks: &[TickEntry],
+        monitor: Option<&crate::redpilator::TaskMonitor>,
+    ) -> Result<Self, ScratchError> {
+        if monitor.is_some_and(crate::redpilator::TaskMonitor::cancelled) {
+            return Err(ScratchError {
+                position: None,
+                reason: "LLVM compilation cancelled",
+            });
+        }
         log_program_diagnostics(program);
         if let Some(error) = unsupported_reason(program) {
             return Err(error);
         }
         let initial_ticks = InitialTicks::encode(program, ticks)?;
-        let encoded = LlvmProgram::encode(program)?;
-        log_artifact_diagnostics(encoded.blob.len());
-        let library = Library::load()?;
-        library.validate_abi()?;
-        let descriptor = encoded.descriptor;
-        let blob = encoded.into_aligned_blob()?;
-        let state = library.create_state(&descriptor, &blob, initial_ticks.entries.len() as u32)?;
+        let encoding_started = std::time::Instant::now();
+        let generated = generated::GeneratedProgram::with_tick_capacity(program, initial_ticks.entries.len() as u32)?;
+        if std::env::var_os("MCHPRS_LLVM_DIAGNOSTICS").is_some() {
+            eprintln!("LLVM program encoding_ms={:.3}", encoding_started.elapsed().as_secs_f64() * 1000.0);
+        }
+        log_artifact_diagnostics(generated.encoded.blob.len());
+        let library = Library::load_program(&generated, monitor)?;
+        let state = library.create_embedded_state(initial_ticks.entries.len() as u32)?;
+        drop(generated);
         let sources = program
             .sources
             .iter()
@@ -232,8 +247,6 @@ impl LlvmRuntime {
         let mut runtime = Self {
             library,
             state,
-            descriptor,
-            blob,
             positions: program.positions.clone(),
             initial: program.initial.clone(),
             sources,
@@ -258,16 +271,7 @@ impl LlvmRuntime {
     }
 
     fn bind_commands(&mut self, program: &Program) -> Result<(), ScratchError> {
-        self.commands = command::State::new(
-            program,
-            &self.library.commands,
-            self.state.as_mut_ptr().cast(),
-            self.blob
-                .as_ptr()
-                .cast::<u8>()
-                .wrapping_add(self.descriptor.component_offset as usize)
-                .cast(),
-        )?;
+        self.commands = command::State::new(program, &self.library.commands, self.state.as_mut_ptr().cast())?;
         Ok(())
     }
 
@@ -534,6 +538,13 @@ impl LlvmRuntime {
     pub(in crate::redpilator) fn new(_: &Program, _: &[TickEntry]) -> Result<Self, ScratchError> {
         Library::load().map(|_| Self)
     }
+    pub(in crate::redpilator) fn new_with_monitor(
+        program: &Program,
+        ticks: &[TickEntry],
+        _: Option<&crate::redpilator::TaskMonitor>,
+    ) -> Result<Self, ScratchError> {
+        Self::new(program, ticks)
+    }
     pub(in crate::redpilator) fn sync_projection(&self, _: &mut super::Runtime) -> Result<(), ScratchError> {
         unreachable!()
     }
@@ -636,7 +647,7 @@ fn log_artifact_diagnostics(blob_bytes: usize) {
     if std::env::var_os("MCHPRS_LLVM_DIAGNOSTICS").is_none() {
         return;
     }
-    eprintln!("LLVM native: per-plot generated C bytes=0, Program blob bytes={blob_bytes}");
+    eprintln!("LLVM native: immutable program bytes to embed={blob_bytes}");
 }
 
 fn native_status_reason(status: u32) -> &'static str {

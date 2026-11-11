@@ -56,10 +56,6 @@ pub(super) struct State {
     tables: CommandTables,
     blocks: Vec<CommandBlockRecord>,
     effects: Vec<u32>,
-    _notification_rows: Vec<u32>,
-    _notification_targets: Vec<u32>,
-    _component_commands: Vec<u32>,
-    _previous_next: Vec<u32>,
     started: std::time::Instant,
     pub(super) logical_base: u64,
     #[cfg(feature = "plot-bench")]
@@ -99,15 +95,14 @@ impl State {
     ///
     /// Inputs: The program, command API, native engine pointer and component-table pointer.
     ///
-    /// Encode command entities, allocate bounded native storage, initialize lookup indexes and
-    /// notification tables, and retain every buffer referenced by native pointers.
-    pub(super) fn new(program: &Program, api: &Api, engine: *mut c_void, components: *const c_void) -> Result<Option<Self>, ScratchError> {
+    /// Allocate instance state against embedded command tables and retain only host publication metadata.
+    pub(super) fn new(program: &Program, api: &Api, engine: *mut c_void) -> Result<Option<Self>, ScratchError> {
         let encoded = encode(program)?;
         if encoded.blocks.is_empty() {
             return Ok(None);
         }
         let now = std::time::Instant::now();
-        let tables = encoded.serialize_at(now)?;
+        let mut tables = encoded.serialize_at(now)?;
         let count = id(encoded.blocks.len())?;
         // SAFETY: ne_command_state_size takes scalar counts only; api belongs to the live runtime library.
         let bytes = unsafe { (api.state_size)(count, 0) };
@@ -115,19 +110,19 @@ impl State {
             return Err(invalid());
         }
         let mut memory = crate::redpilator::memory::zeroed::<u64>(bytes.div_ceil(8))?;
-        // SAFETY: The u64 storage covers bytes; serialize_at emits count full block/spec rows and six output
-        // words. bind_commands supplies live components; Self retains tables.
+        // SAFETY: The generated module owns all command/component tables; output_state has six words,
+        // and the instance allocation covers the checked native size.
         let status = unsafe {
             (api.init)(
                 memory.as_mut_ptr().cast(),
                 memory.len() * 8,
                 id(program.initial.len())?,
-                components,
-                tables.blocks.as_ptr(),
+                std::ptr::null(),
+                std::ptr::null(),
                 count,
-                tables.specs.as_ptr(),
+                std::ptr::null(),
                 count,
-                tables.strings.as_ptr(),
+                std::ptr::null(),
                 id(tables.strings.len())?,
                 tables.output_state.as_ptr(),
                 0,
@@ -137,46 +132,23 @@ impl State {
         if status != 0 {
             return Err(invalid());
         }
-        let mut component_commands = vec![u32::MAX; program.initial.len()];
-        let mut previous_next = vec![u32::MAX; encoded.blocks.len().checked_mul(2).ok_or_else(invalid)?];
-        // SAFETY: Both writable u32 buffers have the passed lengths; C checks lengths before filling them, and
-        // Self retains their allocations.
-        let status = unsafe {
-            (api.prepare_indices)(
-                memory.as_mut_ptr().cast(),
-                component_commands.as_mut_ptr(),
-                id(component_commands.len())?,
-                previous_next.as_mut_ptr(),
-                id(previous_next.len())?,
-            )
-        };
+        // SAFETY: Generated modules bind their own immutable component/chain indexes.
+        let status = unsafe { (api.prepare_indices)(memory.as_mut_ptr().cast(), std::ptr::null_mut(), 0, std::ptr::null_mut(), 0) };
         if status != 0 {
             return Err(invalid());
         }
-        let super::command_notifications::CommandNotifications { rows, targets } = super::command_notifications::encode(program)?;
-        // SAFETY: bind_commands supplies the live engine; encode emits two row words per component and three
-        // words per target. Self retains every bound buffer.
-        let status = unsafe {
-            (api.bind)(
-                engine,
-                memory.as_mut_ptr().cast(),
-                rows.as_ptr(),
-                targets.as_ptr(),
-                id(targets.len() / 3)?,
-            )
-        };
+        // SAFETY: The live generated engine binds its own immutable notification tables.
+        let status = unsafe { (api.bind)(engine, memory.as_mut_ptr().cast(), std::ptr::null(), std::ptr::null(), 0) };
         if status != 0 {
             return Err(invalid());
         }
+        tables.blocks = Vec::new();
+        tables.specs = Vec::new();
         Ok(Some(Self {
             memory,
             tables,
             blocks: encoded.blocks,
             effects: Vec::new(),
-            _notification_rows: rows,
-            _notification_targets: targets,
-            _component_commands: component_commands,
-            _previous_next: previous_next,
             started: now,
             logical_base: 0,
             #[cfg(feature = "plot-bench")]

@@ -364,7 +364,7 @@ catalog! {
         REDPILATOR_COMPILATION_BUSY = "A compiler worker is still finishing. Use /rp reset to cancel, then wait before compiling again.";
         REDPILATOR_COMPILATION_CHANGED = "The plot changed during compilation. Compile again to use the new state.";
         REDPILATOR_RETRY_RUST = "Try /rp compile without --llvm to use the Rust backend.";
-        REDPILATOR_RETRY_SETTLED = "Finish the current tick and let piston movement settle, then retry /rp compile.";
+        REDPILATOR_RETRY_SETTLED = "Finish the current tick and let scheduled component work and piston movement settle, then retry /rp compile.";
         REDPILATOR_REBUILD_LLVM = "Ask the server administrator to check or rebuild the LLVM module. Try /rp compile without --llvm meanwhile.";
         REDPILATOR_CAPTURE_WHOLE_CIRCUIT = "Keep the entire connected circuit, including piston travel, inside the compilation region, then retry.";
         REDPILATOR_INTERNAL_FAILURE_HELP = "Share this error and its compilation phase with the server administrator; the server log may contain more details.";

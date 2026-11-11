@@ -54,6 +54,7 @@ typedef struct {
 #endif
 
 MCHPRS_NATIVE_EXPORT MchprsNativeApiDescriptor ne_api_descriptor(void);
+MCHPRS_NATIVE_EXPORT const uint8_t *ne_program_identity(void);
 MCHPRS_NATIVE_EXPORT size_t ne_state_size(const MchprsNativeProgramDescriptor *program, const uint8_t *blob, uint32_t blob_bytes, uint32_t initial_ticks);
 MCHPRS_NATIVE_EXPORT uint32_t ne_create(const MchprsNativeProgramDescriptor *program, const uint8_t *blob, uint32_t blob_bytes, void *memory, size_t memory_bytes, uint32_t initial_ticks);
 MCHPRS_NATIVE_EXPORT uint32_t ne_import_tick(void *memory, uint32_t component, uint32_t delay, uint8_t priority);

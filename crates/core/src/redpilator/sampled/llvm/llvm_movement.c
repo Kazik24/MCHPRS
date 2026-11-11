@@ -259,12 +259,12 @@ static uint32_t valid_movement(const MchprsNativeProgramDescriptor *p, const uin
 }
 
 static size_t movement_storage_bytes(const NEEngine *e) {
-    size_t n = e->program->component_count, p = table_words(e, 7u) / 10u, t = table_words(e, 11u) / 3u,
+    size_t n = engine_program(e)->component_count, p = table_words(e, 7u) / 10u, t = table_words(e, 11u) / 3u,
            c = table_words(e, 16u) / 7u;
     size_t m = p * 2u + t;
     size_t wires = table_words(e, 33u) ? table(e, 33u)[0] : 0u;
     return 320u + (t * 2u + table_words(e, 27u) + n + p + c + n + n + wires) * 4u + p * 2u +
-           e->program->arrangement_link_count * 3u + n * 2u + wires + p * 3u * 2u * 4u + m * sizeof(NEMotion);
+           engine_program(e)->arrangement_link_count * 3u + n * 2u + wires + p * 3u * 2u * 4u + m * sizeof(NEMotion);
 }
 
 static uint8_t *take_bytes(uint8_t **at, size_t count) {
@@ -441,7 +441,7 @@ static uint32_t route_refresh(NEEngine *e, uint32_t token, uint32_t *switched_co
             if (strength > old || strength > next)
                 e->updated[link[0]] = 0u;
             if (components(e)[link[0]].kind != 8u && !e->switched[link[0]] &&
-                !(e->lazy_wire_power && components(e)[link[0]].kind == 5u && e->watched_by_component[link[0]] == NONE)) {
+                !(ne_lazy_wire_power(e) && components(e)[link[0]].kind == 5u && e->watched_by_component[link[0]] == NONE)) {
                 e->switched[link[0]] = 1u;
                 e->switched_nodes[(*switched_count)++] = link[0];
             }
@@ -464,22 +464,22 @@ static uint32_t init_movement(NEEngine *e, uint8_t *base, size_t bytes) {
     for (size_t i = 0; i < movement_storage_bytes(e); ++i)
         base[i] = 0u;
     uint8_t *at = base;
-    uint32_t n = e->program->component_count;
+    uint32_t n = engine_program(e)->component_count;
     e->piston_count = table_words(e, 7u) / 10u;
     e->token_count = table_words(e, 11u) / 3u;
     e->cell_count = table_words(e, 16u) / 7u;
-    e->motion_capacity = e->piston_count * 2u + e->token_count;
-    e->token_cell = (uint32_t *)take_bytes(&at, (size_t)e->token_count * 4u);
-    e->token_digit = (uint32_t *)take_bytes(&at, (size_t)e->token_count * 4u);
+    e->motion_capacity = ne_piston_count(e) * 2u + ne_token_count(e);
+    e->token_cell = (uint32_t *)take_bytes(&at, (size_t)ne_token_count(e) * 4u);
+    e->token_digit = (uint32_t *)take_bytes(&at, (size_t)ne_token_count(e) * 4u);
     e->groups = (uint32_t *)take_bytes(&at, (size_t)table_words(e, 27u) * 4u);
     e->piston_by_component = (uint32_t *)take_bytes(&at, (size_t)n * 4u);
-    e->piston_motion = (uint32_t *)take_bytes(&at, (size_t)e->piston_count * 4u);
-    e->cell_motion = (uint32_t *)take_bytes(&at, (size_t)e->cell_count * 4u);
-    e->piston_flags = take_bytes(&at, e->piston_count);
-    e->queued_pistons = take_bytes(&at, e->piston_count);
-    e->arrangement_contributions = take_bytes(&at, e->program->arrangement_link_count);
-    e->route_attenuation = take_bytes(&at, e->program->arrangement_link_count);
-    e->route_next = take_bytes(&at, e->program->arrangement_link_count);
+    e->piston_motion = (uint32_t *)take_bytes(&at, (size_t)ne_piston_count(e) * 4u);
+    e->cell_motion = (uint32_t *)take_bytes(&at, (size_t)ne_cell_count(e) * 4u);
+    e->piston_flags = take_bytes(&at, ne_piston_count(e));
+    e->queued_pistons = take_bytes(&at, ne_piston_count(e));
+    e->arrangement_contributions = take_bytes(&at, engine_program(e)->arrangement_link_count);
+    e->route_attenuation = take_bytes(&at, engine_program(e)->arrangement_link_count);
+    e->route_next = take_bytes(&at, engine_program(e)->arrangement_link_count);
     uint32_t wires = table_words(e, 33u) ? table(e, 33u)[0] : 0u;
     e->route_distance = take_bytes(&at, wires);
     e->route_queue = (uint32_t *)take_bytes(&at, (size_t)wires * 4u);
@@ -487,18 +487,18 @@ static uint32_t init_movement(NEEngine *e, uint8_t *base, size_t bytes) {
     e->changed = take_bytes(&at, n);
     e->switched_nodes = (uint32_t *)take_bytes(&at, (size_t)n * 4u);
     e->changed_nodes = (uint32_t *)take_bytes(&at, (size_t)n * 4u);
-    e->piston_event_capacity = e->piston_count * 3u;
+    e->piston_event_capacity = ne_piston_count(e) * 3u;
     e->piston_events = (uint32_t *)take_bytes(&at, (size_t)e->piston_event_capacity * 8u);
-    e->motions = (NEMotion *)take_bytes(&at, (size_t)e->motion_capacity * sizeof(NEMotion));
+    e->motions = (NEMotion *)take_bytes(&at, (size_t)ne_motion_capacity(e) * sizeof(NEMotion));
     if ((size_t)(at - base) > bytes)
         return NE_CAPACITY;
     e->motion_first = e->motion_last = e->landing_cursor = NONE;
-    e->motion_free = e->motion_capacity ? 0u : NONE;
+    e->motion_free = ne_motion_capacity(e) ? 0u : NONE;
     e->motion_phase = 0u;
     e->piston_event_first = e->piston_event_count = 0u;
     for (uint32_t i = 0; i < n; ++i)
         e->piston_by_component[i] = NONE;
-    for (uint32_t i = 0; i < e->piston_count; ++i) {
+    for (uint32_t i = 0; i < ne_piston_count(e); ++i) {
         const uint32_t *r = table(e, 7u) + i * 10u;
         if (e->piston_by_component[r[0]] != NONE)
             return NE_INVALID;
@@ -506,9 +506,9 @@ static uint32_t init_movement(NEEngine *e, uint8_t *base, size_t bytes) {
         e->piston_motion[i] = NONE;
         e->piston_flags[i] = (uint8_t)(r[6] | (r[7] << 1u));
     }
-    for (uint32_t i = 0; i < e->cell_count; ++i)
+    for (uint32_t i = 0; i < ne_cell_count(e); ++i)
         e->cell_motion[i] = NONE;
-    for (uint32_t i = 0; i < e->token_count; ++i) {
+    for (uint32_t i = 0; i < ne_token_count(e); ++i) {
         e->token_cell[i] = table(e, 11u)[i * 3u];
         if (e->token_cell[i] != NONE) {
             const uint32_t *cells = table(e, 12u) + i * 2u;
@@ -523,9 +523,9 @@ static uint32_t init_movement(NEEngine *e, uint8_t *base, size_t bytes) {
     }
     for (uint32_t i = 0; i < table_words(e, 27u); ++i)
         e->groups[i] = table(e, 27u)[i];
-    for (uint32_t i = 0; i < e->motion_capacity; ++i)
-        e->motions[i].next = i + 1u < e->motion_capacity ? i + 1u : NONE;
-    for (uint32_t i = 0; i < e->program->arrangement_link_count; ++i)
+    for (uint32_t i = 0; i < ne_motion_capacity(e); ++i)
+        e->motions[i].next = i + 1u < ne_motion_capacity(e) ? i + 1u : NONE;
+    for (uint32_t i = 0; i < engine_program(e)->arrangement_link_count; ++i)
         e->route_attenuation[i] = e->route_next[i] = 254u;
     for (uint32_t i = 0; i < wires; ++i)
         e->route_distance[i] = 255u;
@@ -533,10 +533,10 @@ static uint32_t init_movement(NEEngine *e, uint8_t *base, size_t bytes) {
         for (uint32_t i = 0; i < table_words(e, 38u) / 3u; ++i)
             if (route_reader(e, i, 0u))
                 return e->error;
-        for (uint32_t i = 0; i < e->program->arrangement_link_count; ++i)
+        for (uint32_t i = 0; i < engine_program(e)->arrangement_link_count; ++i)
             e->route_attenuation[i] = e->route_next[i];
     }
-    for (uint32_t i = 0; i < e->program->arrangement_link_count; ++i)
+    for (uint32_t i = 0; i < engine_program(e)->arrangement_link_count; ++i)
         refresh_arranged(e, i);
     return NE_OK;
 }
@@ -602,7 +602,7 @@ static uint32_t update_note(NEEngine *e, uint32_t node) {
     uint8_t instrument = (uint8_t)((note_meta(e, r[2], r[3]) >> 1u) & 0x7fu);
     e->note_instruments[node] = instrument;
     if (powered && !e->note_queued[node] && (note_meta(e, r[0], r[1]) & 1u)) {
-        if (e->note_count >= e->program->component_count)
+        if (e->note_count >= engine_program(e)->component_count)
             return e->error = NE_CAPACITY;
         uint32_t at = e->note_count++ * 3u;
         e->note_events[at] = node;
@@ -713,7 +713,7 @@ static inline uint32_t apply_movement_flip(NEEngine *e, const uint32_t *flip, ui
     if (contribution)
         e->updated[flip[0]] = 0u;
     if (components(e)[flip[0]].kind != 8u && !e->switched[flip[0]] &&
-                !(e->lazy_wire_power && components(e)[flip[0]].kind == 5u && e->watched_by_component[flip[0]] == NONE)) {
+                !(ne_lazy_wire_power(e) && components(e)[flip[0]].kind == 5u && e->watched_by_component[flip[0]] == NONE)) {
         e->switched[flip[0]] = 1u;
         e->switched_nodes[switched_count++] = flip[0];
     }
@@ -796,7 +796,7 @@ static uint32_t set_token_pos(NEEngine *e, uint32_t token, uint32_t position) {
     }
     if (notify_shape(e, table(e, 13u)[cells[0] + local]))
         return e->error;
-    if (!e->lazy_wire_power) for (uint32_t i = 0; i < switched_count; ++i) {
+    if (!ne_lazy_wire_power(e)) for (uint32_t i = 0; i < switched_count; ++i) {
         uint32_t node = e->switched_nodes[i];
         if (components(e)[node].kind == 5u)
             refresh_wire(e, node, input_strength(e, node));
@@ -839,7 +839,7 @@ static uint32_t set_token_pos(NEEngine *e, uint32_t token, uint32_t position) {
                 e->changed_nodes[changed_count++] = node;
             }
         } else if (components(e)[node].kind == 5u) {
-            if (!e->lazy_wire_power) refresh_wire(e, node, input_strength(e, node));
+            if (!ne_lazy_wire_power(e)) refresh_wire(e, node, input_strength(e, node));
         }
         else {
             uint32_t result = update_once(e, node);
@@ -1142,10 +1142,10 @@ uint32_t ne_snapshot_words(const void *memory) {
     uint32_t motions = 0u;
     for (uint32_t slot = e->motion_first; slot != NONE; slot = e->motions[slot].next)
         motions++;
-    uint64_t size = 8u + (uint64_t)e->program->component_count * 4u + e->token_count + e->piston_count +
-                    (uint64_t)motions * 9u + (uint64_t)e->piston_event_count * 2u + e->program->link_count +
-                    e->program->arrangement_link_count + table_words(e, 27u) + e->program->watched_wire_count +
-                    table_words(e, 45u) / 5u + 1u + (uint64_t)e->program->component_count * 2u +
+    uint64_t size = 8u + (uint64_t)engine_program(e)->component_count * 4u + ne_token_count(e) + ne_piston_count(e) +
+                    (uint64_t)motions * 9u + (uint64_t)e->piston_event_count * 2u + engine_program(e)->link_count +
+                    engine_program(e)->arrangement_link_count + table_words(e, 27u) + engine_program(e)->watched_wire_count +
+                    table_words(e, 45u) / 5u + 1u + (uint64_t)engine_program(e)->component_count * 2u +
                     (uint64_t)e->note_count * 3u;
     return size <= UINT32_MAX ? (uint32_t)size : 0u;
 }
@@ -1164,20 +1164,20 @@ uint32_t ne_read_snapshot(const void *memory, uint32_t *out, uint32_t words) {
     uint32_t motions = 0u;
     for (uint32_t slot = e->motion_first; slot != NONE; slot = e->motions[slot].next)
         motions++;
-    out[0] = e->program->component_count;
-    out[1] = e->token_count;
-    out[2] = e->piston_count;
+    out[0] = engine_program(e)->component_count;
+    out[1] = ne_token_count(e);
+    out[2] = ne_piston_count(e);
     out[3] = motions;
     out[4] = e->piston_event_count;
     out[5] = (uint32_t)e->tick_count;
     out[6] = (uint32_t)(e->tick_count >> 32u);
     out[7] = 6u;
     uint32_t cursor = 8u;
-    for (uint32_t i = 0; i < e->program->component_count; ++i)
+    for (uint32_t i = 0; i < engine_program(e)->component_count; ++i)
         out[cursor++] = represented_state(e, i);
-    for (uint32_t i = 0; i < e->token_count; ++i)
+    for (uint32_t i = 0; i < ne_token_count(e); ++i)
         out[cursor++] = e->token_cell[i];
-    for (uint32_t i = 0; i < e->piston_count; ++i)
+    for (uint32_t i = 0; i < ne_piston_count(e); ++i)
         out[cursor++] = e->piston_flags[i];
     for (uint32_t slot = e->motion_first; slot != NONE; slot = e->motions[slot].next) {
         NEMotion m = e->motions[slot];
@@ -1196,28 +1196,28 @@ uint32_t ne_read_snapshot(const void *memory, uint32_t *out, uint32_t words) {
         out[cursor++] = e->piston_events[index * 2u];
         out[cursor++] = e->piston_events[index * 2u + 1u];
     }
-    for (uint32_t i = 0; i < e->program->link_count; ++i)
+    for (uint32_t i = 0; i < engine_program(e)->link_count; ++i)
         out[cursor++] = e->contributions[i];
-    for (uint32_t i = 0; i < e->program->arrangement_link_count; ++i)
+    for (uint32_t i = 0; i < engine_program(e)->arrangement_link_count; ++i)
         out[cursor++] = e->arrangement_contributions[i];
     for (uint32_t i = 0; i < table_words(e, 27u); ++i)
         out[cursor++] = e->groups[i];
-    for (uint32_t i = 0; i < e->program->watched_wire_count; ++i)
+    for (uint32_t i = 0; i < engine_program(e)->watched_wire_count; ++i)
         out[cursor++] = e->watched_strengths[i];
-    for (uint32_t i = 0; i < e->program->component_count; ++i) {
+    for (uint32_t i = 0; i < engine_program(e)->component_count; ++i) {
         out[cursor++] = e->input_count[i];
         out[cursor++] = e->side_count[i];
     }
-    for (uint32_t i = 0; i < e->program->component_count; ++i)
+    for (uint32_t i = 0; i < engine_program(e)->component_count; ++i)
         out[cursor++] = e->comparator_outputs[i];
     for (uint32_t i = 0; i < table_words(e, 45u) / 5u; ++i)
         out[cursor++] = e->reactive_strengths[i];
     out[cursor++] = e->note_count;
-    for (uint32_t i = 0; i < e->program->component_count; ++i)
+    for (uint32_t i = 0; i < engine_program(e)->component_count; ++i)
         out[cursor++] = e->note_instruments[i];
     for (uint32_t i = 0; i < e->note_count * 3u; ++i)
         out[cursor++] = e->note_events[i];
-    for (uint32_t i = 0; i < e->program->component_count; ++i)
+    for (uint32_t i = 0; i < engine_program(e)->component_count; ++i)
         out[cursor++] = e->wire_sides[i];
     return cursor == words ? NE_OK : NE_INVALID;
 }

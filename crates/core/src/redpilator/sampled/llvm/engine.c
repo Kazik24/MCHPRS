@@ -1,4 +1,7 @@
 #include "abi.h"
+#ifdef MCHPRS_EMBEDDED_PROGRAM
+#include "program.h"
+#endif
 #include "command_engine.c"
 
 #define NE_OK 0u
@@ -81,37 +84,133 @@ typedef struct {
     uint64_t command_now_ns, command_logical_base;
 } NEEngine;
 
+static const MchprsNativeProgramDescriptor *engine_program(const NEEngine *e) {
+#ifdef MCHPRS_EMBEDDED_PROGRAM
+    (void)e;
+    return &ne_static_program;
+#else
+    return e->program;
+#endif
+}
+
 static const MchprsNativeComponent *components(const NEEngine *engine) {
+#ifdef MCHPRS_EMBEDDED_PROGRAM
+    (void)engine;
+    return NE_STATIC_COMPONENTS;
+#else
     return engine->component_data;
+#endif
 }
 
 static const uint32_t *sources(const NEEngine *engine) {
+#ifdef MCHPRS_EMBEDDED_PROGRAM
+    (void)engine;
+    return NE_STATIC_SOURCES;
+#else
     return engine->source_data;
+#endif
 }
 
 static const uint8_t *operations(const NEEngine *engine) {
+#ifdef MCHPRS_EMBEDDED_PROGRAM
+    (void)engine;
+    return NE_STATIC_OPERATIONS;
+#else
     return engine->operation_data;
+#endif
 }
 
 static const uint8_t *links(const NEEngine *engine) {
+#ifdef MCHPRS_EMBEDDED_PROGRAM
+    (void)engine;
+    return NE_STATIC_LINKS;
+#else
     return engine->link_data;
+#endif
 }
 
 /* Seven binary tables: side rows/data, source watchers, watched wires, watcher IDs, outgoing rows/IDs. */
 static const uint32_t *aux_directory(const NEEngine *e) {
-    return (const uint32_t *)(e->blob + e->program->source_offset + (size_t)e->program->source_count * 4u);
+    return (const uint32_t *)(e->blob + engine_program(e)->source_offset + (size_t)engine_program(e)->source_count * 4u);
 }
 static const uint32_t *table(const NEEngine *e, uint32_t index) {
+#ifdef MCHPRS_EMBEDDED_PROGRAM
+    (void)e;
+    return ne_static_tables[index];
+#else
     return e->table_data[index];
+#endif
 }
 static uint32_t table_words(const NEEngine *e, uint32_t index) {
+#ifdef MCHPRS_EMBEDDED_PROGRAM
+    (void)e;
+    return ne_static_sizes[index];
+#else
     return e->table_sizes[index];
+#endif
 }
+static uint32_t ne_has_reactive(const NEEngine *e) {
+#ifdef MCHPRS_EMBEDDED_PROGRAM
+    (void)e;
+    return NE_STATIC_HAS_REACTIVE;
+#else
+    return e->has_reactive;
+#endif
+}
+static uint32_t ne_lazy_wire_power(const NEEngine *e) {
+#ifdef MCHPRS_EMBEDDED_PROGRAM
+    (void)e;
+    return NE_STATIC_LAZY_WIRE_POWER;
+#else
+    return e->lazy_wire_power;
+#endif
+}
+static uint32_t ne_event_capacity(const NEEngine *e) {
+#ifdef MCHPRS_EMBEDDED_PROGRAM
+    (void)e;
+    return NE_STATIC_EVENT_CAPACITY;
+#else
+    return e->event_capacity;
+#endif
+}
+static uint32_t ne_piston_count(const NEEngine *e) {
+#ifdef MCHPRS_EMBEDDED_PROGRAM
+    (void)e;
+    return (ne_static_sizes[7]/10u);
+#else
+    return e->piston_count;
+#endif
+}
+static uint32_t ne_token_count(const NEEngine *e) {
+#ifdef MCHPRS_EMBEDDED_PROGRAM
+    (void)e;
+    return (ne_static_sizes[11]/3u);
+#else
+    return e->token_count;
+#endif
+}
+static uint32_t ne_cell_count(const NEEngine *e) {
+#ifdef MCHPRS_EMBEDDED_PROGRAM
+    (void)e;
+    return (ne_static_sizes[16]/7u);
+#else
+    return e->cell_count;
+#endif
+}
+static uint32_t ne_motion_capacity(const NEEngine *e) {
+#ifdef MCHPRS_EMBEDDED_PROGRAM
+    (void)e;
+    return (ne_static_sizes[7]/10u*2u+ne_static_sizes[11]/3u);
+#else
+    return e->motion_capacity;
+#endif
+}
+
 static void initialize_tables(NEEngine *e) {
-    e->component_data = (const MchprsNativeComponent *)(e->blob + e->program->component_offset);
-    e->source_data = (const uint32_t *)(e->blob + e->program->source_offset);
-    e->operation_data = e->blob + e->program->operation_offset;
-    e->link_data = e->blob + e->program->link_offset;
+    e->component_data = (const MchprsNativeComponent *)(e->blob + engine_program(e)->component_offset);
+    e->source_data = (const uint32_t *)(e->blob + engine_program(e)->source_offset);
+    e->operation_data = e->blob + engine_program(e)->operation_offset;
+    e->link_data = e->blob + engine_program(e)->link_offset;
     const uint32_t *directory = aux_directory(e);
     for (uint32_t index = 0; index < NE_TABLES; ++index) {
         e->table_data[index] = (const uint32_t *)(e->blob + directory[index * 2u]);
@@ -137,7 +236,7 @@ static uint32_t read_u32(const uint8_t *data) {
 
 static uint8_t input_strength(const NEEngine *, uint32_t);
 static uint8_t represented_state(const NEEngine *e, uint32_t node) {
-    return e->lazy_wire_power && components(e)[node].kind == 5u ? input_strength(e, node) : e->component_state[node];
+    return ne_lazy_wire_power(e) && components(e)[node].kind == 5u ? input_strength(e, node) : e->component_state[node];
 }
 
 /**
@@ -175,7 +274,7 @@ static uint32_t has_pending(const NEEngine *engine, uint32_t component) {
  */
 static uint32_t enqueue(NEEngine *engine, uint32_t component, uint32_t delay, uint8_t priority) {
     if ((component & PASSIVE_TICK ? (component & ~PASSIVE_TICK) >= engine->initial_tick_count
-                                  : component >= engine->program->component_count) ||
+                                  : component >= engine_program(engine)->component_count) ||
         delay >= 32u || priority > 3u || (delay == 0u && priority != 3u))
         return engine->error = NE_INVALID;
     uint32_t slot = engine->free_slot;
@@ -384,7 +483,7 @@ static uint32_t update_comparator(NEEngine *e, uint32_t node) {
  * conditional outgoing contributions using each link's attenuation.
  */
 static void refresh_wire(NEEngine *e, uint32_t wire, uint8_t strength) {
-    if (e->lazy_wire_power)
+    if (ne_lazy_wire_power(e))
         return;
     if (e->component_state[wire] == strength)
         return;
@@ -667,7 +766,7 @@ static uint32_t execute_output(NEEngine *engine, uint32_t component, uint8_t pow
     const MchprsNativeComponent *record = &components(engine)[component];
     uint32_t start = powered ? record->on_offset : record->off_offset;
     uint32_t count = powered ? record->on_count : record->off_count;
-    if (engine->has_reactive)
+    if (ne_has_reactive(engine))
         for (uint32_t i = 0; i < count; ++i) {
             const uint8_t *op = operations(engine) + (size_t)(start + i) * 8u;
             if (op[0] > 1u)
@@ -691,7 +790,7 @@ static uint32_t execute_output(NEEngine *engine, uint32_t component, uint8_t pow
     for (uint32_t i = 0; i < count; ++i) {
         const uint8_t *op = operations(engine) + (size_t)(start + i) * 8u;
         uint32_t operand = read_u32(op + 4);
-        if (engine->has_reactive &&
+        if (ne_has_reactive(engine) &&
             (op[0] < 2u || ((op[0] == 4u || op[0] == 5u || (op[0] >= 6u && op[0] <= 10u) || op[0] == 13u) &&
                             table(engine, 43u)[operand * 5u])))
             continue;
@@ -699,7 +798,7 @@ static uint32_t execute_output(NEEngine *engine, uint32_t component, uint8_t pow
         if (status != NE_OK)
             return status;
     }
-    return engine->has_reactive ? update_reactive(engine, component) : NE_OK;
+    return ne_has_reactive(engine) ? update_reactive(engine, component) : NE_OK;
 }
 
 /**
@@ -786,7 +885,7 @@ static uint32_t drain(NEEngine *engine) {
             uint32_t status = NE_OK;
             if (from != value)
                 status = execute_output(engine, node, (uint8_t)(value > from));
-            else if (engine->has_reactive)
+            else if (ne_has_reactive(engine))
                 status = update_reactive(engine, node);
             if (status || (status = notify(engine, node, (uint8_t)(old_powered != powered), 1u)))
                 return status;
@@ -1040,8 +1139,16 @@ static size_t align8(size_t value) {
     return (value + 7u) & ~(size_t)7u;
 }
 
+const uint8_t *ne_program_identity(void) {
+#ifdef MCHPRS_EMBEDDED_PROGRAM
+    return ne_static_identity;
+#else
+    return NULL;
+#endif
+}
+
 MchprsNativeApiDescriptor ne_api_descriptor(void) {
-    MchprsNativeApiDescriptor value = {3u, 16u, 34u};
+    MchprsNativeApiDescriptor value = {3u, 16u, 36u};
     return value;
 }
 
@@ -1055,6 +1162,15 @@ MchprsNativeApiDescriptor ne_api_descriptor(void) {
  */
 size_t ne_state_size(const MchprsNativeProgramDescriptor *program, const uint8_t *blob, uint32_t blob_bytes,
                      uint32_t initial_ticks) {
+#ifdef MCHPRS_EMBEDDED_PROGRAM
+    if (initial_ticks != NE_STATIC_IMPORTED_TICK_CAPACITY) return 0u;
+    initial_ticks = NE_STATIC_IMPORTED_TICK_CAPACITY;
+    if ((program && program != &ne_static_program) || (blob && blob != ne_static_data.bytes) ||
+        (blob_bytes && blob_bytes != ne_static_program.total_bytes)) return 0u;
+    program = &ne_static_program;
+    blob = ne_static_data.bytes;
+    blob_bytes = ne_static_program.total_bytes;
+#endif
     if (!valid_program(program, blob, blob_bytes))
         return 0u;
     if (program->component_count >= PASSIVE_TICK || initial_ticks >= PASSIVE_TICK)
@@ -1096,7 +1212,7 @@ size_t ne_state_size(const MchprsNativeProgramDescriptor *program, const uint8_t
 /* Deferred power cannot feed other electrical links; retain their refresh boundaries. */
 static uint8_t can_defer_wire_power(const NEEngine *e) {
     uint8_t wires = 0u;
-    for (uint32_t node = 0; node < e->program->component_count; ++node) {
+    for (uint32_t node = 0; node < engine_program(e)->component_count; ++node) {
         if (components(e)[node].kind != 5u)
             continue;
         wires = 1u;
@@ -1118,6 +1234,15 @@ static uint8_t can_defer_wire_power(const NEEngine *e) {
  */
 uint32_t ne_create(const MchprsNativeProgramDescriptor *program, const uint8_t *blob, uint32_t blob_bytes, void *memory,
                    size_t memory_bytes, uint32_t initial_ticks) {
+#ifdef MCHPRS_EMBEDDED_PROGRAM
+    if (initial_ticks != NE_STATIC_IMPORTED_TICK_CAPACITY) return NE_INVALID;
+    initial_ticks = NE_STATIC_IMPORTED_TICK_CAPACITY;
+    if ((program && program != &ne_static_program) || (blob && blob != ne_static_data.bytes) ||
+        (blob_bytes && blob_bytes != ne_static_program.total_bytes)) return NE_INVALID;
+    program = &ne_static_program;
+    blob = ne_static_data.bytes;
+    blob_bytes = ne_static_program.total_bytes;
+#endif
     size_t needed = ne_state_size(program, blob, blob_bytes, initial_ticks);
     if (!needed || !memory || (uintptr_t)memory % _Alignof(NEEngine) != 0u || memory_bytes < needed ||
         !valid_program(program, blob, blob_bytes))
@@ -1163,9 +1288,13 @@ uint32_t ne_create(const MchprsNativeProgramDescriptor *program, const uint8_t *
     offset = align8(offset + (size_t)program->component_count * sizeof(uint64_t));
     engine->phase = 1u;
     engine->events = (NEEvent *)(base + offset);
+#ifdef MCHPRS_EMBEDDED_PROGRAM
+    engine->event_capacity = NE_STATIC_EVENT_CAPACITY;
+#else
     engine->event_capacity = program->component_count * 2u + initial_ticks;
     if (engine->event_capacity < 64u)
         engine->event_capacity = 64u;
+#endif
     engine->initial_tick_count = initial_ticks;
     engine->event_count = 0u;
     engine->half_tick = 0u;
@@ -1208,12 +1337,12 @@ uint32_t ne_create(const MchprsNativeProgramDescriptor *program, const uint8_t *
     for (uint32_t i = 0; i < program->link_count; ++i)
         engine->contributions[i] = 0u;
     engine->free_slot = 0u;
-    for (uint32_t i = 0; i < engine->event_capacity; ++i)
-        engine->events[i].next = i + 1u < engine->event_capacity ? i + 1u : UINT32_MAX;
+    for (uint32_t i = 0; i < ne_event_capacity(engine); ++i)
+        engine->events[i].next = i + 1u < ne_event_capacity(engine) ? i + 1u : UINT32_MAX;
     for (uint32_t bucket = 0; bucket < 32u; ++bucket)
         for (uint32_t priority = 0; priority < 4u; ++priority)
             engine->queues[bucket][priority].first = engine->queues[bucket][priority].last = UINT32_MAX;
-    offset = align8(offset + (size_t)engine->event_capacity * sizeof(NEEvent));
+    offset = align8(offset + (size_t)ne_event_capacity(engine) * sizeof(NEEvent));
     if (init_movement(engine, base + offset, memory_bytes - offset))
         return NE_INVALID;
     const uint8_t *link = links(engine);
@@ -1237,6 +1366,10 @@ uint32_t ne_create(const MchprsNativeProgramDescriptor *program, const uint8_t *
         }
     }
     engine->lazy_wire_power = (uint8_t)can_defer_wire_power(engine);
+#ifdef MCHPRS_EMBEDDED_PROGRAM
+    if (engine->lazy_wire_power != NE_STATIC_LAZY_WIRE_POWER || engine->has_reactive != NE_STATIC_HAS_REACTIVE)
+        return NE_INVALID;
+#endif
     return NE_OK;
 }
 
@@ -1267,7 +1400,7 @@ static inline __attribute__((always_inline)) uint32_t tick_one(void *memory) {
     engine->phase++;
     if (!engine->phase) {
         engine->phase = 1u;
-        for (uint32_t i = 0; i < engine->program->component_count; ++i)
+        for (uint32_t i = 0; i < engine_program(engine)->component_count; ++i)
             engine->updated[i] = 0u;
     }
     uint32_t result = drain(engine);
@@ -1275,7 +1408,7 @@ static inline __attribute__((always_inline)) uint32_t tick_one(void *memory) {
         return result;
     engine->half_tick++;
     result = drain(engine);
-    if (!result && engine->piston_count) {
+    if (!result && ne_piston_count(engine)) {
         engine->phase++;
         result = run_piston_events(engine);
         if (!result) {
@@ -1301,7 +1434,7 @@ uint32_t ne_tick(void *memory) {
  */
 uint32_t ne_set_input(void *memory, uint32_t source_index, uint8_t powered) {
     NEEngine *engine = (NEEngine *)memory;
-    if (!engine || engine->error || source_index >= engine->program->source_count)
+    if (!engine || engine->error || source_index >= engine_program(engine)->source_count)
         return NE_INVALID;
     uint32_t component = sources(engine)[source_index];
     uint8_t kind = components(engine)[component].kind;
@@ -1312,7 +1445,7 @@ uint32_t ne_set_input(void *memory, uint32_t source_index, uint8_t powered) {
     engine->phase++;
     if (!engine->phase) {
         engine->phase = 1u;
-        for (uint32_t i = 0; i < engine->program->component_count; ++i)
+        for (uint32_t i = 0; i < engine_program(engine)->component_count; ++i)
             engine->updated[i] = 0u;
     }
     set_component(engine, component, powered);
@@ -1327,7 +1460,7 @@ uint32_t ne_set_input(void *memory, uint32_t source_index, uint8_t powered) {
 
 uint32_t ne_use_control(void *memory, uint32_t source_index) {
     NEEngine *engine = (NEEngine *)memory;
-    if (!engine || engine->error || source_index >= engine->program->source_count)
+    if (!engine || engine->error || source_index >= engine_program(engine)->source_count)
         return NE_INVALID;
     uint32_t component = sources(engine)[source_index];
     uint8_t kind = components(engine)[component].kind;
@@ -1338,7 +1471,7 @@ uint32_t ne_use_control(void *memory, uint32_t source_index) {
 
 uint32_t ne_read_state(const void *memory, uint8_t *out, uint32_t count) {
     const NEEngine *engine = (const NEEngine *)memory;
-    if (!engine || !out || count != engine->program->component_count)
+    if (!engine || !out || count != engine_program(engine)->component_count)
         return NE_INVALID;
     for (uint32_t i = 0; i < count; ++i)
         out[i] = represented_state(engine, i);
@@ -1352,10 +1485,10 @@ uint64_t ne_tick_count(const void *memory) {
 
 uint32_t ne_read_components(const void *memory, const uint32_t *ids, uint8_t *out, uint32_t count) {
     const NEEngine *e = (const NEEngine *)memory;
-    if (!e || !ids || !out || count > e->program->component_count)
+    if (!e || !ids || !out || count > engine_program(e)->component_count)
         return NE_INVALID;
     for (uint32_t i = 0; i < count; ++i)
-        if (ids[i] >= e->program->component_count)
+        if (ids[i] >= engine_program(e)->component_count)
             return NE_INVALID;
     for (uint32_t i = 0; i < count; ++i)
         out[i] = represented_state(e, ids[i]);
@@ -1364,10 +1497,10 @@ uint32_t ne_read_components(const void *memory, const uint32_t *ids, uint8_t *ou
 
 uint32_t ne_read_visual_components(const void *memory, const uint32_t *ids, uint32_t *out, uint32_t count) {
     const NEEngine *e = (const NEEngine *)memory;
-    if (!e || ((!ids || !out) && count) || count > e->program->component_count)
+    if (!e || ((!ids || !out) && count) || count > engine_program(e)->component_count)
         return NE_INVALID;
     for (uint32_t i = 0; i < count; ++i)
-        if (ids[i] >= e->program->component_count)
+        if (ids[i] >= engine_program(e)->component_count)
             return NE_INVALID;
     for (uint32_t i = 0; i < count; ++i) {
         uint32_t node = ids[i], value = represented_state(e, node);
@@ -1390,7 +1523,7 @@ uint32_t ne_note_count(const void *memory) {
 
 uint32_t ne_read_notes(const void *memory, uint32_t *out, uint32_t count) {
     const NEEngine *e = (const NEEngine *)memory;
-    if (!e || !out || count != e->note_count || count > e->program->component_count || count > UINT32_MAX / 3u)
+    if (!e || !out || count != e->note_count || count > engine_program(e)->component_count || count > UINT32_MAX / 3u)
         return NE_INVALID;
     for (uint32_t i = 0; i < count * 3u; ++i)
         out[i] = e->note_events[i];
@@ -1419,7 +1552,7 @@ uint32_t ne_read_pending(const void *memory, MchprsNativePendingTick *out, uint3
         for (uint32_t priority = 0; priority < 4u; ++priority) {
             uint32_t slot = engine->queues[(engine->half_tick + delay) % 32u][priority].first;
             while (slot != UINT32_MAX) {
-                if (slot >= engine->event_capacity || written >= count)
+                if (slot >= ne_event_capacity(engine) || written >= count)
                     return NE_INVALID;
                 const NEEvent *event = &engine->events[slot];
                 out[written].component = event->component;
@@ -1516,12 +1649,17 @@ static uint32_t dispatch_command_tick(NEEngine *e, uint32_t component) {
  */
 uint32_t ne_bind_commands(void *memory, void *commands, const uint32_t *notify_rows, const uint32_t *notify_targets,
                           uint32_t target_count) {
+#ifdef MCHPRS_EMBEDDED_PROGRAM
+    notify_rows = ne_static_command_notify_rows;
+    notify_targets = ne_static_command_notify_targets;
+    target_count = NE_STATIC_COMMAND_TARGET_COUNT;
+#endif
     NEEngine *e = (NEEngine *)memory;
     NECommandEngine *state = (NECommandEngine *)commands;
-    if (!e || !state || state->component_count != e->program->component_count || target_count > UINT32_MAX / 3u ||
-        (!notify_rows && e->program->component_count) || (!notify_targets && target_count))
+    if (!e || !state || state->component_count != engine_program(e)->component_count || target_count > UINT32_MAX / 3u ||
+        (!notify_rows && engine_program(e)->component_count) || (!notify_targets && target_count))
         return NE_INVALID;
-    for (uint32_t i = 0; i < e->program->component_count; ++i) {
+    for (uint32_t i = 0; i < engine_program(e)->component_count; ++i) {
         if (!bounded(notify_rows[(size_t)i * 2u], notify_rows[(size_t)i * 2u + 1u], target_count) ||
             (components(e)[i].kind == 15u && command_index(state, i) == NE_CMD_NONE))
             return NE_INVALID;
@@ -1531,7 +1669,7 @@ uint32_t ne_bind_commands(void *memory, void *commands, const uint32_t *notify_r
             return NE_INVALID;
     for (uint32_t i = 0; i < target_count; ++i) {
         const uint32_t *target = notify_targets + (size_t)i * 3u;
-        if (target[0] >= e->program->component_count || (target[1] != NONE && target[1] >= e->cell_count) ||
+        if (target[0] >= engine_program(e)->component_count || (target[1] != NONE && target[1] >= ne_cell_count(e)) ||
             (target[2] & ~0x100u))
             return NE_INVALID;
     }

@@ -86,9 +86,26 @@ typedef struct {
     uint64_t window_age_at_start_ns;
     NECommandMutable *mutable_blocks;
     uint32_t *effects;
-    uint32_t *component_commands;
-    uint32_t *previous_next;
+    const uint32_t *component_commands;
+    const uint32_t *previous_next;
 } NECommandEngine;
+
+#ifdef MCHPRS_EMBEDDED_PROGRAM
+#define CMD_BLOCKS(e) ne_static_command_blocks
+#define CMD_SPECS(e) ne_static_command_specs
+#define CMD_STRINGS(e) ne_static_command_strings
+#define CMD_COMPONENTS(e) NE_STATIC_COMPONENTS
+#define CMD_INDEX(e) ne_static_command_components
+#define CMD_CHAIN(e) ne_static_command_neighbors
+#else
+#define CMD_BLOCKS(e) ((e)->block_rows)
+#define CMD_SPECS(e) ((e)->spec_rows)
+#define CMD_STRINGS(e) ((e)->strings)
+#define CMD_COMPONENTS(e) ((e)->components)
+#define CMD_INDEX(e) ((e)->component_commands)
+#define CMD_CHAIN(e) ((e)->previous_next)
+#endif
+
 
 typedef struct {
     void *context;
@@ -241,6 +258,16 @@ MCHPRS_NATIVE_EXPORT uint32_t ne_command_init(void *memory, size_t memory_bytes,
                                               const uint8_t *strings, uint32_t string_bytes,
                                               const uint32_t output_state[6], uint64_t now_ns,
                                               uint32_t effect_capacity) {
+#ifdef MCHPRS_EMBEDDED_PROGRAM
+    component_count = ne_static_program.component_count;
+    components = NE_STATIC_COMPONENTS;
+    block_rows = ne_static_command_blocks;
+    block_count = NE_STATIC_COMMAND_COUNT;
+    spec_rows = ne_static_command_specs;
+    spec_count = NE_STATIC_COMMAND_COUNT;
+    strings = ne_static_command_strings;
+    string_bytes = NE_STATIC_STRING_BYTES;
+#endif
     const size_t needed = ne_command_state_size(block_count, effect_capacity);
     if (!needed || !memory || (uintptr_t)memory % _Alignof(NECommandEngine) || memory_bytes < needed ||
         (!components && component_count) ||
@@ -290,14 +317,14 @@ MCHPRS_NATIVE_EXPORT uint32_t ne_command_init(void *memory, size_t memory_bytes,
 }
 
 static uint32_t command_index(const NECommandEngine *engine, uint32_t component) {
-    return engine->component_commands && component < engine->component_count ? engine->component_commands[component]
+    return CMD_INDEX(engine) && component < engine->component_count ? CMD_INDEX(engine)[component]
                                                                              : NE_CMD_NONE;
 }
 
 static uint32_t command_at(const NECommandEngine *engine, int64_t x, int64_t y, int64_t z) {
     for (uint32_t i = 0; i < engine->block_count; ++i) {
-        uint32_t component = engine->block_rows[(size_t)i * NE_CMD_BLOCK_WORDS];
-        const MchprsNativeComponent *pos = &engine->components[component];
+        uint32_t component = CMD_BLOCKS(engine)[(size_t)i * NE_CMD_BLOCK_WORDS];
+        const MchprsNativeComponent *pos = &CMD_COMPONENTS(engine)[component];
         if ((int64_t)pos->x == x && (int64_t)pos->y == y && (int64_t)pos->z == z)
             return i;
     }
@@ -336,15 +363,22 @@ static void face_delta(uint32_t face, int32_t *x, int32_t *y, int32_t *z) {
 MCHPRS_NATIVE_EXPORT uint32_t ne_command_prepare_indices(void *memory, uint32_t *components, uint32_t component_count,
                                                          uint32_t *previous_next, uint32_t words) {
     NECommandEngine *engine = (NECommandEngine *)memory;
+#ifdef MCHPRS_EMBEDDED_PROGRAM
+    (void)components; (void)component_count; (void)previous_next; (void)words;
+    if (!engine) return NE_CMD_INVALID;
+    engine->component_commands = ne_static_command_components;
+    engine->previous_next = ne_static_command_neighbors;
+    return NE_CMD_OK;
+#else
     if (!engine || component_count != engine->component_count || words != engine->block_count * 2u ||
         (!components && component_count) || (!previous_next && words))
         return NE_CMD_INVALID;
     for (uint32_t component = 0; component < component_count; ++component)
         components[component] = NE_CMD_NONE;
     for (uint32_t index = 0; index < engine->block_count; ++index) {
-        const uint32_t *row = engine->block_rows + (size_t)index * NE_CMD_BLOCK_WORDS;
+        const uint32_t *row = CMD_BLOCKS(engine) + (size_t)index * NE_CMD_BLOCK_WORDS;
         components[row[0]] = index;
-        const MchprsNativeComponent *pos = &engine->components[row[0]];
+        const MchprsNativeComponent *pos = &CMD_COMPONENTS(engine)[row[0]];
         int32_t dx, dy, dz;
         face_delta(row[3], &dx, &dy, &dz);
         previous_next[index * 2u] =
@@ -355,13 +389,14 @@ MCHPRS_NATIVE_EXPORT uint32_t ne_command_prepare_indices(void *memory, uint32_t 
     engine->component_commands = components;
     engine->previous_next = previous_next;
     return NE_CMD_OK;
+#endif
 }
 
 static uint32_t conditional_met(const NECommandEngine *engine, uint32_t index) {
-    const uint32_t *row = engine->block_rows + (size_t)index * NE_CMD_BLOCK_WORDS;
+    const uint32_t *row = CMD_BLOCKS(engine) + (size_t)index * NE_CMD_BLOCK_WORDS;
     if (!(row[4] & NE_CMD_CONDITIONAL))
         return 1u;
-    const uint32_t previous = engine->previous_next[index * 2u];
+    const uint32_t previous = CMD_CHAIN(engine)[index * 2u];
     if (previous == NE_CMD_NONE || !(engine->mutable_blocks[previous].flags & NE_CMD_HAS_ENTITY))
         return 0u;
     return engine->mutable_blocks[previous].success_count > 0;
@@ -396,7 +431,7 @@ static uint32_t emit(NECommandEngine *engine, uint32_t index, uint64_t logical_t
     if (engine->effect_count >= engine->effect_capacity)
         return NE_CMD_CAPACITY;
     uint32_t *row = engine->effects + (size_t)engine->effect_count * NE_CMD_EFFECT_WORDS;
-    row[0] = engine->block_rows[(size_t)index * NE_CMD_BLOCK_WORDS];
+    row[0] = CMD_BLOCKS(engine)[(size_t)index * NE_CMD_BLOCK_WORDS];
     row[1] = (uint32_t)logical_tick;
     row[2] = (uint32_t)(logical_tick >> 32u);
     row[3] = recipient;
@@ -418,8 +453,8 @@ static uint32_t emit(NECommandEngine *engine, uint32_t index, uint64_t logical_t
  */
 static uint32_t execute_command(NECommandEngine *engine, uint32_t index, uint64_t logical_tick, uint64_t now_ns,
                                 uint8_t *ran) {
-    const uint32_t *block = engine->block_rows + (size_t)index * NE_CMD_BLOCK_WORDS;
-    const uint32_t *spec = engine->spec_rows + (size_t)block[1] * NE_CMD_SPEC_WORDS;
+    const uint32_t *block = CMD_BLOCKS(engine) + (size_t)index * NE_CMD_BLOCK_WORDS;
+    const uint32_t *spec = CMD_SPECS(engine) + (size_t)block[1] * NE_CMD_SPEC_WORDS;
     NECommandMutable *state = &engine->mutable_blocks[index];
     const uint32_t condition =
         block[2] == NE_CMD_MODE_CHAIN ? conditional_met(engine, index) : ((state->flags & NE_CMD_CONDITION_MET) != 0u);
@@ -477,7 +512,7 @@ static uint32_t execute_command(NECommandEngine *engine, uint32_t index, uint64_
 static uint32_t notify_command(NECommandEngine *engine, uint32_t index, const NECommandHooks *hooks) {
     if (!hooks->notify)
         return NE_CMD_INVALID;
-    return hooks->notify(hooks->context, engine->block_rows[(size_t)index * NE_CMD_BLOCK_WORDS]);
+    return hooks->notify(hooks->context, CMD_BLOCKS(engine)[(size_t)index * NE_CMD_BLOCK_WORDS]);
 }
 
 /**
@@ -495,7 +530,7 @@ MCHPRS_NATIVE_EXPORT uint32_t ne_command_update(void *memory, uint32_t component
     uint32_t index = command_index(engine, component);
     if (index == NE_CMD_NONE)
         return NE_CMD_INVALID;
-    const uint32_t *block = engine->block_rows + (size_t)index * NE_CMD_BLOCK_WORDS;
+    const uint32_t *block = CMD_BLOCKS(engine) + (size_t)index * NE_CMD_BLOCK_WORDS;
     NECommandMutable *state = &engine->mutable_blocks[index];
     if (!(state->flags & NE_CMD_HAS_ENTITY)) {
         state->flags |= NE_CMD_HAS_ENTITY | NE_CMD_TRACK_OUTPUT | NE_CMD_UPDATE_LAST_EXECUTION;
@@ -539,7 +574,7 @@ MCHPRS_NATIVE_EXPORT uint32_t ne_command_tick(void *memory, uint32_t component, 
     uint32_t index = command_index(engine, component);
     if (index == NE_CMD_NONE)
         return NE_CMD_INVALID;
-    const uint32_t *root_block = engine->block_rows + (size_t)index * NE_CMD_BLOCK_WORDS;
+    const uint32_t *root_block = CMD_BLOCKS(engine) + (size_t)index * NE_CMD_BLOCK_WORDS;
     NECommandMutable *root_state = &engine->mutable_blocks[index];
     if (root_block[2] == NE_CMD_MODE_CHAIN || !(root_state->flags & NE_CMD_HAS_ENTITY))
         return NE_CMD_OK;
@@ -556,10 +591,10 @@ MCHPRS_NATIVE_EXPORT uint32_t ne_command_tick(void *memory, uint32_t component, 
     if (root_state->flags & NE_CMD_CONDITION_MET) {
         uint32_t current = index;
         for (uint32_t steps = 0; steps < 256u; ++steps) {
-            uint32_t next = engine->previous_next[current * 2u + 1u];
+            uint32_t next = CMD_CHAIN(engine)[current * 2u + 1u];
             if (next == NE_CMD_NONE)
                 break;
-            const uint32_t *next_block = engine->block_rows + (size_t)next * NE_CMD_BLOCK_WORDS;
+            const uint32_t *next_block = CMD_BLOCKS(engine) + (size_t)next * NE_CMD_BLOCK_WORDS;
             NECommandMutable *next_state = &engine->mutable_blocks[next];
             if (next_block[2] != NE_CMD_MODE_CHAIN)
                 break;
@@ -619,7 +654,7 @@ MCHPRS_NATIVE_EXPORT uint32_t ne_command_read_state(const void *memory, uint32_t
     if (!engine || (!out && words) || words != engine->block_count * NE_CMD_STATE_WORDS)
         return NE_CMD_INVALID;
     for (uint32_t i = 0; i < engine->block_count; ++i) {
-        const uint32_t *block = engine->block_rows + (size_t)i * NE_CMD_BLOCK_WORDS;
+        const uint32_t *block = CMD_BLOCKS(engine) + (size_t)i * NE_CMD_BLOCK_WORDS;
         const NECommandMutable *state = &engine->mutable_blocks[i];
         uint32_t *row = out + (size_t)i * NE_CMD_STATE_WORDS;
         row[0] = block[0];

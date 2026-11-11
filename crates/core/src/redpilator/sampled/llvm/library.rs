@@ -8,6 +8,7 @@ use std::{ffi::c_void, path::Path};
 
 #[cfg(any(windows, target_os = "linux"))]
 pub(super) struct Library {
+    program_identity: unsafe extern "C" fn() -> *const u8,
     pub(super) api_descriptor: unsafe extern "C" fn() -> NativeApiDescriptor,
     pub(super) state_size: unsafe extern "C" fn(*const NativeProgramDescriptor, *const u8, u32, u32) -> usize,
     pub(super) create: unsafe extern "C" fn(*const NativeProgramDescriptor, *const u8, u32, *mut c_void, usize, u32) -> u32,
@@ -44,14 +45,30 @@ impl Library {
     ///
     /// Open the module under an owning handle, resolve every required export and return a library value
     /// whose drop keeps unload ownership well defined.
+    #[cfg(test)]
     pub(super) fn load() -> Result<Self, ScratchError> {
-        let path = cache::module_path(None).map_err(|error| {
+        Self::load_inner(None, None)
+    }
+
+    pub(super) fn load_program(
+        program: &super::generated::GeneratedProgram,
+        monitor: Option<&crate::redpilator::TaskMonitor>,
+    ) -> Result<Self, ScratchError> {
+        Self::load_inner(Some(program), monitor)
+    }
+
+    fn load_inner(
+        program: Option<&super::generated::GeneratedProgram>,
+        monitor: Option<&crate::redpilator::TaskMonitor>,
+    ) -> Result<Self, ScratchError> {
+        let path = cache::module_path(program, monitor).map_err(|error| {
             tracing::warn!(%error, "LLVM module preparation failed");
             ScratchError {
                 position: None,
                 reason: "could not prepare LLVM module; see server log for details",
             }
         })?;
+        let load_started = std::time::Instant::now();
         let module = Module::open(&path)?;
         if std::env::var_os("MCHPRS_LLVM_DIAGNOSTICS").is_some() {
             let module_bytes = std::fs::metadata(&*path).map_or(0, |file| file.len());
@@ -60,8 +77,9 @@ impl Library {
         // Module ownership also releases the handle if any required export is missing.
         // SAFETY: The trusted native exports match these field ABIs; all names end in NUL and _module keeps
         // their code loaded.
-        unsafe {
-            Ok(Self {
+        let library = unsafe {
+            Self {
+                program_identity: module.symbol(b"ne_program_identity\0")?,
                 api_descriptor: module.symbol(b"ne_api_descriptor\0")?,
                 state_size: module.symbol(b"ne_state_size\0")?,
                 create: module.symbol(b"ne_create\0")?,
@@ -87,15 +105,35 @@ impl Library {
                 ack_effects: module.symbol(b"ne_ack_effects\0")?,
                 commands: command::Api::load(&module)?,
                 _module: module,
-            })
+            }
+        };
+        library.validate_abi()?;
+        if let Some(program) = program {
+            library.validate_program_identity(&program.identity)?;
         }
+        if std::env::var_os("MCHPRS_LLVM_DIAGNOSTICS").is_some() {
+            eprintln!("LLVM module load_ms={:.3}", load_started.elapsed().as_secs_f64() * 1000.0);
+        }
+        Ok(library)
+    }
+
+    pub(super) fn validate_program_identity(&self, expected: &[u8; 32]) -> Result<(), ScratchError> {
+        // SAFETY: The retained trusted module exposes immutable 32-byte program identity storage.
+        let identity = unsafe { (self.program_identity)() };
+        if identity.is_null() || unsafe { std::slice::from_raw_parts(identity, 32) } != expected {
+            return Err(ScratchError {
+                position: None,
+                reason: "LLVM module program identity mismatch",
+            });
+        }
+        Ok(())
     }
 
     pub(super) fn validate_abi(&self) -> Result<(), ScratchError> {
         // SAFETY: ne_api_descriptor takes no arguments and returns the repr(C) descriptor from abi.h; self owns
         // the module.
         let descriptor = unsafe { (self.api_descriptor)() };
-        if descriptor.abi_version != ABI_VERSION || descriptor.descriptor_bytes != 16 || descriptor.semantic_version != 34 {
+        if descriptor.abi_version != ABI_VERSION || descriptor.descriptor_bytes != 16 || descriptor.semantic_version != 36 {
             return Err(ScratchError {
                 position: None,
                 reason: "LLVM DLL ABI/version mismatch",
@@ -104,12 +142,50 @@ impl Library {
         Ok(())
     }
 
+    pub(super) fn create_embedded_state(&self, initial_tick_count: u32) -> Result<Vec<u64>, ScratchError> {
+        let initialization_started = std::time::Instant::now();
+        // SAFETY: Matching generated modules select their embedded descriptor/tables for null arguments.
+        let bytes = unsafe { (self.state_size)(std::ptr::null(), std::ptr::null(), 0, initial_tick_count) };
+        if bytes == 0 || bytes > 256 * 1024 * 1024 {
+            return Err(ScratchError {
+                position: None,
+                reason: "LLVM state size rejected",
+            });
+        }
+        let mut state = memory::zeroed::<u64>(bytes.div_ceil(8))?;
+        // SAFETY: State has the checked size/alignment; the module retains all immutable program data.
+        let status = unsafe {
+            (self.create)(
+                std::ptr::null(),
+                std::ptr::null(),
+                0,
+                state.as_mut_ptr().cast(),
+                state.len() * 8,
+                initial_tick_count,
+            )
+        };
+        if status != 0 {
+            return Err(ScratchError {
+                position: None,
+                reason: "LLVM rejected the embedded Program",
+            });
+        }
+        if std::env::var_os("MCHPRS_LLVM_DIAGNOSTICS").is_some() {
+            eprintln!(
+                "LLVM instance state_bytes={bytes}, initialization_ms={:.3}",
+                initialization_started.elapsed().as_secs_f64() * 1000.0
+            );
+        }
+        Ok(state)
+    }
+
     /// Allocate and initialize native execution memory for an encoded program.
     ///
     /// Inputs: The native descriptor, aligned program blob and imported-tick count.
     ///
     /// Ask the library for required storage, enforce the size bound, allocate fallibly and invoke native
     /// initialization; reject any reported status before returning ownership.
+    #[cfg(test)]
     pub(super) fn create_state(&self, descriptor: &NativeProgramDescriptor, blob: &[u64], initial_tick_count: u32) -> Result<Vec<u64>, ScratchError> {
         if blob
             .len()
@@ -171,7 +247,7 @@ mod tests {
 
     #[test]
     fn missing_export_does_not_invalidate_the_owned_module() {
-        let path = cache::module_path(None).unwrap();
+        let path = cache::module_path(None, None).unwrap();
         let module = Module::open(&path).unwrap();
         // SAFETY: This NUL-terminated name is absent in the generated module, so symbol returns Err without
         // constructing a pointer.

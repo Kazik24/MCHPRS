@@ -1,0 +1,223 @@
+{
+  "schema_version": 1,
+  "phase": "static program compilation before empty-start specialization",
+  "native_semantic_version": 35,
+  "recorded_at": "2026-11-11T22:36:25.334956+01:00",
+  "source_base_commit": "904ae25492ec775c5523f535a4bb794a226a3e7d",
+  "implementation": {
+    "runtime_and_program_compiled_together": true,
+    "static_const_typed_arrays_via_c23_embed": true,
+    "host_execution_blob_retained": false,
+    "immutable_command_tables_and_chain_indexes_embedded": true,
+    "program_identity_checked_before_creation": true,
+    "cache_key_includes_program_runtime_toolchain_and_target": true
+  },
+  "kernel_benchmark": {
+    "fixture": "ZCore12B_FIX.schem",
+    "mode": "--llvm --relaxed",
+    "ticks_per_sample": 50000,
+    "preparation_ticks": 413,
+    "pairs": 5,
+    "cpu": "Ryzen9 5950X",
+    "logical_cpu": 24,
+    "publication_calls_in_timer": 0,
+    "protocol": "Sequential alternating generic/embedded native16-tick batches on identical actual generated Program; fresh states; compilation, validation, preparation and snapshots outside timer.",
+    "generic_median_tps": 5092.104405945112,
+    "embedded_median_tps": 5199.938249694367,
+    "median_gain_percent": 2.117667572239035,
+    "paired_gain_percent": [
+      8.523595653637162,
+      2.5001240392788837,
+      10.937008409435522,
+      0.7562883789590469,
+      1.7790502134809927
+    ],
+    "samples": [
+      {
+        "round": 1,
+        "variant": "reference",
+        "tps": 4189.932348431552,
+        "elapsed_seconds": 11.933366899997054,
+        "thread_cpu_seconds": 11.75,
+        "cpu_fraction": 0.9846341018814145,
+        "logical_work_count": 590521175
+      },
+      {
+        "round": 1,
+        "variant": "candidate",
+        "tps": 4547.0652399728015,
+        "elapsed_seconds": 10.996103500001482,
+        "thread_cpu_seconds": 10.84375,
+        "cpu_fraction": 0.9861447739191013,
+        "logical_work_count": 590521175
+      },
+      {
+        "round": 2,
+        "variant": "candidate",
+        "tps": 5219.413332303326,
+        "elapsed_seconds": 9.579620700002124,
+        "thread_cpu_seconds": 9.5625,
+        "cpu_fraction": 0.9982127998030109,
+        "logical_work_count": 590521175
+      },
+      {
+        "round": 2,
+        "variant": "reference",
+        "tps": 5092.104405945112,
+        "elapsed_seconds": 9.819123099994613,
+        "thread_cpu_seconds": 9.8125,
+        "cpu_fraction": 0.9993254896667283,
+        "logical_work_count": 590521175
+      },
+      {
+        "round": 3,
+        "variant": "reference",
+        "tps": 4746.929510353616,
+        "elapsed_seconds": 10.533124600005976,
+        "thread_cpu_seconds": 10.421875,
+        "cpu_fraction": 0.9894381198143319,
+        "logical_work_count": 590521175
+      },
+      {
+        "round": 3,
+        "variant": "candidate",
+        "tps": 5266.101590090967,
+        "elapsed_seconds": 9.494689600003767,
+        "thread_cpu_seconds": 9.4375,
+        "cpu_fraction": 0.9939766751296699,
+        "logical_work_count": 590521175
+      },
+      {
+        "round": 4,
+        "variant": "candidate",
+        "tps": 5199.938249694367,
+        "elapsed_seconds": 9.615498799998022,
+        "thread_cpu_seconds": 9.5625,
+        "cpu_fraction": 0.9944881902540477,
+        "logical_work_count": 590521175
+      },
+      {
+        "round": 4,
+        "variant": "reference",
+        "tps": 5160.906910481501,
+        "elapsed_seconds": 9.688219700001355,
+        "thread_cpu_seconds": 9.6875,
+        "cpu_fraction": 0.9999257139057907,
+        "logical_work_count": 590521175
+      },
+      {
+        "round": 5,
+        "variant": "reference",
+        "tps": 5098.005796759245,
+        "elapsed_seconds": 9.807756599999266,
+        "thread_cpu_seconds": 9.796875,
+        "cpu_fraction": 0.9988905108025146,
+        "logical_work_count": 590521175
+      },
+      {
+        "round": 5,
+        "variant": "candidate",
+        "tps": 5188.701879769764,
+        "elapsed_seconds": 9.636321600002702,
+        "thread_cpu_seconds": 9.609375,
+        "cpu_fraction": 0.9972036425182514,
+        "logical_work_count": 590521175
+      }
+    ],
+    "full_final_snapshot_and_work_parity": true
+  },
+  "validation": {
+    "status": "ok",
+    "modules": {
+      "zcore-strict": "\\\\?\\F:\\rustrepos\\MCHPRS\\work\\llvm-static-program-20261111\\runtime-zcore-strict\\mroww-native-cache\\8a1dab49ced6dcc821886555062a15a260776f609e762801d791ed05496e3741-0\\engine.dll",
+      "zcore-relaxed": "\\\\?\\F:\\rustrepos\\MCHPRS\\work\\llvm-static-program-20261111\\runtime-zcore-relaxed\\mroww-native-cache\\689a569d4f60beab26fcac4078d5cea12f92008998fd6b6f67c812684bcc8843-0\\engine.dll",
+      "pm1": "\\\\?\\F:\\rustrepos\\MCHPRS\\work\\llvm-static-program-20261111\\runtime-pm1\\mroww-native-cache\\98ac741cc94ec98b67abfa8b320615fd134ad832b6cbf15cacc250f8591177ee-0\\engine.dll",
+      "fpu": "\\\\?\\F:\\rustrepos\\MCHPRS\\work\\llvm-static-program-20261111\\runtime-fpu\\mroww-native-cache\\601a03a1e1e0c5ecd26d8afd1b17eb1d97a5fef484a7b6a72c2e7e3f757c2cd6-0\\engine.dll"
+    },
+    "zcore_traces": {
+      "zcore-strict": "7ade7a6101ca8818aed319a331253a89769879c6da56398790594ddfc36dbb28",
+      "zcore-relaxed": "7ade7a6101ca8818aed319a331253a89769879c6da56398790594ddfc36dbb28"
+    },
+    "zcore_matching_frames_per_mode": 50001,
+    "pm1_messages": 1534,
+    "pm1_outputs_and_halt_match": true,
+    "fpu_matching_words": 10000,
+    "redpilator_tests_passed": 284,
+    "redpilator_tests_failed": 0,
+    "ignored": 29,
+    "focused_generated_tests_passed": 3,
+    "strict_snapshot_matches_historical_50000_tick_snapshot": true,
+    "windows_execution_verified": true,
+    "linux_x86_64_cross_compile_and_link_verified": true,
+    "linux_execution_verified": false
+  },
+  "large_program_build": {
+    "embedded_program_bytes": 99751708,
+    "generated_header_bytes": 5259,
+    "compile_seconds": 3.172110999999859,
+    "compile_and_link_seconds": 3.3455591999954777,
+    "dll_bytes": 100868096,
+    "compiler_peak_working_set_bytes": 1232445440
+  },
+  "cold_and_warm_stage_costs": {
+    "program_encoding_ms": [
+      210.852,
+      171.481,
+      187.451,
+      170.868
+    ],
+    "module_load_ms": [
+      212.307,
+      0.163,
+      0.119,
+      0.116
+    ],
+    "instance_state_bytes_and_init_ms": [
+      [
+        21053193,
+        89.029
+      ],
+      [
+        21053193,
+        27.897
+      ],
+      [
+        21053193,
+        31.302
+      ],
+      [
+        21053193,
+        28.828
+      ]
+    ],
+    "cold_emission_ms": 216.0826,
+    "cold_native_compile_link_ms": 3189.7760000000003,
+    "scope": "One seed creation and three fresh instance restarts with the same compiled Program. Load timing excludes program encoding, cache lookup, emission and compilation. Tick samples use5000 ticks and serve as a smoke check, not the primary TPS estimate."
+  },
+  "isolated_native_memory": {
+    "status": "ok",
+    "native_instance_bytes": 21053193,
+    "isolated_runner_peak_working_set_bytes": 139182080,
+    "scope": "Separate Python process loading the generated DLL and instance only; includes Python and metadata parsing. No circuit compilation, full host graph or host execution blob. This is not whole-server memory or a timing benchmark.",
+    "ticks": 50000,
+    "publication_reads_in_tick_loop": 0,
+    "screen_matches": true
+  },
+  "provenance": {
+    "embedded_dll_sha256": "0aa7f01ae003f1a981bec063dddbe72258f71a63bae5da77b884210165beeb8e",
+    "generic_reference_dll_sha256": "3ae962a77d9a7d57df3827939ea64a825acb32c0c164762c9f14f0fa1a98de69",
+    "native_source_sha256": {
+      "engine.c": "91c2921cff96be80cdce415ffbddf5941bf8903970997f4d47b2d28d5d12161b",
+      "llvm_movement.c": "508c9a8a262bae82689705958660abeba7585edb7c0d1f16976b720a3dd04dfa",
+      "command_engine.c": "b50bda357f9505c88273b599a422d648d85915576ccc1fd50c02c1f4d5baca7a",
+      "abi.h": "95d6e4b1a86e87c5409af3de9cf15c2cda1f6a35b5cd80ba6f0635f833f5be76"
+    }
+  },
+  "limits": [
+    "Small gain, not performance parity. Static arrays still use runtime-selected indices; many dispatch loops and histogram writes remain.",
+    "FPU result covers the existing10000-tick seeded protocol, not exhaustive arithmetic or clock-edge behavior.",
+    "Linux module was cross-compiled/linked but not executed. Live-server networking and client rendering were not benchmarked.",
+    "Isolated memory probe includes Python and metadata parsing; it is not full Rust server memory.",
+    "ConnectFour remains skipped; running servers and custom DLL files were not replaced."
+  ]
+}
