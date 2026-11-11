@@ -58,6 +58,15 @@ pub(in crate::plot) fn spawn_model(viewer: &impl PacketSender, player: &Player) 
         }
         .encode(),
     );
+    if let Some(size) = player.small_size {
+        viewer.send_packet(
+            &CEntityScale {
+                entity_id: model.entity_id as i32,
+                scale: size,
+            }
+            .encode(),
+        );
+    }
     if player.small_animal == SmallAnimal::Fox {
         viewer.send_packet(&fox_mouth_equipment(player, model.entity_id));
     }
@@ -93,14 +102,20 @@ impl Plot {
         self.players[player].send_system_message(&messages::small_animal(animal.name()));
     }
 
-    pub(in crate::plot) fn set_small(&mut self, player: usize, enabled: bool) -> bool {
+    pub(in crate::plot) fn set_small(&mut self, player: usize, enabled: bool, size: Option<f64>) -> bool {
         let current = &self.players[player];
-        if current.small_model.is_some() == enabled {
+        if current.small_model.is_some() == enabled && size.is_none() {
             current.send_system_message(if enabled { messages::SMALL_ENABLED } else { messages::SMALL_DISABLED });
             return true;
         }
-        if !enabled
-            && !super::redstone_tools::compass::body_clear(current.pos, 1.0, &|pos| {
+        let new_scale = if enabled {
+            size.or(current.small_size)
+                .unwrap_or(if current.small_animal == SmallAnimal::BabyOcelot { 0.25 } else { 0.5 })
+        } else {
+            1.0
+        };
+        if (!enabled || new_scale > current.scale())
+            && !super::redstone_tools::compass::body_clear(current.pos, new_scale, &|pos| {
                 if !Plot::in_plot_bounds(self.world.x, self.world.z, pos.x, pos.z) {
                     None
                 } else {
@@ -113,6 +128,9 @@ impl Plot {
         }
         if let Some(model) = self.players[player].small_model.take() {
             self.destroy_entity(model.entity_id);
+        }
+        if let Some(size) = size {
+            self.players[player].small_size = Some(size);
         }
         self.players[player].small_model = enabled.then(|| SmallModel::new(self.players[player].small_animal));
         let current = &self.players[player];

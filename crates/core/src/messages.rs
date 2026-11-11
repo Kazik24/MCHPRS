@@ -24,7 +24,7 @@ macro_rules! catalog {
 
 catalog! {
     fixed {
-        USAGE_SMALL = "Usage: /small [on|off|wolf|fox|cat|ocelot|baby|bat|enderdragon]";
+        USAGE_SMALL = "Usage: /small [on|off|wolf|fox|cat|ocelot|baby|bat|enderdragon] [size]";
         USAGE_SETWARP = "Usage: /setwarp <name> (creates or replaces a shared warp)";
         USAGE_WARP = "Usage: /warp [name] (omit the name to list shared warps)";
         INVALID_WARP_NAME = "Warp names must be 1-32 letters, digits, underscores or hyphens.";
@@ -33,9 +33,10 @@ catalog! {
         HELP_WARPS = "Shared warps\n/setwarp <name> saves your current position for everyone.\n/warp <name> visits that saved destination.\n/warp lists destinations; Tab completes their names.";
         SMALL_ENABLED = "Smol paws mode on";
         SMALL_DISABLED = "Small mode off. You're back to your normal size.";
-        SMALL_NO_ROOM = "There isn't room to return to full size here. Move into an open space first.";
+        SMALL_NO_ROOM = "There isn't room to grow to that size here. Move into an open space first.";
+        SMALL_INVALID_SIZE = "Size must be a number between 0.0625 and 16.";
         KISS_NO_PLAYER = "No other furballs on this plot to smooch. Bring a friend! :3";
-        HELP_SMALL = "Small mode\n/small toggles half-size movement and an animal appearance for other players.\n/small on and /small off select the mode explicitly.\n/small wolf|fox|cat|ocelot|baby|bat|enderdragon changes your saved animal; ocelot is the default. Baby ocelot uses an even smaller model and hitbox.\n/gm cat enables creative play in small mode; other gamemodes restore normal size.\nYour own view stays a scaled player so the preview cannot block your clicks.\nMove into an open space before turning it off. Your mode and animal follow you between plots and are saved when you leave.";
+        HELP_SMALL = "Small mode\n/small toggles half-size movement and an animal appearance for other players.\n/small on and /small off select the mode explicitly.\n/small 0.5 or /small wolf 2 enables small mode with an exact scale (0.0625 to 16). The size scales the animal model, player hitbox and view, and is saved.\n/small wolf|fox|cat|ocelot|baby|bat|enderdragon changes your saved animal; ocelot is the default. Baby ocelot uses an even smaller model and hitbox.\n/gm cat enables creative play in small mode; other gamemodes restore normal size.\nYour own view stays a scaled player so the preview cannot block your clicks.\nMove into an open space before turning it off. Your mode, animal and size follow you between plots and are saved when you leave.";
         USAGE_GIT_REBASE = "Usage: /git rebase <branch>";
         GIT_REBASE_NAMED_BRANCH_REQUIRED = "Name this detached trail first with /git branch <name>, then /git checkout <name> before rebasing, pup.";
         GIT_REBASE_SOURCE_BRANCH_REQUIRED = "These paws need an existing source branch. Use /git branch to sniff out its name :3";

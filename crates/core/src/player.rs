@@ -70,6 +70,7 @@ pub struct PlayerData {
     gamemode: Gamemode,
     small: bool,
     small_animal: SmallAnimal,
+    small_size: Option<f64>,
 }
 
 impl Default for PlayerData {
@@ -87,6 +88,7 @@ impl Default for PlayerData {
             gamemode: Gamemode::Creative,
             small: false,
             small_animal: SmallAnimal::Ocelot,
+            small_size: None,
         }
     }
 }
@@ -101,7 +103,7 @@ impl PlayerData {
                 anyhow::bail!("unsupported player save version");
             }
             let version = u32::from_le_bytes(data[7..11].try_into()?);
-            if !matches!(version, 3 | 4 | 5) {
+            if !matches!(version, 3..=6) {
                 anyhow::bail!("unsupported player save version");
             }
             if u32::from_le_bytes(data[11..15].try_into()?) != crate::server::MC_DATA_VERSION as u32 {
@@ -117,7 +119,14 @@ impl PlayerData {
         if version < 5 {
             data.extend_from_slice(&bincode::serialize(&SmallAnimal::Ocelot)?);
         }
-        Ok((bincode::deserialize(&data)?, legacy))
+        if version < 6 {
+            data.extend_from_slice(&bincode::serialize(&None::<f64>)?);
+        }
+        let player: Self = bincode::deserialize(&data)?;
+        if player.small_size.is_some_and(|size| !(0.0625..=16.0).contains(&size)) {
+            anyhow::bail!("invalid small model size");
+        }
+        Ok((player, legacy))
     }
 }
 
@@ -244,6 +253,7 @@ pub struct Player {
     pub crouching: bool,
     pub(crate) small_model: Option<SmallModel>,
     pub(crate) small_animal: SmallAnimal,
+    pub(crate) small_size: Option<f64>,
     pub(crate) last_compass_use: Option<Instant>,
     pub(crate) last_snowball_throw: Option<Instant>,
     pub on_ground: bool,
@@ -314,7 +324,8 @@ impl fmt::Debug for Player {
 impl Player {
     pub(crate) fn scale(&self) -> f64 {
         if self.small_model.is_some() {
-            if self.small_animal == SmallAnimal::BabyOcelot { 0.25 } else { 0.5 }
+            self.small_size
+                .unwrap_or(if self.small_animal == SmallAnimal::BabyOcelot { 0.25 } else { 0.5 })
         } else {
             1.0
         }
@@ -466,6 +477,7 @@ impl Player {
             crouching: false,
             small_model: player_data.small.then(|| SmallModel::new(player_data.small_animal)),
             small_animal: player_data.small_animal,
+            small_size: player_data.small_size,
             last_compass_use: None,
             last_snowball_throw: None,
             gamemode,
@@ -533,7 +545,7 @@ impl Player {
             }
             if legacy {
                 let mut bytes = b"MCHPLY\0".to_vec();
-                bytes.extend_from_slice(&5u32.to_le_bytes());
+                bytes.extend_from_slice(&6u32.to_le_bytes());
                 bytes.extend_from_slice(&(crate::server::MC_DATA_VERSION as u32).to_le_bytes());
                 bytes.extend_from_slice(&bincode::serialize(&player)?);
                 mchprs_save_data::atomic::backup(path)?;
@@ -589,10 +601,11 @@ impl Player {
             walk_speed: self.walk_speed,
             small: self.small_model.is_some(),
             small_animal: self.small_animal,
+            small_size: self.small_size,
         })
         .unwrap();
         let mut bytes = b"MCHPLY\0".to_vec();
-        bytes.extend_from_slice(&5u32.to_le_bytes());
+        bytes.extend_from_slice(&6u32.to_le_bytes());
         bytes.extend_from_slice(&(crate::server::MC_DATA_VERSION as u32).to_le_bytes());
         bytes.extend_from_slice(&data);
         let filename = format!("./world/players/{:032x}", self.uuid);
@@ -1284,6 +1297,7 @@ mod coordinate_security_tests {
             ..Default::default()
         })
         .unwrap();
+        let payload = &payload[..payload.len() - 1]; // Version 5 predates the optional size.
         let envelope = |version: u32, body: &[u8]| {
             let mut data = b"MCHPLY\0".to_vec();
             data.extend(version.to_le_bytes());
@@ -1316,12 +1330,38 @@ mod coordinate_security_tests {
         }
         for invalid in [
             b"MCHPLY\0".to_vec(),
-            envelope(6, &payload),
+            envelope(7, &payload),
             envelope(5, version4_payload),
             envelope(4, old_payload),
             envelope(3, &old_payload[..old_payload.len() - 1]),
         ] {
             assert!(PlayerData::decode(invalid).is_err());
+        }
+    }
+
+    #[test]
+    fn player_saves_restore_custom_small_size_and_reject_invalid_sizes() {
+        for size in [0.0625, 0.5, 1.0, 2.0, 16.0, 0.0, -1.0, 17.0, f64::NAN, f64::INFINITY] {
+            let mut bytes = b"MCHPLY\0".to_vec();
+            bytes.extend(6u32.to_le_bytes());
+            bytes.extend((crate::server::MC_DATA_VERSION as u32).to_le_bytes());
+            bytes.extend(
+                bincode::serialize(&PlayerData {
+                    small: true,
+                    small_size: Some(size),
+                    ..Default::default()
+                })
+                .unwrap(),
+            );
+            let decoded = PlayerData::decode(bytes);
+            if (0.0625..=16.0).contains(&size) {
+                let (data, _) = decoded.unwrap();
+                let conn = mchprs_network::test_support::connection(false).unwrap();
+                let player = Player::from_data(data, 1, "SizedCat".into(), conn.player);
+                assert_eq!(player.scale(), size);
+            } else {
+                assert!(decoded.is_err());
+            }
         }
     }
     #[test]

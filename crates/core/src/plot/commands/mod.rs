@@ -701,10 +701,30 @@ impl Plot {
                 self.message_sender.send(Message::Emote(message, animal_emote_sound(command))).unwrap();
             }
             "/small" => {
+                let size = match args.as_slice() {
+                    [value] if value.parse::<f64>().is_ok() => Some(*value),
+                    [_, value] => Some(*value),
+                    _ => None,
+                };
+                let size = if let Some(value) = size {
+                    let Ok(size) = value.parse::<f64>() else {
+                        self.players[player].send_error_message(messages::SMALL_INVALID_SIZE);
+                        return false;
+                    };
+                    if !(0.0625..=16.0).contains(&size) {
+                        self.players[player].send_error_message(messages::SMALL_INVALID_SIZE);
+                        return false;
+                    }
+                    args.pop();
+                    Some(size)
+                } else {
+                    None
+                };
                 let enabled = match args.as_slice() {
+                    [] if size.is_some() => true,
                     [] => self.players[player].small_model.is_none(),
                     ["on"] => true,
-                    ["off"] => false,
+                    ["off"] if size.is_none() => false,
                     ["wolf" | "fox" | "cat" | "ocelot" | "baby" | "bat" | "enderdragon"] => {
                         let animal = match args[0] {
                             "wolf" => crate::player::SmallAnimal::Wolf,
@@ -715,7 +735,9 @@ impl Plot {
                             "enderdragon" => crate::player::SmallAnimal::EnderDragon,
                             _ => crate::player::SmallAnimal::Ocelot,
                         };
-                        self.set_small_animal(player, animal);
+                        if size.is_none() || self.set_small(player, true, size) {
+                            self.set_small_animal(player, animal);
+                        }
                         return false;
                     }
                     _ => {
@@ -723,7 +745,7 @@ impl Plot {
                         return false;
                     }
                 };
-                self.set_small(player, enabled);
+                self.set_small(player, enabled, size);
             }
             "/speed" => {
                 if args.len() != 1 {
@@ -1207,8 +1229,20 @@ mod security_tests {
         let small = nodes.iter().find(|node| node.name == Some("small")).unwrap();
         assert_eq!(
             small.children.iter().map(|&id| nodes[id as usize].name.unwrap()).collect::<Vec<_>>(),
-            ["on", "off", "wolf", "fox", "cat", "ocelot", "baby", "bat", "enderdragon"]
+            ["on", "off", "wolf", "fox", "cat", "ocelot", "baby", "bat", "enderdragon", "size"]
         );
+        for &id in small
+            .children
+            .iter()
+            .filter(|&&id| !matches!(nodes[id as usize].name, Some("off" | "size")))
+        {
+            assert!(
+                nodes[id as usize]
+                    .children
+                    .iter()
+                    .any(|&child| nodes[child as usize].name == Some("size"))
+            );
+        }
         let gm = nodes.iter().find(|node| node.name == Some("gamemode")).unwrap();
         assert!(gm.children.iter().any(|&id| nodes[id as usize].name == Some("cat")));
     }

@@ -421,7 +421,7 @@ impl Plot {
                 return;
             }
         }
-        if self.players[player_idx].small_model.is_some() != small && !self.set_small(player_idx, small) {
+        if self.players[player_idx].small_model.is_some() != small && !self.set_small(player_idx, small, None) {
             return;
         }
         self.players[player_idx].set_gamemode(gamemode);

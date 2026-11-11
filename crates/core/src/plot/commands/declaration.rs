@@ -310,6 +310,18 @@ pub(super) fn declared_command_nodes() -> Vec<Node<'static>> {
         Node::literal("enderdragon", &[]).executable(),
     ];
 
+    let small = nodes.iter().position(|node| node.name == Some("small")).unwrap();
+    let size = nodes.len() as i32;
+    for child in nodes[small].children.to_vec() {
+        if nodes[child as usize].name != Some("off") {
+            nodes[child as usize].children = Box::leak(vec![size].into_boxed_slice());
+        }
+    }
+    let mut children = nodes[small].children.to_vec();
+    children.push(size);
+    nodes[small].children = Box::leak(children.into_boxed_slice());
+    nodes.push(Node::argument("size", Parser::Float(0.0625, 16.0), &[]).executable());
+
     let visual = nodes.len();
     nodes.push(Node::literal("visual", &[]).executable());
     let pistons = nodes.len();

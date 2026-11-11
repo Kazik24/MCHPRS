@@ -62,7 +62,7 @@ fn proxy_held_item(peer: &mut TcpStream, entity: u32, compressed: bool) -> Optio
 
 fn enable(plot: &mut Plot, owner: &mut TcpStream, viewer: &mut TcpStream, compressed: bool) -> u32 {
     let entity = plot.players[0].entity_id;
-    assert!(plot.set_small(0, true));
+    assert!(plot.set_small(0, true, None));
     let model = plot.players[0].small_model.as_ref().unwrap().entity_id;
     assert_ne!(entity, model);
     scale(owner, compressed, entity, 0.5);
@@ -88,6 +88,76 @@ fn enable(plot: &mut Plot, owner: &mut TcpStream, viewer: &mut TcpStream, compre
 }
 
 #[test]
+fn custom_sizes_scale_the_player_and_visible_model_and_reach_new_viewers() {
+    for compressed in [false, true] {
+        for size in [0.0625, 0.5, 1.0, 2.0, 16.0] {
+            let (mut plot, mut owner, mut viewer) = fixture(compressed);
+            let value = size.to_string();
+            assert!(!plot.handle_command(0, "/small", vec![&value]));
+            let current = &plot.players[0];
+            assert!(current.small_model.is_some());
+            assert_eq!(current.scale(), size);
+            assert!((current.eye_position().y - (21.0 + 1.62 * size)).abs() < 1e-9);
+            scale(&mut owner, compressed, current.entity_id, size);
+            flags(&mut owner, compressed, 0);
+            packet(&mut owner, compressed, 0x72);
+            scale(&mut viewer, compressed, current.entity_id, size);
+            flags(&mut viewer, compressed, 0x20);
+            packet(&mut viewer, compressed, 0x5f);
+            assert_eq!(proxy_type(&mut viewer, compressed), mchprs_network::generated::OCELOT_ENTITY);
+            packet(&mut viewer, compressed, 0x5c);
+            scale(&mut viewer, compressed, current.small_model.as_ref().unwrap().entity_id, size);
+
+            let newcomer = connection(compressed).unwrap();
+            let mut peer = newcomer.peer;
+            spawn_model(&PlayerPacketSender::new(&newcomer.player), current);
+            proxy_type(&mut peer, compressed);
+            packet(&mut peer, compressed, 0x5c);
+            scale(&mut peer, compressed, current.small_model.as_ref().unwrap().entity_id, size);
+        }
+    }
+}
+
+#[test]
+fn size_arguments_update_active_models_preserve_saved_choices_and_require_room_to_grow() {
+    let (mut plot, _owner, _viewer) = fixture(false);
+    plot.handle_command(0, "/small", vec!["wolf", "0.5"]);
+    assert_eq!(plot.players[0].small_animal, SmallAnimal::Wolf);
+    assert_eq!(plot.players[0].scale(), 0.5);
+
+    let model = plot.players[0].small_model.as_ref().unwrap().entity_id;
+    plot.world.set_block(BlockPos::new(32, 22, 35), Block::Stone {});
+    plot.handle_command(0, "/small", vec!["on", "2"]);
+    assert_eq!(plot.players[0].scale(), 0.5);
+    assert_eq!(plot.players[0].small_model.as_ref().unwrap().entity_id, model);
+    plot.world.set_block(BlockPos::new(32, 22, 35), Block::Air);
+    plot.handle_command(0, "/small", vec!["on", "2"]);
+    assert_eq!(plot.players[0].scale(), 2.0);
+    assert_ne!(plot.players[0].small_model.as_ref().unwrap().entity_id, model);
+    plot.handle_command(0, "/small", vec!["off"]);
+    assert_eq!(plot.players[0].scale(), 1.0);
+    plot.handle_command(0, "/small", vec!["on"]);
+    assert_eq!(plot.players[0].scale(), 2.0);
+
+    for args in [
+        vec!["0"],
+        vec!["-1"],
+        vec!["0.01"],
+        vec!["17"],
+        vec!["NaN"],
+        vec!["inf"],
+        vec!["wolf", "invalid"],
+        vec!["off", "0.5"],
+        vec!["unknown", "0.5"],
+        vec!["on", "0.5", "extra"],
+    ] {
+        plot.handle_command(0, "/small", args);
+        assert_eq!(plot.players[0].scale(), 2.0);
+        assert_eq!(plot.players[0].small_animal, SmallAnimal::Wolf);
+    }
+}
+
+#[test]
 fn disguise_lifecycle_keeps_owner_interactive_and_restores_size_only_with_clearance() {
     for compressed in [false, true] {
         let (mut plot, mut owner, mut viewer) = fixture(compressed);
@@ -95,20 +165,20 @@ fn disguise_lifecycle_keeps_owner_interactive_and_restores_size_only_with_cleara
         let inventory = plot.players[0].inventory[36].clone();
         assert_eq!(plot.players[0].scale(), 0.5);
         assert!((plot.players[0].eye_position().y - 21.81).abs() < 1e-9);
-        assert!(plot.set_small(0, true));
+        assert!(plot.set_small(0, true, None));
         packet(&mut owner, compressed, 0x72);
         assert_eq!(plot.players[0].small_model.as_ref().unwrap().entity_id, model);
 
         let ceiling = BlockPos::new(32, 22, 35);
         plot.world.set_block(ceiling, Block::Stone {});
-        assert!(!plot.set_small(0, false));
+        assert!(!plot.set_small(0, false, None));
         packet(&mut owner, compressed, 0x72);
         assert_eq!(plot.players[0].small_model.as_ref().unwrap().entity_id, model);
         assert!(super::super::compass::body_clear(plot.players[0].pos, 0.5, &|p| Some(
             plot.world.get_block(p)
         )));
         plot.world.set_block(ceiling, Block::Air);
-        assert!(plot.set_small(0, false));
+        assert!(plot.set_small(0, false, None));
         for peer in [&mut owner, &mut viewer] {
             let mut remove = packet(peer, compressed, 0x46);
             assert_eq!(remove.read_varint().unwrap(), 1);
@@ -211,7 +281,7 @@ fn new_viewers_receive_the_disguise_and_sneaking_keeps_invisibility() {
 #[test]
 fn small_players_place_break_and_use_worldedit_through_normal_handlers() {
     let (mut plot, mut owner) = crate::plot::client_sync_tests::fixture(false);
-    assert!(plot.set_small(0, true));
+    assert!(plot.set_small(0, true, None));
     for id in [0x7c, 0x5c, 0x72] {
         packet(&mut owner, false, id);
     }
