@@ -104,7 +104,6 @@ waive its plot or packet validation.
 | `/visual publish <mode>` | Visual `.set` access plus `mchprs.commands.redpilator.compile` |
 | `/rp publish <mode>` | `mchprs.commands.redpilator.compile` |
 | `/rp`, `/redpilator` | `mchprs.commands.redpilator.analyze`, `.compile`, `.reset`, `.inspect`, or `.help` |
-| `/toggleautorp` | `mchprs.commands.toggleautorp` |
 | `/rhistory` | `mchprs.commands.rhistory` plus the requested subcommand node |
 | `/rev` | `mchprs.commands.rback` |
 | `/git` | `mchprs.commands.git` |
@@ -218,9 +217,6 @@ external native compiler may take longer to return, but an expired result never
 activates or enters the plot cache. Existing structural/allocation limits still
 apply to I and higher. Unknown or stale rank metadata denies new compilation;
 standalone servers without a permission provider retain their existing behavior.
-Automatic compilation uses the greatest allowance among current authorized plot
-editors with both compile and automatic-compilation permissions; an unauthorized
-visitor cannot raise the budget.
 
 `/rp off` and `/rp r` are aliases for `/rp reset`; all use `mchprs.commands.redpilator.reset`
 and discard this plot's prepared executor and sampling cache.
@@ -235,8 +231,7 @@ deploying the budget enforcement:
 
 ```text
 lp group advanced permission set mchprs.commands.redpilator.* true server=mchprs
-lp group advanced permission set mchprs.commands.toggleautorp true server=mchprs
 ```
 
 The existing engineer grants remain unchanged. This code change does not modify
-the live LuckPerms database; the two deployment grants are required separately.
+the live LuckPerms database; the deployment grant is required separately.

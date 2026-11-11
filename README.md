@@ -41,7 +41,7 @@ Simulation:
 - `/tps 20` runs normally, `/tps 0` pauses, `/tps unlimited` runs as fast as possible. `/tps timings` shows timing data.
 - Pause, then `/adv 1` advances one game tick. `/adv nano 1` and `/adv pico 1` step interpreter operations inside a tick. Two game ticks make one redstone tick.
 - The interpreter handles supported dust, torches, repeaters, comparators, containers, lamps, copper bulbs, observers, BUD updates, pistons, moving blocks and instant piston circuits. Exact behavior is in the [redstone](docs/REDSTONE_MODEL.md) and [piston](docs/PISTON_MODEL.md) models.
-- `/visual pistons auto|on|off` controls piston animation. `/visual rate <0-1000>` changes client update frequency. `/visual displayonly on|off` limits simulation updates to lamps and copper bulbs. `/visual publish all|redstone|io` selects compiled publication.
+- `/visual pistons auto|on|off` controls piston animation. `/visual rate <0-1000>` changes client update frequency. `/visual displayonly on|off` limits simulation updates to lamps and copper bulbs. `/visual publish all|redstone|io|auto` selects compiled publication.
 - `/rhistory on 100` records 100 interpreter ticks. `/rev 10` or `/rhistory rewind 10` goes back ten ticks. `/rhistory status` shows memory use; `/rhistory off` clears it. Rewind clears WorldEdit undo/redo. History clears on compilation, restart or an empty plot.
 - `/say <text>` and `/tellraw @a {"text":"hello"}` also work in command blocks. Messages stay on the executing plot. Other saved command-block commands do not run.
 
@@ -71,7 +71,7 @@ Plot Git saves versions, branches and block diffs. `/rv` is an alias for `/git`.
 
 ## Waveform viewer
 
-Enable `waveform_enabled = true` in the config. Capture uses the interpreter: disable automatic compilation with `/toggleautorp` if enabled, then `/rp reset` before recording.
+Enable `waveform_enabled = true` in the config. Capture uses the interpreter: run `/rp reset` before recording if Redpilator is active.
 
 ```text
 /waveform add clock
@@ -119,12 +119,11 @@ Rust is the default executor. The optional LLVM backend runs the same program in
 While Redpilator is active, plot edits are blocked in every publication mode. Levers and buttons still work. Run `/rp reset` before editing blocks, containers, signs, or using WorldEdit to change the world.
 
 - `/rp compile --llvm` selects the native backend. Install Clang and LLD on the server's PATH, or set `MCHPRS_LLVM_CLANG` and `MCHPRS_LLVM_LINKER` to their executable paths. Bundled native sources build on demand. `MCHPRS_LLVM_WORK_DIR` changes the work directory (default `./work/llvm`); `MCHPRS_LLVM_DLL` selects an already built matching library.
-- `/visual publish all|redstone|io` saves the plot's publication mode and applies it to active compiled execution. `all` includes piston geometry and motion, `redstone` shows redstone components, and `io` shows controls and visible outputs. Standard builds default to `redstone`. Switching to `all` catches up piston geometry. `/rp publish` is an alias.
+- `/visual publish all|redstone|io|auto` saves the plot's publication mode and applies it to active compiled execution. `all` includes piston geometry and motion, `redstone` shows redstone components, and `io` shows controls and visible outputs. `auto` uses `all` through the configured fast render TPS threshold (200 by default) and `io` above it or at unlimited TPS. Standard builds default to `redstone`. Switching to `all` catches up piston geometry. `/rp publish` is an alias.
 - `--publish-all`, `--publish-redstone`, and `--publish-io` (also `--io-only`, `-i`) set the mode for the compiled run. `/rp reset` and `/rp off` restore the saved choice. `/visual publish` shows the current mode.
 - `--update` (`-u`) recalculates neighbors after reset. `/rp reset` exports state and pending work back to the interpreter.
 - `/rp reset` (aliases `/rp r` and `/rp off`) stops execution, cancels pending compilation and discards this plot's prepared executor and sampling cache. The next compile rebuilds the circuit from the exported interpreter state.
 - `/rp clear` does the same and also clears the process-shared owned LLVM artifact cache, forcing the next native module build; other plots' active executors keep running. A busy native build is reported immediately. Locked artifacts may remain until later cleanup, and a custom `MCHPRS_LLVM_DLL` is never deleted.
-- `/toggleautorp` toggles automatic compilation; `auto_redpilator` sets its default in `Config.toml`.
 
 Admission depends on component types, piston arrangements and entry state. Accepted circuits can still expose differences from the interpreter. LLVM is optional and experimental. See the [compiler passes](crates/core/src/redpilator/sampled/passes/README.md) for implementation details.
 
@@ -183,7 +182,7 @@ Long replays are run explicitly with `--ignored`. Keep frozen expectations when 
 
 ## Server setup
 
-[config.rs](crates/core/src/config.rs) lists all settings/defaults: plot speed, automatic compilation, view distance, neighbor snapshots, render throttling, WorldEdit limits and history/Git/waveform budgets. `schemati = true` uses player UUID folders for schematics. `schematic_save_prefix` adds a folder or filename prefix to saves.
+[config.rs](crates/core/src/config.rs) lists all settings/defaults: plot speed, view distance, neighbor snapshots, render throttling, WorldEdit limits and history/Git/waveform budgets. `schemati = true` uses player UUID folders for schematics. `schematic_save_prefix` adds a folder or filename prefix to saves.
 
 Velocity modern forwarding uses `[velocity]` with `secret_file` pointing to the forwarding secret. Keep the backend behind the proxy. Authenticated forwarding supports SignedVelocity decisions for chat/commands. `native_chat = false` silences backend public chat and join/leave notices; an external broadcaster must supply public chat.
 

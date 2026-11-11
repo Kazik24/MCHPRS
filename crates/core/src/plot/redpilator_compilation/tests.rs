@@ -23,6 +23,7 @@ fn install_job(plot: &mut Plot, work: impl FnOnce(PlotWorld, Arc<TaskMonitor>) -
         last_progress: Instant::now(),
         entry: EntryVersion::capture(&plot.world),
         options: Default::default(),
+        auto_publication: false,
         monitor,
         budget: None,
         budget_reported: false,
@@ -43,44 +44,19 @@ fn blocked_compile(plot: &mut Plot) -> mpsc::Sender<()> {
 }
 
 #[test]
-fn automatic_compilation_requires_an_authorized_editor() {
-    let (mut plot, _peer) = fixture(false);
-    plot.publication_mode = Some(crate::redpilator::PublicationMode::Io);
-    plot.players[0].set_test_permissions(&["commands.toggleautorp"]);
-    plot.start_automatic_redpilator(Default::default());
-    assert!(plot.compilation.is_none());
-    plot.players[0].set_test_permissions(&["commands.redpilator.compile"]);
-    plot.start_automatic_redpilator(Default::default());
-    assert!(plot.compilation.is_none());
-    for (rank, budget) in [
-        (crate::permissions::Rank::Advanced, Some(Duration::from_secs(30))),
-        (crate::permissions::Rank::Expert, Some(Duration::from_secs(120))),
-        (crate::permissions::Rank::Engineer, None),
-    ] {
-        plot.players[0].set_test_rank_permissions(&["commands.redpilator.compile", "commands.toggleautorp", "mchprs.build"], rank);
-        plot.start_automatic_redpilator(Default::default());
-        assert_eq!(plot.compilation.as_ref().unwrap().budget, budget);
-        plot.wait_for_redpilator();
-        assert!(plot.redpilator.is_active());
-        assert_eq!(plot.visual_publication_mode(), crate::redpilator::PublicationMode::Io);
-        plot.reset_redpilator().unwrap();
-    }
-}
-
-#[test]
 fn manual_compile_flags_apply_until_reset_or_off() {
     use crate::redpilator::PublicationMode;
     use mchprs_network::{packets::PacketDecoderExt, test_support::read_frame};
 
     let (mut plot, mut peer) = fixture(false);
-    plot.publication_mode = Some(PublicationMode::Io);
+    plot.publication_setting = Some(visuals::PublicationSetting::Auto);
     plot.players[0].set_test_rank_permissions(
-        &["commands.redpilator.compile", "commands.redpilator.reset"],
+        &["commands.redpilator.compile", "commands.redpilator.reset", "commands.rtps.set"],
         crate::permissions::Rank::Advanced,
     );
     plot.owner = Some(plot.players[0].uuid);
-    let mut sees_publish_row = |mode: PublicationMode| {
-        let expected = format!("Publish: {}", mode.name());
+    let mut sees_publish_row = |mode: &str| {
+        let expected = format!("Publish: {mode}");
         (0..128).any(|_| {
             let (id, mut body) = read_frame(&mut peer, false).unwrap();
             id == 0x67 && body.read_string().unwrap() == expected
@@ -95,14 +71,46 @@ fn manual_compile_flags_apply_until_reset_or_off() {
         plot.wait_for_redpilator();
         assert!(plot.redpilator.is_active());
         assert_eq!(plot.visual_publication_mode(), mode);
-        assert!(sees_publish_row(mode));
+        assert!(sees_publish_row(mode.name()));
+        plot.handle_command(0, "/tps", vec!["unlimited"]);
+        assert_eq!(plot.tps, Tps::Unlimited);
+        assert_eq!(plot.visual_publication_mode(), mode);
 
         plot.handle_command(0, "/rp", vec![stop]);
         assert!(!plot.redpilator.is_active());
-        assert_eq!(plot.publication_mode, Some(PublicationMode::Io));
-        assert_eq!(plot.visual_publication_mode(), PublicationMode::Io);
-        assert!(sees_publish_row(PublicationMode::Io));
+        assert_eq!(plot.publication_setting, Some(visuals::PublicationSetting::Auto));
+        assert_eq!(plot.visual_publication_mode(), plot.saved_publication_mode().unwrap());
+        assert!(sees_publish_row(&plot.visual_publication_label()));
     }
+}
+
+#[test]
+fn automatic_publication_follows_tps_changes_during_and_after_compilation() {
+    let (mut plot, _peer) = fixture(false);
+    plot.players[0].set_test_rank_permissions(&["*"], crate::permissions::Rank::Advanced);
+    plot.handle_command(0, "/visual", vec!["publish", "auto"]);
+    assert_eq!(plot.visual_publication_label(), "auto/all");
+    plot.handle_command(0, "/rp", vec!["compile"]);
+    assert!(plot.compilation.is_some());
+    plot.handle_command(0, "/tps", vec!["unlimited"]);
+    plot.wait_for_redpilator();
+    let fast = if CONFIG.fast_render_threshold > 0 {
+        PublicationMode::Io
+    } else {
+        PublicationMode::All
+    };
+    assert_eq!(plot.redpilator.current_flags().unwrap().publication_mode(), fast);
+    assert_eq!(plot.visual_publication_label(), format!("auto/{}", fast.name()));
+
+    plot.handle_command(0, "/tps", vec!["0"]);
+    assert_eq!(plot.visual_publication_label(), "auto/all");
+    assert_eq!(plot.redpilator.current_flags().unwrap().publication_mode(), PublicationMode::All);
+    assert!(plot.compilation.is_none());
+
+    plot.handle_command(0, "/rp", vec!["publish", "redstone"]);
+    plot.handle_command(0, "/tps", vec!["unlimited"]);
+    assert_eq!(plot.visual_publication_label(), "redstone");
+    assert_eq!(plot.redpilator.current_flags().unwrap().publication_mode(), PublicationMode::Redstone);
 }
 
 #[test]

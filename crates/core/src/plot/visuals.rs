@@ -1,5 +1,30 @@
-use mchprs_save_data::plot_data::PistonAnimation;
-use mchprs_save_data::plot_data::Tps;
+use crate::redpilator::PublicationMode;
+use mchprs_save_data::plot_data::{PistonAnimation, Tps};
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum PublicationSetting {
+    Fixed(PublicationMode),
+    Auto,
+}
+
+impl PublicationSetting {
+    pub(super) const CHOICES: [&str; 4] = ["all", "redstone", "io", "auto"];
+
+    pub(super) fn parse(value: &str) -> Option<Self> {
+        match value {
+            "auto" => Some(Self::Auto),
+            _ => PublicationMode::parse(value).map(Self::Fixed),
+        }
+    }
+
+    pub(super) fn resolve(self, tps: Tps, threshold: i64) -> PublicationMode {
+        match self {
+            Self::Fixed(mode) => mode,
+            Self::Auto if fast_rendering(tps, threshold) => PublicationMode::Io,
+            Self::Auto => PublicationMode::All,
+        }
+    }
+}
 
 pub(super) fn fast_rendering(tps: Tps, threshold: i64) -> bool {
     threshold > 0
@@ -43,6 +68,8 @@ mod tests {
         assert_eq!(send_rate(0, true, 10), 0);
         assert_eq!(send_rate(60, false, 10), 60);
         assert_eq!(send_rate(60, true, -1), 1);
+        assert_eq!(PublicationSetting::Auto.resolve(Tps::Limited(200), 200), PublicationMode::All);
+        assert_eq!(PublicationSetting::Auto.resolve(Tps::Limited(201), 200), PublicationMode::Io);
     }
 
     #[test]

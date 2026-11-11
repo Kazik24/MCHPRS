@@ -126,7 +126,6 @@ Other functions and methods:
 - [`Plot::clear_redpilator_cache`](../crates/core/src/plot/redpilator_compilation/mod.rs#L226)
 - [`Plot::compiling_redpilator`](../crates/core/src/plot/redpilator_compilation/mod.rs#L231)
 - [`Plot::cancel_redpilator_compilation`](../crates/core/src/plot/redpilator_compilation/mod.rs#L235)
-- [`Plot::start_automatic_redpilator`](../crates/core/src/plot/redpilator_compilation/mod.rs#L241)
 - [`Plot::send_redpilator_diagnostic`](../crates/core/src/plot/redpilator_compilation/mod.rs#L401)
 - [`Plot::reject_redpilator`](../crates/core/src/plot/redpilator_compilation/mod.rs#L408)
 

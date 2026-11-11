@@ -24,7 +24,6 @@ fn fixture(name: &str, powered: bool) -> (Plot, TcpStream, BlockPos) {
             Default::default(),
         )
         .unwrap();
-    plot.auto_redpilator = true;
     (plot, peer, pos)
 }
 
@@ -77,7 +76,6 @@ fn pressure_plate_noop_contact_and_empty_hand_click_keep_redpilator_active() {
                 "no-op must not report an edit failure or fallback"
             );
             assert!(plot.redpilator.is_active(), "{name}, powered={powered}");
-            assert!(plot.auto_redpilator);
             assert_eq!(plot.world.get_block(pos).pressure_plate_powered(), Some(powered));
         }
     }
@@ -90,7 +88,6 @@ fn pressure_plate_contact_is_a_silent_compiled_input() {
         plot.set_pressure_plate(pos, !initially_powered);
         plot.set_pressure_plate(pos, !initially_powered);
         assert!(plot.redpilator.is_active());
-        assert!(plot.auto_redpilator, "routine player contact must not change auto-compilation policy");
         assert_eq!(plot.world.get_block(pos).pressure_plate_powered(), Some(!initially_powered));
         click(&mut plot, pos, 1);
         let messages = messages_through_ack(&mut peer, 1);
@@ -119,7 +116,6 @@ fn explicit_redpilator_reset_does_not_claim_automatic_fallback() {
     plot.reset_redpilator().unwrap();
     click(&mut plot, pos, 1);
     assert!(messages_through_ack(&mut peer, 1).is_empty());
-    assert!(plot.auto_redpilator);
 }
 
 #[test]
@@ -127,7 +123,6 @@ fn failed_handoff_latch_blocks_repeated_contact_and_clears_after_explicit_reset(
     let (mut plot, mut peer, pos) = fixture("stone_pressure_plate", false);
     // Exercise retained ownership after an export failure without corrupting executor internals.
     plot.redpilator_handoff_failed = true;
-    plot.auto_redpilator = false;
     plot.players[0].pos = PlayerPos::new(pos.x as f64 + 0.5, pos.y as f64, pos.z as f64 + 0.5);
     plot.players[0].on_ground = true;
     let same = plot.players[0].pos;

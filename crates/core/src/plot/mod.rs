@@ -146,7 +146,8 @@ pub struct Plot {
     // Timings
     tps: Tps,
     world_send_rate: WorldSendRate,
-    publication_mode: Option<PublicationMode>,
+    publication_setting: Option<visuals::PublicationSetting>,
+    redpilator_auto_publication: bool,
     piston_animation: PistonAnimation,
     last_update_time: Instant,
     lag_time: Duration,
@@ -163,9 +164,6 @@ pub struct Plot {
     running: bool,
     /// If true, the plot will remain running even if no players are on for a long time.
     always_running: bool,
-    /// Whether the update loop may automatically compile eligible plots.
-    auto_redpilator: bool,
-
     owner: Option<u128>,
     /// Runtime entered by this plot's worker for its async helpers.
     async_rt: Runtime,
@@ -235,12 +233,47 @@ impl Plot {
         )
     }
 
+    fn saved_publication_mode(&self) -> Option<PublicationMode> {
+        self.publication_setting
+            .map(|setting| setting.resolve(self.tps, CONFIG.fast_render_threshold))
+    }
+
     fn visual_publication_mode(&self) -> PublicationMode {
         self.redpilator
             .current_flags()
             .map(CompilerOptions::publication_mode)
-            .or(self.publication_mode)
+            .or_else(|| self.saved_publication_mode())
             .unwrap_or_else(|| CompilerOptions::default().publication_mode())
+    }
+
+    fn visual_publication_label(&self) -> std::borrow::Cow<'static, str> {
+        let mode = self.visual_publication_mode().name();
+        let auto = if self.redpilator.is_active() {
+            self.redpilator_auto_publication
+        } else {
+            self.publication_setting == Some(visuals::PublicationSetting::Auto)
+        };
+        if auto { format!("auto/{mode}").into() } else { mode.into() }
+    }
+
+    fn apply_publication_mode(&mut self, mode: PublicationMode) -> Result<(), crate::redpilator::ExecutionError> {
+        if self.redpilator.set_publication_mode(mode) {
+            self.redpilator.try_flush(&mut self.world)?;
+            self.world.flush_block_changes();
+        }
+        Ok(())
+    }
+
+    fn update_auto_publication(&mut self) {
+        if !self.redpilator_auto_publication || self.redpilator_handoff_failed {
+            return;
+        }
+        let mode = visuals::PublicationSetting::Auto.resolve(self.tps, CONFIG.fast_render_threshold);
+        if self.redpilator.current_flags().is_some_and(|options| options.publication_mode() != mode)
+            && let Err(error) = self.apply_publication_mode(mode)
+        {
+            error!(%error, "Automatic publication update failed");
+        }
     }
 
     fn refresh_sidebar(&mut self, force: bool) {
@@ -255,7 +288,7 @@ impl Plot {
             self.timings.generate_report().map(|report| report.two_s)
         };
         let visual_update_rate = self.effective_send_rate();
-        let publication_mode = self.visual_publication_mode();
+        let publication_label = self.visual_publication_label();
         // The sidebar lists only viewers allowed to read this repository.
         let git_readers = (0..self.players.len())
             .filter(|&player| self.git_access(player, "read"))
@@ -271,7 +304,7 @@ impl Plot {
             self.world.history.memory_bytes(),
             visual_update_rate,
             scoreboard::PlotStatus {
-                publication_mode,
+                publication_label: &publication_label,
                 piston_mode: self.piston_animation,
                 pistons_animated: !self.world.fast_rendering && !self.world.screen_only(),
                 screen_only: self.world.screen_only(),
@@ -318,7 +351,6 @@ impl Plot {
         if self.redpilator.is_active() {
             if let Err(error) = self.redpilator.tick_with_world(&mut self.world) {
                 tracing::error!(%error, "sampled execution failed");
-                self.auto_redpilator = false;
                 self.fallback_redpilator(&error.to_string());
                 return false;
             }
@@ -337,7 +369,6 @@ impl Plot {
         self.timings.ticks(completed);
         if let Err(error) = result {
             tracing::error!(%error, "sampled execution failed");
-            self.auto_redpilator = false;
             self.fallback_redpilator(&error.to_string());
             return (completed, false);
         }
@@ -443,7 +474,6 @@ impl Plot {
             {
                 Ok(()) => return,
                 Err(error) => {
-                    self.auto_redpilator = false;
                     self.fallback_redpilator(&error.to_string());
                     return;
                 }
@@ -661,7 +691,6 @@ impl Plot {
         if let Err(error) = self.reset_redpilator() {
             error!(%error, "compiled state export failed; keeping compiler ownership");
             self.redpilator_handoff_failed = true;
-            self.auto_redpilator = false;
             self.tps = Tps::Limited(0);
             self.sleep_time = sleep_time_for_tps(self.tps);
             self.timings.set_tps(self.tps);
@@ -1054,7 +1083,11 @@ impl Plot {
 
     fn update(&mut self) {
         if let Some(source) = &mut self.waveform_source {
-            source.poll(&self.world.waveform, self.redpilator.is_active() || self.compilation.is_some(), self.owner);
+            source.poll(
+                &self.world.waveform,
+                self.redpilator.is_active() || self.compilation.is_some(),
+                self.owner,
+            );
         }
         if self.world.waveform.take_overflow_notice() {
             for player in &mut self.players {
@@ -1147,18 +1180,6 @@ impl Plot {
                 }
                 self.world.update_stats.simulation += simulation_started.elapsed();
                 self.world.update_stats.simulated_ticks += u64::from(ticks_completed);
-            }
-
-            if self.auto_redpilator
-                && !self.world.waveform.enabled()
-                && !idle
-                && self.compilation.is_none()
-                && !self.git_checkout_locked()
-                && !self.redpilator.is_active()
-                && (self.tps == Tps::Unlimited || self.timings.is_running_behind())
-                && !self.world.chunks.iter().any(Chunk::requires_interpreter)
-            {
-                self.start_automatic_redpilator(Default::default());
             }
 
             let now = Instant::now();
@@ -1368,10 +1389,10 @@ impl Plot {
             snowballs: Vec::new(),
             locked_players: HashSet::new(),
             running: true,
-            auto_redpilator: CONFIG.auto_redpilator,
             tps,
             world_send_rate,
-            publication_mode: database::publication_mode(x, z).expect("Cannot load saved publication mode"),
+            publication_setting: database::publication_setting(x, z).expect("Cannot load saved publication mode"),
+            redpilator_auto_publication: false,
             piston_animation: plot_data.piston_animation,
             always_running,
             redpilator: Default::default(),

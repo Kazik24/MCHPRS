@@ -280,7 +280,7 @@ impl Plot {
                         self.piston_animation,
                         self.world_send_rate.0,
                         if self.world.screen_only() { "on" } else { "off" },
-                        self.visual_publication_mode().name(),
+                        self.visual_publication_label(),
                     )),
                     ["publish", args @ ..] => self.handle_publication_command(player, args),
                     ["pistons"] => self.players[player].send_system_message(&messages::piston_animation(
@@ -446,6 +446,7 @@ impl Plot {
                 self.timings.set_tps(tps);
                 self.tps = tps;
                 self.update_render_mode();
+                self.update_auto_publication();
                 self.reset_timings();
                 self.players[player].send_system_message(messages::RTPS_SET);
             }
@@ -526,14 +527,6 @@ impl Plot {
                 self.players[player].send_system_message(&messages::plot_advanced(progress, start_time.elapsed()));
             }
 
-            "/toggleautorp" => {
-                self.auto_redpilator = !self.auto_redpilator;
-                if self.auto_redpilator {
-                    self.players[player].send_system_message(messages::REDPILATOR_AUTO_ENABLED);
-                } else {
-                    self.players[player].send_system_message(messages::REDPILATOR_AUTO_DISABLED);
-                }
-            }
             "/setwarp" if !crate::redbox::enabled() => {
                 let [name] = args.as_slice() else {
                     self.players[player].send_error_message(messages::USAGE_SETWARP);
@@ -783,8 +776,7 @@ impl Plot {
                     self.players[player].send_system_message(messages::WORLD_ALREADY_CURSED);
                 } else {
                     self.world.is_cursed = true;
-                    self.auto_redpilator = false;
-                    self.players[player].send_system_message(messages::WORLD_BEEN_CURSED_REDPILATOR_DISABLED_BLESS);
+                    self.players[player].send_system_message(messages::WORLD_BEEN_CURSED_BLESS);
                 }
                 return false;
             }
@@ -825,7 +817,6 @@ fn native_command_permission(command: &str, args: &[&str]) -> Option<String> {
         "/tps" => format!("rtps.{}", if args.is_empty() || args == ["timings"] { "view" } else { "set" }),
         "/visual" => format!("visual.{}", if args.len() > 1 { "set" } else { "view" }),
         "/adv" => "radvance".to_owned(),
-        "/toggleautorp" => "toggleautorp".to_owned(),
         "/curse" => "curse".to_owned(),
         "/bless" => "bless".to_owned(),
         "/redpilator" | "/rp" => format!(
@@ -847,7 +838,7 @@ fn changes_plot(command: &str, args: &[&str]) -> bool {
     match command {
         "/tps" => !args.is_empty() && args != ["timings"],
         "/visual" => args.len() > 1,
-        "/adv" | "/toggleautorp" | "/curse" | "/bless" => true,
+        "/adv" | "/curse" | "/bless" => true,
         "/redpilator" | "/rp" => true,
         _ => false,
     }
@@ -1326,7 +1317,7 @@ mod security_tests {
             }
         }
         let names: Vec<_> = nodes[0].children.iter().filter_map(|index| nodes[*index as usize].name).collect();
-        for removed in ["rtps", "radv", "radvance", "rback"] {
+        for removed in ["rtps", "radv", "radvance", "rback", "toggleautorp"] {
             assert!(!nodes.iter().any(|node| node.name == Some(removed)));
             let command = format!("/{removed}");
             assert!(native_command_permission(&command, &["1"]).is_none());
@@ -1492,8 +1483,8 @@ mod security_tests {
                     "-u",
                 ],
             ),
-            ("/rp publish ", vec!["all", "redstone", "io"]),
-            ("/visual publish ", vec!["all", "redstone", "io"]),
+            ("/rp publish ", vec!["all", "redstone", "io", "auto"]),
+            ("/visual publish ", vec!["all", "redstone", "io", "auto"]),
             ("/redpilator publish r", vec!["redstone"]),
             ("/rp compile --graph", vec![]),
         ] {
@@ -1513,7 +1504,7 @@ mod security_tests {
             .unwrap();
         assert_eq!(
             publish.children.iter().map(|&id| nodes[id as usize].name.unwrap()).collect::<Vec<_>>(),
-            ["all", "redstone", "io"]
+            ["all", "redstone", "io", "auto"]
         );
         let visual = nodes[0]
             .children

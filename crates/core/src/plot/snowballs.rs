@@ -9,7 +9,6 @@ use std::time::{Duration, Instant};
 
 const STEP: Duration = Duration::from_millis(50);
 const LIFETIME: Duration = Duration::from_secs(5);
-const THROW_COOLDOWN: Duration = Duration::from_millis(200);
 const MAX_ACTIVE: usize = 64;
 
 pub(super) struct Snowball {
@@ -93,7 +92,7 @@ impl Plot {
             || !pos.is_valid()
             || pos.y < 0.0
             || pos.plot_pos() != (self.world.x, self.world.z)
-            || player.last_snowball_throw.is_some_and(|last| now - last < THROW_COOLDOWN)
+            || player.last_snowball_throw.is_some_and(|last| now - last < STEP)
             || self.snowballs.len() >= MAX_ACTIVE
         {
             if player.gamemode != Gamemode::Creative {
@@ -111,6 +110,7 @@ impl Plot {
         };
 
         player.last_snowball_throw = Some(now);
+        let origin = player.pos.block_pos();
         let snowball = Snowball {
             entity_id: allocate_entity_id() as i32,
             uuid: rand::random(),
@@ -128,7 +128,9 @@ impl Plot {
             self.broadcast_player_packets(player_idx, &[&equipment]);
         }
         self.snowballs.push(snowball);
-        crate::sound::play(&mut self.world, pos.block_pos(), "entity.snowball.throw", 0.5, 1.0, None);
+        let pitch = 0.4 / (rand::random::<f32>() * 0.4 + 0.8);
+        self.world
+            .play_sound_for_action(origin, crate::sound::event_id("entity.snowball.throw"), 6, 0.5, pitch, None);
     }
 
     pub(super) fn update_snowballs(&mut self) {
@@ -223,7 +225,7 @@ mod tests {
         assert_eq!(plot.snowballs.len(), 1);
         assert_eq!(plot.players[0].inventory[36].as_ref().unwrap().count, 1);
 
-        plot.players[0].last_snowball_throw = Some(Instant::now() - THROW_COOLDOWN);
+        plot.players[0].last_snowball_throw = Some(Instant::now() - STEP);
         plot.throw_snowball(0, 0, 0.0, 0.0);
         assert_eq!(plot.snowballs.len(), 2);
         assert!(plot.players[0].inventory[36].is_none());
@@ -306,16 +308,29 @@ mod tests {
         assert!(plot.snowballs.is_empty());
         assert_eq!(plot.world.get_block(wall), Block::Stone {});
         let mut impact = false;
+        let mut throw_sound = false;
+        let origin = plot.players[0].pos.block_pos();
         loop {
             let (id, mut frame) = read_frame(&mut peer, false).unwrap();
             match id {
+                0x6e => {
+                    assert!(!throw_sound);
+                    assert_eq!(frame.read_varint().unwrap(), 1389);
+                    assert_eq!(frame.read_varint().unwrap(), 6);
+                    for coordinate in [origin.x, origin.y, origin.z] {
+                        assert_eq!(frame.read_int().unwrap(), coordinate * 8 + 4);
+                    }
+                    assert_eq!(frame.read_float().unwrap(), 0.5);
+                    assert!((0.4 / 1.2..=0.5).contains(&frame.read_float().unwrap()));
+                    throw_sound = true;
+                }
                 0x1e => {
                     assert_eq!(frame.read_int().unwrap(), entity_id);
                     assert_eq!(frame.read_byte().unwrap(), 3);
                     impact = true;
                 }
                 0x46 => {
-                    assert!(impact);
+                    assert!(impact && throw_sound);
                     assert_eq!(frame.read_varint().unwrap(), 1);
                     assert_eq!(frame.read_varint().unwrap(), entity_id);
                     break;

@@ -13,7 +13,6 @@ whitelist = false
 schemati = false
 schematic_save_prefix = "./mroww/"
 block_in_hitbox = true
-auto_redpilator = true
 default_tps = 20
 fast_render_threshold = 200
 fast_render_send_rate = 10

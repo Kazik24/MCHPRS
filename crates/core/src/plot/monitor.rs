@@ -45,7 +45,6 @@ struct MonitorData {
     tps: AtomicTps,
     ticks_passed: Arc<AtomicU64>,
     reset_timings: AtomicU32,
-    too_slow: AtomicBool,
     ticking: AtomicBool,
     running: AtomicBool,
     timings_record: Mutex<VecDeque<u32>>,
@@ -69,7 +68,6 @@ impl TimingsMonitor {
             ticks_passed: Default::default(),
             reset_timings: Default::default(),
             running: AtomicBool::new(true),
-            too_slow: Default::default(),
             ticking: Default::default(),
             timings_record: Default::default(),
             tps: AtomicTps::from_tps(tps),
@@ -120,7 +118,6 @@ impl TimingsMonitor {
 
     pub fn set_tps(&self, new_tps: Tps) {
         self.data.tps.update(new_tps);
-        self.data.too_slow.store(false, Ordering::Relaxed);
     }
 
     pub fn tick(&self) {
@@ -129,10 +126,6 @@ impl TimingsMonitor {
 
     pub fn ticks(&self, count: u32) {
         self.data.ticks_passed.fetch_add(u64::from(count), Ordering::Relaxed);
-    }
-
-    pub fn is_running_behind(&self) -> bool {
-        self.data.too_slow.load(Ordering::Relaxed)
     }
 
     pub fn set_ticking(&self, ticking: bool) {
@@ -149,7 +142,6 @@ impl TimingsMonitor {
             let mut last_ticks_count = data.ticks_passed.load(Ordering::Relaxed);
             let mut was_ticking_before = data.ticking.load(Ordering::Relaxed);
 
-            let mut behind_for = 0;
             loop {
                 thread::sleep(Duration::from_secs(1) / SAMPLES_PER_SECOND as u32);
                 if !data.running.load(Ordering::Relaxed) {
@@ -172,22 +164,6 @@ impl TimingsMonitor {
                     was_ticking_before = ticking;
                     last_tps = tps;
                     continue;
-                }
-
-                // 5% threshold
-                if data.tps.unlimited.load(Ordering::Relaxed) || (ticks_passed as u64) < (tps as u64 / 2) * 95 / 100 {
-                    behind_for += 1;
-                } else {
-                    behind_for = 0;
-                    data.too_slow.store(false, Ordering::Relaxed);
-                }
-
-                if behind_for >= 3 {
-                    data.too_slow.store(true, Ordering::Relaxed);
-                    // warn!(
-                    //     "running behind by {} ticks",
-                    //     ((tps / 2) * 95 / 100) - ticks_passed
-                    // );
                 }
 
                 // Retain one minute at the 500 ms sample interval.

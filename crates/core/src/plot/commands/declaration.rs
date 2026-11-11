@@ -16,8 +16,8 @@ pub(super) fn declared_command_nodes() -> Vec<Node<'static>> {
     let mut nodes = vec![
         // Root Node
         Node::root(&[
-            1, 2, 7, 8, 10, 12, 14, 15, 16, 17, 18, 19, 20, 22, 25, 27, 29, 31, 32, 42, 44, 48, 55, 56, 58, 60, 61, 62, 69, 70, 77, 78, 80, 86, 96,
-            101, 106, 107, 108, 109, 110, 111, 113, 115, 119, 126, 130, 131, 138, 139, 140, 141, 142, 146, 153, 154, 157, 158, 169,
+            1, 2, 7, 8, 10, 12, 14, 15, 16, 17, 18, 19, 20, 22, 25, 27, 29, 31, 32, 42, 44, 48, 55, 56, 58, 61, 62, 69, 70, 77, 78, 80, 86, 96, 101,
+            106, 107, 108, 109, 110, 111, 113, 115, 119, 126, 130, 131, 138, 139, 140, 141, 142, 146, 153, 154, 157, 158, 169,
         ]),
         // /stop
         Node::literal("stop", &[]).executable(),
@@ -139,8 +139,8 @@ pub(super) fn declared_command_nodes() -> Vec<Node<'static>> {
         Node::argument("filename", Parser::String(2), &[])
             .executable()
             .suggestions("minecraft:ask_server"),
-        // /toggleautorp
-        Node::literal("toggleautorp", &[]).executable(),
+        // Reserved protocol node ID.
+        Node::literal("reserved", &[]),
         // /redpilator
         Node::literal("redpilator", &[63, 65, 143, 145]),
         // /rp
@@ -347,9 +347,11 @@ pub(super) fn declared_command_nodes() -> Vec<Node<'static>> {
 
     let redpilator = nodes.iter().position(|node| node.name == Some("redpilator")).unwrap();
     let publish = nodes.len() as i32;
-    nodes.push(Node::literal("publish", Box::leak(vec![publish + 1, publish + 2, publish + 3].into_boxed_slice())).executable());
+    let modes = super::super::visuals::PublicationSetting::CHOICES;
+    let children: Vec<_> = (publish + 1..=publish + modes.len() as i32).collect();
+    nodes.push(Node::literal("publish", Box::leak(children.into_boxed_slice())).executable());
     nodes[visual].children = Box::leak(vec![pistons as i32, rate as i32, displayonly as i32, publish].into_boxed_slice());
-    for mode in ["all", "redstone", "io"] {
+    for mode in modes {
         nodes.push(Node::literal(mode, &[]).executable());
     }
     let clear = nodes.len() as i32;

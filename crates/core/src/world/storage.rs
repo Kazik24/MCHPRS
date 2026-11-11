@@ -539,34 +539,6 @@ impl Chunk {
         }
     }
 
-    pub fn requires_interpreter(&self) -> bool {
-        let requires_interpreter = |id| {
-            let block = Block::from_id(id);
-            matches!(
-                block,
-                Block::Piston { .. } | Block::PistonHead { .. } | Block::MovingPiston { .. } | Block::Observer { .. }
-            )
-        };
-        self.sections.iter().any(|s| {
-            if s.block_count() == 0 {
-                return false;
-            }
-            if s.changed_blocks
-                .iter()
-                .flat_map(|blocks| blocks.iter())
-                .any(|id| *id >= 0 && requires_interpreter(*id as u32))
-            {
-                return true;
-            }
-            // Palettes retain removed states. Use them only to avoid scanning
-            // sections that cannot contain interpreter components.
-            if s.buffer.use_palette && !s.buffer.palette.iter().any(|id| requires_interpreter(*id)) {
-                return false;
-            }
-            (0..4096).any(|i| requires_interpreter(s.get_block(i & 15, i >> 8, (i >> 4) & 15)))
-        })
-    }
-
     pub fn encode_packet(&self) -> PacketEncoder {
         self.encode_packet_for_client(false)
     }

@@ -1,5 +1,5 @@
+use super::visuals::PublicationSetting;
 use crate::player::PlayerPos;
-use crate::redpilator::PublicationMode;
 use once_cell::sync::Lazy;
 use rusqlite::{Connection, OptionalExtension, params};
 use std::collections::HashSet;
@@ -134,31 +134,40 @@ pub fn set_screen_only(plot_x: i32, plot_z: i32, enabled: bool) -> rusqlite::Res
     Ok(())
 }
 
-pub(super) fn publication_mode(x: i32, z: i32) -> rusqlite::Result<Option<PublicationMode>> {
-    publication_mode_in(&lock(), x, z)
+pub(super) fn publication_setting(x: i32, z: i32) -> rusqlite::Result<Option<PublicationSetting>> {
+    publication_setting_in(&lock(), x, z)
 }
 
-fn publication_mode_in(conn: &Connection, x: i32, z: i32) -> rusqlite::Result<Option<PublicationMode>> {
-    let mode = conn
+fn publication_setting_in(conn: &Connection, x: i32, z: i32) -> rusqlite::Result<Option<PublicationSetting>> {
+    let row = conn
         .query_row(
-            "SELECT publication FROM plot_visual_settings WHERE plot_x=?1 AND plot_z=?2",
+            "SELECT publication, publication_auto FROM plot_visual_settings WHERE plot_x=?1 AND plot_z=?2",
             params![x, z],
-            |row| row.get::<_, Option<String>>(0),
+            |row| Ok((row.get::<_, Option<String>>(0)?, row.get::<_, bool>(1)?)),
         )
-        .optional()?
-        .flatten();
-    Ok(mode.as_deref().and_then(PublicationMode::parse))
+        .optional()?;
+    Ok(row.and_then(|(mode, auto)| {
+        if auto {
+            Some(PublicationSetting::Auto)
+        } else {
+            mode.as_deref().and_then(PublicationSetting::parse)
+        }
+    }))
 }
 
-pub(super) fn set_publication_mode(x: i32, z: i32, mode: PublicationMode) -> rusqlite::Result<()> {
-    set_publication_mode_in(&lock(), x, z, mode)
+pub(super) fn set_publication_setting(x: i32, z: i32, setting: PublicationSetting) -> rusqlite::Result<()> {
+    set_publication_setting_in(&lock(), x, z, setting)
 }
 
-fn set_publication_mode_in(conn: &Connection, x: i32, z: i32, mode: PublicationMode) -> rusqlite::Result<()> {
+fn set_publication_setting_in(conn: &Connection, x: i32, z: i32, setting: PublicationSetting) -> rusqlite::Result<()> {
+    let mode = match setting {
+        PublicationSetting::Fixed(mode) => Some(mode.name()),
+        PublicationSetting::Auto => None,
+    };
     conn.execute(
-        "INSERT INTO plot_visual_settings(plot_x, plot_z, publication) VALUES(?1, ?2, ?3)
-         ON CONFLICT(plot_x, plot_z) DO UPDATE SET publication=excluded.publication",
-        params![x, z, mode.name()],
+        "INSERT INTO plot_visual_settings(plot_x, plot_z, publication, publication_auto) VALUES(?1, ?2, ?3, ?4)
+         ON CONFLICT(plot_x, plot_z) DO UPDATE SET publication=excluded.publication, publication_auto=excluded.publication_auto",
+        params![x, z, mode, setting == PublicationSetting::Auto],
     )?;
     Ok(())
 }
@@ -469,16 +478,18 @@ fn init_visual_settings(conn: &Connection) -> rusqlite::Result<()> {
         )",
         [],
     )?;
-    let has_publication: bool = conn.query_row(
-        "SELECT EXISTS(SELECT 1 FROM pragma_table_info('plot_visual_settings') WHERE name='publication')",
-        [],
-        |row| row.get(0),
-    )?;
-    if !has_publication {
-        conn.execute(
-            "ALTER TABLE plot_visual_settings ADD COLUMN publication TEXT CHECK(publication IN ('all', 'redstone', 'io'))",
-            [],
+    for (column, definition) in [
+        ("publication", "TEXT CHECK(publication IN ('all', 'redstone', 'io'))"),
+        ("publication_auto", "BOOLEAN NOT NULL DEFAULT FALSE"),
+    ] {
+        let exists: bool = conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM pragma_table_info('plot_visual_settings') WHERE name=?1)",
+            [column],
+            |row| row.get(0),
         )?;
+        if !exists {
+            conn.execute(&format!("ALTER TABLE plot_visual_settings ADD COLUMN {column} {definition}"), [])?;
+        }
     }
     Ok(())
 }
@@ -554,6 +565,8 @@ mod tests {
 
     #[test]
     fn publication_setting_migrates_existing_visual_rows() {
+        use crate::redpilator::PublicationMode;
+
         let conn = Connection::open_in_memory().unwrap();
         conn.execute_batch(
             "CREATE TABLE plot_visual_settings(
@@ -563,12 +576,15 @@ mod tests {
         )
         .unwrap();
         init_visual_settings(&conn).unwrap();
-        assert_eq!(publication_mode_in(&conn, -1, 2).unwrap(), None);
-        set_publication_mode_in(&conn, -1, 2, PublicationMode::All).unwrap();
-        set_publication_mode_in(&conn, 0, 0, PublicationMode::Io).unwrap();
+        assert_eq!(publication_setting_in(&conn, -1, 2).unwrap(), None);
+        set_publication_setting_in(&conn, -1, 2, PublicationSetting::Auto).unwrap();
+        let fixed = PublicationSetting::Fixed(PublicationMode::Io);
+        set_publication_setting_in(&conn, 0, 0, fixed).unwrap();
         init_visual_settings(&conn).unwrap();
-        assert_eq!(publication_mode_in(&conn, -1, 2).unwrap(), Some(PublicationMode::All));
-        assert_eq!(publication_mode_in(&conn, 0, 0).unwrap(), Some(PublicationMode::Io));
+        assert_eq!(publication_setting_in(&conn, -1, 2).unwrap(), Some(PublicationSetting::Auto));
+        assert_eq!(publication_setting_in(&conn, 0, 0).unwrap(), Some(fixed));
+        set_publication_setting_in(&conn, -1, 2, fixed).unwrap();
+        assert_eq!(publication_setting_in(&conn, -1, 2).unwrap(), Some(fixed));
         assert!(
             conn.query_row("SELECT screen_only FROM plot_visual_settings WHERE plot_x=-1 AND plot_z=2", [], |row| row
                 .get::<_, bool>(0))

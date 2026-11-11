@@ -1,7 +1,7 @@
 use crate::chat::{ChatComponentBuilder, ColorCode};
 use crate::messages;
 use crate::player::{PacketSender, Player};
-use crate::redpilator::{CompilerOptions, PublicationMode};
+use crate::redpilator::CompilerOptions;
 use mchprs_network::packets::clientbound::{CDisplayScoreboard, CScoreboardObjective, CUpdateScore, ClientBoundPacket};
 use mchprs_save_data::plot_data::{PistonAnimation, Tps};
 use std::collections::HashSet;
@@ -86,8 +86,8 @@ struct PlotMetrics {
     history_memory: String,
     visual_updates: String,
     publication: String,
-    pistons: String,
-    screen_only: String,
+    pistons: Option<String>,
+    screen_only: Option<String>,
     git: String,
 }
 
@@ -99,15 +99,15 @@ impl Default for PlotMetrics {
             history_memory: messages::scoreboard_history_memory("0B"),
             visual_updates: messages::scoreboard_visual_rate(0),
             publication: messages::scoreboard_publication(CompilerOptions::default().publication_mode().name()),
-            pistons: messages::scoreboard_pistons(PistonAnimation::Auto, messages::SCOREBOARD_ON),
-            screen_only: messages::scoreboard_screen_only(messages::SCOREBOARD_OFF),
+            pistons: Some(messages::scoreboard_pistons(PistonAnimation::Auto, messages::SCOREBOARD_ON)),
+            screen_only: None,
             git: messages::SCOREBOARD_GIT_LOADING.into(),
         }
     }
 }
 
 pub(super) struct PlotStatus<'a> {
-    pub publication_mode: PublicationMode,
+    pub publication_label: &'a str,
     pub piston_mode: PistonAnimation,
     pub pistons_animated: bool,
     pub screen_only: bool,
@@ -196,7 +196,8 @@ impl Scoreboard {
         if matches!(self.redpilator_state, RedpilatorState::Running | RedpilatorState::RunningLlvm) && self.update_on_reset {
             lines.push(messages::scoreboard_flag("update"));
         }
-        lines.extend([self.metrics.pistons.clone(), self.metrics.screen_only.clone(), self.metrics.git.clone()]);
+        lines.extend(self.metrics.pistons.iter().chain(&self.metrics.screen_only).cloned());
+        lines.push(self.metrics.git.clone());
         lines
     }
 
@@ -327,20 +328,16 @@ impl Scoreboard {
         };
         self.metrics.history_memory = messages::scoreboard_history_memory(compact_memory(history_memory_bytes));
         self.metrics.visual_updates = messages::scoreboard_visual_rate(visual_update_rate);
-        self.metrics.publication = messages::scoreboard_publication(status.publication_mode.name());
-        self.metrics.pistons = messages::scoreboard_pistons(
-            status.piston_mode,
-            if status.pistons_animated {
+        self.metrics.publication = messages::scoreboard_publication(status.publication_label);
+        self.metrics.pistons = (!matches!(status.piston_mode, PistonAnimation::Off) || status.pistons_animated).then(|| {
+            let effective = if status.pistons_animated {
                 messages::SCOREBOARD_ON
             } else {
                 messages::SCOREBOARD_OFF
-            },
-        );
-        self.metrics.screen_only = messages::scoreboard_screen_only(if status.screen_only {
-            messages::SCOREBOARD_ON
-        } else {
-            messages::SCOREBOARD_OFF
+            };
+            messages::scoreboard_pistons(status.piston_mode, effective)
         });
+        self.metrics.screen_only = status.screen_only.then(|| messages::scoreboard_screen_only(messages::SCOREBOARD_ON));
         self.metrics.git = git_line(status.git_head, status.git_restoring, status.git_recovery);
 
         self.set_lines(players, self.lines(), status.git_readers);
@@ -353,7 +350,7 @@ mod tests {
 
     fn status(head: Option<&str>) -> PlotStatus<'_> {
         PlotStatus {
-            publication_mode: PublicationMode::Io,
+            publication_label: "io",
             piston_mode: PistonAnimation::Auto,
             pistons_animated: false,
             screen_only: true,
@@ -442,16 +439,28 @@ mod tests {
         current.piston_mode = PistonAnimation::On;
         current.pistons_animated = true;
         current.screen_only = false;
-        current.publication_mode = PublicationMode::All;
+        current.publication_label = "all";
         board.update_plot_metrics(&[], Tps::Limited(20), Some(20.0), false, 0, 0, 0, 20, current);
         assert_eq!(&board.current_state[4..6], &["Visual: 20Hz", "Publish: all"]);
         assert!(board.current_state.iter().any(|line| line == "Pistons: on/on"));
-        assert!(board.current_state.iter().any(|line| line == "Screen only: off"));
+        assert!(!board.current_state.iter().any(|line| line.starts_with("Screen only:")));
         board.update_plot_metrics(&[], Tps::Limited(20), Some(20.0), false, 0, 0, 0, 20, status(Some("experiment")));
         assert!(board.current_state.iter().any(|line| line == "Pistons: auto/off"));
         assert!(board.current_state.iter().any(|line| line == "Screen only: on"));
         assert_eq!(board.current_state.last().unwrap(), "Git: experiment");
         assert!(!board.current_state.iter().any(|line| line == "Git: main"));
+
+        let mut disabled = status(Some("experiment"));
+        disabled.piston_mode = PistonAnimation::Off;
+        disabled.screen_only = false;
+        board.update_plot_metrics(&[], Tps::Limited(20), Some(20.0), false, 0, 0, 0, 20, disabled);
+        assert!(
+            !board
+                .current_state
+                .iter()
+                .any(|line| line.starts_with("Pistons:") || line.starts_with("Screen only:"))
+        );
+        assert_eq!(board.current_state.last().unwrap(), "Git: experiment");
     }
 
     #[test]
@@ -460,7 +469,7 @@ mod tests {
         board.update_plot_metrics(&[], Tps::Unlimited, Some(f32::INFINITY), false, 0, 0, 0, 0, status(None));
         assert!(board.current_state.iter().any(|line| line == "TPS: oo/oo"));
         let mut paused = status(None);
-        paused.publication_mode = PublicationMode::Redstone;
+        paused.publication_label = "redstone";
         board.update_plot_metrics(&[], Tps::Limited(0), Some(f32::INFINITY), false, 0, 0, 0, 0, paused);
         assert_eq!(&board.current_state[4..6], &["Visual: 0Hz", "Publish: redstone"]);
         assert!(board.current_state.iter().any(|line| line == "TPS: 0/0"));

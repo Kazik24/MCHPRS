@@ -299,7 +299,6 @@ impl Plot {
                     .try_on_use_block(block_pos)
                     .and_then(|_| self.redpilator.try_flush(&mut self.world))
                 {
-                    self.auto_redpilator = false;
                     self.fallback_redpilator(&error.to_string());
                     cancel(self);
                     return;

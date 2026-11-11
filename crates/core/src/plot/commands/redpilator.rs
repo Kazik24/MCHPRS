@@ -1,7 +1,8 @@
-use super::super::Plot;
+use super::super::{Plot, visuals::PublicationSetting};
+use crate::config::CONFIG;
 use crate::messages;
 use crate::player::PacketSender;
-use crate::redpilator::{CompilerOptions, PublicationMode};
+use crate::redpilator::CompilerOptions;
 use mchprs_network::packets::clientbound::{CTabComplete, CTabCompleteMatch};
 
 /// Build tab-completion suggestions for Redpilator commands.
@@ -26,7 +27,7 @@ pub(in crate::plot) fn complete_redpilator(id: i32, text: &str) -> Option<CTabCo
             "-i",
             "-u",
         ],
-        Some(&"publish") if words.len() == 2 && matches!(command, "/visual" | "/rp" | "/redpilator") => &["all", "redstone", "io"],
+        Some(&"publish") if words.len() == 2 && matches!(command, "/visual" | "/rp" | "/redpilator") => &PublicationSetting::CHOICES,
         _ => return None,
     };
     let prefix = &text[start..];
@@ -51,6 +52,7 @@ pub(in crate::plot) fn complete_redpilator(id: i32, text: &str) -> Option<CTabCo
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::redpilator::PublicationMode;
     use crate::world::World;
     use mchprs_blocks::{
         BlockDirection, BlockFace, BlockPos,
@@ -91,13 +93,13 @@ mod tests {
 
         plot.players[0].set_test_permissions(&["commands.visual", "commands.visual.set"]);
         plot.handle_command(0, "/visual", vec!["publish", "io"]);
-        assert_eq!(plot.publication_mode, None);
+        assert_eq!(plot.publication_setting, None);
         assert!(matches!(plot.world.get_block(lever), Block::Lever { lever } if !lever.powered));
 
         plot.players[0].set_test_permissions(&["commands.redpilator.compile", "commands.visual", "commands.visual.set"]);
         for (command, mode) in [("/visual", "io"), ("/rp", "redstone"), ("/redpilator", "all")] {
             plot.handle_command(0, command, vec!["publish", mode]);
-            assert_eq!(plot.publication_mode, PublicationMode::parse(mode));
+            assert_eq!(plot.publication_setting, PublicationSetting::parse(mode));
             assert_eq!(plot.redpilator.current_flags().unwrap().publication, PublicationMode::parse(mode));
             assert_eq!(plot.redpilator.current_flags().unwrap().io_only, mode == "io");
             assert!(matches!(plot.world.get_block(lever), Block::Lever { lever } if lever.powered));
@@ -116,7 +118,7 @@ mod tests {
         plot.redpilator.try_reset(&mut plot.world, (lever, lever)).unwrap();
         plot.handle_command(0, "/visual", vec!["publish", "io"]);
         assert_eq!(plot.visual_publication_mode(), PublicationMode::Io);
-        assert_eq!(plot.publication_mode, Some(PublicationMode::Io));
+        assert_eq!(plot.publication_setting, Some(PublicationSetting::Fixed(PublicationMode::Io)));
         assert!(!plot.redpilator.is_active());
     }
 
@@ -189,14 +191,14 @@ mod tests {
 impl Plot {
     pub(super) fn handle_publication_command(&mut self, player: usize, args: &[&str]) {
         if args.is_empty() {
-            self.players[player].send_system_message(&messages::redpilator_publication(self.visual_publication_mode().name()));
+            self.players[player].send_system_message(&messages::redpilator_publication(&self.visual_publication_label()));
             return;
         }
-        let mode = match args {
-            [value] => PublicationMode::parse(value),
+        let setting = match args {
+            [value] => PublicationSetting::parse(value),
             _ => None,
         };
-        let Some(mode) = mode else {
+        let Some(setting) = setting else {
             self.players[player].send_error_message(messages::REDPILATOR_PUBLICATION_USAGE);
             return;
         };
@@ -213,24 +215,22 @@ impl Plot {
         #[cfg(not(any(test, feature = "plot-bench")))]
         let persist = true;
         if persist
-            && self.publication_mode != Some(mode)
-            && let Err(error) = super::database::set_publication_mode(self.world.x, self.world.z, mode)
+            && self.publication_setting != Some(setting)
+            && let Err(error) = super::database::set_publication_setting(self.world.x, self.world.z, setting)
         {
             self.players[player].send_error_message(&messages::visual_setting_save_failed(error));
             return;
         }
-        self.publication_mode = Some(mode);
-        let result = if self.redpilator.set_publication_mode(mode) {
-            self.redpilator.try_flush(&mut self.world).map(|()| self.world.flush_block_changes())
-        } else {
-            Ok(())
-        };
+        self.publication_setting = Some(setting);
+        self.redpilator_auto_publication = setting == PublicationSetting::Auto;
+        let result = self.apply_publication_mode(setting.resolve(self.tps, CONFIG.fast_render_threshold));
         self.refresh_sidebar(true);
+        let label = self.visual_publication_label();
         if let Err(error) = result {
-            self.players[player].send_error_message(&messages::redpilator_publication_flush_failed(mode.name(), error));
+            self.players[player].send_error_message(&messages::redpilator_publication_flush_failed(&label, error));
             return;
         }
-        self.players[player].send_system_message(&messages::redpilator_publication(mode.name()));
+        self.players[player].send_system_message(&messages::redpilator_publication(&label));
     }
 
     /// Handles a command that starts with `/redpilator` or `/rp`

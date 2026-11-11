@@ -201,7 +201,6 @@ fn idle_interpreter_skips_empty_batches_and_resumes_scheduled_work() {
         plot.world.packet_senders.clear();
         plot.world.packet_senders.push(PlayerPacketSender::new(&plot.players[0].client));
         plot.tps = tps;
-        plot.auto_redpilator = true;
         plot.lag_time = Duration::from_secs(30);
         plot.last_update_time = Instant::now() - Duration::from_secs(30);
 
@@ -217,7 +216,6 @@ fn idle_interpreter_skips_empty_batches_and_resumes_scheduled_work() {
         plot.world.set_block(lamp, Block::RedstoneLamp { lit: true });
         plot.world.schedule_tick(lamp, 1, TickPriority::Normal);
         assert!(!plot.interpreter_idle());
-        plot.auto_redpilator = false;
         plot.last_update_time = Instant::now() - Duration::from_secs(1);
         plot.last_nspt = Some(Duration::from_nanos(1));
 
@@ -226,6 +224,8 @@ fn idle_interpreter_skips_empty_batches_and_resumes_scheduled_work() {
         assert_eq!(plot.world.get_block(lamp), Block::RedstoneLamp { lit: false });
         assert!(plot.interpreter_idle());
         assert!(plot.world.update_stats.simulated_ticks > 0);
+        assert!(plot.compilation.is_none());
+        assert!(!plot.redpilator.is_active());
         let ticks = plot.world.piston_state.logical_tick;
         plot.update();
         assert_eq!(plot.world.piston_state.logical_tick, ticks);
@@ -394,20 +394,26 @@ fn compiled_bud_piston_unlocks_through_player_lever_clicks() {
         plot.owner = Some(plot.players[0].uuid);
         plot.players[0].set_test_permissions(&["*"]);
         plot.players[0].inventory[36] = None;
-        let mut clip = load_schematic(std::fs::File::open(
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../test_data/minimal_repo.schem")
-        ).unwrap()).unwrap();
+        let mut clip =
+            load_schematic(std::fs::File::open(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../test_data/minimal_repo.schem")).unwrap())
+                .unwrap();
         clip.offset_x = 0;
         clip.offset_y = 0;
         clip.offset_z = 0;
         paste_clipboard(&mut plot.world, &clip, origin, false);
         let mut native = plot.world.activation_snapshot();
-        plot.redpilator.compile(
-            &plot.world,
-            (origin - BlockPos::new(2, 2, 2), origin + BlockPos::new(6, 6, 7)),
-            CompilerOptions { publication, ..Default::default() },
-            vec![], Default::default()
-        ).unwrap();
+        plot.redpilator
+            .compile(
+                &plot.world,
+                (origin - BlockPos::new(2, 2, 2), origin + BlockPos::new(6, 6, 7)),
+                CompilerOptions {
+                    publication,
+                    ..Default::default()
+                },
+                vec![],
+                Default::default(),
+            )
+            .unwrap();
         for (sequence, control) in [top, bottom, top].into_iter().enumerate() {
             crate::interaction::use_redstone(native.get_block(control), &mut native, control, None);
             plot.handle_player_block_placement(placement(control, sequence as i32 + 1), 0);
@@ -418,10 +424,18 @@ fn compiled_bud_piston_unlocks_through_player_lever_clicks() {
             plot.last_world_send_time = Instant::now() - Duration::from_secs(1);
             plot.update();
             assert!(plot.redpilator.is_active());
-            assert_eq!(plot.world.get_block(output), native.get_block(output), "output after click {sequence}, {publication:?}");
+            assert_eq!(
+                plot.world.get_block(output),
+                native.get_block(output),
+                "output after click {sequence}, {publication:?}"
+            );
             assert!(matches!(native.get_block(piston), Block::Piston { piston } if piston.extended == (sequence == 1)));
             if publication == Some(PublicationMode::All) {
-                assert_eq!(plot.world.get_block(piston), native.get_block(piston), "visible piston after click {sequence}");
+                assert_eq!(
+                    plot.world.get_block(piston),
+                    native.get_block(piston),
+                    "visible piston after click {sequence}"
+                );
             }
         }
         assert!(matches!(plot.world.get_block(bottom), Block::Lever { lever } if lever.powered));

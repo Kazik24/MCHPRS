@@ -25,7 +25,11 @@ fn migrates_old_chat_switch_without_overriding_explicit_native_mode() {
 fn reads_and_patches_the_selected_config_file() {
     let unique = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
     let path = std::env::temp_dir().join(format!("mchprs-config-{}-{unique}.toml", std::process::id()));
-    fs::write(&path, "motd = \"Selected container config\"\nfast_render_send_rate = 10\n").unwrap();
+    fs::write(
+        &path,
+        "motd = \"Selected container config\"\nfast_render_send_rate = 10\nauto_redpilator = true\n",
+    )
+    .unwrap();
     let config = ServerConfig::load(&path);
     let patched = fs::read_to_string(&path).unwrap();
     fs::remove_file(&path).unwrap();
@@ -41,6 +45,7 @@ fn reads_and_patches_the_selected_config_file() {
     assert!(patched.contains("schematic_save_prefix = \"\""));
     assert!(patched.contains("neighbor_update_interval_ms"));
     assert!(patched.contains("rhistory_memory_limit_mib"));
+    assert!(!patched.contains("auto_redpilator"));
 }
 
 #[test]

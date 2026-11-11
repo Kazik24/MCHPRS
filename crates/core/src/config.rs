@@ -78,6 +78,7 @@ macro_rules! gen_config {
                     doc.entry("native_chat").or_insert_with(|| value(!old_mode));
                 }
                 doc.remove("proxy_chat");
+                doc.remove("auto_redpilator");
 
                 $(
                     <$type as ConfigSerializeDefault>::fix_config($default, stringify!($name), &mut doc);
@@ -111,7 +112,6 @@ gen_config! {
     schematic_save_prefix: String = String::new(),
     luckperms: Option<PermissionsConfig> = None,
     block_in_hitbox: bool = true,
-    auto_redpilator: bool = false,
     default_tps: u32 = 20,
     fast_render_threshold: i64 = 200,
     fast_render_send_rate: i64 = 10,

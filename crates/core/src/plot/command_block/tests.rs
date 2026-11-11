@@ -245,7 +245,6 @@ fn command_block_conditional_chains_and_unsupported_commands_are_bounded() {
     advance(&mut world, 4);
     assert_eq!(world.command_messages.len(), 2);
     assert_eq!(redstone::comparator::get_override(world.get_block(pos), &world, pos), 1);
-    assert!(!world.chunks.iter().any(Chunk::requires_interpreter));
 }
 
 #[test]

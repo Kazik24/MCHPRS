@@ -22,6 +22,7 @@ pub(super) struct CompilationJob {
     /// Live entry state that must still match before activation.
     entry: EntryVersion,
     options: CompilerOptions,
+    auto_publication: bool,
     /// Worker owning all temporary compilation data and no live plot references.
     worker: JoinHandle<CompilationResult>,
 }
@@ -37,6 +38,7 @@ impl CompilationJob {
         world: PlotWorld,
         entry: EntryVersion,
         options: CompilerOptions,
+        auto_publication: bool,
         budget: Option<Duration>,
         started: Instant,
         cached: Option<CompilationCache>,
@@ -58,6 +60,7 @@ impl CompilationJob {
             budget_reported: false,
             entry,
             options,
+            auto_publication,
             worker,
         })
     }
@@ -238,22 +241,6 @@ impl Plot {
         }
     }
 
-    pub(super) fn start_automatic_redpilator(&mut self, options: CompilerOptions) {
-        let budget = self
-            .players
-            .iter()
-            .filter(|player| {
-                player.has_permission("commands.redpilator.compile")
-                    && player.has_permission("commands.toggleautorp")
-                    && player.can_edit_plot(self.owner, (self.world.x, self.world.z))
-            })
-            .filter_map(|player| player.redpilator_compile_budget().ok())
-            .max_by_key(|budget| budget.unwrap_or(Duration::MAX));
-        if let Some(budget) = budget {
-            self.start_redpilator_with_budget(options, budget);
-        }
-    }
-
     /// Capture the plot and launch one background compilation job.
     ///
     /// Inputs: The requested options and optional duration budget, plus this live plot's world/cache state.
@@ -261,8 +248,10 @@ impl Plot {
     /// Reject waveform capture or an existing worker, close containers, capture entry/world state, select
     /// a compatible cache and spawn the worker while reporting snapshot progress.
     pub(super) fn start_redpilator_with_budget(&mut self, mut options: CompilerOptions, budget: Option<Duration>) {
-        if !options.io_only && options.publication.is_none() {
-            options.publication = self.publication_mode;
+        let uses_saved_publication = !options.io_only && options.publication.is_none();
+        let auto_publication = uses_saved_publication && self.publication_setting == Some(visuals::PublicationSetting::Auto);
+        if uses_saved_publication {
+            options.publication = self.saved_publication_mode();
         }
         options.io_only = options.publication_mode() == crate::redpilator::PublicationMode::Io;
         if self.world.waveform.enabled() {
@@ -298,7 +287,7 @@ impl Plot {
         );
         self.send_redpilator_diagnostic(&milestone);
 
-        match CompilationJob::spawn(world, entry, options, budget, started, cached) {
+        match CompilationJob::spawn(world, entry, options, auto_publication, budget, started, cached) {
             Ok(job) => self.compilation = Some(job),
             Err(error) => self.reject_redpilator(started, &format!("cannot start compiler worker: {error}")),
         }
@@ -354,6 +343,7 @@ impl Plot {
         } else if !job.entry.matches(&self.world) || self.git_checkout_locked() {
             self.reject_redpilator(job.started, messages::REDPILATOR_COMPILATION_CHANGED);
         } else {
+            self.redpilator_auto_publication = job.auto_publication;
             self.activate_redpilator(output, job.entry, job.options, job.started);
         }
     }
@@ -385,6 +375,7 @@ impl Plot {
             }
         }
         self.world.publish_activation_changes(&output.world);
+        self.update_auto_publication();
         self.world.clear_scheduled_ticks();
         self.close_all_containers_after_redpilator();
         if self.world.history.enabled() {
