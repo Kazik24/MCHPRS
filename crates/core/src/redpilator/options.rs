@@ -33,7 +33,7 @@ pub struct CompilerOptions {
     pub io_only: bool,
     /// Request the experimental LLVM backend.
     pub llvm: bool,
-    /// Skip sampled wire-shape replay and its indirect callbacks.
+    /// Skip wire-shape replay; LLVM also defers wire power when wires have no electrical outputs.
     pub relaxed_mode: bool,
     /// Override the build's default publication scope.
     pub publication: Option<PublicationMode>,

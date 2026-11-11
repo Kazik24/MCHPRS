@@ -172,7 +172,7 @@ pub(super) struct PistonBinding {
 
 #[derive(Clone)]
 pub(crate) struct Program {
-    /// Runtime wire-shape semantics; incompatible modes cannot share a prepared program.
+    /// Runtime semantics; incompatible relaxed modes cannot share a prepared program.
     pub(crate) relaxed_mode: bool,
     /// Position-keyed sampling artifacts survive topology changes between compilations.
     pub(crate) source_order_cache: Option<std::sync::Arc<super::SourceOrderCache>>,

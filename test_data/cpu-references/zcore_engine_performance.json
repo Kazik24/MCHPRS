@@ -1,0 +1,140 @@
+{
+  "schema_version": 1,
+  "recorded_at": "2026-11-11T19:36:10.409310+01:00",
+  "source_commit": "ea41b61e47009b4be4717beb470cc332ec304b9b",
+  "fixture": "ZCore12B_FIX.schem",
+  "fixture_sha256": "7f074b967a043f36915f5980cbd4da54f62e45832cc385c1ce53fb21dbe9bac8",
+  "saved_library_sha256": "ea9d4ed96da79fdb02e5833348e704ac0dc9a26c23d1b0f79ec13f99f530f308",
+  "native_library_sha256": "4af1676ad10bac12294a0200e32e7f3b84aefbf2e5f7d3daca55f1fb624f34b6",
+  "benchmark_executable_sha256": "6864250b44f5bd8762f27fcb6d5612ba3f898239388cbd2a128c06f155faa845",
+  "protocol": {
+    "host_cpu": "AMD Ryzen 9 5950X",
+    "timing_thread_logical_cpu": 24,
+    "game_ticks": 50000,
+    "preparation_ticks": 413,
+    "samples_per_engine": 3,
+    "publication_calls_in_timer": 0,
+    "timing_order": [
+      "llvm_default",
+      "saved_reference",
+      "llvm_relaxed"
+    ],
+    "timing_scope": "One engine at a time after user confirmed the PC was free. Compilation, preparation, input activation and output verification excluded. Grouped repetitions, not interleaved pairs. These are kernel rates, not server or client rates."
+  },
+  "timing": {
+    "llvm_default": {
+      "samples_tps": [
+        2156.7234884226004,
+        3064.326638980843,
+        2578.5042907291227
+      ],
+      "median_tps": 2578.5042907291227,
+      "min_tps": 2156.7234884226004,
+      "max_tps": 3064.326638980843
+    },
+    "saved_reference": {
+      "samples_tps": [
+        9448.602963580775,
+        8901.007551329974,
+        7500.550915464741
+      ],
+      "median_tps": 8901.007551329974,
+      "min_tps": 7500.550915464741,
+      "max_tps": 9448.602963580775
+    },
+    "llvm_relaxed": {
+      "samples_tps": [
+        3145.8389415777065,
+        2754.3643495306646,
+        2874.5107496468777
+      ],
+      "median_tps": 2874.5107496468777,
+      "min_tps": 2754.3643495306646,
+      "max_tps": 3145.8389415777065
+    }
+  },
+  "median_ratios": {
+    "saved_reference_over_llvm_default": 3.45200416510187,
+    "saved_reference_over_llvm_relaxed": 3.096529575484603
+  },
+  "validation": {
+    "clock_start": 413,
+    "clock_end": 50413,
+    "idle_before_ticks": 0,
+    "idle_after_ticks": 0,
+    "no_component_or_neighbor_callback_ticks": 7406,
+    "changed_screen_frames": 3940,
+    "changed_physical_lamp_pixels": 26276,
+    "default_llvm_reference_matching_800_lamp_frames": 50001,
+    "different_frames": 0,
+    "screen_trace_sha256": "7ade7a6101ca8818aed319a331253a89769879c6da56398790594ddfc36dbb28",
+    "screen_sha256": "6597ffbdb45a34e2570052f1835b9a9807e4ac9853cf41966a3ca2af2551cdfc",
+    "scope": "Default LLVM and saved engine screen trace matches after Run and every tick. Relaxed mode verified final screen only in this timing run. Screen parity does not prove internal or other-circuit correctness. A separate display check verified successive Rule 90 generations."
+  },
+  "historical_instrumented_5000_tick_work": {
+    "scope": "Separate diagnostic build/window; counts are not fresh 50000-tick cycle measurements or wall-time shares. Equal token movement and scheduled callback counts do not establish equal internal semantics.",
+    "token_movements": {
+      "llvm": 3222796,
+      "saved_reference": 3222796
+    },
+    "scheduled_callbacks": {
+      "llvm": 1138502,
+      "saved_reference": 1138502
+    },
+    "movement_flip_applications": {
+      "llvm": 13618599,
+      "saved_reference": 6417312
+    },
+    "wire_target_flip_applications": {
+      "llvm": 10455150,
+      "saved_reference": 3198515
+    },
+    "histogram_bucket_mutations": {
+      "llvm": 15579171,
+      "saved_reference": 3199840
+    },
+    "wire_refresh_visits": {
+      "llvm": 21168034,
+      "saved_reference": 3190353
+    }
+  },
+  "verified_architectural_differences": {
+    "ordinary_wire_components": {
+      "llvm": 43454,
+      "saved_reference_runtime_wire_watchers": 17657
+    },
+    "watched_wires": {
+      "llvm": 26166,
+      "saved_reference": 17657,
+      "llvm_only": 8509,
+      "llvm_only_head": 4887,
+      "llvm_only_observer": 2363,
+      "llvm_only_head_and_observer": 1259
+    },
+    "level_counter_storage_bytes": {
+      "llvm": 11236608,
+      "saved_reference": 1130048,
+      "scope": "Signal-level counters only; excludes other engine state, arrays and presence masks."
+    },
+    "movement_history": "Saved engine precompiles flip-to-step indices and uses local bitmasks; native engine uses component flags, ordered node lists, dependency scans and cleanup.",
+    "wire_policy": "Saved engine keeps ordinary wires mostly as publication metadata; native engine maintains full wire state, shape replay and wider head/observer notifications.",
+    "shared_optimizations": "Both use precomputed electrical paths. Native already uses occupied-level bitmasks; a linear 15-level scan is not the current explanation."
+  },
+  "phase_profiler": {
+    "parity_passed": true,
+    "wall_time_attribution_valid": false,
+    "extrapolated_movement_fraction": [
+      1.3550464436876284,
+      1.237355232172019,
+      1.2485333403725247
+    ],
+    "reason": "All estimates exceed whole-process runtime. Serialized phase timers and changed code generation materially perturb sampling. Do not use phase shares to allocate the performance gap."
+  },
+  "conclusions": [
+    "Additional native wire maintenance is demonstrated by work counts, but its exact share of elapsed time remains unresolved.",
+    "Some extra head/observer work preserves correctness. Prior broader notification suppression failed an older PM1 fixture and was not shipped.",
+    "Compact history masks and sparse signal counters are optimization candidates requiring correctness and performance validation.",
+    "Substantial timing spread remains even after the user confirmed the PC was free. Grouped medians do not establish a precise relaxed-mode speedup.",
+    "No production runtime changes were made in this measurement pass. In-game publication and networking were not benchmarked."
+  ]
+}

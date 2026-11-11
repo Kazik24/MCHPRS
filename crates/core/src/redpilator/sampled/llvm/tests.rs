@@ -163,6 +163,138 @@ mod wire_refresh_tests {
     }
 
     #[test]
+    fn llvm_relaxed_wire_reads_derive_analog_power_without_mutating_refresh_history() {
+        for arranged in [false, true] {
+            let mut program = program(
+                arranged,
+                vec![contribution(arranged, 0), Operation::RefreshWire(2), contribution(arranged, 1)],
+                vec![contribution(arranged, 0), contribution(arranged, 1)],
+            );
+            program.enable_relaxed_wire_shapes().unwrap();
+            let mut rust = program.start();
+            let mut projection = program.start();
+            let mut native = LlvmRuntime::new(&program, &[]).unwrap();
+            for (source, expected) in [(0, 13), (1, 13), (0, 0), (1, 0)] {
+                rust.use_control(program.positions[source]).unwrap();
+                native.use_control(program.positions[source]).unwrap();
+                // Relaxed views show the effective level even when eager replay last stored 8 or 13.
+                rust.refresh_wire_power(2, rust.input_strength(2));
+                assert_eq!(component_state(rust.blocks[2]).state, expected);
+                assert_views(&native, &rust, &mut projection);
+                let before = snapshot(&native);
+                assert_eq!(before[8 + 2], u32::from(expected));
+                let mut visual = [0];
+                // SAFETY: The runtime is live and both one-element buffers have matching lengths.
+                assert_eq!(
+                    unsafe { (native.library.read_visual_components)(native.state.as_ptr().cast(), [2].as_ptr(), visual.as_mut_ptr(), 1) },
+                    0
+                );
+                assert_eq!(visual[0] & 255, u32::from(expected));
+                assert_eq!(snapshot(&native), before, "publication must not mutate wire history");
+            }
+        }
+    }
+
+    #[test]
+    fn llvm_relaxed_wire_electrical_outputs_retain_eager_refresh_boundaries() {
+        use crate::redpilator::sampled::program::ComparatorRecord;
+        for outgoing in 0..3 {
+            let mut program = program(
+                false,
+                vec![Operation::Contribution(0), Operation::RefreshWire(2), Operation::Contribution(1)],
+                vec![Operation::Contribution(0), Operation::Contribution(1)],
+            );
+            program.initial[1] = Block::RedstoneLamp { lit: false };
+            program.sources = vec![0];
+            program.set_output_program(1, false, vec![]);
+            program.set_output_program(1, true, vec![]);
+            let link = ElectricalLink {
+                source: 2,
+                target: 1,
+                attenuation: 0,
+            };
+            match outgoing {
+                0 => program.push_link(link),
+                1 => {
+                    program.input_arrangements.push(InputArrangement {
+                        target: 1,
+                        side: false,
+                        silent: false,
+                        tokens: vec![],
+                        token_states: vec![],
+                        conditional_sources: vec![ArrangementSource::Component(2)],
+                        inputs: vec![vec![(ArrangementSource::Component(2), 0)]],
+                    });
+                }
+                _ => {
+                    program.initial[1] = Block::from_name("comparator").unwrap();
+                    program.sources = vec![0];
+                    program.comparators.push(ComparatorRecord {
+                        component: 1,
+                        stored: 0,
+                        rear_override: None,
+                        far_override: None,
+                        output_is_diode: false,
+                    });
+                    program.side_links.push(link);
+                }
+            }
+            program.compile_movement_flips().unwrap();
+            program.enable_relaxed_wire_shapes().unwrap();
+            let mut rust = program.start();
+            let mut projection = program.start();
+            let mut native = LlvmRuntime::new(&program, &[]).unwrap();
+            assert_eq!(
+                snapshot(&native)[8 + 2],
+                7,
+                "outgoing electrical link category {outgoing} must retain initial power"
+            );
+            assert_views(&native, &rust, &mut projection);
+            rust.use_control(program.positions[0]).unwrap();
+            native.use_control(program.positions[0]).unwrap();
+            assert_eq!(component_state(rust.blocks[2]).state, 8);
+            assert_eq!(rust.input_strength(2), 13);
+            assert_views(&native, &rust, &mut projection);
+        }
+    }
+
+    #[test]
+    fn llvm_relaxed_watched_wire_preserves_observer_edges_and_pending_ticks() {
+        use crate::redpilator::sampled::program::WatchedWire;
+        let mut operations = vec![Operation::Contribution(0), Operation::Contribution(1), Operation::RefreshWire(2)];
+        let mut program = program(false, operations.clone(), operations.clone());
+        program.initial[1] = Block::from_name("observer").unwrap();
+        program.sources = vec![0];
+        program.set_output_program(1, false, vec![]);
+        program.set_output_program(1, true, vec![]);
+        program.watched_wires.push(WatchedWire { wire: 2, watchers: vec![1] });
+        operations.push(Operation::CheckWatchedWire(0));
+        program.set_output_program(0, false, operations.clone());
+        program.set_output_program(0, true, operations);
+        program.enable_relaxed_wire_shapes().unwrap();
+        compare_execution(program, &[(0, 0), (8, 0), (16, 0)], 32);
+    }
+
+    #[test]
+    fn llvm_relaxed_wire_flag_rejects_unknown_bits_in_both_validators() {
+        let mut program = program(false, vec![], vec![]);
+        program.enable_relaxed_wire_shapes().unwrap();
+        let mut encoded = LlvmProgram::encode(&program).unwrap();
+        let flag = encoded.descriptor.component_offset as usize + 2 * COMPONENT_BYTES + 15;
+        assert_eq!(encoded.blob[flag], 1);
+        let library = Library::load().unwrap();
+        for invalid in [2, 3, 128, 255] {
+            encoded.blob[flag] = invalid;
+            assert!(validate_blob(&encoded.descriptor, &encoded.blob).is_err());
+            // SAFETY: Buffers remain live; state_size validates the untrusted wire flag before use.
+            assert_eq!(
+                unsafe { (library.state_size)(&encoded.descriptor, encoded.blob.as_ptr(), encoded.blob.len() as u32, 0) },
+                0
+            );
+        }
+    }
+
+    #[test]
     fn llvm_wire_preserves_power_at_each_operation_limit_failure_prefix() {
         for arranged in [false, true] {
             for (applied, expected_power) in [(1, 7), (2, 8), (3, 8), (4, 13)] {

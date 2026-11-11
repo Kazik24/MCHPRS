@@ -1,0 +1,119 @@
+{
+  "schema_version": 1,
+  "recorded_at": "2026-11-11T20:14:44.364667+01:00",
+  "source_base_commit": "ea41b61e47009b4be4717beb470cc332ec304b9b",
+  "native_semantic_version": 34,
+  "mode": "--llvm --relaxed",
+  "retained_changes": [
+    "Derive wire power on reads when every wire has no fixed, conditional or side electrical outputs. Keep eager fallback for all other circuits.",
+    "Skip the preliminary switched-wire refresh walk and residual ordinary-wire refreshes in deferred mode.",
+    "Keep deferred unwatched wires out of switched-node lists; retain input accounting and watched-wire, piston-head and observer callbacks."
+  ],
+  "benchmark_protocol": {
+    "fixture": "ZCore12B_FIX.schem",
+    "fixture_sha256": "7f074b967a043f36915f5980cbd4da54f62e45832cc385c1ce53fb21dbe9bac8",
+    "host_cpu": "AMD Ryzen 9 5950X",
+    "timing_thread_logical_cpu": 24,
+    "game_ticks": 50000,
+    "preparation_ticks": 413,
+    "runs_per_variant": 3,
+    "order": "Alternating pairs; reverse order on the second pair. One active engine at a time.",
+    "scope": "Same frozen relaxed Program and native16-game-tick batches, including equal Python dispatch overhead. Compilation, preparation, controls, publication, state reads and correctness checks excluded from timer. Baseline is the previous eager runtime with only wire-flag acceptance and API version adapted to match the current encoder.",
+    "program_sha256": "07e186955d5b787bfdb1483cebac7c4f1a87aca0a494f4b96c034b2110dfb922"
+  },
+  "timings": {
+    "previous_relaxed": {
+      "samples_tps": [
+        4105.352104023238,
+        4147.635930472771,
+        4099.68159330992
+      ],
+      "median_tps": 4105.352104023238,
+      "min_tps": 4099.68159330992,
+      "max_tps": 4147.635930472771
+    },
+    "current_relaxed": {
+      "samples_tps": [
+        4833.45919983387,
+        4800.156984334632,
+        5013.810893072996
+      ],
+      "median_tps": 4833.45919983387,
+      "min_tps": 4800.156984334632,
+      "max_tps": 5013.810893072996
+    }
+  },
+  "median_tps_gain_percent": 17.7355578123759,
+  "paired_tps_gain_percent": [
+    17.7355578123759,
+    15.732360911134347,
+    22.297568212487562
+  ],
+  "median_elapsed_reduction_percent": 15.063892456890038,
+  "native_counted_operations": {
+    "previous_relaxed": 640729994,
+    "current_relaxed": 590521175,
+    "removed_unwatched_residual_visits": 50208819,
+    "scope": "Native internal work counter; not a game-tick numerator or cross-engine metric."
+  },
+  "relaxed_final_full_snapshots_match": true,
+  "current_rust_wrapper_check": {
+    "samples": 1,
+    "game_ticks": 50000,
+    "tps": 4932.099344436206,
+    "compile_ms_excluded": 12801.6942,
+    "publication_calls": 0,
+    "screen_sha256": "6597ffbdb45a34e2570052f1835b9a9807e4ac9853cf41966a3ca2af2551cdfc",
+    "scope": "Fresh compiled Program with actual --relaxed and --samples=1 options, one Rust Compiler.tick call per game tick. CPU24. Single confirmation sample, not a paired speedup estimate."
+  },
+  "validation": {
+    "status": "ok",
+    "deferred_path_activation_asserted": true,
+    "zcore_matching_800_lamp_frames": 50001,
+    "zcore_trace_sha256": "7ade7a6101ca8818aed319a331253a89769879c6da56398790594ddfc36dbb28",
+    "pm1_ticks": 12070,
+    "pm1_ordered_messages": 1534,
+    "pm1_physical_ram_and_lamps_match": true,
+    "pm1_halt_matches": true,
+    "fpu_matching_16_bit_output_words": 10000,
+    "pm1_ram_pairs": 1792,
+    "pm1_lamps": 1452,
+    "fpu_scope": "Existing FPU protocol:128 seeded control changes over10000 ticks; opcode mask2. Clock-specific falling-edge parity and exhaustive arithmetic coverage not established."
+  },
+  "default_mode_validation": {
+    "ticks": 50000,
+    "all_final_snapshot_words_match": true,
+    "ordered_pending_ticks_match": true,
+    "clock_and_native_work_count_match": true,
+    "scope": "Same original strict Program in prior and current DLLs, compared after timing. Default semantic behavior remains eager."
+  },
+  "checks": {
+    "redpilator_unit_tests_passed": 281,
+    "failed": 0,
+    "ignored": 29,
+    "release_examples_built": [
+      "bench_engine_compare",
+      "bench_pm1_compare",
+      "bench_fpu"
+    ],
+    "final_examples_check_passed": true,
+    "changed_rust_format_check_passed": true
+  },
+  "provenance": {
+    "previous_runtime_dll_sha256": "767608b8471bebf3cc19736776639a03bacb1868cffccf95a620e1839e9a6dc9",
+    "current_runtime_dll_sha256": "ffa42d65cedf08d7220e0d0e7872e45c54c838100ad10ce8c72ebca5dfe54fc5",
+    "mode_assertion_dll_sha256": "f6603d8f958c3aa8d92c883efcdbe2e0980d5ec84388bd7bd709f3f51dd365ba",
+    "native_source_sha256": {
+      "engine.c": "f782bd80cc6f518de6366c8db61a3ed987d14bd72281ba2df2f07986f5c5e527",
+      "llvm_movement.c": "269c6b918321d2a0bd13a51cfed76a470f5b26eb73bc481e226565bd48a048be",
+      "command_engine.c": "c5ef63ffdec84f62113a5432888cf3dea95413e5c8fcccc4b95ac4886c96c232",
+      "abi.h": "1cc3cb12a295d3a62fa2b233810b9dbab59838d4a7efa29e5b1a7dec28fdba9c"
+    }
+  },
+  "limits": [
+    "Rates are kernel measurements; live server publication, networking and client rendering were not benchmarked.",
+    "Relaxed mode can change transient wire power/shape behavior. Passed circuit protocols do not establish universal engine equivalence.",
+    "ConnectFour remains skipped.",
+    "Custom native DLLs must match semantic version34. Existing running servers and custom target/native_engine.dll were not replaced."
+  ]
+}

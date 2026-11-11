@@ -48,6 +48,7 @@ typedef struct {
     uint8_t *comparator_outputs;
     uint8_t *reactive_strengths;
     uint8_t has_reactive;
+    uint8_t lazy_wire_power;
     uint8_t *note_instruments, *note_queued;
     uint32_t *note_events, note_count;
     uint32_t *watched_by_component;
@@ -134,6 +135,11 @@ static uint32_t read_u32(const uint8_t *data) {
     return (uint32_t)data[0] | ((uint32_t)data[1] << 8) | ((uint32_t)data[2] << 16) | ((uint32_t)data[3] << 24);
 }
 
+static uint8_t input_strength(const NEEngine *, uint32_t);
+static uint8_t represented_state(const NEEngine *e, uint32_t node) {
+    return e->lazy_wire_power && components(e)[node].kind == 5u ? input_strength(e, node) : e->component_state[node];
+}
+
 /**
  * Read a component's native redstone output level.
  *
@@ -144,7 +150,7 @@ static uint8_t output(const NEEngine *engine, uint32_t component) {
     if (record->kind == 3u)
         return table(engine, 30u)[component] ? 0u : 15u;
     if (record->kind == 5u)
-        return engine->component_state[component];
+        return represented_state(engine, component);
     if (record->kind == 9u)
         return engine->component_state[component] ? engine->comparator_outputs[component] : 0u;
     if (record->kind == 11u)
@@ -378,6 +384,8 @@ static uint32_t update_comparator(NEEngine *e, uint32_t node) {
  * conditional outgoing contributions using each link's attenuation.
  */
 static void refresh_wire(NEEngine *e, uint32_t wire, uint8_t strength) {
+    if (e->lazy_wire_power)
+        return;
     if (e->component_state[wire] == strength)
         return;
     set_component(e, wire, strength);
@@ -935,7 +943,7 @@ static uint32_t valid_program(const MchprsNativeProgramDescriptor *program, cons
                                                                                                   : 1u) ||
             (component[i].kind == 4u ? (component[i].reserved[0] < 1u || component[i].reserved[0] > 4u ||
                                         component[i].reserved[1] > 6u || (component[i].reserved[1] & 1u))
-                                     : (component[i].reserved[0] || component[i].reserved[1])) ||
+                                     : (component[i].reserved[0] || component[i].reserved[1] > (component[i].kind == 5u ? 1u : 0u))) ||
             (uint64_t)component[i].on_offset + component[i].on_count > program->operation_count ||
             (uint64_t)component[i].off_offset + component[i].off_count > program->operation_count)
             return 0u;
@@ -1033,7 +1041,7 @@ static size_t align8(size_t value) {
 }
 
 MchprsNativeApiDescriptor ne_api_descriptor(void) {
-    MchprsNativeApiDescriptor value = {3u, 16u, 33u};
+    MchprsNativeApiDescriptor value = {3u, 16u, 34u};
     return value;
 }
 
@@ -1084,6 +1092,21 @@ size_t ne_state_size(const MchprsNativeProgramDescriptor *program, const uint8_t
     bytes = align8(bytes) + movement_storage_bytes(&view);
     return bytes <= NE_MAX_STATE_BYTES ? bytes : 0u;
 }
+
+/* Deferred power cannot feed other electrical links; retain their refresh boundaries. */
+static uint8_t can_defer_wire_power(const NEEngine *e) {
+    uint8_t wires = 0u;
+    for (uint32_t node = 0; node < e->program->component_count; ++node) {
+        if (components(e)[node].kind != 5u)
+            continue;
+        wires = 1u;
+        if (!components(e)[node].reserved[1] || table(e, 0u)[node * 2u + 1u] ||
+            table(e, 5u)[node * 2u + 1u] || table(e, 28u)[node * 2u + 1u])
+            return 0u;
+    }
+    return wires;
+}
+
 
 /**
  * Initialize a native engine in caller-owned memory.
@@ -1155,6 +1178,7 @@ uint32_t ne_create(const MchprsNativeProgramDescriptor *program, const uint8_t *
     engine->command_notify_targets = NULL;
     engine->command_now_ns = engine->command_logical_base = 0u;
     engine->has_reactive = 0u;
+    engine->lazy_wire_power = 0u;
     engine->note_count = 0u;
     for (uint32_t i = 0; i < program->component_count; ++i) {
         engine->component_state[i] = components(engine)[i].initial_state;
@@ -1212,6 +1236,7 @@ uint32_t ne_create(const MchprsNativeProgramDescriptor *program, const uint8_t *
             }
         }
     }
+    engine->lazy_wire_power = (uint8_t)can_defer_wire_power(engine);
     return NE_OK;
 }
 
@@ -1316,7 +1341,7 @@ uint32_t ne_read_state(const void *memory, uint8_t *out, uint32_t count) {
     if (!engine || !out || count != engine->program->component_count)
         return NE_INVALID;
     for (uint32_t i = 0; i < count; ++i)
-        out[i] = engine->component_state[i];
+        out[i] = represented_state(engine, i);
     return NE_OK;
 }
 
@@ -1333,7 +1358,7 @@ uint32_t ne_read_components(const void *memory, const uint32_t *ids, uint8_t *ou
         if (ids[i] >= e->program->component_count)
             return NE_INVALID;
     for (uint32_t i = 0; i < count; ++i)
-        out[i] = e->component_state[ids[i]];
+        out[i] = represented_state(e, ids[i]);
     return NE_OK;
 }
 
@@ -1345,7 +1370,7 @@ uint32_t ne_read_visual_components(const void *memory, const uint32_t *ids, uint
         if (ids[i] >= e->program->component_count)
             return NE_INVALID;
     for (uint32_t i = 0; i < count; ++i) {
-        uint32_t node = ids[i], value = e->component_state[node];
+        uint32_t node = ids[i], value = represented_state(e, node);
         uint8_t kind = components(e)[node].kind;
         if (kind == 5u)
             value |= (uint32_t)e->wire_sides[node] << 8u;

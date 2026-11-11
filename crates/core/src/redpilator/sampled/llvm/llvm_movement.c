@@ -440,7 +440,8 @@ static uint32_t route_refresh(NEEngine *e, uint32_t token, uint32_t *switched_co
             }
             if (strength > old || strength > next)
                 e->updated[link[0]] = 0u;
-            if (components(e)[link[0]].kind != 8u && !e->switched[link[0]]) {
+            if (components(e)[link[0]].kind != 8u && !e->switched[link[0]] &&
+                !(e->lazy_wire_power && components(e)[link[0]].kind == 5u && e->watched_by_component[link[0]] == NONE)) {
                 e->switched[link[0]] = 1u;
                 e->switched_nodes[(*switched_count)++] = link[0];
             }
@@ -698,6 +699,7 @@ static uint32_t mark_wire(NEEngine *e, uint32_t node) {
     return 1u;
 }
 
+/* Unwatched deferred wires need input accounting, but no movement refresh or cleanup list. */
 static inline uint32_t apply_movement_flip(NEEngine *e, const uint32_t *flip, uint32_t switched_count) {
     uint32_t flags = flip[3], attenuation = flags & 15u;
     uint8_t contribution;
@@ -710,7 +712,8 @@ static inline uint32_t apply_movement_flip(NEEngine *e, const uint32_t *flip, ui
     set_arranged(e, flip[2], flip[0], (flags >> 9u) & 1u, flags & 0x100u ? contribution : 0u);
     if (contribution)
         e->updated[flip[0]] = 0u;
-    if (components(e)[flip[0]].kind != 8u && !e->switched[flip[0]]) {
+    if (components(e)[flip[0]].kind != 8u && !e->switched[flip[0]] &&
+                !(e->lazy_wire_power && components(e)[flip[0]].kind == 5u && e->watched_by_component[flip[0]] == NONE)) {
         e->switched[flip[0]] = 1u;
         e->switched_nodes[switched_count++] = flip[0];
     }
@@ -793,7 +796,7 @@ static uint32_t set_token_pos(NEEngine *e, uint32_t token, uint32_t position) {
     }
     if (notify_shape(e, table(e, 13u)[cells[0] + local]))
         return e->error;
-    for (uint32_t i = 0; i < switched_count; ++i) {
+    if (!e->lazy_wire_power) for (uint32_t i = 0; i < switched_count; ++i) {
         uint32_t node = e->switched_nodes[i];
         if (components(e)[node].kind == 5u)
             refresh_wire(e, node, input_strength(e, node));
@@ -835,8 +838,9 @@ static uint32_t set_token_pos(NEEngine *e, uint32_t token, uint32_t position) {
                 e->changed[node] = 1u;
                 e->changed_nodes[changed_count++] = node;
             }
-        } else if (components(e)[node].kind == 5u)
-            refresh_wire(e, node, input_strength(e, node));
+        } else if (components(e)[node].kind == 5u) {
+            if (!e->lazy_wire_power) refresh_wire(e, node, input_strength(e, node));
+        }
         else {
             uint32_t result = update_once(e, node);
             if (result)
@@ -1170,7 +1174,7 @@ uint32_t ne_read_snapshot(const void *memory, uint32_t *out, uint32_t words) {
     out[7] = 6u;
     uint32_t cursor = 8u;
     for (uint32_t i = 0; i < e->program->component_count; ++i)
-        out[cursor++] = e->component_state[i];
+        out[cursor++] = represented_state(e, i);
     for (uint32_t i = 0; i < e->token_count; ++i)
         out[cursor++] = e->token_cell[i];
     for (uint32_t i = 0; i < e->piston_count; ++i)

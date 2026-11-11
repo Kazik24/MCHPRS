@@ -32,7 +32,7 @@ typedef struct {
     int32_t z;
     uint8_t kind;
     uint8_t initial_state;
-    /* Repeater: delay in ticks, then fixed-lock/diode-output flag bits. Zero for other kinds. */
+    /* Repeater: delay/lock/diode flags. Wire: zero, then relaxed-power flag (0 or 1). */
     uint8_t reserved[2];
     uint32_t on_offset;
     uint32_t on_count;

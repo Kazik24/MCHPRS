@@ -90,7 +90,7 @@ impl LlvmProgram {
                 let flags = (u8::from(output_is_diode) << 1) | (u8::from(has_dynamic_lock) << 2);
                 (repeater.delay, flags)
             } else {
-                (0, 0)
+                (0, u8::from(kind == 5 && program.relaxed_mode))
             };
             blob.extend_from_slice(&[kind, state, delay, flags]);
             for range in [&program.output_programs[index][1], &program.output_programs[index][0]] {
@@ -349,7 +349,7 @@ pub(super) fn validate_blob(descriptor: &NativeProgramDescriptor, blob: &[u8]) -
             let flags = component[15];
             (1..=4).contains(&delay_ticks) && flags <= 6 && flags & 1 == 0
         } else {
-            component[14] == 0 && component[15] == 0
+            component[14] == 0 && component[15] <= u8::from(kind == 5)
         };
         if (kind > 15 && kind != u8::MAX)
             || component[13] > max_state

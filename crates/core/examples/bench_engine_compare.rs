@@ -23,6 +23,7 @@ fn main() {
     let mut publication = PublicationMode::Redstone;
     let mut flush_every = 0u32;
     let mut relaxed_mode = false;
+    let mut samples = 3u32;
     for arg in &args[2..] {
         if arg == "--relaxed" {
             relaxed_mode = true;
@@ -30,6 +31,8 @@ fn main() {
             publication = PublicationMode::parse(mode).expect("publication: io, redstone or all");
         } else if let Some(interval) = arg.strip_prefix("--flush-every=") {
             flush_every = interval.parse().expect("publication interval in game ticks");
+        } else if let Some(count) = arg.strip_prefix("--samples=") {
+            samples = count.parse().expect("sample count");
         } else {
             ticks = arg.parse().expect("tick count or --publication/--flush-every option");
         }
@@ -41,7 +44,7 @@ fn main() {
     } else {
         5_000
     };
-    assert!(ticks > 0 && ticks <= program_ticks);
+    assert!(ticks > 0 && ticks <= program_ticks && samples > 0);
     let cpu = if pm1 {
         cpus::Cpu {
             schematic: "PM1_SORT_FIXED.schem",
@@ -80,7 +83,7 @@ fn main() {
     let kernel_analysis = std::env::var_os("MCHPRS_ENGINE_KERNEL_ANALYSIS").is_some();
     let mut expected_snapshot = None;
     let mut results = Vec::new();
-    for sample in 1..=3 {
+    for sample in 1..=samples {
         let mut world = cpus::load_cpu(cpu);
         let mut compiler = seed
             .benchmark_restart(&world, bounds, world.scheduler().iter_entries().collect())
