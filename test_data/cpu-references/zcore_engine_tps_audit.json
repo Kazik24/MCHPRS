@@ -1,0 +1,428 @@
+{
+  "schema_version": 1,
+  "fixture": "ZCore12B_FIX.schem",
+  "fixture_sha256": "7f074b967a043f36915f5980cbd4da54f62e45832cc385c1ce53fb21dbe9bac8",
+  "saved_library_sha256": "ea9d4ed96da79fdb02e5833348e704ac0dc9a26c23d1b0f79ec13f99f530f308",
+  "scope": "Fresh saved-engine kernel audit on the local Ryzen9 5950X, main thread logical CPU24. Instrumented verification is separate from timing. Compile,413 preparation ticks,inputs and publication are outside timing.",
+  "game_ticks": 50000,
+  "validation": {
+    "ticks": 50000,
+    "preparation_ticks": 413,
+    "clock_start": 413,
+    "clock_end": 50413,
+    "idle_before_ticks": 0,
+    "idle_after_ticks": 0,
+    "no_component_or_neighbor_callback_ticks": 7406,
+    "changed_screen_frames": 3940,
+    "changed_screen_pixels": 26276,
+    "component_ticks": 11769032,
+    "updates": 263495,
+    "screen_sha256": "6597ffbdb45a34e2570052f1835b9a9807e4ac9853cf41966a3ca2af2551cdfc",
+    "trace_sha256": "7ade7a6101ca8818aed319a331253a89769879c6da56398790594ddfc36dbb28",
+    "checkpoints": [
+      {
+        "tick": 1000,
+        "clock": 1413,
+        "idle": false,
+        "component_ticks": 225308,
+        "updates": 4588
+      },
+      {
+        "tick": 2000,
+        "clock": 2413,
+        "idle": false,
+        "component_ticks": 227139,
+        "updates": 4558
+      },
+      {
+        "tick": 3000,
+        "clock": 3413,
+        "idle": false,
+        "component_ticks": 228037,
+        "updates": 4640
+      },
+      {
+        "tick": 4000,
+        "clock": 4413,
+        "idle": false,
+        "component_ticks": 228774,
+        "updates": 4789
+      },
+      {
+        "tick": 5000,
+        "clock": 5413,
+        "idle": false,
+        "component_ticks": 229244,
+        "updates": 4718
+      },
+      {
+        "tick": 6000,
+        "clock": 6413,
+        "idle": false,
+        "component_ticks": 231780,
+        "updates": 4916
+      },
+      {
+        "tick": 7000,
+        "clock": 7413,
+        "idle": false,
+        "component_ticks": 231551,
+        "updates": 5047
+      },
+      {
+        "tick": 8000,
+        "clock": 8413,
+        "idle": false,
+        "component_ticks": 231725,
+        "updates": 4908
+      },
+      {
+        "tick": 9000,
+        "clock": 9413,
+        "idle": false,
+        "component_ticks": 235419,
+        "updates": 5188
+      },
+      {
+        "tick": 10000,
+        "clock": 10413,
+        "idle": false,
+        "component_ticks": 233168,
+        "updates": 5217
+      },
+      {
+        "tick": 11000,
+        "clock": 11413,
+        "idle": false,
+        "component_ticks": 235611,
+        "updates": 5195
+      },
+      {
+        "tick": 12000,
+        "clock": 12413,
+        "idle": false,
+        "component_ticks": 237541,
+        "updates": 5378
+      },
+      {
+        "tick": 13000,
+        "clock": 13413,
+        "idle": false,
+        "component_ticks": 235298,
+        "updates": 5422
+      },
+      {
+        "tick": 14000,
+        "clock": 14413,
+        "idle": false,
+        "component_ticks": 238323,
+        "updates": 5402
+      },
+      {
+        "tick": 15000,
+        "clock": 15413,
+        "idle": false,
+        "component_ticks": 238288,
+        "updates": 5453
+      },
+      {
+        "tick": 16000,
+        "clock": 16413,
+        "idle": false,
+        "component_ticks": 237633,
+        "updates": 5523
+      },
+      {
+        "tick": 17000,
+        "clock": 17413,
+        "idle": false,
+        "component_ticks": 237127,
+        "updates": 5440
+      },
+      {
+        "tick": 18000,
+        "clock": 18413,
+        "idle": false,
+        "component_ticks": 238465,
+        "updates": 5472
+      },
+      {
+        "tick": 19000,
+        "clock": 19413,
+        "idle": false,
+        "component_ticks": 237768,
+        "updates": 5480
+      },
+      {
+        "tick": 20000,
+        "clock": 20413,
+        "idle": false,
+        "component_ticks": 237792,
+        "updates": 5539
+      },
+      {
+        "tick": 21000,
+        "clock": 21413,
+        "idle": false,
+        "component_ticks": 239388,
+        "updates": 5522
+      },
+      {
+        "tick": 22000,
+        "clock": 22413,
+        "idle": false,
+        "component_ticks": 238307,
+        "updates": 5503
+      },
+      {
+        "tick": 23000,
+        "clock": 23413,
+        "idle": false,
+        "component_ticks": 237100,
+        "updates": 5535
+      },
+      {
+        "tick": 24000,
+        "clock": 24413,
+        "idle": false,
+        "component_ticks": 239718,
+        "updates": 5531
+      },
+      {
+        "tick": 25000,
+        "clock": 25413,
+        "idle": false,
+        "component_ticks": 239550,
+        "updates": 5576
+      },
+      {
+        "tick": 26000,
+        "clock": 26413,
+        "idle": false,
+        "component_ticks": 236355,
+        "updates": 5510
+      },
+      {
+        "tick": 27000,
+        "clock": 27413,
+        "idle": false,
+        "component_ticks": 239076,
+        "updates": 5473
+      },
+      {
+        "tick": 28000,
+        "clock": 28413,
+        "idle": false,
+        "component_ticks": 237555,
+        "updates": 5427
+      },
+      {
+        "tick": 29000,
+        "clock": 29413,
+        "idle": false,
+        "component_ticks": 233335,
+        "updates": 5292
+      },
+      {
+        "tick": 30000,
+        "clock": 30413,
+        "idle": false,
+        "component_ticks": 239050,
+        "updates": 5425
+      },
+      {
+        "tick": 31000,
+        "clock": 31413,
+        "idle": false,
+        "component_ticks": 235955,
+        "updates": 5312
+      },
+      {
+        "tick": 32000,
+        "clock": 32413,
+        "idle": false,
+        "component_ticks": 234185,
+        "updates": 5234
+      },
+      {
+        "tick": 33000,
+        "clock": 33413,
+        "idle": false,
+        "component_ticks": 236316,
+        "updates": 5325
+      },
+      {
+        "tick": 34000,
+        "clock": 34413,
+        "idle": false,
+        "component_ticks": 234185,
+        "updates": 5160
+      },
+      {
+        "tick": 35000,
+        "clock": 35413,
+        "idle": false,
+        "component_ticks": 234380,
+        "updates": 5208
+      },
+      {
+        "tick": 36000,
+        "clock": 36413,
+        "idle": false,
+        "component_ticks": 235093,
+        "updates": 5291
+      },
+      {
+        "tick": 37000,
+        "clock": 37413,
+        "idle": false,
+        "component_ticks": 234601,
+        "updates": 5158
+      },
+      {
+        "tick": 38000,
+        "clock": 38413,
+        "idle": false,
+        "component_ticks": 235459,
+        "updates": 5241
+      },
+      {
+        "tick": 39000,
+        "clock": 39413,
+        "idle": false,
+        "component_ticks": 233921,
+        "updates": 5213
+      },
+      {
+        "tick": 40000,
+        "clock": 40413,
+        "idle": false,
+        "component_ticks": 235576,
+        "updates": 5228
+      },
+      {
+        "tick": 41000,
+        "clock": 41413,
+        "idle": false,
+        "component_ticks": 235888,
+        "updates": 5279
+      },
+      {
+        "tick": 42000,
+        "clock": 42413,
+        "idle": false,
+        "component_ticks": 234812,
+        "updates": 5312
+      },
+      {
+        "tick": 43000,
+        "clock": 43413,
+        "idle": false,
+        "component_ticks": 237175,
+        "updates": 5312
+      },
+      {
+        "tick": 44000,
+        "clock": 44413,
+        "idle": false,
+        "component_ticks": 235848,
+        "updates": 5294
+      },
+      {
+        "tick": 45000,
+        "clock": 45413,
+        "idle": false,
+        "component_ticks": 235384,
+        "updates": 5407
+      },
+      {
+        "tick": 46000,
+        "clock": 46413,
+        "idle": false,
+        "component_ticks": 237761,
+        "updates": 5353
+      },
+      {
+        "tick": 47000,
+        "clock": 47413,
+        "idle": false,
+        "component_ticks": 236746,
+        "updates": 5354
+      },
+      {
+        "tick": 48000,
+        "clock": 48413,
+        "idle": false,
+        "component_ticks": 237615,
+        "updates": 5430
+      },
+      {
+        "tick": 49000,
+        "clock": 49413,
+        "idle": false,
+        "component_ticks": 235485,
+        "updates": 5341
+      },
+      {
+        "tick": 50000,
+        "clock": 50413,
+        "idle": false,
+        "component_ticks": 237222,
+        "updates": 5376
+      }
+    ]
+  },
+  "timings": [
+    {
+      "sample": 1,
+      "ticks": 50000,
+      "clock_delta": 50000,
+      "component_ticks": 11769032,
+      "updates": 263495,
+      "idle_at_end": false,
+      "elapsed_ms": 4597.2469,
+      "tps": 10876.074548008288
+    },
+    {
+      "sample": 2,
+      "ticks": 50000,
+      "clock_delta": 50000,
+      "component_ticks": 11769032,
+      "updates": 263495,
+      "idle_at_end": false,
+      "elapsed_ms": 4644.406,
+      "tps": 10765.63935194296
+    },
+    {
+      "sample": 3,
+      "ticks": 50000,
+      "clock_delta": 50000,
+      "component_ticks": 11769032,
+      "updates": 263495,
+      "idle_at_end": false,
+      "elapsed_ms": 4532.6219,
+      "tps": 11031.142924142869
+    }
+  ],
+  "median_kernel_tps": 10876.074548008288,
+  "llvm_output_trace": {
+    "fixture_sha256": "7f074b967a043f36915f5980cbd4da54f62e45832cc385c1ce53fb21dbe9bac8",
+    "scope": "Untimed 800-lamp comparison after Run and after every game tick. Same frozen compiled ZCore fixture,413 preparation ticks. Internal histories excluded.",
+    "matched_frames": 50001,
+    "different_frames": 0,
+    "first_difference": null,
+    "ticks": 50000,
+    "clock_start": 413,
+    "clock_end": 50413,
+    "logical_work": 813662333,
+    "screen_trace_sha256": "7ade7a6101ca8818aed319a331253a89769879c6da56398790594ddfc36dbb28",
+    "reference_screen_trace_sha256": "7ade7a6101ca8818aed319a331253a89769879c6da56398790594ddfc36dbb28",
+    "output_trace_matches": true
+  },
+  "conclusion": "No idle-tick inflation in this ZCore workload. Every call advanced the simulation clock once; all800 screen lamps matched LLVM after Run and after every one of50000 ticks. This is an isolated kernel measurement.",
+  "unmeasured": [
+    "Actual in-game/server publication and client-delivery throughput",
+    "Fresh paired LLVM throughput in this audit",
+    "Internal state equivalence outside the800-lamp output contract"
+  ]
+}
