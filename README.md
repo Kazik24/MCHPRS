@@ -1,9 +1,12 @@
 # MROWW
 
-Based on this project: [MCHPRS](https://github.com/MCHPR/MCHPRS).
+**M**inecraft **R**edstone **o** **W**ysokiej **W**ydajności
 
-Minecraft Redstone o Wysokiej Wydajności. By kazik24 and lord225.
+Based on [MCHPRS project](https://github.com/MCHPR/MCHPRS)
 
+By Kazik24 and Lord225.
+
+---
 A creative redstone server for Minecraft Java 1.21.5. Each 512x512 plot runs on its own thread. There is a physical redstone/piston interpreter and a rewritten Redpilator with an optional LLVM backend, plus tools for building and debugging circuits.
 
 This is for computational redstone. It implements a subset of Minecraft mechanics.
