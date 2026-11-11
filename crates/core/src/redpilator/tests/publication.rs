@@ -337,7 +337,9 @@ fn publication_mode_can_change_without_recompiling_or_advancing_execution() {
         compiler.try_on_use_block(lever).unwrap();
         compiler.tick().unwrap();
         compiler.try_flush(&mut world).unwrap();
-        assert!(compiler.runtime.as_ref().unwrap().has_motions());
+        if !llvm {
+            assert!(compiler.runtime.as_ref().unwrap().has_motions());
+        }
         let before = pending(&compiler);
         let tick = compiler.runtime.as_ref().unwrap().logical_tick();
         compiler.set_publication_mode(PublicationMode::All);
@@ -662,7 +664,19 @@ fn llvm_io_and_effects_flush_preserve_reset_and_clock() {
     let mut rust = Compiler::default();
     let mut llvm = Compiler::default();
     for (compiler, world, is_native) in [(&mut rust, &reference, false), (&mut llvm, &native, true)] {
-        compiler.compile(world, bounds, CompilerOptions { llvm: is_native, io_only: true, ..Default::default() }, vec![], Arc::new(TaskMonitor::default())).unwrap();
+        compiler
+            .compile(
+                world,
+                bounds,
+                CompilerOptions {
+                    llvm: is_native,
+                    io_only: true,
+                    ..Default::default()
+                },
+                vec![],
+                Arc::new(TaskMonitor::default()),
+            )
+            .unwrap();
     }
     for _ in 0..2 {
         rust.try_on_use_block(lever).unwrap();
@@ -677,7 +691,10 @@ fn llvm_io_and_effects_flush_preserve_reset_and_clock() {
             llvm.try_flush(&mut native).unwrap();
             assert_eq!(reference.get_block(lever), native.get_block(lever));
             assert_eq!(reference.get_block(lamp), native.get_block(lamp));
-            assert_eq!(rust.runtime.as_ref().unwrap().logical_tick(), llvm.runtime.as_ref().unwrap().logical_tick());
+            assert_eq!(
+                rust.runtime.as_ref().unwrap().logical_tick(),
+                llvm.runtime.as_ref().unwrap().logical_tick()
+            );
         }
     }
     rust.try_reset(&mut reference, bounds).unwrap();
@@ -690,5 +707,8 @@ fn llvm_io_and_effects_flush_preserve_reset_and_clock() {
             }
         }
     }
-    assert_eq!(reference.scheduler().iter_entries().collect::<Vec<_>>(), native.scheduler().iter_entries().collect::<Vec<_>>());
+    assert_eq!(
+        reference.scheduler().iter_entries().collect::<Vec<_>>(),
+        native.scheduler().iter_entries().collect::<Vec<_>>()
+    );
 }

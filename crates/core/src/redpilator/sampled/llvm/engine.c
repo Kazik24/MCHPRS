@@ -32,6 +32,11 @@ typedef struct {
     const MchprsNativeProgramDescriptor *program;
     MchprsNativeProgramDescriptor program_copy;
     const uint8_t *blob;
+    const MchprsNativeComponent *component_data;
+    const uint32_t *source_data;
+    const uint8_t *operation_data, *link_data;
+    const uint32_t *table_data[NE_TABLES];
+    uint32_t table_sizes[NE_TABLES];
     uint8_t *component_state;
     uint8_t *wire_sides;
     uint8_t *contributions;
@@ -76,19 +81,19 @@ typedef struct {
 } NEEngine;
 
 static const MchprsNativeComponent *components(const NEEngine *engine) {
-    return (const MchprsNativeComponent *)(engine->blob + engine->program->component_offset);
+    return engine->component_data;
 }
 
 static const uint32_t *sources(const NEEngine *engine) {
-    return (const uint32_t *)(engine->blob + engine->program->source_offset);
+    return engine->source_data;
 }
 
 static const uint8_t *operations(const NEEngine *engine) {
-    return engine->blob + engine->program->operation_offset;
+    return engine->operation_data;
 }
 
 static const uint8_t *links(const NEEngine *engine) {
-    return engine->blob + engine->program->link_offset;
+    return engine->link_data;
 }
 
 /* Seven binary tables: side rows/data, source watchers, watched wires, watcher IDs, outgoing rows/IDs. */
@@ -96,10 +101,21 @@ static const uint32_t *aux_directory(const NEEngine *e) {
     return (const uint32_t *)(e->blob + e->program->source_offset + (size_t)e->program->source_count * 4u);
 }
 static const uint32_t *table(const NEEngine *e, uint32_t index) {
-    return (const uint32_t *)(e->blob + aux_directory(e)[index * 2u]);
+    return e->table_data[index];
 }
 static uint32_t table_words(const NEEngine *e, uint32_t index) {
-    return aux_directory(e)[index * 2u + 1u];
+    return e->table_sizes[index];
+}
+static void initialize_tables(NEEngine *e) {
+    e->component_data = (const MchprsNativeComponent *)(e->blob + e->program->component_offset);
+    e->source_data = (const uint32_t *)(e->blob + e->program->source_offset);
+    e->operation_data = e->blob + e->program->operation_offset;
+    e->link_data = e->blob + e->program->link_offset;
+    const uint32_t *directory = aux_directory(e);
+    for (uint32_t index = 0; index < NE_TABLES; ++index) {
+        e->table_data[index] = (const uint32_t *)(e->blob + directory[index * 2u]);
+        e->table_sizes[index] = directory[index * 2u + 1u];
+    }
 }
 static uint32_t valid_movement(const MchprsNativeProgramDescriptor *, const uint8_t *, const uint32_t **,
                                const uint32_t *);
@@ -245,6 +261,19 @@ static uint32_t notify(NEEngine *e, uint32_t source, uint8_t shape, uint8_t upda
     return NE_OK;
 }
 
+/* Bucket zero stores occupied nonzero levels; duplicate contributions retain their counts. */
+static inline void histogram_remove(uint32_t *histogram, uint32_t level) {
+    if (!--histogram[level])
+        histogram[0] &= ~(1u << level);
+}
+static inline void histogram_add(uint32_t *histogram, uint32_t level) {
+    histogram[level]++;
+    histogram[0] |= 1u << level;
+}
+static uint8_t histogram_strength(const uint32_t *histogram) {
+    return (uint8_t)(31u - (uint32_t)__builtin_clz(histogram[0] | 1u));
+}
+
 /**
  * Update the side-input histograms fed by a changed source.
  *
@@ -263,11 +292,11 @@ static void change_side_outputs(NEEngine *e, uint32_t node, uint8_t old, uint8_t
         uint8_t after = value > attenuation ? (uint8_t)(value - attenuation) : 0u;
         if (before) {
             e->side_count[target]--;
-            e->side_histograms[(size_t)target * 16u + before]--;
+            histogram_remove(e->side_histograms + (size_t)target * 16u, before);
         }
         if (after) {
             e->side_count[target]++;
-            e->side_histograms[(size_t)target * 16u + after]++;
+            histogram_add(e->side_histograms + (size_t)target * 16u, after);
         }
     }
 }
@@ -293,11 +322,11 @@ static void set_contribution(NEEngine *e, uint32_t index, uint8_t value) {
     if (link[9] && old != value) {
         if (old) {
             e->input_count[target]--;
-            e->histograms[(size_t)target * 16u + old]--;
+            histogram_remove(e->histograms + (size_t)target * 16u, old);
         }
         if (value) {
             e->input_count[target]++;
-            e->histograms[(size_t)target * 16u + value]++;
+            histogram_add(e->histograms + (size_t)target * 16u, value);
         }
     }
     if ((old != 0u) != (value != 0u) ||
@@ -305,14 +334,9 @@ static void set_contribution(NEEngine *e, uint32_t index, uint8_t value) {
         e->updated[target] = 0u;
 }
 
-static uint8_t histogram_strength(const uint32_t *histogram) {
-    for (uint32_t level = 15u; level; --level)
-        if (histogram[level])
-            return (uint8_t)level;
-    return 0u;
-}
-
 static uint8_t input_strength(const NEEngine *engine, uint32_t component) {
+    if (!engine->input_count[component])
+        return 0u;
     return histogram_strength(engine->histograms + (size_t)component * 16u);
 }
 
@@ -353,8 +377,7 @@ static uint32_t update_comparator(NEEngine *e, uint32_t node) {
  * Compare effective input with stored strength, update the wire state, then refresh fixed and
  * conditional outgoing contributions using each link's attenuation.
  */
-static void refresh_wire(NEEngine *e, uint32_t wire) {
-    uint8_t strength = input_strength(e, wire);
+static void refresh_wire(NEEngine *e, uint32_t wire, uint8_t strength) {
     if (e->component_state[wire] == strength)
         return;
     set_component(e, wire, strength);
@@ -563,7 +586,7 @@ static uint32_t execute_operation(NEEngine *engine, const uint8_t *operation) {
         return NE_OK;
     }
     if (operation[0] == 2u) {
-        refresh_wire(engine, operand);
+        refresh_wire(engine, operand, input_strength(engine, operand));
         return NE_OK;
     }
     if (operation[0] == 3u)
@@ -1010,7 +1033,7 @@ static size_t align8(size_t value) {
 }
 
 MchprsNativeApiDescriptor ne_api_descriptor(void) {
-    MchprsNativeApiDescriptor value = {3u, 16u, 28u};
+    MchprsNativeApiDescriptor value = {3u, 16u, 33u};
     return value;
 }
 
@@ -1037,6 +1060,7 @@ size_t ne_state_size(const MchprsNativeProgramDescriptor *program, const uint8_t
     NEEngine view = {0};
     view.program = program;
     view.blob = blob;
+    initialize_tables(&view);
     if (count > NE_MAX_STATE_BYTES || links_count > NE_MAX_STATE_BYTES ||
         capacity > NE_MAX_STATE_BYTES / sizeof(NEEvent))
         return 0u;
@@ -1081,6 +1105,7 @@ uint32_t ne_create(const MchprsNativeProgramDescriptor *program, const uint8_t *
     engine->program_copy = *program;
     engine->program = &engine->program_copy;
     engine->blob = blob;
+    initialize_tables(engine);
     engine->component_state = base + offset;
     offset = align8(offset + program->component_count);
     engine->wire_sides = base + offset;
@@ -1183,7 +1208,7 @@ uint32_t ne_create(const MchprsNativeProgramDescriptor *program, const uint8_t *
                 uint32_t target = side_data[index];
                 uint8_t level = (uint8_t)(strength - side_data[index + 1u]);
                 engine->side_count[target]++;
-                engine->side_histograms[(size_t)target * 16u + level]++;
+                histogram_add(engine->side_histograms + (size_t)target * 16u, level);
             }
         }
     }
@@ -1312,6 +1337,27 @@ uint32_t ne_read_components(const void *memory, const uint32_t *ids, uint8_t *ou
     return NE_OK;
 }
 
+uint32_t ne_read_visual_components(const void *memory, const uint32_t *ids, uint32_t *out, uint32_t count) {
+    const NEEngine *e = (const NEEngine *)memory;
+    if (!e || ((!ids || !out) && count) || count > e->program->component_count)
+        return NE_INVALID;
+    for (uint32_t i = 0; i < count; ++i)
+        if (ids[i] >= e->program->component_count)
+            return NE_INVALID;
+    for (uint32_t i = 0; i < count; ++i) {
+        uint32_t node = ids[i], value = e->component_state[node];
+        uint8_t kind = components(e)[node].kind;
+        if (kind == 5u)
+            value |= (uint32_t)e->wire_sides[node] << 8u;
+        else if (kind == 9u)
+            value |= (uint32_t)e->comparator_outputs[node] << 16u;
+        else if (kind == 12u)
+            value |= (uint32_t)e->note_instruments[node] << 24u;
+        out[i] = value;
+    }
+    return NE_OK;
+}
+
 uint32_t ne_note_count(const void *memory) {
     const NEEngine *e = (const NEEngine *)memory;
     return e ? e->note_count : 0u;
@@ -1400,7 +1446,7 @@ static uint32_t command_notify(void *context, uint32_t component) {
             continue;
         uint32_t node = target[0], status;
         if (components(e)[node].kind == 5u) {
-            refresh_wire(e, node);
+            refresh_wire(e, node, input_strength(e, node));
             uint32_t watched = e->watched_by_component[node];
             status = watched == NONE ? NE_OK : check_watched(e, watched);
         } else {

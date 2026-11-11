@@ -298,47 +298,58 @@ impl State {
     /// Read entity records, validate component identities/flags and string ranges, rebuild command
     /// entities and append decoded emissions and output-window state.
     pub(super) fn sync(&self, api: &Api, runtime: &mut crate::redpilator::sampled::Runtime) -> Result<(), ScratchError> {
-        let mut words = vec![0; self.blocks.len().checked_mul(11).ok_or_else(invalid)?];
-        // SAFETY: The initialized state has blocks.len() records; words holds eleven u32s per record and C
-        // checks the exact word count.
-        if unsafe { (api.read_state)(self.memory.as_ptr().cast(), words.as_mut_ptr(), id(words.len())?) } != 0 {
-            return Err(invalid());
-        }
-        let mut entities = Vec::with_capacity(self.blocks.len());
-        for (record, row) in self.blocks.iter().zip(words.chunks_exact(11)) {
-            if row[0] != record.component || row[1] & !127 != 0 {
+        self.sync_scope(api, runtime, true)
+    }
+
+    pub(super) fn sync_effects(&self, api: &Api, runtime: &mut crate::redpilator::sampled::Runtime) -> Result<(), ScratchError> {
+        self.sync_scope(api, runtime, false)
+    }
+
+    fn sync_scope(&self, api: &Api, runtime: &mut crate::redpilator::sampled::Runtime, include_entities: bool) -> Result<(), ScratchError> {
+        let mut entities = Vec::new();
+        if include_entities {
+            let mut words = vec![0; self.blocks.len().checked_mul(11).ok_or_else(invalid)?];
+            // SAFETY: The initialized state has blocks.len() records; words holds eleven u32s per record and C
+            // checks the exact word count.
+            if unsafe { (api.read_state)(self.memory.as_ptr().cast(), words.as_mut_ptr(), id(words.len())?) } != 0 {
                 return Err(invalid());
             }
-            let pos = *runtime.program.positions.get(row[0] as usize).ok_or_else(invalid)?;
-            if row[1] & 2 == 0 {
-                entities.push((pos, None));
-                continue;
-            }
-            let mut entity = runtime.command_blocks.get(&pos).cloned().unwrap_or_default();
-            entity.powered = row[1] & 4 != 0;
-            entity.automatic = row[1] & 8 != 0;
-            entity.condition_met = row[1] & 16 != 0;
-            entity.track_output = row[1] & 32 != 0;
-            entity.update_last_execution = row[1] & 64 != 0;
-            entity.success_count = row[2] as i32;
-            entity.last_execution = (u64::from(row[3]) | (u64::from(row[4]) << 32)) as i64;
-            entity.last_output = match row[5] {
-                0 if row[6] == u32::MAX && row[7] == 0 => None,
-                0 => Some(self.text(row[6], row[7])?),
-                1 => Some(serde_json::json!({"text": crate::messages::COMMAND_BLOCK_EXECUTED}).to_string()),
-                2 => {
-                    let error = match row[8] {
-                        1 => crate::messages::COMMAND_BLOCK_EXECUTION_UNAVAILABLE.to_owned(),
-                        2 => crate::messages::COMMAND_BLOCK_OUTPUT_LIMIT.to_owned(),
-                        3 => crate::messages::COMMAND_BLOCK_OUTPUT_BYTE_LIMIT.to_owned(),
-                        4 => self.text(row[9], row[10])?,
-                        _ => return Err(invalid()),
-                    };
-                    Some(serde_json::json!({"text": error, "color": "red"}).to_string())
+            entities = Vec::with_capacity(self.blocks.len());
+            for (record, row) in self.blocks.iter().zip(words.chunks_exact(11)) {
+                if row[0] != record.component || row[1] & !127 != 0 {
+                    return Err(invalid());
                 }
-                _ => return Err(invalid()),
-            };
-            entities.push((pos, Some(entity)));
+                let pos = *runtime.program.positions.get(row[0] as usize).ok_or_else(invalid)?;
+                if row[1] & 2 == 0 {
+                    entities.push((pos, None));
+                    continue;
+                }
+                let mut entity = runtime.command_blocks.get(&pos).cloned().unwrap_or_default();
+                entity.powered = row[1] & 4 != 0;
+                entity.automatic = row[1] & 8 != 0;
+                entity.condition_met = row[1] & 16 != 0;
+                entity.track_output = row[1] & 32 != 0;
+                entity.update_last_execution = row[1] & 64 != 0;
+                entity.success_count = row[2] as i32;
+                entity.last_execution = (u64::from(row[3]) | (u64::from(row[4]) << 32)) as i64;
+                entity.last_output = match row[5] {
+                    0 if row[6] == u32::MAX && row[7] == 0 => None,
+                    0 => Some(self.text(row[6], row[7])?),
+                    1 => Some(serde_json::json!({"text": crate::messages::COMMAND_BLOCK_EXECUTED}).to_string()),
+                    2 => {
+                        let error = match row[8] {
+                            1 => crate::messages::COMMAND_BLOCK_EXECUTION_UNAVAILABLE.to_owned(),
+                            2 => crate::messages::COMMAND_BLOCK_OUTPUT_LIMIT.to_owned(),
+                            3 => crate::messages::COMMAND_BLOCK_OUTPUT_BYTE_LIMIT.to_owned(),
+                            4 => self.text(row[9], row[10])?,
+                            _ => return Err(invalid()),
+                        };
+                        Some(serde_json::json!({"text": error, "color": "red"}).to_string())
+                    }
+                    _ => return Err(invalid()),
+                };
+                entities.push((pos, Some(entity)));
+            }
         }
         // SAFETY: Self retains initialized command memory; this query only reads its effect count.
         let count = unsafe { (api.effect_words)(self.memory.as_ptr().cast()) } as usize;
@@ -346,10 +357,12 @@ impl State {
             return Err(invalid());
         }
         let mut effect_words = vec![0; count];
-        // SAFETY: count is checked against the retained effect buffer; the separate output has count u32s and C
-        // checks its exact length.
-        if unsafe { (api.read_effects)(self.memory.as_ptr().cast(), effect_words.as_mut_ptr(), id(count)?) } != 0 {
-            return Err(invalid());
+        if count != 0 {
+            // SAFETY: count is checked against the retained effect buffer; the separate output has count u32s
+            // and C checks its exact length.
+            if unsafe { (api.read_effects)(self.memory.as_ptr().cast(), effect_words.as_mut_ptr(), id(count)?) } != 0 {
+                return Err(invalid());
+            }
         }
         let mut emissions = Vec::with_capacity(count / 8);
         for row in effect_words.chunks_exact(8) {
@@ -372,6 +385,7 @@ impl State {
                 },
             });
         }
+        // Queue acknowledgements and window age can change even when there are no message effects.
         let mut output = [0; 6];
         // SAFETY: The command state is initialized and retained; output is a separate writable array of the six
         // u32s required by C.
@@ -789,6 +803,85 @@ pub(super) fn encode(program: &Program) -> Result<EncodedCommands, ScratchError>
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(any(windows, target_os = "linux"))]
+    #[test]
+    fn llvm_io_and_effects_export_commands_without_entities_and_keep_empty_queue_quota_state() {
+        use mchprs_world::{TickEntry, TickPriority};
+        unsafe extern "C" fn reject_read(_: *const c_void, _: *mut u32, _: u32) -> u32 {
+            1
+        }
+        let mut program = program(&[("repeating_command_block", "say retained", "\"@\"")]);
+        let pos = program.positions[0];
+        let entity = program.command_blocks.get_mut(&pos).unwrap();
+        entity.automatic = true;
+        entity.condition_met = true;
+        program.command_output_state = Some(crate::chat_commands::CommandBlockOutputState {
+            window: std::time::Instant::now(),
+            count: 0,
+            bytes: 0,
+            queued: 5,
+            limited: true,
+        });
+        program.prepare_projection();
+        let initial_entities = program.command_blocks.clone();
+        let ticks = [TickEntry {
+            pos,
+            block_type: Some(program.initial[0].registry_id()),
+            ticks_left: 1,
+            tick_priority: TickPriority::Normal,
+        }];
+        let mut projection = program.clone().into_runtime_prepared();
+        let mut native = super::super::LlvmRuntime::new(&program, &ticks).unwrap();
+        native.tick().unwrap();
+        let read_entities = native.library.commands.read_state;
+        native.library.commands.read_state = reject_read;
+        native.sync_io(&mut projection).unwrap();
+        let emissions = |runtime: &crate::redpilator::sampled::Runtime| {
+            runtime
+                .command_emissions
+                .iter()
+                .map(|event| (event.pos, event.tick, event.message.recipient.clone(), event.message.message.clone()))
+                .collect::<Vec<_>>()
+        };
+        let messages = emissions(&projection);
+        assert!(!messages.is_empty());
+        assert_eq!(projection.command_blocks, initial_entities);
+        let output = projection.command_output_state.as_ref().unwrap();
+        let count = output.count;
+        let bytes = output.bytes;
+        assert_eq!(count, messages.len());
+        assert_eq!(
+            bytes,
+            projection
+                .command_emissions
+                .iter()
+                .map(|event| event.message.message.len())
+                .sum::<usize>()
+        );
+        assert_eq!(output.queued, 5 + messages.len());
+        assert!(output.limited);
+        native.sync_effects(&mut projection).unwrap();
+        assert_eq!(emissions(&projection), messages, "unacknowledged effects must not duplicate");
+        assert_eq!(projection.command_blocks, initial_entities);
+
+        native.acknowledge_effects(17);
+        native.library.commands.read_effects = reject_read;
+        native.sync_effects(&mut projection).unwrap();
+        native.sync_io(&mut projection).unwrap();
+        assert!(projection.command_emissions.is_empty());
+        let output = projection.command_output_state.as_ref().unwrap();
+        assert_eq!((output.count, output.bytes, output.queued, output.limited), (count, bytes, 17, true));
+        native.library.commands.read_state = read_entities;
+        native.sync_redstone(&mut projection).unwrap();
+        assert_ne!(
+            projection.command_blocks, initial_entities,
+            "Redstone must synchronize executed command entities"
+        );
+        let mut full = program.clone().into_runtime_prepared();
+        native.sync_projection(&mut full).unwrap();
+        assert_eq!(projection.command_blocks, full.command_blocks);
+    }
 
     #[cfg(any(windows, target_os = "linux"))]
     #[test]

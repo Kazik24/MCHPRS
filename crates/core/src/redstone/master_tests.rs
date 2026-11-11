@@ -129,7 +129,7 @@ fn repeater_short_pulse_ends_after_selected_delay() {
 
 #[test]
 fn compiled_handoff_preserves_pending_short_pulse() {
-    for options in ["", "--io-only"] {
+    for options in ["", "--publish-io"] {
         let mut world = world();
         let pos = BlockPos::new(40, 30, 40);
         world.set_block(pos.offset(BlockFace::Bottom), Block::Stone {});

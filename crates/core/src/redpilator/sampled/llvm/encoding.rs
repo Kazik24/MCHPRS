@@ -445,6 +445,70 @@ pub(super) fn validate_blob(descriptor: &NativeProgramDescriptor, blob: &[u8]) -
     {
         return Err(invalid());
     }
+    if tables[11].len() % 3 != 0 || tables[19].len() % 10 != 0 || tables[20].len() % 6 != 0 || tables[22].len() % 4 != 0 {
+        return Err(invalid());
+    }
+    if tables[20].chunks_exact(6).any(|row| row[5] != u32::MAX && row[5] >= row[4]) {
+        return Err(invalid());
+    }
+    for flip in tables[22].chunks_exact(4) {
+        let flags = flip[3];
+        let source = (flip[1] & 0x7fff_ffff) as usize;
+        let cached = if flip[1] & 0x8000_0000 != 0 {
+            tables[11]
+                .get(source * 3 + 1)
+                .filter(|&&strength| strength <= 15)
+                .ok_or_else(invalid)?
+                .saturating_sub(flags & 15)
+        } else {
+            if source >= descriptor.component_count as usize {
+                return Err(invalid());
+            }
+            0
+        };
+        if flip[0] >= descriptor.component_count || flip[2] >= descriptor.arrangement_link_count || flags & !0x000f_030f != 0 || flags >> 16 != cached
+        {
+            return Err(invalid());
+        }
+    }
+    for row in tables[19].chunks_exact(10) {
+        if row[6] == u32::MAX || row[8] == u32::MAX {
+            if row[6] != u32::MAX || row[8] != u32::MAX || row[7] != 0 || row[9] != 0 {
+                return Err(invalid());
+            }
+            continue;
+        }
+        let transitions = tables[20]
+            .get(row[0] as usize * 6..(row[0] as usize + row[1] as usize) * 6)
+            .ok_or_else(invalid)?;
+        for edge in 0..2 {
+            let mut cursor = row[6 + edge * 2] as usize;
+            let end = cursor + row[7 + edge * 2] as usize;
+            if end > tables[22].len() / 4 {
+                return Err(invalid());
+            }
+            let mut previous = None;
+            for transition in transitions.chunks_exact(6) {
+                if transition[5] == u32::MAX || previous.is_some_and(|group| transition[0] <= group) {
+                    return Err(invalid());
+                }
+                previous = Some(transition[0]);
+                let at = (transition[2 + edge] as usize + transition[5] as usize) * 2;
+                let range = tables[21].get(at..at + 2).ok_or_else(invalid)?;
+                let next = cursor + range[1] as usize;
+                let source = tables[22]
+                    .get(range[0] as usize * 4..(range[0] as usize + range[1] as usize) * 4)
+                    .ok_or_else(invalid)?;
+                if next > end || tables[22].get(cursor * 4..next * 4) != Some(source) {
+                    return Err(invalid());
+                }
+                cursor = next;
+            }
+            if cursor != end {
+                return Err(invalid());
+            }
+        }
+    }
     if tables[60]
         .iter()
         .any(|&node| node >= descriptor.component_count || blob[descriptor.component_offset as usize + node as usize * COMPONENT_BYTES + 12] != 9)

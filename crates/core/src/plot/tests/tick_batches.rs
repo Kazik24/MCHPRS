@@ -76,3 +76,42 @@ fn llvm_normal_update_batches_but_exact_and_stopped_ticks_do_not() {
     plot.redpilator.try_reset(&mut plot.world, bounds).unwrap();
     assert_eq!(plot.world.piston_state().logical_tick, initial_clock + 17);
 }
+
+#[test]
+fn benchmark_tick_limits_preserve_native_batch_tails() {
+    let (mut plot, _old_peer) = client_sync_tests::fixture(false);
+    let connection = mchprs_network::test_support::connection(false).unwrap();
+    let _incoming = connection.incoming;
+    let _peer = connection.peer;
+    plot.players[0].client = connection.player;
+    plot.world.packet_senders.clear();
+    plot.world.packet_senders.push(PlayerPacketSender::new(&plot.players[0].client));
+    plot.world.set_block(
+        BlockPos::new(32, 21, 32),
+        Block::Lever {
+            lever: mchprs_blocks::blocks::Lever::new(mchprs_blocks::blocks::LeverFace::Floor, mchprs_blocks::BlockDirection::North, false),
+        },
+    );
+    plot.world.set_block(BlockPos::new(33, 21, 32), Block::RedstoneLamp { lit: false });
+    plot.redpilator
+        .compile(
+            &plot.world,
+            (BlockPos::new(30, 19, 30), BlockPos::new(38, 23, 38)),
+            CompilerOptions {
+                llvm: true,
+                ..Default::default()
+            },
+            Vec::new(),
+            Default::default(),
+        )
+        .unwrap();
+    let clock = plot.world.piston_state().logical_tick;
+    for ticks in [1, 15, 16, 17] {
+        benchmark::run_ticks(&mut plot, ticks);
+        assert_eq!(plot.world.update_stats.simulated_ticks, u64::from(ticks));
+    }
+    plot.redpilator
+        .try_reset(&mut plot.world, (BlockPos::new(30, 19, 30), BlockPos::new(38, 23, 38)))
+        .unwrap();
+    assert_eq!(plot.world.piston_state().logical_tick, clock + 49);
+}

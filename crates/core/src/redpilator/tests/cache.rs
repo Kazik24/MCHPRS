@@ -375,3 +375,50 @@ fn zcore_executor_cache_lifecycle_benchmark() {
         artifact.display()
     );
 }
+
+#[test]
+fn prepared_program_and_executor_cache_keep_relaxed_modes_separate() {
+    let (world, _, bounds) = fixture();
+    let mut strict = Compiler::default();
+    strict
+        .compile(&world, bounds, CompilerOptions::default(), vec![], Default::default())
+        .unwrap();
+    let strict_program = strict.cached_program().unwrap();
+    assert!(!strict_program.relaxed_mode);
+    let options = CompilerOptions {
+        relaxed_mode: true,
+        ..Default::default()
+    };
+    let mut relaxed = Compiler::default();
+    relaxed
+        .compile_cached(&world, bounds, options.clone(), vec![], Default::default(), Some(strict_program.clone()))
+        .unwrap();
+    let relaxed_program = relaxed.cached_program().unwrap();
+    assert!(relaxed_program.relaxed_mode);
+    assert!(!Arc::ptr_eq(&strict_program, &relaxed_program));
+    assert!(!relaxed.stats().unwrap().cached);
+    let mut same_mode = Compiler::default();
+    same_mode
+        .compile_cached(&world, bounds, options, vec![], Default::default(), Some(relaxed_program.clone()))
+        .unwrap();
+    assert!(Arc::ptr_eq(&relaxed_program, &same_mode.cached_program().unwrap()));
+    let mut strict_again = Compiler::default();
+    strict_again
+        .compile_cached(
+            &world,
+            bounds,
+            CompilerOptions::default(),
+            vec![],
+            Default::default(),
+            Some(relaxed_program),
+        )
+        .unwrap();
+    assert!(!strict_again.cached_program().unwrap().relaxed_mode);
+    assert!(!strict_again.stats().unwrap().cached);
+    let mut resumed = Compiler::default();
+    assert!(matches!(
+        resumed.resume_cached(&world, CompilerOptions::default(), Default::default(), relaxed),
+        Err(CompileError::Unsupported(_))
+    ));
+    assert!(!resumed.is_active());
+}

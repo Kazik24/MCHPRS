@@ -172,6 +172,8 @@ pub(super) struct PistonBinding {
 
 #[derive(Clone)]
 pub(crate) struct Program {
+    /// Runtime wire-shape semantics; incompatible modes cannot share a prepared program.
+    pub(crate) relaxed_mode: bool,
     /// Position-keyed sampling artifacts survive topology changes between compilations.
     pub(crate) source_order_cache: Option<std::sync::Arc<super::SourceOrderCache>>,
     pub(super) routing: Option<std::sync::Arc<super::routing::WireGraph>>,
@@ -279,6 +281,8 @@ pub(crate) struct Program {
     pub(super) movement_cells: Vec<Vec<std::ops::Range<usize>>>,
     pub(super) movement_transitions: Vec<MovementTransition>,
     pub(super) movement_ranges: Vec<std::ops::Range<usize>>,
+    /// Per token/cell, ordered copies of proven-fixed departure/arrival flips in `movement_flips`.
+    pub(super) movement_fixed_ranges: Vec<Vec<Option<[std::ops::Range<usize>; 2]>>>,
 
     // Geometry and projection indexes
     pub(super) shape_programs: HashMap<BlockPos, std::ops::Range<usize>>,
@@ -808,6 +812,7 @@ impl Program {
             })
             .collect();
         Ok(Self {
+            relaxed_mode: false,
             source_order_cache: None,
             command_blocks: HashMap::new(),
             command_output_state: None,
@@ -859,6 +864,7 @@ impl Program {
             movement_cells: Vec::new(),
             movement_transitions: Vec::new(),
             movement_ranges: Vec::new(),
+            movement_fixed_ranges: Vec::new(),
             arrangement_links: Vec::new(),
             source_watchers: vec![SmallVec::new(); initial.len()],
             home_watchers: Vec::new(),
@@ -996,6 +1002,48 @@ impl Program {
         Ok(())
     }
 
+    pub(crate) fn enable_relaxed_wire_shapes(&mut self) -> Result<(), ScratchError> {
+        let invalid = || ScratchError {
+            position: None,
+            reason: "invalid sampled shape program",
+        };
+        let keep = self
+            .shape_steps
+            .iter()
+            .map(|step| match self.initial.get(step.node) {
+                Some(Block::Observer { .. }) => Ok(true),
+                Some(Block::RedstoneWire { .. }) => Ok(false),
+                _ => Err(invalid()),
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let mut retained = Vec::with_capacity(keep.len() + 1);
+        retained.push(0);
+        for &keep in &keep {
+            retained.push(retained.last().unwrap() + usize::from(keep));
+        }
+        if self
+            .shape_programs
+            .values()
+            .any(|range| range.start > range.end || range.end >= retained.len())
+        {
+            return Err(invalid());
+        }
+        let mut index = 0;
+        self.shape_steps.retain(|_| {
+            let include = keep[index];
+            index += 1;
+            include
+        });
+        for range in self.shape_programs.values_mut() {
+            *range = retained[range.start]..retained[range.end];
+        }
+        // Keep explicit empty programs: removing their keys would activate fallback notifications.
+        self.shape_maps.clear();
+        self.relaxed_mode = true;
+        self.prepare_projection();
+        self.validate()
+    }
+
     pub(super) fn set_output_program(&mut self, component: usize, powered: bool, operations: Vec<Operation>) {
         let start = self.operations.len();
         self.operations.extend(operations);
@@ -1025,3 +1073,7 @@ impl Program {
 #[cfg(test)]
 #[path = "../tests/sampled/source_cache.rs"]
 mod source_cache_tests;
+
+#[cfg(test)]
+#[path = "../tests/sampled/relaxed_shapes.rs"]
+mod relaxed_shape_tests;

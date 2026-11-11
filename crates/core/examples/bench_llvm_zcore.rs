@@ -14,7 +14,14 @@ fn cpu(index: usize) -> cpus::Cpu {
         cpus::Cpu {
             schematic: "PM1_SORT_FIXED.schem",
             sha256: "ad68a0160990c72612c0105802fade337758de127dcdbd4cc1a195059ad2d893",
-            screen: Some(cpus::Screen { x: 230, top_y: 71, bottom_y: 40, left_z: 81, right_z: 112, sparse: false }),
+            screen: Some(cpus::Screen {
+                x: 230,
+                top_y: 71,
+                bottom_y: 40,
+                left_z: 81,
+                right_z: 112,
+                sparse: false,
+            }),
             ..cpus::CPUS[0]
         }
     } else {
@@ -42,7 +49,15 @@ fn prepare() -> u32 {
 fn run(llvm: bool, ticks: u32, preparation: u32, index: usize, io_only: bool, flush_every: u32) -> (Value, Value) {
     let cpu = cpu(index);
     let world = cpus::load_cpu(cpu);
-    let (mut world, mut compiler, wall) = cpus::compile_cpu_with_options(world, cpu, CompilerOptions { llvm, io_only, ..Default::default() });
+    let (mut world, mut compiler, wall) = cpus::compile_cpu_with_options(
+        world,
+        cpu,
+        CompilerOptions {
+            llvm,
+            io_only,
+            ..Default::default()
+        },
+    );
     let setup = compiler.stats().unwrap().duration;
     compiler.try_on_use_block(cpu.origin + cpu.start).unwrap();
     for _ in 0..preparation {
@@ -90,7 +105,12 @@ fn run(llvm: bool, ticks: u32, preparation: u32, index: usize, io_only: bool, fl
         "tick_and_publication_tps":ticks as f64/(elapsed+publication).as_secs_f64()});
     if index == 0 {
         let expected = cpus::reference(cpus::CPUS[0]);
-        let expected: Vec<_> = expected.chat_trace.iter().filter(|(tick, _)| *tick <= 12_051).map(|(_, text)| text.as_str()).collect();
+        let expected: Vec<_> = expected
+            .chat_trace
+            .iter()
+            .filter(|(tick, _)| *tick <= 12_051)
+            .map(|(_, text)| text.as_str())
+            .collect();
         let actual: Vec<_> = world.command_output().collect();
         assert_eq!(actual, expected, "PM1 complete ordered command output");
         assert!(world.scheduler().iter_entries().next().is_none());
@@ -108,18 +128,55 @@ fn main() {
     let ticks = std::env::args().nth(1).map_or(10_000, |s| s.parse::<u32>().unwrap());
     let pairs = std::env::args().nth(2).map_or(7, |s| s.parse::<usize>().unwrap());
     assert!(ticks > 0 && pairs > 0);
-    let index = if std::env::args().any(|s| s == "--pm1") { 0 } else if std::env::args().any(|s| s == "--anpu") { 1 } else { 3 };
+    let index = if std::env::args().any(|s| s == "--pm1") {
+        0
+    } else if std::env::args().any(|s| s == "--anpu") {
+        1
+    } else {
+        3
+    };
     let rust_only = std::env::args().any(|s| s == "--rust-only");
     let llvm_only = std::env::args().any(|s| s == "--llvm-only");
-    let io_only = std::env::args().any(|s| s == "--io-only");
+    assert!(!std::env::args().any(|s| matches!(s.as_str(), "--io-only" | "-i")), "use --publish-io");
+    let io_only = std::env::args().any(|s| s == "--publish-io");
     // Zero keeps the original uninterrupted kernel timing; positive intervals also time publication.
-    let flush_every = std::env::args().find_map(|s| s.strip_prefix("--flush-every=").map(|n|n.parse::<u32>().unwrap())).unwrap_or(0);
+    let flush_every = std::env::args()
+        .find_map(|s| s.strip_prefix("--flush-every=").map(|n| n.parse::<u32>().unwrap()))
+        .unwrap_or(0);
     assert!(!(rust_only && llvm_only), "choose one backend");
-    if index == 0 { assert_eq!(ticks, 11_752, "PM1 times program ticks 300..=12051"); }
-    let preparation = if index == 3 { prepare() } else if index == 0 { 299 } else { 0 };
-    let name = if index == 3 { "zcore" } else if index == 0 { "pm1_sort" } else { "anpu" };
-    let suffix = if rust_only { "rust-profile" } else if llvm_only { "llvm-only" } else { "llvm-paired" };
-    let suffix = format!("{suffix}{}{}", if io_only { "-io" } else { "" }, if flush_every == 0 { String::new() } else { format!("-flush-{flush_every}") });
+    if index == 0 {
+        assert_eq!(ticks, 11_752, "PM1 times program ticks 300..=12051");
+    }
+    let preparation = if index == 3 {
+        prepare()
+    } else if index == 0 {
+        299
+    } else {
+        0
+    };
+    let name = if index == 3 {
+        "zcore"
+    } else if index == 0 {
+        "pm1_sort"
+    } else {
+        "anpu"
+    };
+    let suffix = if rust_only {
+        "rust-profile"
+    } else if llvm_only {
+        "llvm-only"
+    } else {
+        "llvm-paired"
+    };
+    let suffix = format!(
+        "{suffix}{}{}",
+        if io_only { "-io" } else { "" },
+        if flush_every == 0 {
+            String::new()
+        } else {
+            format!("-flush-{flush_every}")
+        }
+    );
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(format!("../../target/redpilator-bench-results/{name}-{suffix}.json"));
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     let mut results = Vec::new();

@@ -22,6 +22,7 @@ pub(super) struct Library {
     pub(super) set_input: unsafe extern "C" fn(*mut c_void, u32, u8) -> u32,
     pub(super) read_state: unsafe extern "C" fn(*const c_void, *mut u8, u32) -> u32,
     pub(super) read_components: unsafe extern "C" fn(*const c_void, *const u32, *mut u8, u32) -> u32,
+    pub(super) read_visual_components: unsafe extern "C" fn(*const c_void, *const u32, *mut u32, u32) -> u32,
     pub(super) note_count: unsafe extern "C" fn(*const c_void) -> u32,
     pub(super) read_notes: unsafe extern "C" fn(*const c_void, *mut u32, u32) -> u32,
     pub(super) pending_count: unsafe extern "C" fn(*const c_void) -> u32,
@@ -74,6 +75,7 @@ impl Library {
                 set_input: module.symbol(b"ne_set_input\0")?,
                 read_state: module.symbol(b"ne_read_state\0")?,
                 read_components: module.symbol(b"ne_read_components\0")?,
+                read_visual_components: module.symbol(b"ne_read_visual_components\0")?,
                 note_count: module.symbol(b"ne_note_count\0")?,
                 read_notes: module.symbol(b"ne_read_notes\0")?,
                 pending_count: module.symbol(b"ne_pending_count\0")?,
@@ -93,7 +95,7 @@ impl Library {
         // SAFETY: ne_api_descriptor takes no arguments and returns the repr(C) descriptor from abi.h; self owns
         // the module.
         let descriptor = unsafe { (self.api_descriptor)() };
-        if descriptor.abi_version != ABI_VERSION || descriptor.descriptor_bytes != 16 || descriptor.semantic_version != 28 {
+        if descriptor.abi_version != ABI_VERSION || descriptor.descriptor_bytes != 16 || descriptor.semantic_version != 33 {
             return Err(ScratchError {
                 position: None,
                 reason: "LLVM DLL ABI/version mismatch",

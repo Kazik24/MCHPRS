@@ -67,6 +67,8 @@ MCHPRS_NATIVE_EXPORT uint32_t ne_use_control(void *memory, uint32_t source_index
 MCHPRS_NATIVE_EXPORT uint32_t ne_set_input(void *memory, uint32_t source_index, uint8_t powered);
 MCHPRS_NATIVE_EXPORT uint32_t ne_read_state(const void *memory, uint8_t *out, uint32_t count);
 MCHPRS_NATIVE_EXPORT uint32_t ne_read_components(const void *memory, const uint32_t *ids, uint8_t *out, uint32_t count);
+/* Packed visual state: state, wire sides, comparator output, note instrument (one byte each). */
+MCHPRS_NATIVE_EXPORT uint32_t ne_read_visual_components(const void *memory, const uint32_t *ids, uint32_t *out, uint32_t count);
 MCHPRS_NATIVE_EXPORT uint32_t ne_note_count(const void *memory);
 MCHPRS_NATIVE_EXPORT uint32_t ne_read_notes(const void *memory, uint32_t *out, uint32_t count);
 MCHPRS_NATIVE_EXPORT uint32_t ne_pending_count(const void *memory);

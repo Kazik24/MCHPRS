@@ -146,16 +146,35 @@ pub(in crate::redpilator) struct LlvmRuntime {
     pending_capacity: u32,
     io_components: Vec<u32>,
     io_states: Vec<u8>,
+    redstone_components: Vec<u32>,
+    redstone_states: Vec<u32>,
+    io_dirty: bool,
+    redstone_dirty: bool,
+    clock_dirty: bool,
+    native_clock: u64,
+    has_notes: bool,
     note_events: Vec<u32>,
     note_seen: Vec<bool>,
 }
 
 #[cfg(any(windows, target_os = "linux"))]
 impl LlvmRuntime {
+    pub(super) fn mark_native_changed(&mut self) {
+        self.io_dirty = true;
+        self.redstone_dirty = true;
+        self.clock_dirty = true;
+    }
+
+    pub(in crate::redpilator) fn has_effects(&self) -> bool {
+        self.has_notes || self.commands.is_some()
+    }
+
     pub(in crate::redpilator) fn acknowledge_effects(&mut self, host_queued: usize) {
         // SAFETY: The runtime owns initialized state and all native backing buffers; &mut self excludes
         // concurrent native access.
-        unsafe { (self.library.ack_effects)(self.state.as_mut_ptr().cast()) }
+        if self.has_notes {
+            unsafe { (self.library.ack_effects)(self.state.as_mut_ptr().cast()) }
+        }
         if let Some(commands) = &mut self.commands {
             commands.acknowledge(&self.library.commands, host_queued);
         }
@@ -203,6 +222,13 @@ impl LlvmRuntime {
             })
             .collect();
         let io_states = memory::zeroed(io_components.len())?;
+        let redstone_components: Vec<_> = program
+            .initial
+            .iter()
+            .enumerate()
+            .filter_map(|(id, block)| (!matches!(block, Block::RedstoneBlock | Block::Piston { .. })).then_some(id as u32))
+            .collect();
+        let redstone_states = memory::zeroed(redstone_components.len())?;
         let mut runtime = Self {
             library,
             state,
@@ -216,6 +242,13 @@ impl LlvmRuntime {
             pending_capacity: initial_ticks.capacity,
             io_components,
             io_states,
+            redstone_components,
+            redstone_states,
+            io_dirty: true,
+            redstone_dirty: true,
+            clock_dirty: false,
+            native_clock: 0,
+            has_notes: program.initial.iter().any(|block| matches!(block, Block::NoteBlock { .. })),
             note_events: Vec::new(),
             note_seen: Vec::new(),
         };
@@ -254,6 +287,7 @@ impl LlvmRuntime {
     }
 
     pub(in crate::redpilator) fn tick(&mut self) -> Result<(), ScratchError> {
+        self.mark_native_changed();
         if let Some(commands) = &mut self.commands {
             commands.prepare_tick(&self.library.commands, self.state.as_mut_ptr().cast())?;
         }
@@ -271,6 +305,9 @@ impl LlvmRuntime {
                 position: None,
                 reason: "LLVM tick batch exceeds sixteen ticks",
             });
+        }
+        if count != 0 {
+            self.mark_native_changed();
         }
         let clock = self.commands.as_ref().map(command::State::clock_context);
         let logical_base = self.commands.as_ref().map_or(0, |commands| commands.logical_base);
@@ -323,9 +360,11 @@ impl LlvmRuntime {
         let Some((_, source)) = self.sources.iter().find(|(source_pos, _)| *source_pos == pos) else {
             return Ok(());
         };
+        let source = *source;
+        self.mark_native_changed();
         // SAFETY: The runtime retains initialized state; source is an encoded source slot, and C checks it
         // before indexing.
-        let status = unsafe { (self.library.use_control)(self.state.as_mut_ptr().cast(), *source) };
+        let status = unsafe { (self.library.use_control)(self.state.as_mut_ptr().cast(), source) };
         self.call_status(status)
     }
 
@@ -345,9 +384,11 @@ impl LlvmRuntime {
                 reason: "pressure plate is not a compiled input",
             });
         };
+        let source = *source;
+        self.mark_native_changed();
         // SAFETY: The runtime retains initialized state; source is a compiled input slot, powered is 0/1, and C
         // validates both.
-        let status = unsafe { (self.library.set_input)(self.state.as_mut_ptr().cast(), *source, u8::from(powered)) };
+        let status = unsafe { (self.library.set_input)(self.state.as_mut_ptr().cast(), source, u8::from(powered)) };
         self.call_status(status)
     }
 
@@ -461,6 +502,9 @@ pub(in crate::redpilator) struct LlvmRuntime;
 
 #[cfg(not(any(windows, target_os = "linux")))]
 impl LlvmRuntime {
+    pub(in crate::redpilator) fn has_effects(&self) -> bool {
+        false
+    }
     pub(in crate::redpilator) fn tick_batch(&mut self, _: u32, _: &mut u32) -> Result<(), ScratchError> {
         unreachable!()
     }
@@ -473,6 +517,9 @@ impl LlvmRuntime {
         unreachable!()
     }
     pub(in crate::redpilator) fn sync_io(&mut self, _: &mut super::Runtime) -> Result<(), ScratchError> {
+        unreachable!()
+    }
+    pub(in crate::redpilator) fn sync_redstone(&mut self, _: &mut super::Runtime) -> Result<(), ScratchError> {
         unreachable!()
     }
     pub(in crate::redpilator) fn sync_effects(&mut self, _: &mut super::Runtime) -> Result<(), ScratchError> {

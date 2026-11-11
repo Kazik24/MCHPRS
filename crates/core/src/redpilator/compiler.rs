@@ -294,7 +294,7 @@ impl Compiler {
             return Err(CompileError::Cancelled);
         }
         options.io_only = options.publication_mode() == PublicationMode::Io;
-        if !cached.is_active() || options.update || options.llvm != cached.options.llvm {
+        if !cached.is_active() || options.update || options.llvm != cached.options.llvm || options.relaxed_mode != cached.options.relaxed_mode {
             return Err(CompileError::Unsupported(ScratchError {
                 position: None,
                 reason: "incompatible executor checkpoint",
@@ -362,19 +362,23 @@ impl Compiler {
             scheduled: ticks.clone(),
             piston: world.piston_state().clone(),
         };
+        let cached = cached.filter(|program| program.relaxed_mode == options.relaxed_mode);
         let cache_hit = cached.is_some();
         let program = if let Some(program) = cached {
             program
         } else {
-            Arc::new(
+            let mut program =
                 sampled::compile_program_with_source_cache(world, bounds, entry, Some(&monitor), source_cache.as_deref()).map_err(|error| {
                     if monitor.cancelled() {
                         CompileError::Cancelled
                     } else {
                         CompileError::Unsupported(error)
                     }
-                })?,
-            )
+                })?;
+            if options.relaxed_mode {
+                program.enable_relaxed_wire_shapes().map_err(CompileError::Unsupported)?;
+            }
+            Arc::new(program)
         };
         if monitor.cancelled() {
             return Err(CompileError::Cancelled);

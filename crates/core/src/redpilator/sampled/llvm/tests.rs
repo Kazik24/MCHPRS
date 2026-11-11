@@ -1,6 +1,345 @@
 use super::encoding::{read_u32, validate_blob};
 use super::*;
 
+#[cfg(any(windows, target_os = "linux"))]
+mod wire_refresh_tests {
+    use super::*;
+    use crate::redpilator::sampled::program::{ArrangementSource, ElectricalLink, InputArrangement};
+
+    fn program(arranged: bool, on: Vec<Operation>, off: Vec<Operation>) -> Program {
+        let Block::RedstoneWire { mut wire } = Block::from_name("redstone_wire").unwrap() else {
+            unreachable!()
+        };
+        wire.power = 7;
+        let mut program = Program::new(
+            (0..3).map(|x| BlockPos::new(10 + x, 10, 10)).collect(),
+            vec![
+                Block::from_name("lever").unwrap(),
+                Block::from_name("lever").unwrap(),
+                Block::RedstoneWire { wire },
+            ],
+            vec![0, 1],
+            vec![
+                [off, on],
+                [vec![Operation::RefreshWire(2)], vec![Operation::RefreshWire(2)]],
+                [vec![], vec![]],
+            ],
+            vec![
+                ElectricalLink {
+                    source: 0,
+                    target: 2,
+                    attenuation: 7,
+                },
+                ElectricalLink {
+                    source: 0,
+                    target: 2,
+                    attenuation: 2,
+                },
+            ],
+            vec![],
+            vec![],
+        )
+        .unwrap();
+        if arranged {
+            program.input_arrangements.push(InputArrangement {
+                target: 2,
+                side: false,
+                silent: false,
+                tokens: vec![],
+                token_states: vec![],
+                conditional_sources: vec![ArrangementSource::Component(0)],
+                inputs: vec![vec![(ArrangementSource::Component(0), 7), (ArrangementSource::Component(0), 2)]],
+            });
+        }
+        program.compile_movement_flips().unwrap();
+        program.prepare_projection();
+        program.validate().unwrap();
+        program
+    }
+
+    fn contribution(arranged: bool, index: usize) -> Operation {
+        if arranged {
+            Operation::ArrangementContribution(index)
+        } else {
+            Operation::Contribution(index)
+        }
+    }
+
+    fn snapshot(native: &LlvmRuntime) -> Vec<u32> {
+        // SAFETY: The runtime owns initialized state; the synchronous size query cannot mutate it.
+        let words = unsafe { (native.library.snapshot_words)(native.state.as_ptr().cast()) };
+        let mut result = vec![0; words as usize];
+        // SAFETY: result has exactly the required writable size, and no execution occurs between calls.
+        assert_eq!(
+            unsafe { (native.library.read_snapshot)(native.state.as_ptr().cast(), result.as_mut_ptr(), words) },
+            0
+        );
+        result
+    }
+
+    fn assert_views(native: &LlvmRuntime, rust: &super::super::super::Runtime, projection: &mut super::super::super::Runtime) {
+        let expected: Vec<_> = rust.blocks.iter().map(|block| component_state(*block).state).collect();
+        let mut states = vec![0; expected.len()];
+        // SAFETY: Both engines retain initialized state; each output buffer has the exact checked count.
+        assert_eq!(
+            unsafe { (native.library.read_state)(native.state.as_ptr().cast(), states.as_mut_ptr(), states.len() as u32) },
+            0
+        );
+        assert_eq!(states, expected);
+        let ids = [2, 0, 1];
+        let mut selected = [0; 3];
+        // SAFETY: ids contains valid component IDs and selected has the same writable length.
+        assert_eq!(
+            unsafe { (native.library.read_components)(native.state.as_ptr().cast(), ids.as_ptr(), selected.as_mut_ptr(), 3) },
+            0
+        );
+        assert_eq!(selected, [expected[2], expected[0], expected[1]]);
+        let before = snapshot(native);
+        native.sync_projection(projection).unwrap();
+        assert_eq!(projection.blocks, rust.blocks);
+        assert_eq!(projection.contributions, rust.contributions);
+        assert_eq!(projection.arrangement_contributions, rust.arrangement_contributions);
+        assert_eq!(projection.input_strength(2), rust.input_strength(2));
+        assert_eq!(projection.input_levels[2][0].active, rust.input_levels[2][0].active);
+        assert_eq!(snapshot(native), before, "reading views must not alter pending refresh state");
+    }
+
+    #[test]
+    fn llvm_wire_preserves_initial_power_refresh_boundaries_and_competing_inputs() {
+        for arranged in [false, true] {
+            let program = program(
+                arranged,
+                vec![contribution(arranged, 0), Operation::RefreshWire(2), contribution(arranged, 1)],
+                vec![contribution(arranged, 0), contribution(arranged, 1)],
+            );
+            let mut rust = program.start();
+            let mut projection = program.start();
+            let mut native = LlvmRuntime::new(&program, &[]).unwrap();
+            assert_views(&native, &rust, &mut projection);
+            assert_eq!(component_state(rust.blocks[2]).state, 7);
+            for (source, expected_power, expected_input) in [(0, 8, 13), (1, 13, 13), (0, 13, 0), (1, 0, 0)] {
+                rust.use_control(program.positions[source]).unwrap();
+                native.use_control(program.positions[source]).unwrap();
+                assert_eq!(component_state(rust.blocks[2]).state, expected_power);
+                assert_eq!(rust.input_strength(2), expected_input);
+                assert_views(&native, &rust, &mut projection);
+            }
+        }
+    }
+
+    #[test]
+    fn llvm_wire_retains_a_level_until_its_last_contribution_is_removed() {
+        for arranged in [false, true] {
+            for level in 1..=15 {
+                let operations = |index| vec![contribution(arranged, index), Operation::RefreshWire(2)];
+                let mut program = program(arranged, operations(0), operations(0));
+                program.set_output_program(1, false, operations(1));
+                program.set_output_program(1, true, operations(1));
+                program.links[1].source = 1;
+                for link in &mut program.links {
+                    link.attenuation = 15 - level;
+                }
+                if arranged {
+                    program.input_arrangements[0].conditional_sources.push(ArrangementSource::Component(1));
+                    program.input_arrangements[0].inputs[0][1].0 = ArrangementSource::Component(1);
+                    for (_, attenuation) in &mut program.input_arrangements[0].inputs[0] {
+                        *attenuation = 15 - level;
+                    }
+                }
+                program.compile_movement_flips().unwrap();
+                program.prepare_projection();
+                let mut rust = program.start();
+                let mut projection = program.start();
+                let mut native = LlvmRuntime::new(&program, &[]).unwrap();
+                for (source, expected_power, active) in [(0, level, 1), (1, level, 2), (0, level, 1), (1, 0, 0)] {
+                    rust.use_control(program.positions[source]).unwrap();
+                    native.use_control(program.positions[source]).unwrap();
+                    assert_eq!(component_state(rust.blocks[2]).state, expected_power);
+                    assert_eq!(rust.input_levels[2][0].active, active);
+                    assert_views(&native, &rust, &mut projection);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn llvm_wire_preserves_power_at_each_operation_limit_failure_prefix() {
+        for arranged in [false, true] {
+            for (applied, expected_power) in [(1, 7), (2, 8), (3, 8), (4, 13)] {
+                let mut on = vec![contribution(arranged, 0); 1_000_000 - applied];
+                on.extend([
+                    contribution(arranged, 0),
+                    Operation::RefreshWire(2),
+                    contribution(arranged, 1),
+                    Operation::RefreshWire(2),
+                    contribution(arranged, 0),
+                ]);
+                let program = program(arranged, on, vec![]);
+                let mut rust = program.start();
+                let mut projection = program.start();
+                let mut native = LlvmRuntime::new(&program, &[]).unwrap();
+                assert!(rust.use_control(program.positions[0]).is_err());
+                assert!(native.use_control(program.positions[0]).is_err());
+                assert_eq!(component_state(rust.blocks[2]).state, expected_power);
+                assert_views(&native, &rust, &mut projection);
+            }
+        }
+    }
+}
+
+#[test]
+#[cfg(any(windows, target_os = "linux"))]
+fn llvm_compact_movement_flips_validate_cached_token_contributions() {
+    use super::super::{
+        pistons::PistonToken,
+        program::{ArrangementSource, InputArrangement},
+    };
+    for conditional in [false, true] {
+        let mut program = Program::new(
+            vec![BlockPos::new(10, 10, 10), BlockPos::new(11, 10, 10)],
+            vec![Block::RedstoneBlock, Block::RedstoneLamp { lit: false }],
+            vec![],
+            vec![[vec![], vec![]]; 2],
+            vec![],
+            vec![],
+            vec![],
+        )
+        .unwrap();
+        for (index, block) in [Block::RedstoneBlock, Block::Stone {}].into_iter().enumerate() {
+            program.tokens.push(PistonToken {
+                block,
+                position: None,
+                cells: vec![BlockPos::new(12 + index as i32, 11, 10)],
+            });
+        }
+        let token = ArrangementSource::Token(0);
+        let inert = ArrangementSource::Token(1);
+        let component = ArrangementSource::Component(0);
+        program.input_arrangements.push(InputArrangement {
+            target: 1,
+            side: false,
+            silent: false,
+            tokens: vec![0, 1],
+            token_states: vec![vec![0, 1], vec![0, 1]],
+            conditional_sources: vec![token, inert, component],
+            inputs: vec![
+                vec![],
+                vec![(token, 7)],
+                vec![(component, 3), (inert, 0)],
+                vec![(token, if conditional { 8 } else { 7 }), (component, 3), (inert, 0)],
+            ],
+        });
+        program.input_arrangements.insert(
+            0,
+            InputArrangement {
+                target: 1,
+                side: true,
+                silent: false,
+                tokens: vec![0],
+                token_states: vec![vec![0, 1]],
+                conditional_sources: vec![component],
+                inputs: vec![vec![], vec![(component, 2)]],
+            },
+        );
+        program.compile_movement_flips().unwrap();
+        program.set_move_steps(vec![vec![[vec![], vec![]]]; 2]);
+        program.prepare_projection();
+        program.validate().unwrap();
+        let encoded = LlvmProgram::encode(&program).unwrap();
+        let library = Library::load().unwrap();
+        // SAFETY: Owned descriptor/blob stay live; the native validator checks every encoded field.
+        let native_size = |blob: &[u8]| unsafe { (library.state_size)(&encoded.descriptor, blob.as_ptr(), blob.len() as u32, 0) };
+        assert!(native_size(&encoded.blob) > 0);
+        let directory = encoded.descriptor.source_offset as usize + encoded.descriptor.source_count as usize * 4;
+        assert_eq!(program.movement_transitions.iter().any(|row| row.fixed_state == usize::MAX), conditional);
+        let transition_offset = read_u32(&encoded.blob, directory + 20 * 8).unwrap() as usize;
+        assert_eq!(
+            read_u32(&encoded.blob, directory + 20 * 8 + 4).unwrap() as usize,
+            program.movement_transitions.len() * 6
+        );
+        for (index, transition) in program.movement_transitions.iter().enumerate() {
+            let fixed_offset = transition_offset + index * 24 + 20;
+            assert_eq!(
+                read_u32(&encoded.blob, fixed_offset).unwrap(),
+                u32::try_from(transition.fixed_state).unwrap_or(u32::MAX)
+            );
+            let mut corrupt = encoded.blob.clone();
+            corrupt[fixed_offset..fixed_offset + 4].copy_from_slice(&(transition.states as u32).to_le_bytes());
+            assert!(validate_blob(&encoded.descriptor, &corrupt).is_err());
+            assert_eq!(native_size(&corrupt), 0);
+        }
+        let offset = read_u32(&encoded.blob, directory + 22 * 8).unwrap() as usize;
+        let words = read_u32(&encoded.blob, directory + 22 * 8 + 4).unwrap() as usize;
+        assert_eq!(words, program.movement_flips.len() * 4);
+        let canonical_end = program
+            .movement_groups
+            .iter()
+            .flat_map(|group| &group.axes)
+            .flat_map(|axis| axis.depart.iter().chain(&axis.arrive))
+            .map(|range| range.end)
+            .max()
+            .unwrap_or(0);
+        if !conditional {
+            assert!(
+                program
+                    .movement_fixed_ranges
+                    .iter()
+                    .flatten()
+                    .flatten()
+                    .any(|edges| { edges.iter().any(|range| !range.is_empty() && range.start >= canonical_end) })
+            );
+        }
+        let cell_offset = read_u32(&encoded.blob, directory + 19 * 8).unwrap() as usize;
+        let mut row_index = 0;
+        for cells in &program.movement_fixed_ranges {
+            for plan in cells {
+                let row_offset = cell_offset + row_index * 40;
+                row_index += 1;
+                if let Some(edges) = plan {
+                    for edge in 0..2 {
+                        assert_eq!(read_u32(&encoded.blob, row_offset + 24 + edge * 8).unwrap() as usize, edges[edge].start);
+                        assert_eq!(read_u32(&encoded.blob, row_offset + 28 + edge * 8).unwrap() as usize, edges[edge].len());
+                    }
+                    let mut corrupt = encoded.blob.clone();
+                    corrupt[row_offset + 28..row_offset + 32].copy_from_slice(&(edges[0].len() as u32 + 1).to_le_bytes());
+                    assert!(validate_blob(&encoded.descriptor, &corrupt).is_err());
+                    assert_eq!(native_size(&corrupt), 0);
+                    if !edges[0].is_empty() && edges[0].start >= canonical_end {
+                        let mut corrupt = encoded.blob.clone();
+                        let at = offset + edges[0].start * 16 + 12;
+                        let flags = read_u32(&corrupt, at).unwrap() ^ 0x100;
+                        corrupt[at..at + 4].copy_from_slice(&flags.to_le_bytes());
+                        assert!(validate_blob(&encoded.descriptor, &corrupt).is_err());
+                        assert_eq!(native_size(&corrupt), 0);
+                    }
+                } else {
+                    let mut corrupt = encoded.blob.clone();
+                    corrupt[row_offset + 24..row_offset + 40].fill(0);
+                    assert!(validate_blob(&encoded.descriptor, &corrupt).is_err());
+                    assert_eq!(native_size(&corrupt), 0);
+                }
+            }
+        }
+        assert!(program.movement_flips.iter().any(|flip| flip.token_contribution == 8));
+        assert!(program.movement_flips.iter().any(|flip| flip.source() == component));
+        assert!(program.movement_flips.iter().any(|flip| flip.source() == inert));
+        for (index, flip) in program.movement_flips.iter().enumerate() {
+            let flags_offset = offset + index * 16 + 12;
+            let flags = read_u32(&encoded.blob, flags_offset).unwrap();
+            assert_eq!(flags & 15, u32::from(flip.attenuation));
+            assert_eq!((flags >> 8) & 1, u32::from(flip.entering));
+            assert_eq!((flags >> 9) & 1, u32::from(flip.side));
+            assert_eq!(flags >> 16, u32::from(flip.token_contribution));
+            for invalid in [flags ^ (1 << 16), flags | (1 << 4), flags | (1 << 10), flags | (1 << 31)] {
+                let mut corrupt = encoded.blob.clone();
+                corrupt[flags_offset..flags_offset + 4].copy_from_slice(&invalid.to_le_bytes());
+                assert!(validate_blob(&encoded.descriptor, &corrupt).is_err());
+                assert_eq!(native_size(&corrupt), 0);
+            }
+        }
+    }
+}
+
 #[test]
 #[cfg(any(windows, target_os = "linux"))]
 fn llvm_notification_tags_validate_physical_piston_routes() {

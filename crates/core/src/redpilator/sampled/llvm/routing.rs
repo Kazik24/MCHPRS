@@ -133,7 +133,7 @@ mod tests {
         tables[14] = vec![0, 0];
         tables[16] = vec![u32::MAX, 0, 0, 0, 0, 0, 0];
         tables[18] = vec![0, 1];
-        tables[19] = vec![0; 6];
+        tables[19] = vec![0; 10];
         tables[33] = vec![1, 0, 1, 0, 2];
         tables[34] = vec![0, 2];
         tables[35] = vec![0, 0, 0, 0, u32::MAX, 0, 0, 0];

@@ -1082,6 +1082,10 @@ impl Plot {
     }
 
     fn update(&mut self) {
+        self.update_with_tick_limit(u32::MAX);
+    }
+
+    fn update_with_tick_limit(&mut self, tick_limit: u32) {
         if let Some(source) = &mut self.waveform_source {
             source.poll(
                 &self.world.waveform,
@@ -1113,7 +1117,11 @@ impl Plot {
 
             let effective_send_rate = self.effective_send_rate();
             let world_send_rate = Duration::from_nanos(1_000_000_000 / effective_send_rate.max(1) as u64);
-            let batch_width = normal_tick_batch_width(self.tps, self.last_nspt, self.redpilator.uses_llvm());
+            let batch_width = if tick_limit < 16 {
+                1
+            } else {
+                normal_tick_batch_width(self.tps, self.last_nspt, self.redpilator.uses_llvm())
+            };
 
             let max_batch_size = match self.last_nspt {
                 Some(Duration::ZERO) | None => 1,
@@ -1138,7 +1146,10 @@ impl Plot {
                 }
                 Tps::Unlimited => normal_tick_budget(u64::MAX, max_batch_size, batch_width),
                 _ => 0,
-            };
+            }
+            .min(tick_limit)
+                / batch_width
+                * batch_width;
 
             self.last_update_time = now;
             if self.compiling_redpilator() || idle {

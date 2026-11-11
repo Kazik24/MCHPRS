@@ -70,12 +70,18 @@ pub(super) fn encode_movement(p: &Program, t: &mut [Vec<u32>; AUX_TABLES]) -> Re
         for &node in row {
             t[15].push(id(node)?);
         }
-        let start = id(t[19].len() / 6)?;
+        let start = id(t[19].len() / 10)?;
         t[18].extend([start, id(token.cells.len())?]);
         for cell in 0..token.cells.len() {
             t[19].extend(range(&p.movement_cells[index][cell])?);
             t[19].extend(range(&p.move_steps[index][cell][0])?);
             t[19].extend(range(&p.move_steps[index][cell][1])?);
+            if let Some(edges) = &p.movement_fixed_ranges[index][cell] {
+                t[19].extend(range(&edges[0])?);
+                t[19].extend(range(&edges[1])?);
+            } else {
+                t[19].extend([u32::MAX, 0, u32::MAX, 0]);
+            }
         }
     }
     for cell in 0..p.projection_positions.len() {
@@ -100,7 +106,14 @@ pub(super) fn encode_movement(p: &Program, t: &mut [Vec<u32>; AUX_TABLES]) -> Re
         }
     }
     for r in &p.movement_transitions {
-        t[20].extend([id(r.group)?, id(r.delta)?, id(r.depart)?, id(r.arrive)?, id(r.states)?]);
+        t[20].extend([
+            id(r.group)?,
+            id(r.delta)?,
+            id(r.depart)?,
+            id(r.arrive)?,
+            id(r.states)?,
+            optional((r.fixed_state != usize::MAX).then_some(r.fixed_state))?,
+        ]);
     }
     for r in &p.movement_ranges {
         t[21].extend(range(r)?);
@@ -109,10 +122,8 @@ pub(super) fn encode_movement(p: &Program, t: &mut [Vec<u32>; AUX_TABLES]) -> Re
         t[22].extend([
             r.target,
             source(r.source())?,
-            u32::from(r.attenuation),
             r.link,
-            u32::from(r.entering),
-            u32::from(r.side),
+            u32::from(r.attenuation) | (u32::from(r.entering) << 8) | (u32::from(r.side) << 9) | (u32::from(r.token_contribution) << 16),
         ]);
     }
     for r in &p.movement_steps {
@@ -573,8 +584,20 @@ mod tests {
         let mut program = Program::new(vec![], vec![], vec![], vec![], vec![], vec![], vec![]).unwrap();
         program.movement_groups.push(MovementGroup {
             axes: vec![
-                MovementAxis { token: 0, stride: 1, states: vec![0, 0, 1], depart: vec![], arrive: vec![] },
-                MovementAxis { token: 1, stride: 2, states: vec![0, 1, 2], depart: vec![], arrive: vec![] },
+                MovementAxis {
+                    token: 0,
+                    stride: 1,
+                    states: vec![0, 0, 1],
+                    depart: vec![],
+                    arrive: vec![],
+                },
+                MovementAxis {
+                    token: 1,
+                    stride: 2,
+                    states: vec![0, 1, 2],
+                    depart: vec![],
+                    arrive: vec![],
+                },
             ],
         });
         assert!(group_states_match(&program, &[0, 1], &[2]));

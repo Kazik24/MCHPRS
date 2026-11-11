@@ -132,6 +132,106 @@ mod tests {
         program
     }
 
+    fn multi_group_program(own_first: bool) -> Program {
+        use super::super::program::InputArrangement;
+        let mut program = transition_program(false);
+        program.initial[1] = Block::from_name("redstone_wire").unwrap();
+        let own = InputArrangement {
+            target: 1,
+            side: false,
+            silent: false,
+            tokens: vec![0],
+            token_states: vec![vec![0, 1, 0]],
+            conditional_sources: vec![ArrangementSource::Token(0)],
+            inputs: vec![vec![], vec![(ArrangementSource::Token(0), 2)]],
+        };
+        if own_first {
+            program.input_arrangements.insert(0, own);
+        } else {
+            program.input_arrangements.push(own);
+        }
+        program.compile_movement_flips().unwrap();
+        program.validate().unwrap();
+        program
+    }
+
+    fn assert_movement_state(actual: &super::super::Runtime, expected: &super::super::Runtime) {
+        macro_rules! same {
+            ($($field:ident),* $(,)?) => { $(assert_eq!(actual.$field, expected.$field, stringify!($field));)* };
+        }
+        same!(
+            blocks,
+            contributions,
+            arrangement_contributions,
+            routing_attenuations,
+            comparator_outputs,
+            reactive_wire_strengths,
+            watched_strengths,
+            pending_counts,
+            pending_passive_positions,
+            phase,
+            updated_in_phase,
+            piston_extended,
+            piston_head_present,
+            piston_head_moving,
+            piston_base_moving,
+            token_positions,
+            token_digits,
+            group_arrangements,
+            piston_events,
+            queued_piston_events,
+            active_motions,
+            free_motion_slots,
+            piston_motion,
+            cell_motion,
+            motion_time,
+            motion_phase,
+            landing_cursor,
+            movement_switched,
+            switched,
+            movement_changed_wires,
+            changed_wires,
+            notes,
+            note_queued,
+            dirty_cells,
+            dirty,
+            needs_full_publication,
+            accepted_piston_actions,
+            token_movements,
+            motion_completions,
+            operations,
+            deliveries,
+            scheduled_repeater_ticks,
+            tick_operations,
+            failure,
+        );
+        assert_eq!(actual.pending_entries(), expected.pending_entries());
+        assert_eq!(format!("{:?}", actual.motions), format!("{:?}", expected.motions));
+        assert_eq!(format!("{:?}", actual.piston_state), format!("{:?}", expected.piston_state));
+        assert!(actual.command_blocks.is_empty() && expected.command_blocks.is_empty());
+        assert!(actual.command_output_state.is_none() && expected.command_output_state.is_none());
+        assert!(actual.command_emissions.is_empty() && expected.command_emissions.is_empty());
+        // Drain copies to compare every analog count, including competing contributions at one level.
+        for node in 0..actual.input_levels.len() {
+            for side in 0..2 {
+                let drain = |runtime: &super::super::Runtime| {
+                    let mut input = runtime.input_levels[node][side];
+                    let mut histograms = runtime.input_histograms.clone();
+                    let mut levels = vec![];
+                    while input.active != 0 {
+                        let level = input.maximum(&histograms);
+                        assert_ne!(level, 0);
+                        levels.push(level);
+                        input.change(level, 0, &mut histograms);
+                    }
+                    assert_eq!(input.maximum(&histograms), 0);
+                    (input.analog, levels)
+                };
+                assert_eq!(drain(actual), drain(expected));
+            }
+        }
+    }
+
     #[test]
     fn sparse_transitions_and_fixed_rows_preserve_every_applicable_ordered_sequence() {
         for conditional in [false, true] {
@@ -193,6 +293,9 @@ mod tests {
                             for record in &mut reference.movement_transitions {
                                 record.fixed_state = usize::MAX;
                             }
+                            for cells in &mut reference.movement_fixed_ranges {
+                                cells.fill(None);
+                            }
                             for allowance in 0..=program.movement_flips.len() + 2 {
                                 let mut actual = initial.start();
                                 let mut expected = reference.start();
@@ -200,26 +303,156 @@ mod tests {
                                 expected.tick_operations = actual.tick_operations;
                                 actual.set_token_pos(token, destination);
                                 expected.set_token_pos(token, destination);
-                                assert_eq!(actual.failure, expected.failure);
-                                assert_eq!(
-                                    (actual.operations, actual.tick_operations),
-                                    (expected.operations, expected.tick_operations)
-                                );
-                                assert_eq!(actual.blocks, expected.blocks);
-                                assert_eq!(actual.arrangement_contributions, expected.arrangement_contributions);
-                                assert_eq!(actual.group_arrangements, expected.group_arrangements);
-                                assert_eq!(actual.token_positions, expected.token_positions);
-                                assert_eq!(actual.updated_in_phase, expected.updated_in_phase);
-                                assert_eq!(actual.switched, expected.switched);
-                                assert_eq!(actual.pending_entries(), expected.pending_entries());
-                                assert_eq!(actual.input_strength(1), expected.input_strength(1));
-                                assert_eq!(actual.input_levels[1][0].active, expected.input_levels[1][0].active);
+                                assert_movement_state(&actual, &expected);
                             }
                         }
                     }
                 }
             }
         }
+    }
+
+    #[test]
+    fn flat_fixed_ranges_preserve_multiple_groups_empty_plans_and_every_budget_prefix() {
+        let program = multi_group_program(true);
+        assert_eq!(program.movement_cells[0][0].len(), 2);
+        assert_eq!(program.movement_cells[1][0].len(), 1);
+        assert!(program.movement_cells[0][1].is_empty());
+        assert!(program.movement_fixed_ranges.iter().flatten().all(Option::is_some));
+        let empty = program.movement_fixed_ranges[0][1].as_ref().unwrap();
+        assert!(empty.iter().all(std::ops::Range::is_empty));
+        // Three eligible cells: one multiple-group, one single-group and one empty.
+        assert_eq!(program.movement_fixed_ranges.iter().map(Vec::len).sum::<usize>(), 3);
+        for first in 0..3 {
+            for second in 0..2 {
+                let mut initial = program.clone();
+                for (record, digit) in initial.tokens.iter_mut().zip([first, second]) {
+                    record.position = if digit == 0 { None } else { Some(record.cells[digit - 1]) };
+                }
+                let mut reference = initial.clone();
+                for cells in &mut reference.movement_fixed_ranges {
+                    cells.fill(None);
+                }
+                reference.validate().unwrap();
+                for token in 0..2 {
+                    let destinations: Vec<_> = if initial.tokens[token].position.is_none() {
+                        initial.tokens[token].cells.iter().copied().map(Some).collect()
+                    } else {
+                        vec![None]
+                    };
+                    for destination in destinations {
+                        for allowance in 0..=program.movement_flips.len() + 2 {
+                            let mut actual = initial.start();
+                            let mut expected = reference.start();
+                            actual.tick_operations = 1_000_000 - allowance;
+                            expected.tick_operations = actual.tick_operations;
+                            actual.set_token_pos(token, destination);
+                            expected.set_token_pos(token, destination);
+                            assert_movement_state(&actual, &expected);
+                        }
+                    }
+                }
+            }
+        }
+        let mut rebuilt = program.clone();
+        rebuilt.compile_movement_flips().unwrap();
+        rebuilt.validate().unwrap();
+        assert_eq!(rebuilt.movement_fixed_ranges, program.movement_fixed_ranges);
+        assert!(rebuilt.movement_flips == program.movement_flips);
+    }
+
+    #[test]
+    fn flat_fixed_ranges_preserve_partial_failure_before_invalid_later_group() {
+        let program = multi_group_program(true);
+        let transitions = program.movement_cells[0][0].clone();
+        let later = &program.movement_transitions[transitions.end - 1];
+        let mut reference = program.clone();
+        reference.movement_fixed_ranges[0][0] = None;
+        for allowance in 0..=program.movement_flips.len() + 2 {
+            let mut actual = program.start();
+            let mut expected = reference.start();
+            actual.group_arrangements[later.group] = later.states;
+            expected.group_arrangements[later.group] = later.states;
+            actual.tick_operations = 1_000_000 - allowance;
+            expected.tick_operations = actual.tick_operations;
+            actual.set_token_pos(0, Some(program.tokens[0].cells[0]));
+            expected.set_token_pos(0, Some(program.tokens[0].cells[0]));
+            assert_movement_state(&actual, &expected);
+            assert!(actual.failure.is_some());
+            assert_eq!(actual.group_arrangements[program.movement_transitions[transitions.start].group], 1);
+        }
+    }
+
+    #[test]
+    fn flat_fixed_ranges_reuse_single_ranges_and_bound_copies_for_aliased_cells() {
+        let single = transition_program(false);
+        let canonical = single.movement_ranges.iter().map(|range| range.end).max().unwrap_or(0);
+        assert_eq!(single.movement_flips.len(), canonical);
+        for (token, cells) in single.movement_fixed_ranges.iter().enumerate() {
+            for (cell, plan) in cells.iter().enumerate() {
+                let plan = plan.as_ref().unwrap();
+                let records = &single.movement_transitions[single.movement_cells[token][cell].clone()];
+                if let [record] = records {
+                    assert_eq!(plan[0], single.movement_ranges[record.depart + record.fixed_state]);
+                    assert_eq!(plan[1], single.movement_ranges[record.arrive + record.fixed_state]);
+                } else {
+                    assert!(records.is_empty() && plan.iter().all(std::ops::Range::is_empty));
+                }
+            }
+        }
+
+        let mut program = multi_group_program(true);
+        program.tokens[0].cells = (0..20).map(|x| mchprs_blocks::BlockPos::new(100 + x, 11, 10)).collect();
+        for input in &mut program.input_arrangements {
+            let axis = input.tokens.iter().position(|&token| token == 0).unwrap();
+            input.token_states[axis] = std::iter::once(0).chain(std::iter::repeat_n(1, 20)).collect();
+        }
+        program.compile_movement_flips().unwrap();
+        program.validate().unwrap();
+        let canonical = program.movement_ranges.iter().map(|range| range.end).max().unwrap_or(0);
+        assert!(program.movement_flips.len() > canonical);
+        assert!(program.movement_flips.len() - canonical <= canonical);
+        assert!(program.movement_fixed_ranges[0].iter().any(Option::is_some));
+        assert!(program.movement_fixed_ranges[0].iter().any(Option::is_none));
+        assert!(
+            program.movement_fixed_ranges[1][0]
+                .as_ref()
+                .unwrap()
+                .iter()
+                .all(|range| range.end <= canonical)
+        );
+        let plans = program.movement_fixed_ranges.clone();
+        let flips = program.movement_flips.clone();
+        program.compile_movement_flips().unwrap();
+        program.validate().unwrap();
+        assert_eq!(program.movement_fixed_ranges, plans);
+        assert!(program.movement_flips == flips);
+    }
+
+    #[test]
+    fn flat_fixed_range_validation_rejects_dimensions_ineligible_records_and_changed_copies() {
+        let program = multi_group_program(true);
+        let mut corrupt = program.clone();
+        corrupt.movement_fixed_ranges.pop();
+        assert_eq!(corrupt.validate().unwrap_err().reason, "invalid fixed movement plan dimensions");
+        let mut corrupt = program.clone();
+        corrupt.movement_fixed_ranges[0].pop();
+        assert_eq!(corrupt.validate().unwrap_err().reason, "invalid fixed movement plan dimensions");
+        let mut corrupt = program.clone();
+        corrupt.movement_fixed_ranges[0][0].as_mut().unwrap()[0].end = usize::MAX;
+        assert_eq!(corrupt.validate().unwrap_err().reason, "invalid fixed movement flip range");
+        let mut corrupt = program.clone();
+        let flip = corrupt.movement_fixed_ranges[0][0].as_ref().unwrap()[0].start;
+        corrupt.movement_flips[flip].token_contribution ^= 1;
+        assert_eq!(corrupt.validate().unwrap_err().reason, "invalid fixed movement flip sequence");
+        let mut conditional = transition_program(true);
+        assert!(conditional.movement_fixed_ranges[0][0].is_none());
+        conditional.movement_fixed_ranges[0][0] = Some([0..0, 0..0]);
+        assert_eq!(conditional.validate().unwrap_err().reason, "invalid fixed movement plan");
+        let mut nonascending = multi_group_program(false);
+        assert!(nonascending.movement_fixed_ranges[0][0].is_none());
+        nonascending.movement_fixed_ranges[0][0] = Some([0..0, 0..0]);
+        assert_eq!(nonascending.validate().unwrap_err().reason, "invalid fixed movement plan");
     }
 
     #[test]
@@ -624,6 +857,52 @@ impl Program {
             }
             self.movement_cells.push(cells);
         }
+        self.movement_fixed_ranges.clear();
+        // Use the existing admission estimate's reserved spare flip capacity.
+        let mut spare_flips = self.movement_flips.len();
+        for cells in &self.movement_cells {
+            let mut fixed = Vec::with_capacity(cells.len());
+            for range in cells {
+                let records = &self.movement_transitions[range.clone()];
+                if records.iter().any(|record| record.fixed_state == usize::MAX) || records.windows(2).any(|pair| pair[0].group >= pair[1].group) {
+                    fixed.push(None);
+                    continue;
+                }
+                if records.is_empty() {
+                    fixed.push(Some([0..0, 0..0]));
+                    continue;
+                }
+                if let [record] = records {
+                    fixed.push(Some([
+                        self.movement_ranges[record.depart + record.fixed_state].clone(),
+                        self.movement_ranges[record.arrive + record.fixed_state].clone(),
+                    ]));
+                    continue;
+                }
+                let lengths: [Option<usize>; 2] = std::array::from_fn(|edge| {
+                    records.iter().try_fold(0usize, |length, record| {
+                        let base = if edge == 0 { record.depart } else { record.arrive };
+                        length.checked_add(self.movement_ranges[base + record.fixed_state].len())
+                    })
+                });
+                let needed = lengths[0].zip(lengths[1]).and_then(|(depart, arrive)| depart.checked_add(arrive));
+                let Some(needed) = needed.filter(|&needed| needed <= spare_flips) else {
+                    fixed.push(None);
+                    continue;
+                };
+                spare_flips -= needed;
+                fixed.push(Some(std::array::from_fn(|edge| {
+                    let start = self.movement_flips.len();
+                    for record in records {
+                        let base = if edge == 0 { record.depart } else { record.arrive };
+                        self.movement_flips
+                            .extend_from_within(self.movement_ranges[base + record.fixed_state].clone());
+                    }
+                    start..self.movement_flips.len()
+                })));
+            }
+            self.movement_fixed_ranges.push(fixed);
+        }
         self.movement_flips.shrink_to_fit();
         self.movement_ranges.shrink_to_fit();
         self.movement_transitions.shrink_to_fit();
@@ -821,9 +1100,15 @@ impl Program {
         if self.movement_cells.len() != self.tokens.len() || self.token_movement_groups.len() != self.tokens.len() {
             return Err(invalid("invalid movement plan dimensions"));
         }
+        if self.movement_fixed_ranges.len() != self.tokens.len() {
+            return Err(invalid("invalid fixed movement plan dimensions"));
+        }
         for (token, cells) in self.movement_cells.iter().enumerate() {
             if cells.len() != self.tokens[token].cells.len() {
                 return Err(invalid("invalid movement plan cells"));
+            }
+            if self.movement_fixed_ranges[token].len() != cells.len() {
+                return Err(invalid("invalid fixed movement plan dimensions"));
             }
             for (cell, range) in cells.iter().enumerate() {
                 let records = self
@@ -874,6 +1159,25 @@ impl Program {
                 }
                 if records.next().is_some() {
                     return Err(invalid("invalid movement plan length"));
+                }
+                if let Some(edges) = &self.movement_fixed_ranges[token][cell] {
+                    let records = &self.movement_transitions[range.clone()];
+                    if records.iter().any(|record| record.fixed_state == usize::MAX) || records.windows(2).any(|pair| pair[0].group >= pair[1].group)
+                    {
+                        return Err(invalid("invalid fixed movement plan"));
+                    }
+                    for (edge, range) in edges.iter().enumerate() {
+                        let Some(flips) = self.movement_flips.get(range.clone()) else {
+                            return Err(invalid("invalid fixed movement flip range"));
+                        };
+                        let canonical = records.iter().flat_map(|record| {
+                            let base = if edge == 0 { record.depart } else { record.arrive };
+                            self.movement_flips[self.movement_ranges[base + record.fixed_state].clone()].iter()
+                        });
+                        if !flips.iter().eq(canonical) {
+                            return Err(invalid("invalid fixed movement flip sequence"));
+                        }
+                    }
                 }
             }
         }

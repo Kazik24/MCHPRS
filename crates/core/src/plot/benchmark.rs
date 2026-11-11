@@ -64,6 +64,40 @@ pub fn run_for(plot: &mut Plot, duration: Duration) -> Duration {
     started.elapsed()
 }
 
+/// Run a fixed number of game ticks through the actual plot update loop.
+pub fn run_ticks(plot: &mut Plot, ticks: u32) -> Duration {
+    assert!(ticks > 0);
+    plot.tps = Tps::Unlimited;
+    plot.timings.set_tps(Tps::Unlimited);
+    plot.world.update_stats = Default::default();
+    plot.lag_time = Duration::ZERO;
+    plot.last_update_time = Instant::now();
+    plot.last_world_send_time = Instant::now();
+    let handle = plot.async_rt.handle().clone();
+    let _entered = handle.enter();
+    let started = Instant::now();
+    while plot.world.update_stats.simulated_ticks < u64::from(ticks) {
+        let remaining = ticks - plot.world.update_stats.simulated_ticks as u32;
+        plot.update_with_tick_limit(remaining);
+        assert_eq!(plot.players.len(), 1, "benchmark client disconnected or left the plot");
+        assert!(plot.redpilator.is_active(), "compiled execution stopped");
+    }
+    started.elapsed()
+}
+
+pub fn publication(plot: &mut Plot, mode: Option<PublicationMode>, send_rate: u32) {
+    plot.world_send_rate = WorldSendRate(if mode.is_some() { send_rate } else { 0 });
+    plot.redpilator_auto_publication = false;
+    assert!(plot.redpilator.set_publication_mode(mode.unwrap_or(PublicationMode::Io)));
+    plot.world.clear_scheduled_ticks();
+}
+
+/// Stop client block updates before the untimed complete-state correctness read.
+pub fn materialize(plot: &mut Plot, bounds: (BlockPos, BlockPos)) {
+    plot.world.packet_senders.clear();
+    plot.redpilator.try_reset(&mut plot.world, bounds).unwrap();
+}
+
 pub fn publish(plot: &mut Plot) {
     plot.redpilator.flush(&mut plot.world);
     plot.world.flush_block_changes();

@@ -2,8 +2,6 @@
 
 Redpilator compiles a circuit into a program, then runs that program instead of searching the world for connections on each update. Rust is the default executor. The optional LLVM backend runs a native C executor built with Clang.
 
-Credit to MAIR for the sampled compilation algorithm that informed this rewrite, including piston arrangements and conditional wiring.
-
 ## Compilation
 
 The plot takes a snapshot of blocks, block entities, scheduled ticks and piston state. A worker thread compiles the snapshot. The plot keeps handling packets and commands while simulation is paused. Edits are blocked during compilation and remain blocked while the compiled runtime is active.
@@ -32,7 +30,10 @@ Inputs and scheduled ticks run the stored instructions. While Redpilator is acti
 
 Normal LLVM execution runs fixed batches of sixteen game ticks when the configured rate is at least 100 TPS (or unlimited) and the observed tick cost is at most 10 ms. The runner waits for a full batch of tick credit and publishes at opportunities after execution returns; it does not add scalar ticks to meet a visual deadline. Stopped plots, lower rates, slower observed execution and exact manual advancement use scalar stepping.
 
-Each native batch retains the internal scheduler, event and movement phases of every tick. Command clocks remain live per tick. If command-effect storage needs to grow, execution returns before that tick, Rust grows and rebinds the buffer, and the batch resumes without repeating completed ticks. Failures retain the successful prefix. This requires native semantic version 28; rebuild an older DLL with `scripts/build-llvm-native.ps1`.
+Each native batch retains the internal scheduler, event and movement phases of every tick. Command clocks remain live per tick. If command-effect storage needs to grow, execution returns before that tick, Rust grows and rebinds the buffer, and the batch resumes without repeating completed ticks. Failures retain the successful prefix. Native movement flips use 16-byte records, validated precomputed token contributions and proven fixed-state range selectors, matching the Rust replay; component contributions remain live. Both executors can replay a validated concatenation of fixed movement ranges when the whole range fits the operation budget. Conditional transitions and partial-failure cases retain scalar replay. This requires native semantic version 31; rebuild an older DLL with `scripts/build-llvm-native.ps1`.
+
+Native execution caches the validated immutable auxiliary-table addresses and word counts at creation. Both the temporary allocation-size view and the live engine initialize this cache before using tables; descriptor and blob ownership stay unchanged.
+
 
 Pistons can change electrical connections by moving blocks. The compiler records movable blocks, the cells they can occupy and the connections for supported arrangements. During execution, movement selects the current arrangement and sends its recorded notifications.
 
@@ -44,7 +45,7 @@ The runtime's state is separate from the plot world. Publishing copies results b
 
 Publication can include all blocks and piston motion, redstone components, or just controls and visible outputs. Changing publication mode does not advance simulation.
 
-LLVM IO publication reads only the compiled control/output component list. Effects flushing reads queued notes and command state without reconstructing piston geometry, electrical inputs or pending ticks. Both paths validate native records before publishing or acknowledging effects. Redstone/full publication and reset retain the complete snapshot path.
+LLVM IO publication reads only the compiled control/output component list. Redstone publication reads packed visual state for mutable non-piston components, including wire shapes, comparator output and note instruments. Both cache component reads until native execution or input changes. Effects flushing reads queued notes, command messages and output quotas; IO and effects-only flushing skip command entities. Circuits without notes or commands skip effect exports. These paths validate native records before publishing or acknowledging effects. Full publication and reset retain the complete snapshot path, including electrical state, pending ticks and piston geometry. The minimal visual export requires native semantic version 33.
 
 `/rp reset` and `/rp off` export the current state and pending work to the interpreter. This includes piston state. They continue from the current state rather than restarting the circuit.
 
@@ -55,6 +56,8 @@ LLVM IO publication reads only the compiled control/output component list. Effec
 The encoder writes the compiled program into versioned, little-endian tables. The native library is built on demand and reused with different circuit tables. The loader checks the ABI version before creating native state.
 
 Each runtime owns its state buffers, command state and library handle. After native state is created, errors during command setup or tick import drop the runtime and free its resources. The encoder borrows the shared program instead of copying the circuit.
+
+The native executor caches immutable table pointers after validating the program. Strength histograms retain 32-bit contribution counts and store an occupied-level mask in unused bucket zero, so finding the maximum does not scan every level. Both changes preserve update order and operation-budget accounting.
 
 ## Limits
 

@@ -17,7 +17,7 @@ __pycache__/
 # Regression evidence keeps sources and recorded results, not local build products.
 /docs/redpilator-regressions/**/bin/
 /docs/redpilator-regressions/**/obj/
-/docs/redpilator-regressions/2026-11-02/evidence/mair/
+/docs/redpilator-regressions/2026-11-02/evidence/reference/
 
 # do not add things from scraps to git.
 scraps

@@ -20,6 +20,18 @@ mchprs_network = { path = "../network", features = ["test-support"] }
 name = "bench_llvm_batches"
 required-features = ["plot-bench"]
 
+[[example]]
+name = "bench_engine_compare"
+required-features = ["plot-bench"]
+
+[[example]]
+name = "bench_pm1_compare"
+required-features = ["plot-bench"]
+
+[[example]]
+name = "bench_pm1_server"
+required-features = ["plot-bench"]
+
 [[bench]]
 name = "bitbuffer"
 harness = false

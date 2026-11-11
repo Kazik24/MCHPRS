@@ -61,6 +61,9 @@ impl Compiler {
     /// acknowledge the output queue to the native backend.
     pub(crate) fn flush_effects<W: World>(&mut self, world: &mut W) {
         if let Some(llvm) = self.llvm_runtime.as_mut() {
+            if !llvm.has_effects() {
+                return;
+            }
             if let Err(error) = llvm.sync_effects(self.runtime.as_mut().expect("LLVM publication projection missing")) {
                 tracing::error!(?error, "LLVM effect read failed");
                 return;
@@ -90,7 +93,14 @@ impl Compiler {
     pub(super) fn publish<W: World>(&mut self, world: &mut W, io_only: bool, full: bool) -> Result<(), ExecutionError> {
         if let Some(llvm) = self.llvm_runtime.as_mut() {
             let runtime = self.runtime.as_mut().expect("LLVM publication projection missing");
-            if io_only { llvm.sync_io(runtime) } else { llvm.sync_publication(runtime) }.map_err(ExecutionError)?;
+            if io_only {
+                llvm.sync_io(runtime)
+            } else if full {
+                llvm.sync_publication(runtime)
+            } else {
+                llvm.sync_redstone(runtime)
+            }
+            .map_err(ExecutionError)?;
         }
         self.runtime
             .as_mut()

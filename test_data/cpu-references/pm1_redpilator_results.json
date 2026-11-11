@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "fixture": "pm1_redpilator.schem",
+  "fixture_sha256": "6957e4f9537d519e2133f0168fd25837a084a10e54d96166c72fd3dcf3bb8939",
+  "protocol": "pm1_redpilator_protocol.json",
+  "reference": "pm1_redpilator_reference.json",
+  "scope": "Headless LLVM kernel TPS; not in-game/server network TPS. Exactly 12,070 game ticks, Start once, zero preparation, no timed publication; final verification outside timing; main timing thread on logical CPU 24.",
+  "previous": {
+    "revision": "48c4113af218892244d08908795674ba5dcd45c0",
+    "samples_tps": [
+      3155.195657028716,
+      2607.3702428805345,
+      3127.813201709149
+    ],
+    "median_tps": 3127.813201709149
+  },
+  "current": {
+    "revision": "48c4113af218892244d08908795674ba5dcd45c0 plus current working changes",
+    "samples_tps": [
+      3764.728369077875,
+      3790.623423452396,
+      3934.419261299908
+    ],
+    "median_tps": 3790.623423452396,
+    "gain_percent": 21.190850571928777
+  },
+  "verified": {
+    "ram_pairs": 1792,
+    "lamps": 1452,
+    "ordered_messages": 1534,
+    "quiet_at_end": true,
+    "all_previous_and_current_samples_match_interpreter": true
+  },
+  "saved_reference": {
+    "valid_tps": null,
+    "first_idle_tick": 577,
+    "expected_first_quiet_tick": 12055,
+    "wrong_ram_pairs": 23,
+    "wrong_lamps": 136,
+    "prefix5000_wrong_ram_pairs": 20,
+    "prefix5000_wrong_lamps": 104,
+    "result": "Not equivalent completed work: halts early with wrong outputs. Raw throughput is inflated by idle ticks and is excluded."
+  },
+  "state": {
+    "normal_mode": "MROWW semantics preserved",
+    "relaxed_mode": "Opt-in sampled wire-shape omission; aggressive head/wire policies rejected after command-trace failure.",
+    "publication": "IO/control exports and packed redstone visual exports exclude piston data; complete snapshots retained for full publication and reset.",
+    "removed_cli_flags": [
+      "--io-only",
+      "-i",
+      "--update",
+      "-u"
+    ],
+    "unmeasured": [
+      "Actual server/client-send TPS on the new fixture",
+      "New-fixture relaxed-mode throughput"
+    ]
+  },
+  "validation": {
+    "core_tests_passed": 277,
+    "core_tests_failed": 0,
+    "core_tests_ignored": 29,
+    "cli_and_completion_tests_passed": 3,
+    "runner_batch_tests_passed": 4,
+    "packet_decoder_tests_passed": 1,
+    "plot_compilation_serial_tests_passed": 24,
+    "examples_compile_checked": true,
+    "connect_four_fixture_skipped": true,
+    "note": "Initial broad parallel run hit worker deadlines; the compilation tests passed when run serially. No new server TPS result is claimed."
+  }
+}

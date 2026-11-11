@@ -15,7 +15,7 @@ static uint32_t valid_source(uint32_t source, uint32_t nodes, uint32_t tokens) {
  */
 static uint32_t valid_movement(const MchprsNativeProgramDescriptor *p, const uint8_t *blob, const uint32_t **t,
                                const uint32_t *n) {
-    if (n[7] % 10u || n[11] % 3u || n[16] % 7u || n[19] % 6u || n[20] % 5u || n[21] % 2u || n[22] % 6u || n[23] % 5u ||
+    if (n[7] % 10u || n[11] % 3u || n[16] % 7u || n[19] % 10u || n[20] % 6u || n[21] % 2u || n[22] % 4u || n[23] % 5u ||
         n[25] % 8u)
         return 0u;
     uint32_t pistons = n[7] / 10u, tokens = n[11] / 3u, cells = n[16] / 7u, nodes = p->component_count;
@@ -38,7 +38,7 @@ static uint32_t valid_movement(const MchprsNativeProgramDescriptor *p, const uin
         if ((t[11][i * 3u] != NONE && t[11][i * 3u] >= cells) || t[11][i * 3u + 1u] > 15u ||
             (t[11][i * 3u + 2u] != NONE && t[11][i * 3u + 2u] >= cells) ||
             !bounded(t[12][i * 2u], t[12][i * 2u + 1u], n[13]) || !bounded(t[14][i * 2u], t[14][i * 2u + 1u], n[15]) ||
-            !bounded(t[18][i * 2u], t[18][i * 2u + 1u], n[19] / 6u) || t[18][i * 2u + 1u] != t[12][i * 2u + 1u])
+            !bounded(t[18][i * 2u], t[18][i * 2u + 1u], n[19] / 10u) || t[18][i * 2u + 1u] != t[12][i * 2u + 1u])
             return 0u;
     }
     for (uint32_t i = 0; i < n[13]; ++i)
@@ -60,25 +60,61 @@ static uint32_t valid_movement(const MchprsNativeProgramDescriptor *p, const uin
                     return 0u;
         }
     }
-    for (uint32_t i = 0; i < n[19]; i += 6u) {
-        if (!bounded(t[19][i], t[19][i + 1u], n[20] / 5u) || !bounded(t[19][i + 2u], t[19][i + 3u], n[23] / 5u) ||
+    for (uint32_t i = 0; i < n[19]; i += 10u) {
+        if (!bounded(t[19][i], t[19][i + 1u], n[20] / 6u) || !bounded(t[19][i + 2u], t[19][i + 3u], n[23] / 5u) ||
             !bounded(t[19][i + 4u], t[19][i + 5u], n[23] / 5u))
             return 0u;
     }
-    for (uint32_t i = 0; i < n[20]; i += 5u) {
+    for (uint32_t i = 0; i < n[20]; i += 6u) {
         const uint32_t *r = t[20] + i;
         if (r[0] >= n[27] || !r[4] || r[1] >= r[4] || t[27][r[0]] >= r[4] || !bounded(r[2], r[4], n[21] / 2u) ||
-            !bounded(r[3], r[4], n[21] / 2u))
+            !bounded(r[3], r[4], n[21] / 2u) || (r[5] != NONE && r[5] >= r[4]))
             return 0u;
     }
     for (uint32_t i = 0; i < n[21]; i += 2u)
-        if (!bounded(t[21][i], t[21][i + 1u], n[22] / 6u))
+        if (!bounded(t[21][i], t[21][i + 1u], n[22] / 4u))
             return 0u;
-    for (uint32_t i = 0; i < n[22]; i += 6u) {
+    for (uint32_t i = 0; i < n[22]; i += 4u) {
         const uint32_t *r = t[22] + i;
-        if (r[0] >= nodes || !valid_source(r[1], nodes, tokens) || r[2] > 15u || r[3] >= p->arrangement_link_count ||
-            r[4] > 1u || r[5] > 1u)
+        if (r[0] >= nodes || !valid_source(r[1], nodes, tokens) || r[2] >= p->arrangement_link_count ||
+            (r[3] & ~0x000f030fu))
             return 0u;
+        uint32_t cached = 0u, attenuation = r[3] & 15u;
+        if (r[1] & 0x80000000u) {
+            uint32_t strength = t[11][(r[1] & 0x7fffffffu) * 3u + 1u];
+            cached = strength > attenuation ? strength - attenuation : 0u;
+        }
+        if ((r[3] >> 16u) != cached)
+            return 0u;
+    }
+    for (uint32_t i = 0; i < n[19]; i += 10u) {
+        const uint32_t *row = t[19] + i;
+        if (row[6] == NONE || row[8] == NONE) {
+            if (row[6] != NONE || row[8] != NONE || row[7] || row[9])
+                return 0u;
+            continue;
+        }
+        for (uint32_t edge = 0; edge < 2u; ++edge) {
+            uint32_t cursor = row[6u + edge * 2u], count = row[7u + edge * 2u];
+            if (!bounded(cursor, count, n[22] / 4u))
+                return 0u;
+            uint32_t end = cursor + count, previous = NONE;
+            for (uint32_t j = 0; j < row[1]; ++j) {
+                const uint32_t *r = t[20] + (row[0] + j) * 6u;
+                if (r[5] == NONE || (j && r[0] <= previous))
+                    return 0u;
+                previous = r[0];
+                const uint32_t *flips = t[21] + (r[2u + edge] + r[5]) * 2u;
+                if (flips[1] > end - cursor)
+                    return 0u;
+                for (uint32_t k = 0; k < flips[1] * 4u; ++k)
+                    if (t[22][cursor * 4u + k] != t[22][flips[0] * 4u + k])
+                        return 0u;
+                cursor += flips[1];
+            }
+            if (cursor != end)
+                return 0u;
+        }
     }
     for (uint32_t i = 0; i < n[23]; i += 5u) {
         const uint32_t *r = t[23] + i;
@@ -256,20 +292,20 @@ static void set_arranged(NEEngine *e, uint32_t index, uint32_t target, uint32_t 
     if (side) {
         if (old) {
             e->side_count[target]--;
-            e->side_histograms[(size_t)target * 16u + old]--;
+            histogram_remove(e->side_histograms + (size_t)target * 16u, old);
         }
         if (value) {
             e->side_count[target]++;
-            e->side_histograms[(size_t)target * 16u + value]++;
+            histogram_add(e->side_histograms + (size_t)target * 16u, value);
         }
     } else {
         if (old) {
             e->input_count[target]--;
-            e->histograms[(size_t)target * 16u + old]--;
+            histogram_remove(e->histograms + (size_t)target * 16u, old);
         }
         if (value) {
             e->input_count[target]++;
-            e->histograms[(size_t)target * 16u + value]++;
+            histogram_add(e->histograms + (size_t)target * 16u, value);
         }
     }
 }
@@ -655,11 +691,30 @@ static uint32_t mark_wire(NEEngine *e, uint32_t node) {
     if (index == NONE)
         return 0u;
     uint8_t strength = input_strength(e, node);
-    refresh_wire(e, node);
+    refresh_wire(e, node, strength);
     if (strength == e->watched_strengths[index])
         return 0u;
     e->watched_strengths[index] = strength;
     return 1u;
+}
+
+static inline uint32_t apply_movement_flip(NEEngine *e, const uint32_t *flip, uint32_t switched_count) {
+    uint32_t flags = flip[3], attenuation = flags & 15u;
+    uint8_t contribution;
+    if (flip[1] & 0x80000000u)
+        contribution = (uint8_t)(flags >> 16u);
+    else {
+        uint8_t strength = output(e, flip[1]);
+        contribution = strength > attenuation ? (uint8_t)(strength - attenuation) : 0u;
+    }
+    set_arranged(e, flip[2], flip[0], (flags >> 9u) & 1u, flags & 0x100u ? contribution : 0u);
+    if (contribution)
+        e->updated[flip[0]] = 0u;
+    if (components(e)[flip[0]].kind != 8u && !e->switched[flip[0]]) {
+        e->switched[flip[0]] = 1u;
+        e->switched_nodes[switched_count++] = flip[0];
+    }
+    return switched_count;
 }
 /**
  * Apply a payload departure or arrival and its recorded electrical effects.
@@ -692,9 +747,27 @@ static uint32_t set_token_pos(NEEngine *e, uint32_t token, uint32_t position) {
     const uint32_t *affected = table(e, 14u) + token * 2u;
     for (uint32_t i = 0; i < affected[1]; ++i)
         e->updated[table(e, 15u)[affected[0] + i]] = 0u;
-    const uint32_t *row = table(e, 19u) + (table(e, 18u)[token * 2u] + local) * 6u;
-    for (uint32_t i = 0; i < row[1]; ++i) {
-        const uint32_t *r = table(e, 20u) + (row[0] + i) * 5u;
+    const uint32_t *row = table(e, 19u) + (table(e, 18u)[token * 2u] + local) * 10u;
+    uint32_t flat_start = position != NONE ? row[8] : row[6];
+    uint32_t flat_count = position != NONE ? row[9] : row[7];
+    uint32_t flat = !e->error && flat_start != NONE && flat_count <= NE_MAX_TICK_OPERATIONS - e->tick_operations;
+    for (uint32_t i = 0; i < row[1] && flat; ++i) {
+        const uint32_t *r = table(e, 20u) + (row[0] + i) * 6u;
+        uint32_t before = e->groups[r[0]];
+        if (before >= r[4] || (position != NONE ? r[1] > r[4] - 1u - before : before < r[1]))
+            flat = 0u;
+    }
+    if (flat) {
+        for (uint32_t i = 0; i < row[1]; ++i) {
+            const uint32_t *r = table(e, 20u) + (row[0] + i) * 6u;
+            e->groups[r[0]] = position != NONE ? e->groups[r[0]] + r[1] : e->groups[r[0]] - r[1];
+        }
+        e->tick_operations += flat_count;
+        e->work_count += flat_count;
+        for (uint32_t i = 0; i < flat_count; ++i)
+            switched_count = apply_movement_flip(e, table(e, 22u) + (flat_start + i) * 4u, switched_count);
+    } else for (uint32_t i = 0; i < row[1]; ++i) {
+        const uint32_t *r = table(e, 20u) + (row[0] + i) * 6u;
         uint32_t before = e->groups[r[0]], after;
         if (position != NONE) {
             if (before > UINT32_MAX - r[1])
@@ -707,22 +780,15 @@ static uint32_t set_token_pos(NEEngine *e, uint32_t token, uint32_t position) {
         }
         if (before >= r[4] || after >= r[4])
             return e->error = NE_INVALID;
-        uint32_t state = position != NONE ? after : before, base = position != NONE ? r[3] : r[2];
+        uint32_t state = r[5] != NONE ? r[5] : position != NONE ? after : before;
+        uint32_t base = position != NONE ? r[3] : r[2];
         const uint32_t *flips = table(e, 21u) + (base + state) * 2u;
         e->groups[r[0]] = after;
         for (uint32_t j = 0; j < flips[1]; ++j) {
-            const uint32_t *flip = table(e, 22u) + (flips[0] + j) * 6u;
+            const uint32_t *flip = table(e, 22u) + (flips[0] + j) * 4u;
             if (consume(e))
                 return e->error;
-            uint8_t strength = arrangement_output(e, flip[1]);
-            set_arranged(e, flip[3], flip[0], flip[5],
-                         flip[4] && strength > flip[2] ? (uint8_t)(strength - flip[2]) : 0u);
-            if (strength > flip[2])
-                e->updated[flip[0]] = 0u;
-            if (components(e)[flip[0]].kind != 8u && !e->switched[flip[0]]) {
-                e->switched[flip[0]] = 1u;
-                e->switched_nodes[switched_count++] = flip[0];
-            }
+            switched_count = apply_movement_flip(e, flip, switched_count);
         }
     }
     if (notify_shape(e, table(e, 13u)[cells[0] + local]))
@@ -730,7 +796,7 @@ static uint32_t set_token_pos(NEEngine *e, uint32_t token, uint32_t position) {
     for (uint32_t i = 0; i < switched_count; ++i) {
         uint32_t node = e->switched_nodes[i];
         if (components(e)[node].kind == 5u)
-            refresh_wire(e, node);
+            refresh_wire(e, node, input_strength(e, node));
     }
     uint32_t start = position != NONE ? row[4] : row[2], count = position != NONE ? row[5] : row[3];
     for (uint32_t i = 0; i < count; ++i) {
@@ -770,7 +836,7 @@ static uint32_t set_token_pos(NEEngine *e, uint32_t token, uint32_t position) {
                 e->changed_nodes[changed_count++] = node;
             }
         } else if (components(e)[node].kind == 5u)
-            refresh_wire(e, node);
+            refresh_wire(e, node, input_strength(e, node));
         else {
             uint32_t result = update_once(e, node);
             if (result)

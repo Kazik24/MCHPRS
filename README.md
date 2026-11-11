@@ -106,7 +106,9 @@ The compiler takes an isolated plot snapshot, including scheduled work. It finds
 
 Those results become indexed components, links, movement tables and schedules. The runtime processes input changes and scheduled events using that program, then publishes results at the visual update rate.
 
-Rust is the default executor. The optional LLVM backend runs the same program in a native C executor compiled with Clang/LLVM at `-O3`, loaded as a Windows DLL or Linux shared library. The executor is compiled and reused, with circuit-specific program tables. This allows LLVM to optimize the circuit on it's own yielding ~1.6-1.8 inference speed.
+Rust is the default executor. The optional LLVM backend runs the same program in a native C executor compiled with Clang/LLVM at `-O3`, loaded as a Windows DLL or Linux shared library. LLVM optimizes the shared executor, which runs circuit-specific program tables. Performance depends on the circuit and publication settings.
+
+The current PM1 performance baseline is [pm1_redpilator.schem](test_data/pm1_redpilator.schem). Its [protocol](test_data/cpu-references/pm1_redpilator_protocol.json) presses Start once with no preparation ticks; the [captured interpreter outputs](test_data/cpu-references/pm1_redpilator_reference.json) and [measured results](test_data/cpu-references/pm1_redpilator_results.json) are retained. Kernel TPS and server publication/client-send costs are measured separately.
 
 ```text
 /tps 0
@@ -120,8 +122,8 @@ While Redpilator is active, plot edits are blocked in every publication mode. Le
 
 - `/rp compile --llvm` selects the native backend. Install Clang and LLD on the server's PATH, or set `MCHPRS_LLVM_CLANG` and `MCHPRS_LLVM_LINKER` to their executable paths. Bundled native sources build on demand. `MCHPRS_LLVM_WORK_DIR` changes the work directory (default `./work/llvm`); `MCHPRS_LLVM_DLL` selects an already built matching library.
 - `/visual publish all|redstone|io|auto` saves the plot's publication mode and applies it to active compiled execution. `all` includes piston geometry and motion, `redstone` shows redstone components, and `io` shows controls and visible outputs. `auto` uses `all` through the configured fast render TPS threshold (200 by default) and `io` above it or at unlimited TPS. Standard builds default to `redstone`. Switching to `all` catches up piston geometry. `/rp publish` is an alias.
-- `--publish-all`, `--publish-redstone`, and `--publish-io` (also `--io-only`, `-i`) set the mode for the compiled run. `/rp reset` and `/rp off` restore the saved choice. `/visual publish` shows the current mode.
-- `--update` (`-u`) recalculates neighbors after reset. `/rp reset` exports state and pending work back to the interpreter.
+- `--publish-all`, `--publish-redstone`, and `--publish-io` set the mode for the compiled run. `/rp reset` and `/rp off` restore the saved choice. `/visual publish` shows the current mode.
+- `/rp reset` exports state and pending work back to the interpreter.
 - `/rp reset` (aliases `/rp r` and `/rp off`) stops execution, cancels pending compilation and discards this plot's prepared executor and sampling cache. The next compile rebuilds the circuit from the exported interpreter state.
 - `/rp clear` does the same and also clears the process-shared owned LLVM artifact cache, forcing the next native module build; other plots' active executors keep running. A busy native build is reported immediately. Locked artifacts may remain until later cleanup, and a custom `MCHPRS_LLVM_DLL` is never deleted.
 

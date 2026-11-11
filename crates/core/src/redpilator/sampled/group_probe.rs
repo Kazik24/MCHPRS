@@ -1034,6 +1034,12 @@ mod tests {
                 .iter()
                 .map(|row| row.capacity() * std::mem::size_of::<std::ops::Range<usize>>())
                 .sum::<usize>()
+            + program.movement_fixed_ranges.capacity() * std::mem::size_of::<Vec<Option<[std::ops::Range<usize>; 2]>>>()
+            + program
+                .movement_fixed_ranges
+                .iter()
+                .map(|row| row.capacity() * std::mem::size_of::<Option<[std::ops::Range<usize>; 2]>>())
+                .sum::<usize>()
             + program.token_movement_groups.capacity() * std::mem::size_of::<Vec<(usize, usize)>>()
             + program
                 .token_movement_groups

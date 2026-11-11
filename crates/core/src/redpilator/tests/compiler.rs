@@ -515,7 +515,11 @@ fn compiled_pending_ticks_preserve_stale_passive_and_large_initial_queues() {
             native.try_flush(&mut candidate).unwrap();
             let expected = rust.runtime.as_ref().unwrap();
             let actual = native.runtime.as_ref().unwrap();
-            assert_eq!(actual.pending_entries(), expected.pending_entries(), "pending tick {tick}");
+            assert_eq!(
+                native.llvm_runtime.as_ref().unwrap().pending_entries().unwrap(),
+                expected.pending_entries(),
+                "pending tick {tick}"
+            );
             assert_eq!(actual.projected_blocks(), expected.projected_blocks(), "snapshot tick {tick}");
             if tick == 0 {
                 assert_eq!(expected.pending_entries().len(), initial_count + 1);

@@ -93,7 +93,8 @@ impl Runtime {
             reactive_neighbours,
             token_cells,
             token_movement_groups,
-            movement_cells
+            movement_cells,
+            movement_fixed_ranges
         );
         let shape_ports: usize = self.program.shape_steps.iter().map(|step| step.states.ports.len()).sum();
         let shape_valid_ports: usize = self

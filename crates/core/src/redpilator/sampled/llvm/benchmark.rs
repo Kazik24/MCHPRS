@@ -18,6 +18,9 @@ impl LlvmRuntime {
         if mode >= 2 && batch.is_none() {
             return Err(invalid());
         }
+        if count != 0 {
+            self.mark_native_changed();
+        }
         if let Some(commands) = &mut self.commands {
             commands.benchmark_prepare(&self.library.commands, self.state.as_mut_ptr().cast())?;
         }

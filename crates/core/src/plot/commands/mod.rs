@@ -1429,12 +1429,29 @@ mod security_tests {
         for command in ["off", "clear"] {
             assert_eq!(native_command_permission("/rp", &[command]).as_deref(), Some("commands.redpilator.reset"));
         }
-        for flag in ["-O3", "--optimize", "--graph", "--export-json"] {
+        for flag in [
+            "-O3",
+            "--optimize",
+            "--graph",
+            "--export-json",
+            "--io-only",
+            "-i",
+            "-I",
+            "-iu",
+            "-ui",
+            "--update",
+            "-u",
+            "-U",
+        ] {
             assert!(CompilerOptions::parse(flag).is_err(), "retired option {flag} must be rejected");
         }
-        let options = CompilerOptions::parse("--io-only -u").unwrap();
-        assert!(options.io_only && options.update);
+        let options = CompilerOptions::parse("--publish-io").unwrap();
+        assert!(options.io_only && !options.update);
         assert!(CompilerOptions::parse("--llvm").unwrap().llvm);
+        assert!(!CompilerOptions::default().relaxed_mode);
+        let relaxed = CompilerOptions::parse("--relaxed").unwrap();
+        assert!(relaxed.relaxed_mode && !relaxed.llvm);
+        assert!(CompilerOptions::parse("--relaxed --llvm --publish-io").unwrap().relaxed_mode);
         assert_eq!(
             CompilerOptions::parse("--publish-all").unwrap().publication,
             Some(crate::redpilator::PublicationMode::All)
@@ -1446,9 +1463,9 @@ mod security_tests {
         let io = CompilerOptions::parse("--publish-io").unwrap();
         assert_eq!(io.publication, Some(crate::redpilator::PublicationMode::Io));
         assert!(io.io_only);
-        assert!(CompilerOptions::parse("--io-only --publish-io").is_ok());
+        assert!(CompilerOptions::parse("--publish-io --publish-io").is_ok());
         assert!(CompilerOptions::parse("--publish-io --publish-redstone").is_err());
-        assert!(CompilerOptions::parse("--publish-all --io-only").is_err());
+        assert!(CompilerOptions::parse("--publish-all --publish-io").is_err());
         assert!(CompilerOptions::parse("--publish-all --publish-redstone").is_err());
     }
 
@@ -1468,20 +1485,11 @@ mod security_tests {
         for (text, expected) in [
             (
                 "/rp compile --",
-                vec!["--publish-all", "--publish-redstone", "--publish-io", "--io-only", "--update", "--llvm"],
+                vec!["--publish-all", "--publish-redstone", "--publish-io", "--llvm", "--relaxed"],
             ),
             (
                 "/redpilator c -",
-                vec![
-                    "--publish-all",
-                    "--publish-redstone",
-                    "--publish-io",
-                    "--io-only",
-                    "--update",
-                    "--llvm",
-                    "-i",
-                    "-u",
-                ],
+                vec!["--publish-all", "--publish-redstone", "--publish-io", "--llvm", "--relaxed"],
             ),
             ("/rp publish ", vec!["all", "redstone", "io", "auto"]),
             ("/visual publish ", vec!["all", "redstone", "io", "auto"]),

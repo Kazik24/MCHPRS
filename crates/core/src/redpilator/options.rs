@@ -33,6 +33,8 @@ pub struct CompilerOptions {
     pub io_only: bool,
     /// Request the experimental LLVM backend.
     pub llvm: bool,
+    /// Skip sampled wire-shape replay and its indirect callbacks.
+    pub relaxed_mode: bool,
     /// Override the build's default publication scope.
     pub publication: Option<PublicationMode>,
     /// Update all blocks in the input region after reset.
@@ -60,8 +62,8 @@ impl CompilerOptions {
         for option in flags.split_whitespace() {
             if option.starts_with("--") {
                 match option {
-                    "--io-only" => options.io_only = true,
                     "--llvm" => options.llvm = true,
+                    "--relaxed" => options.relaxed_mode = true,
                     "--publish-all" | "--publish-redstone" | "--publish-io" => {
                         let mode = PublicationMode::parse(option.strip_prefix("--publish-").unwrap()).unwrap();
                         if options.publication.is_some_and(|previous| previous != mode) {
@@ -69,28 +71,13 @@ impl CompilerOptions {
                         }
                         options.publication = Some(mode);
                     }
-                    "--update" => options.update = true,
                     _ => return Err(format!("Unrecognized Redpilator option: {option}")),
-                }
-            } else if let Some(short_flags) = option.strip_prefix('-') {
-                if short_flags.is_empty() {
-                    return Err(format!("Unrecognized Redpilator option: {option}"));
-                }
-                for c in short_flags.chars() {
-                    match c.to_ascii_lowercase() {
-                        'i' => options.io_only = true,
-                        'u' => options.update = true,
-                        _ => return Err(format!("Unrecognized Redpilator option: -{c}")),
-                    }
                 }
             } else {
                 return Err(format!("Unrecognized Redpilator option: {option}"));
             }
         }
-        if options.io_only && options.publication.is_some_and(|mode| mode != PublicationMode::Io) {
-            return Err("Choose only one publication mode".into());
-        }
-        options.io_only |= options.publication == Some(PublicationMode::Io);
+        options.io_only = options.publication == Some(PublicationMode::Io);
         Ok(options)
     }
 }

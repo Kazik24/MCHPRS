@@ -732,7 +732,7 @@ fn command_suggestions_reply_to_rapid_typing_backspace_and_empty_results() {
         let (mut plot, mut peer) = fixture(compressed);
         plot.players[0].set_test_permissions(&["*"]);
         let publish = &["--publish-all", "--publish-redstone", "--publish-io"][..];
-        let flags = &["--publish-all", "--publish-redstone", "--publish-io", "--io-only", "--update", "--llvm"][..];
+        let flags = &["--publish-all", "--publish-redstone", "--publish-io", "--llvm", "--relaxed"][..];
         let requests: &[(&str, i32, i32, &[&str])] = &[
             ("/rp c --", 6, 2, flags),
             ("/rp c --p", 6, 3, publish),

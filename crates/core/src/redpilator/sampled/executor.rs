@@ -1162,56 +1162,64 @@ impl Runtime {
             .and_then(|cells| cells.get(cell))
             .cloned()
             .unwrap_or(0..0);
-        for index in transitions {
-            let record = &self.program.movement_transitions[index];
-            let before = self.group_arrangements[record.group];
-            let after = if arriving {
-                before.checked_add(record.delta)
-            } else {
-                before.checked_sub(record.delta)
-            };
-            let Some(after) = after.filter(|&state| before < record.states && state < record.states) else {
-                self.failure = Some(ScratchError {
-                    position: self.program.tokens[token].position,
-                    reason: "invalid movement transition",
-                });
-                return;
-            };
-            let state = if record.fixed_state != usize::MAX {
-                record.fixed_state
-            } else if arriving {
-                after
-            } else {
-                before
-            };
-            let base = if arriving { record.arrive } else { record.depart };
-            let flips = self.program.movement_ranges[base + state].clone();
-            self.group_arrangements[record.group] = after;
-            for index in flips {
-                let flip = self.program.movement_flips[index];
-                let target = flip.target as usize;
-                if !self.consume_component_operation(target) {
+        let fixed = self
+            .program
+            .movement_fixed_ranges
+            .get(token)
+            .and_then(|cells| cells.get(cell))
+            .and_then(Option::as_ref)
+            .map(|edges| edges[usize::from(arriving)].clone())
+            .filter(|flips| {
+                self.tick_operations.checked_add(flips.len()).is_some_and(|total| total <= 1_000_000)
+                    && transitions.clone().all(|index| {
+                        let record = &self.program.movement_transitions[index];
+                        let before = self.group_arrangements[record.group];
+                        let after = if arriving {
+                            before.checked_add(record.delta)
+                        } else {
+                            before.checked_sub(record.delta)
+                        };
+                        before < record.states && after.is_some_and(|state| state < record.states)
+                    })
+            });
+        if let Some(flips) = fixed {
+            // Flips do not call receivers or change source outputs; distinct groups can advance together.
+            for index in transitions {
+                let record = &self.program.movement_transitions[index];
+                let state = &mut self.group_arrangements[record.group];
+                *state = if arriving { *state + record.delta } else { *state - record.delta };
+            }
+            self.tick_operations += flips.len();
+            self.replay_movement_flips::<false>(flips, switched);
+        } else {
+            for index in transitions {
+                let record = &self.program.movement_transitions[index];
+                let before = self.group_arrangements[record.group];
+                let after = if arriving {
+                    before.checked_add(record.delta)
+                } else {
+                    before.checked_sub(record.delta)
+                };
+                let Some(after) = after.filter(|&state| before < record.states && state < record.states) else {
+                    self.failure = Some(ScratchError {
+                        position: self.program.tokens[token].position,
+                        reason: "invalid movement transition",
+                    });
+                    return;
+                };
+                let state = if record.fixed_state != usize::MAX {
+                    record.fixed_state
+                } else if arriving {
+                    after
+                } else {
+                    before
+                };
+                let base = if arriving { record.arrive } else { record.depart };
+                let flips = self.program.movement_ranges[base + state].clone();
+                self.group_arrangements[record.group] = after;
+                if !self.replay_movement_flips::<true>(flips, switched) {
                     return;
                 }
-                let contribution = match flip.source() {
-                    ArrangementSource::Component(node) => self.output(node).saturating_sub(flip.attenuation),
-                    ArrangementSource::Token(_) => flip.token_contribution,
-                };
-                self.set_arrangement_contribution(
-                    flip.link as usize,
-                    target,
-                    flip.side,
-                    if flip.entering { contribution } else { 0 },
-                );
-                if contribution != 0 {
-                    self.updated_in_phase[target] = 0;
-                }
-                // WithMoveStep reserves -2 for pistons: flips do not deliver them.
-                if !matches!(self.blocks[target], Block::Piston { .. }) && !self.switched[target] {
-                    self.switched[target] = true;
-                    switched.push(target);
-                }
-                self.operations += 1;
             }
         }
         let steps = self
@@ -1294,6 +1302,32 @@ impl Runtime {
                 }
             }
         }
+    }
+
+    #[inline]
+    fn replay_movement_flips<const GUARDED: bool>(&mut self, flips: std::ops::Range<usize>, switched: &mut Vec<usize>) -> bool {
+        for index in flips {
+            let flip = self.program.movement_flips[index];
+            let target = flip.target as usize;
+            if GUARDED && !self.consume_component_operation(target) {
+                return false;
+            }
+            let contribution = match flip.source() {
+                ArrangementSource::Component(node) => self.output(node).saturating_sub(flip.attenuation),
+                ArrangementSource::Token(_) => flip.token_contribution,
+            };
+            self.set_arrangement_contribution(flip.link as usize, target, flip.side, if flip.entering { contribution } else { 0 });
+            if contribution != 0 {
+                self.updated_in_phase[target] = 0;
+            }
+            // WithMoveStep reserves -2 for pistons: flips do not deliver them.
+            if !matches!(self.blocks[target], Block::Piston { .. }) && !self.switched[target] {
+                self.switched[target] = true;
+                switched.push(target);
+            }
+            self.operations += 1;
+        }
+        true
     }
 
     fn mark_changed_wire(&mut self, wire: usize) -> bool {
