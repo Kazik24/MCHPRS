@@ -101,8 +101,6 @@ Open `http://localhost:8443` and load your plot coordinates. [Viewer setup](wave
 
 Use `/redpilator` or its short alias `/rp`.
 
-Credit to MAIR for the sampled compilation algorithm that informed this Redpilator rewrite, including piston arrangements and conditional wiring.
-
 Redpilator discovers the circuit once and runs a compact program instead of repeatedly searching the world for the same connections. MROWW's rewritten compiler also models supported piston movement and the electrical connections it changes.
 
 The compiler takes an isolated plot snapshot, including scheduled work. It finds components, wires, inputs, piston groups and the cells their payloads can occupy. It then probes transitions in scratch worlds using the interpreter, recording electrical dependencies, ordered rise/fall updates, movement notifications and conditional connections for different payload arrangements.
