@@ -291,8 +291,8 @@ fn executor_cache_refreshes_drained_command_output_queue() {
         );
         // The rate window has expired, but an undrained queue would still reject output.
         plot.world.command_output_window = Instant::now() - Duration::from_secs(2);
-        plot.world.command_output_count = 64;
-        plot.world.command_messages = (0..64)
+        plot.world.command_output_count = crate::chat_commands::COMMAND_OUTPUT_QUEUE_LIMIT;
+        plot.world.command_messages = (0..crate::chat_commands::COMMAND_OUTPUT_QUEUE_LIMIT)
             .map(|_| crate::chat_commands::ChatCommand {
                 recipient: crate::chat_commands::Recipient::All,
                 message: "already sent".into(),
@@ -707,8 +707,8 @@ fn activation_refreshes_output_drained_while_cold_or_cached_compilation_runs() {
                 })),
             );
             plot.world.command_output_window = Instant::now() - Duration::from_secs(2);
-            plot.world.command_output_count = 64;
-            plot.world.command_messages = (0..64)
+            plot.world.command_output_count = crate::chat_commands::COMMAND_OUTPUT_QUEUE_LIMIT;
+            plot.world.command_messages = (0..crate::chat_commands::COMMAND_OUTPUT_QUEUE_LIMIT)
                 .map(|_| crate::chat_commands::ChatCommand {
                     recipient: crate::chat_commands::Recipient::All,
                     message: "already sent".into(),

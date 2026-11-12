@@ -25,6 +25,8 @@ pub use options::{CompilerOptions, PublicationMode};
 pub(crate) use sampled::Program as CachedProgram;
 pub use task_monitor::TaskMonitor;
 
+pub(crate) const MAX_LLVM_BATCH: u32 = 64;
+
 pub(crate) fn initialize_llvm_cache() -> Result<(), String> {
     sampled::initialize_cache()
 }

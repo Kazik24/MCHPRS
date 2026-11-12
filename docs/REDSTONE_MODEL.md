@@ -1288,7 +1288,7 @@ Otherwise traverse at most **256** following cells, each time using the current 
 
 The current `PlotWorld` command executor accepts supported `say` and `tellraw` commands through the repository's chat parser. It does not dispatch arbitrary world-editing commands.
 
-Live output limits are $64$ queued outputs, $64$ accepted outputs per one-second window, and $65{,}536$ message bytes in that window. Commands longer than $131{,}068$ bytes or source names longer than $256$ bytes are rejected. The window follows wall-clock time, not $t$.
+Live output accepts bursts into an ordered queue bounded at $4{,}096$ messages, with at most $65{,}536$ bytes per message. Delivery drains at most $1{,}024$ messages per one-second wall-clock window, including while simulation is paused; exhausting the delivery window leaves the remaining messages queued. Execution fails only when the queue or message-size bound is exceeded, not because an earlier command used a delivery slot. Commands longer than $131{,}068$ bytes or source names longer than $256$ bytes are rejected. The delivery window follows wall-clock time, not $t$.
 
 For complete reproduction of command success counts, extend $\Sigma$ with the output queue, window timestamp, counters, and elapsed-time observations. Without that host state, command-bearing traces are not solely a function of electrical state and logical ticks. Offline replay can disable output rate/queue limits; length restrictions and supported-command parsing remain.
 

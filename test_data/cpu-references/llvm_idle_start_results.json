@@ -1,5 +1,5 @@
 {
-  "status": "implemented_and_verified; performance_comparison_deferred",
+  "status": "implemented_and_verified; clean_CPU_comparison_completed",
   "native_semantic_version": 36,
   "recorded_at": "2026-11-11T23:23:54.171871+01:00",
   "entry_contract": {
@@ -17,11 +17,35 @@
     "motion capacity"
   ],
   "performance": {
-    "accepted_new_tps": null,
-    "status": "deferred: CPU very busy per user; incidental fixture runner timing discarded; no new paired performance run",
-    "preceding_static_program_results": "llvm_static_program_results.json",
-    "preliminary_context_probe": "earlier three-round native probe suggested about 2.8% median improvement, with one negative round; insufficient to claim a repeatable speed gain",
-    "compact_kind_layout": "scratch-only prototype; not adopted or timed under busy CPU"
+    "recorded_at": "2026-11-12T10:37:55.947625+01:00",
+    "protocol": "Previous semantic35 static DLL versus current semantic36 DLL; same frozen circuit and mode; CPU24; 50000-tick warmup per variant, three alternating paired 50000-tick runs, 16-tick calls, no publication or compile in timer.",
+    "accepted_new_tps": {
+      "strict": 4253.044801557575,
+      "relaxed": 5521.239274396609
+    },
+    "previous_tps": {
+      "strict": 4112.645491621221,
+      "relaxed": 5401.627302884605
+    },
+    "gain_percent": {
+      "strict": 3.4138442086095955,
+      "relaxed": 2.2143692040383467
+    },
+    "paired_gain_percent": {
+      "strict": [
+        3.6355741231935745,
+        3.3959218600145835,
+        2.811926088826855
+      ],
+      "relaxed": [
+        2.2143692040383467,
+        0.9273831533148646,
+        4.908549547906049
+      ]
+    },
+    "all_final_snapshots_and_work_match": true,
+    "details": "llvm_codegen_analysis.json",
+    "limitations": "Kernel TPS, not live-server publication/packet throughput; PM1/FPU performance not remeasured in this pass."
   },
   "validation": {
     "focused_tests": {
@@ -113,5 +137,6 @@
     "llvm_movement.c": "b41bfd29d8405e3a084e371898962694c58b9452c12a17234fb836591cfc9140",
     "command_engine.c": "b50bda357f9505c88273b599a422d648d85915576ccc1fd50c02c1f4d5baca7a",
     "abi.h": "95d6e4b1a86e87c5409af3de9cf15c2cda1f6a35b5cd80ba6f0635f833f5be76"
-  }
+  },
+  "scope": "Idle-start specialization before movement-rule layout optimization; current layout results are in llvm_movement_layout_results.json."
 }

@@ -30,6 +30,58 @@ pub(super) fn fixture(compressed: bool) -> (Plot, TcpStream) {
 }
 
 #[test]
+fn command_burst_delivers_final_shutdown_after_simulation_stops() {
+    let (mut plot, _old_peer) = fixture(true);
+    let connection = connection(true).unwrap();
+    let _incoming = connection.incoming;
+    let mut peer = connection.peer;
+    plot.players[0].client = connection.player;
+    plot.world.packet_senders.clear();
+    plot.world.packet_senders.push(PlayerPacketSender::new(&plot.players[0].client));
+    for index in 0..1533 {
+        plot.world.execute_command_block(&format!("say {index}"), "@").unwrap();
+    }
+    plot.world.execute_command_block("say shut", "@").unwrap();
+    plot.update();
+    assert_eq!(plot.world.command_messages.len(), 510);
+    plot.update();
+    assert_eq!(
+        plot.world.command_messages.len(),
+        510,
+        "exhausted delivery window must preserve the backlog"
+    );
+    std::thread::sleep(Duration::from_millis(1050));
+    plot.update();
+    assert!(plot.world.command_messages.is_empty());
+    plot.players[0].send_packet(&CKeepAlive { id: 1534 }.encode());
+    let mut received = Vec::new();
+    loop {
+        let (id, mut frame) = read_frame(&mut peer, true).unwrap();
+        if id == 0x26 {
+            assert_eq!(frame.read_long().unwrap(), 1534);
+            break;
+        }
+        if id == 0x72 {
+            let payload = &frame.get_ref()[frame.position() as usize..];
+            let mut named = vec![payload[0], 0, 0];
+            named.extend_from_slice(&payload[1..]);
+            let component = nbt::Blob::from_reader(&mut std::io::Cursor::new(named)).unwrap();
+            let value: serde_json::Value = serde_json::from_str(&mchprs_network::text::to_json(&nbt::Value::Compound(component.content))).unwrap();
+            received.push(value["text"].as_str().unwrap().to_owned());
+        }
+    }
+    assert_eq!(received.len(), 1534);
+    for (index, message) in received[..1533].iter().enumerate() {
+        assert_eq!(message, &format!("[@] {index}"));
+    }
+    assert_eq!(received.last().unwrap(), "[@] shut");
+    assert_eq!(
+        plot.world.piston_state.logical_tick, 0,
+        "delivery must continue while simulation is paused"
+    );
+}
+
+#[test]
 fn animal_emote_sound_plays_at_each_listener() {
     let (mut plot, mut first) = fixture(false);
     let connection = connection(false).unwrap();

@@ -21,6 +21,7 @@ pub(super) struct Api {
     read_effects: unsafe extern "C" fn(*const c_void, *mut u32, u32) -> u32,
     read_output: unsafe extern "C" fn(*const c_void, u64, *mut u32) -> u32,
     ack: unsafe extern "C" fn(*mut c_void, u32, u64),
+    refresh_queue: unsafe extern "C" fn(*mut c_void, u32) -> u32,
 }
 
 #[cfg(any(windows, target_os = "linux"))]
@@ -45,6 +46,7 @@ impl Api {
                 read_effects: module.symbol(b"ne_command_read_effects\0")?,
                 read_output: module.symbol(b"ne_command_read_output_state\0")?,
                 ack: module.symbol(b"ne_command_ack_effects\0")?,
+                refresh_queue: module.symbol(b"ne_command_refresh_queue\0")?,
             })
         }
     }
@@ -396,6 +398,12 @@ impl State {
         runtime.command_emissions = emissions;
         runtime.command_output_state = output;
         Ok(())
+    }
+
+    pub(super) fn refresh_queue(&mut self, api: &Api, queued: usize) -> Result<(), ScratchError> {
+        // SAFETY: The exclusive state owns its pending effects; this updates only queue accounting.
+        let status = unsafe { (api.refresh_queue)(self.memory.as_mut_ptr().cast(), id(queued)?) };
+        if status == 0 { Ok(()) } else { Err(invalid()) }
     }
 
     pub(super) fn acknowledge(&mut self, api: &Api, queued: usize) {
@@ -778,6 +786,42 @@ mod tests {
 
     #[cfg(any(windows, target_os = "linux"))]
     #[test]
+    fn drained_host_queue_recovers_without_discarding_native_completion_messages() {
+        use mchprs_world::{TickEntry, TickPriority};
+        let mut program = program(&[("repeating_command_block", "say shut", "\"@\"")]);
+        let pos = program.positions[0];
+        let entity = program.command_blocks.get_mut(&pos).unwrap();
+        entity.automatic = true;
+        entity.condition_met = true;
+        program.command_output_state = Some(crate::chat_commands::CommandBlockOutputState {
+            window: std::time::Instant::now(),
+            count: 0,
+            bytes: 0,
+            queued: crate::chat_commands::COMMAND_OUTPUT_QUEUE_LIMIT,
+            limited: true,
+        });
+        program.prepare_projection();
+        let ticks = [TickEntry {
+            pos,
+            block_type: Some(program.initial[0].registry_id()),
+            ticks_left: 1,
+            tick_priority: TickPriority::Normal,
+        }];
+        let mut native = super::super::LlvmRuntime::new(&program, &ticks).unwrap();
+        native.tick().unwrap();
+        native.refresh_command_queue(0).unwrap();
+        native.tick().unwrap();
+        native.refresh_command_queue(0).unwrap();
+        native.tick().unwrap();
+        let mut projection = program.into_runtime_prepared();
+        native.sync_effects(&mut projection).unwrap();
+        assert_eq!(projection.command_emissions.len(), 2, "queue refresh must retain unexported messages");
+        assert!(projection.command_emissions.iter().all(|m| m.message.message.contains("shut")));
+        assert_eq!(projection.command_output_state.as_ref().unwrap().queued, 2);
+    }
+
+    #[cfg(any(windows, target_os = "linux"))]
+    #[test]
     fn llvm_io_and_effects_export_commands_without_entities_and_keep_empty_queue_quota_state() {
         use mchprs_world::{TickEntry, TickPriority};
         unsafe extern "C" fn reject_read(_: *const c_void, _: *mut u32, _: u32) -> u32 {
@@ -878,7 +922,7 @@ mod tests {
             ticks_left: 1,
             tick_priority: TickPriority::Normal,
         }];
-        for count in 0..=16 {
+        for count in 0..=crate::redpilator::MAX_LLVM_BATCH {
             let mut scalar = super::super::LlvmRuntime::new(&program, &ticks).unwrap();
             let mut batched = super::super::LlvmRuntime::new(&program, &ticks).unwrap();
             for _ in 0..count {
@@ -1045,12 +1089,14 @@ mod tests {
         native.sync_projection(&mut projection).unwrap();
         assert_eq!(
             projection.command_emissions.len(),
-            1,
-            "first tick rate-limited; second tick enters a fresh window"
+            2,
+            "both ticks enqueue output while delivery owns the wall-clock limit"
         );
-        assert_eq!(projection.command_emissions[0].tick, 2);
+        assert_eq!(projection.command_emissions[0].tick, 1);
+        assert_eq!(projection.command_emissions[1].tick, 2);
+        assert_eq!(projection.command_output_state.as_ref().unwrap().count, 1);
         completed = 99;
-        assert!(native.tick_batch(17, &mut completed).is_err());
+        assert!(native.tick_batch(crate::redpilator::MAX_LLVM_BATCH + 1, &mut completed).is_err());
         assert_eq!(completed, 0);
         assert_eq!(unsafe { (native.library.tick_count)(engine) }, 2);
     }
@@ -1071,7 +1117,7 @@ mod tests {
                 count: 0,
                 bytes: 0,
                 queued: 0,
-                limited: false,
+                limited: true,
             });
             program.prepare_projection();
             let ticks = vec![TickEntry {

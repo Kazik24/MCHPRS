@@ -19,7 +19,7 @@
 #define NE_CMD_STATE_WORDS 11u
 #define NE_CMD_EFFECT_WORDS 8u
 #define NE_CMD_NONE UINT32_MAX
-#define NE_CMD_MAX_COUNT 64u
+#define NE_CMD_MAX_QUEUED 4096u
 #define NE_CMD_MAX_COMMAND_BYTES 131068u
 #define NE_CMD_MAX_SOURCE_BYTES 256u
 #define NE_CMD_MAX_OUTPUT_BYTES 65536u
@@ -474,14 +474,12 @@ static uint32_t execute_command(NECommandEngine *engine, uint32_t index, uint64_
         } else {
             if (current_window_age(engine, now_ns) >= NE_CMD_WINDOW_NS)
                 reset_window(engine, now_ns);
-            if ((engine->limited &&
-                 (engine->output_queued >= NE_CMD_MAX_COUNT || engine->output_count >= NE_CMD_MAX_COUNT)) ||
+            if ((engine->limited && engine->output_queued >= NE_CMD_MAX_QUEUED) ||
                 spec[0] > NE_CMD_MAX_COMMAND_BYTES || spec[1] > NE_CMD_MAX_SOURCE_BYTES) {
                 set_error(state, NE_CMD_ERROR_OUTPUT_LIMIT, NE_CMD_NONE, 0u);
             } else if (spec[2] == NE_CMD_RESULT_ERROR) {
                 set_error(state, NE_CMD_ERROR_PARSE, spec[8], spec[9]);
-            } else if (engine->limited && (engine->output_bytes > NE_CMD_MAX_OUTPUT_BYTES ||
-                                           spec[7] > NE_CMD_MAX_OUTPUT_BYTES - engine->output_bytes)) {
+            } else if (engine->limited && spec[7] > NE_CMD_MAX_OUTPUT_BYTES) {
                 set_error(state, NE_CMD_ERROR_OUTPUT_BYTE_LIMIT, NE_CMD_NONE, 0u);
             } else {
                 if (engine->output_count == UINT32_MAX || engine->output_bytes > UINT32_MAX - spec[7] ||
@@ -692,6 +690,15 @@ MCHPRS_NATIVE_EXPORT uint32_t ne_command_read_effects(const void *memory, uint32
         return NE_CMD_INVALID;
     if (words)
         copy_bytes(out, engine->effects, (size_t)words * sizeof(uint32_t));
+    return NE_CMD_OK;
+}
+
+MCHPRS_NATIVE_EXPORT uint32_t ne_command_refresh_queue(void *memory, uint32_t host_queued) {
+    NECommandEngine *engine = (NECommandEngine *)memory;
+    if (!engine) return NE_CMD_INVALID;
+    uint64_t queued = (uint64_t)host_queued + engine->effect_count;
+    if (queued > UINT32_MAX) return NE_CMD_CAPACITY;
+    engine->output_queued = (uint32_t)queued;
     return NE_CMD_OK;
 }
 

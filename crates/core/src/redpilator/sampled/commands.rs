@@ -105,6 +105,12 @@ impl CommandBlockHost for Runtime {
 }
 
 impl Runtime {
+    pub(in crate::redpilator) fn refresh_command_queue(&mut self, queued: usize) {
+        if let Some(state) = &mut self.command_output_state {
+            state.queued = queued.saturating_add(self.command_emissions.len());
+        }
+    }
+
     pub(in crate::redpilator) fn refresh_command_output_state(&mut self, world: &impl crate::world::World) {
         if self.command_output_state.is_some() {
             self.command_output_state = world.command_block_output_state();

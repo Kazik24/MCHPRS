@@ -321,7 +321,7 @@ fn compiled_command_output_limits_match_reference() {
                 native.command_output().collect::<Vec<_>>()
             );
         }
-        assert_eq!(published.command_output().count(), 64);
+        assert_eq!(published.command_output().count(), 80);
     }
 }
 

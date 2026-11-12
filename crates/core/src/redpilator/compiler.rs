@@ -223,13 +223,13 @@ impl Compiler {
     }
 
     /// Run one normal native iteration, retaining the completed prefix if a tick fails.
-    pub(crate) fn tick_batch_16(&mut self) -> (u32, Result<(), ExecutionError>) {
+    pub(crate) fn tick_batch(&mut self, count: u32) -> (u32, Result<(), ExecutionError>) {
         let mut completed = 0;
         let result = if let Some(native) = self.llvm_runtime.as_mut() {
-            native.tick_batch(16, &mut completed).map_err(ExecutionError)
+            native.tick_batch(count, &mut completed).map_err(ExecutionError)
         } else {
             (|| {
-                for _ in 0..16 {
+                for _ in 0..count {
                     self.tick()?;
                     completed += 1;
                 }
@@ -476,6 +476,19 @@ impl Compiler {
 
     pub fn tick_with_world<W: World>(&mut self, _world: &mut W) -> Result<(), ExecutionError> {
         self.tick()
+    }
+
+    pub(crate) fn refresh_command_queue<W: World>(&mut self, world: &W) -> Result<(), ExecutionError> {
+        let Some(runtime) = &mut self.runtime else {
+            return Ok(());
+        };
+        let queued = world.command_block_output_state().map_or(0, |state| state.queued);
+        if let Some(native) = &mut self.llvm_runtime {
+            native.refresh_command_queue(queued).map_err(ExecutionError)?;
+        } else {
+            runtime.refresh_command_queue(queued);
+        }
+        Ok(())
     }
 
     pub fn on_use_block(&mut self, pos: BlockPos) {

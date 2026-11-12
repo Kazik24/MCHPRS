@@ -670,9 +670,15 @@ impl WireGraph {
         })?;
         let mut found = BTreeMap::new();
         self.visit_sources(root, digit, search, |source, distance| {
-            found.entry((source.x, source.y, source.z)).and_modify(|old: &mut u8| *old = (*old).min(distance)).or_insert(distance);
+            found
+                .entry((source.x, source.y, source.z))
+                .and_modify(|old: &mut u8| *old = (*old).min(distance))
+                .or_insert(distance);
         })?;
-        Ok(found.into_iter().map(|((x, y, z), attenuation)| (BlockPos::new(x, y, z), attenuation)).collect())
+        Ok(found
+            .into_iter()
+            .map(|((x, y, z), attenuation)| (BlockPos::new(x, y, z), attenuation))
+            .collect())
     }
 
     fn visit_sources(
@@ -752,34 +758,70 @@ mod tests {
         let b = BlockPos::new(2, 11, 0);
         let source_a = ArrangementSource::Component(5);
         let source_b = ArrangementSource::Token(0);
-        let keys = [(source_a, false), (source_b, false), (source_a, true), (source_b, true), (ArrangementSource::Component(6), false)];
-        let links: Vec<_> = keys.iter().map(|&(source, side)| super::super::program::ArrangementLink {
-            target: 0, source, side, silent: false, attenuation: 0, group: 0, active: vec![true],
-        }).collect();
+        let keys = [
+            (source_a, false),
+            (source_b, false),
+            (source_a, true),
+            (source_b, true),
+            (ArrangementSource::Component(6), false),
+        ];
+        let links: Vec<_> = keys
+            .iter()
+            .map(|&(source, side)| super::super::program::ArrangementLink {
+                target: 0,
+                source,
+                side,
+                silent: false,
+                attenuation: 0,
+                group: 0,
+                active: vec![true],
+            })
+            .collect();
         let mut graph = WireGraph {
             positions: positions.to_vec(),
             index: positions.into_iter().enumerate().map(|(i, pos)| (pos, i)).collect(),
             token_cells: HashMap::new(),
-            nodes: (0..3).map(|i| Local {
-                axes: vec![],
-                ports: vec![Some(Ports {
-                    wires: if i < 2 { vec![i + 1] } else { vec![] },
-                    sources: if i == 1 { vec![a] } else if i == 2 { vec![b, a] } else { vec![] },
-                })],
-            }).collect(),
+            nodes: (0..3)
+                .map(|i| Local {
+                    axes: vec![],
+                    ports: vec![Some(Ports {
+                        wires: if i < 2 { vec![i + 1] } else { vec![] },
+                        sources: if i == 1 {
+                            vec![a]
+                        } else if i == 2 {
+                            vec![b, a]
+                        } else {
+                            vec![]
+                        },
+                    })],
+                })
+                .collect(),
             source_ids: HashMap::from([(a, source_a), (b, source_b)]),
             readers: vec![Reader {
-                component: 0, position: positions[0], dependencies: vec![], links: vec![3, 1, 4, 0, 2],
-                table: Local { axes: vec![], ports: vec![Some(ReaderPorts {
-                    roots: vec![(0, false), (2, false), (0, true), (0, false)],
-                    direct: vec![(source_a, false)],
-                })] },
+                component: 0,
+                position: positions[0],
+                dependencies: vec![],
+                links: vec![3, 1, 4, 0, 2],
+                table: Local {
+                    axes: vec![],
+                    ports: vec![Some(ReaderPorts {
+                        roots: vec![(0, false), (2, false), (0, true), (0, false)],
+                        direct: vec![(source_a, false)],
+                    })],
+                },
             }],
-            by_component: vec![Some(0)], by_token: vec![],
+            by_component: vec![Some(0)],
+            by_token: vec![],
         };
         for budget in 0..=12 {
-            let mut old_search = Search { remaining: Some(budget), ..Default::default() };
-            let mut new_search = Search { remaining: Some(budget), ..Default::default() };
+            let mut old_search = Search {
+                remaining: Some(budget),
+                ..Default::default()
+            };
+            let mut new_search = Search {
+                remaining: Some(budget),
+                ..Default::default()
+            };
             let expected = graph.reader_sources(0, |_| 0, &mut old_search);
             let mut updates = vec![(99, 7)];
             let actual = graph.reader_attenuations(0, &links, |_| 0, &mut new_search, &mut updates);
@@ -787,9 +829,14 @@ mod tests {
             assert_eq!(old_search.remaining, new_search.remaining);
             assert_eq!(updates[0], (99, 7));
             match (expected, actual) {
-                (Ok(expected), Ok(())) => assert_eq!(updates[1..], graph.links(0).iter().map(|&index| {
-                    (index, expected.get(&(links[index].source, links[index].side)).copied().unwrap_or(u8::MAX))
-                }).collect::<Vec<_>>()),
+                (Ok(expected), Ok(())) => assert_eq!(
+                    updates[1..],
+                    graph
+                        .links(0)
+                        .iter()
+                        .map(|&index| { (index, expected.get(&(links[index].source, links[index].side)).copied().unwrap_or(u8::MAX)) })
+                        .collect::<Vec<_>>()
+                ),
                 (Err(expected), Err(actual)) => {
                     assert_eq!(actual.position, expected.position);
                     assert_eq!(actual.reason, expected.reason);
@@ -803,7 +850,9 @@ mod tests {
             let mut old_search = Search::default();
             let mut new_search = Search::default();
             let expected = graph.reader_sources(0, |_| digit, &mut old_search).unwrap_err();
-            let actual = graph.reader_attenuations(0, &links, |_| digit, &mut new_search, &mut Vec::new()).unwrap_err();
+            let actual = graph
+                .reader_attenuations(0, &links, |_| digit, &mut new_search, &mut Vec::new())
+                .unwrap_err();
             assert_eq!(actual.position, expected.position);
             assert_eq!(actual.reason, expected.reason);
             assert_eq!(new_search.spent, old_search.spent);

@@ -99,6 +99,12 @@ fn normal_tick_budget(available: u64, max_batch_size: u64, width: u32) -> u32 {
     (budget / width * width) as u32
 }
 
+fn publication_clock(previous: Instant, now: Instant, interval: Duration) -> Instant {
+    // Visual intervals are at most one second; skip old frames while retaining the cadence.
+    let residual = (now - previous).as_nanos() % interval.as_nanos();
+    now - Duration::from_nanos(residual as u64)
+}
+
 pub use self::data::empty_plot;
 use self::data::sleep_time_for_tps;
 use self::scoreboard::Scoreboard;
@@ -202,8 +208,8 @@ impl Plot {
         }
         messages::plot_update_timings(
             p.simulated_ticks,
+            (p.simulation + p.projection).as_secs_f64(),
             p.simulation.as_secs_f64(),
-            p.simulation.saturating_sub(p.projection).as_secs_f64(),
             p.projection.as_secs_f64(),
             p.plot.as_secs_f64(),
             p.flushes,
@@ -361,11 +367,13 @@ impl Plot {
         true
     }
 
-    fn tick_batch_16(&mut self) -> (u32, bool) {
+    fn tick_batch(&mut self, count: u32) -> (u32, bool) {
         if self.compiling_redpilator() || self.redpilator_handoff_failed {
             return (0, false);
         }
-        let (completed, result) = self.redpilator.tick_batch_16();
+        let (completed, result) = self.redpilator.tick_batch(count);
+        self.world.update_stats.native_batches += 1;
+        self.world.update_stats.max_native_batch = self.world.update_stats.max_native_batch.max(count);
         self.timings.ticks(completed);
         if let Err(error) = result {
             tracing::error!(%error, "sampled execution failed");
@@ -1086,6 +1094,10 @@ impl Plot {
     }
 
     fn update_with_tick_limit(&mut self, tick_limit: u32) {
+        self.update_with_limits(tick_limit, 16);
+    }
+
+    fn update_with_limits(&mut self, tick_limit: u32, native_batch: u32) {
         if let Some(source) = &mut self.waveform_source {
             source.poll(
                 &self.world.waveform,
@@ -1116,17 +1128,24 @@ impl Plot {
             self.last_player_time = now;
 
             let effective_send_rate = self.effective_send_rate();
-            let world_send_rate = Duration::from_nanos(1_000_000_000 / effective_send_rate.max(1) as u64);
-            let batch_width = if tick_limit < 16 {
+            let world_send_rate = Duration::from_nanos((1_000_000_000 / effective_send_rate.max(1) as u64).max(1));
+            let batch_width = if tick_limit < native_batch {
                 1
+            } else if normal_tick_batch_width(self.tps, self.last_nspt, self.redpilator.uses_llvm()) > 1 {
+                native_batch
             } else {
-                normal_tick_batch_width(self.tps, self.last_nspt, self.redpilator.uses_llvm())
+                1
             };
 
             let max_batch_size = match self.last_nspt {
                 Some(Duration::ZERO) | None => 1,
                 Some(last_nspt) => {
-                    let ticks_fit = (world_send_rate.as_nanos() / last_nspt.as_nanos()) as u64;
+                    let remaining = if self.world_send_rate.0 == 0 {
+                        Duration::from_millis(200)
+                    } else {
+                        world_send_rate.saturating_sub(now - self.last_world_send_time)
+                    };
+                    let ticks_fit = (remaining.as_nanos() / last_nspt.as_nanos()) as u64;
                     // A tick previously took longer than the world send rate.
                     // Run at least one just so we're not stuck doing nothing
                     ticks_fit.max(1)
@@ -1166,8 +1185,8 @@ impl Plot {
                 };
                 let mut ticks_completed = 0;
                 for _ in 0..batch_size / batch_width {
-                    let success = if batch_width == 16 {
-                        let (completed, success) = self.tick_batch_16();
+                    let success = if batch_width > 1 {
+                        let (completed, success) = self.tick_batch(batch_width);
                         ticks_completed += completed;
                         success
                     } else if self.tick() {
@@ -1195,12 +1214,21 @@ impl Plot {
 
             let now = Instant::now();
             let time_since_last_world_send = now - self.last_world_send_time;
-            if self.world_send_rate.0 != 0 && time_since_last_world_send > world_send_rate {
-                self.last_world_send_time = now;
+            if self.world_send_rate.0 != 0 && time_since_last_world_send >= world_send_rate {
+                self.last_world_send_time = publication_clock(self.last_world_send_time, now, world_send_rate);
                 if self.redpilator.is_active() {
                     let projection_started = Instant::now();
                     self.redpilator.flush(&mut self.world);
                     self.world.update_stats.projection += projection_started.elapsed();
+                    self.world.update_stats.publications += 1;
+                    self.world.update_stats.last_publication_tick = self.world.update_stats.simulated_ticks;
+                    let gap = self
+                        .world
+                        .update_stats
+                        .last_publication_time
+                        .replace(now)
+                        .map_or(time_since_last_world_send, |last| now - last);
+                    self.world.update_stats.maximum_publication_gap = self.world.update_stats.maximum_publication_gap.max(gap);
                 }
                 self.world.flush_block_changes();
             }
@@ -1245,13 +1273,29 @@ impl Plot {
             }
         }
 
-        for command in self.world.command_messages.drain(..) {
+        let delivered = self.world.command_delivery.take(Instant::now(), self.world.command_messages.len());
+        for command in self.world.command_messages.drain(..delivered) {
             // Automated plot circuits cannot flood chat on unrelated plots.
-            for player in &self.players {
-                if command.recipient.matches(&player.username) {
-                    player.send_raw_system_message(command.message.clone());
+            let mut viewers = self
+                .players
+                .iter()
+                .filter(|player| command.recipient.matches(&player.username))
+                .peekable();
+            if viewers.peek().is_some() {
+                let packet = CChatMessage {
+                    message: command.message,
+                    position: 1,
+                    sender: 0,
+                }
+                .encode();
+                for player in viewers {
+                    player.send_packet(&packet);
                 }
             }
+        }
+
+        if let Err(error) = self.redpilator.refresh_command_queue(&self.world) {
+            self.fallback_redpilator(&error.to_string());
         }
 
         self.remove_dc_players();

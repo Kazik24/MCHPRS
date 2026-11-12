@@ -1148,7 +1148,7 @@ const uint8_t *ne_program_identity(void) {
 }
 
 MchprsNativeApiDescriptor ne_api_descriptor(void) {
-    MchprsNativeApiDescriptor value = {3u, 16u, 36u};
+    MchprsNativeApiDescriptor value = {3u, 16u, 38u};
     return value;
 }
 
@@ -1727,6 +1727,18 @@ static inline __attribute__((always_inline)) uint32_t batch_impl(NEEngine *e, ui
     BATCH_STEP(); BATCH_STEP(); BATCH_STEP(); BATCH_STEP();
     BATCH_STEP(); BATCH_STEP(); BATCH_STEP(); BATCH_STEP();
     BATCH_STEP(); BATCH_STEP(); BATCH_STEP(); BATCH_STEP();
+    BATCH_STEP(); BATCH_STEP(); BATCH_STEP(); BATCH_STEP();
+    BATCH_STEP(); BATCH_STEP(); BATCH_STEP(); BATCH_STEP();
+    BATCH_STEP(); BATCH_STEP(); BATCH_STEP(); BATCH_STEP();
+    BATCH_STEP(); BATCH_STEP(); BATCH_STEP(); BATCH_STEP();
+    BATCH_STEP(); BATCH_STEP(); BATCH_STEP(); BATCH_STEP();
+    BATCH_STEP(); BATCH_STEP(); BATCH_STEP(); BATCH_STEP();
+    BATCH_STEP(); BATCH_STEP(); BATCH_STEP(); BATCH_STEP();
+    BATCH_STEP(); BATCH_STEP(); BATCH_STEP(); BATCH_STEP();
+    BATCH_STEP(); BATCH_STEP(); BATCH_STEP(); BATCH_STEP();
+    BATCH_STEP(); BATCH_STEP(); BATCH_STEP(); BATCH_STEP();
+    BATCH_STEP(); BATCH_STEP(); BATCH_STEP(); BATCH_STEP();
+    BATCH_STEP(); BATCH_STEP(); BATCH_STEP(); BATCH_STEP();
 #undef BATCH_STEP
     *completed = done;
     return NE_OK;
@@ -1738,9 +1750,13 @@ uint32_t ne_tick_batch(void *memory, uint32_t count, MchprsNativeClock clock,
         return NE_INVALID;
     *completed = 0u;
     NEEngine *e = (NEEngine *)memory;
-    if (!e || count > 16u || (e->commands && !clock))
+    if (!e || count > 64u || (e->commands && !clock))
         return NE_INVALID;
     if (count == 16u)
         return batch_impl(e, 16u, clock, context, logical_base, completed);
+    if (count == 32u)
+        return batch_impl(e, 32u, clock, context, logical_base, completed);
+    if (count == 64u)
+        return batch_impl(e, 64u, clock, context, logical_base, completed);
     return batch_impl(e, count, clock, context, logical_base, completed);
 }

@@ -24,6 +24,35 @@ pub struct ChatCommand {
     pub message: String,
 }
 
+pub(crate) const COMMAND_OUTPUT_QUEUE_LIMIT: usize = 4096;
+const COMMAND_OUTPUT_DELIVERY_RATE: usize = 1024;
+
+pub(crate) struct CommandBlockDelivery {
+    window: std::time::Instant,
+    count: usize,
+}
+
+impl Default for CommandBlockDelivery {
+    fn default() -> Self {
+        Self {
+            window: std::time::Instant::now(),
+            count: 0,
+        }
+    }
+}
+
+impl CommandBlockDelivery {
+    pub(crate) fn take(&mut self, now: std::time::Instant, queued: usize) -> usize {
+        if now.duration_since(self.window) >= std::time::Duration::from_secs(1) {
+            self.window = now;
+            self.count = 0;
+        }
+        let count = queued.min(COMMAND_OUTPUT_DELIVERY_RATE - self.count);
+        self.count += count;
+        count
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct CommandBlockOutputState {
     pub(crate) window: std::time::Instant,
@@ -40,11 +69,11 @@ impl CommandBlockOutputState {
             self.count = 0;
             self.bytes = 0;
         }
-        if (self.limited && (self.queued >= 64 || self.count >= 64)) || command.len() > 131_068 || source.len() > 256 {
+        if (self.limited && self.queued >= COMMAND_OUTPUT_QUEUE_LIMIT) || command.len() > 131_068 || source.len() > 256 {
             return Err(messages::COMMAND_BLOCK_OUTPUT_LIMIT.into());
         }
         let message = parse(command, source, None)?;
-        if self.limited && self.bytes.saturating_add(message.message.len()) > 65_536 {
+        if self.limited && message.message.len() > 65_536 {
             return Err(messages::COMMAND_BLOCK_OUTPUT_BYTE_LIMIT.into());
         }
         self.count += 1;
@@ -259,5 +288,37 @@ mod tests {
         for input in [r#"tellraw @a []"#, r#"tellraw @a ["hello"]"#, r#"tellraw @a {"text":"hello","extra":[]}"#] {
             assert!(!parse(input, "@", None).unwrap().message.contains("extra"));
         }
+    }
+    #[test]
+    fn command_bursts_are_buffered_and_delivered_in_order_at_1024_per_second() {
+        let now = std::time::Instant::now();
+        let mut state = CommandBlockOutputState {
+            window: now,
+            count: 0,
+            bytes: 0,
+            queued: 0,
+            limited: true,
+        };
+        let mut queue = Vec::new();
+        for index in 0..COMMAND_OUTPUT_QUEUE_LIMIT {
+            queue.push(state.execute(&format!("say {index}"), "@").unwrap());
+        }
+        assert!(state.execute("say overflow", "@").is_err());
+        let mut delivery = CommandBlockDelivery { window: now, count: 0 };
+        let mut received = Vec::new();
+        for second in 0..4 {
+            let at = now + std::time::Duration::from_secs(second);
+            let count = delivery.take(at, queue.len());
+            assert_eq!(count, 1024);
+            received.extend(queue.drain(..count).map(|message| message.message));
+            assert_eq!(delivery.take(at + std::time::Duration::from_millis(999), queue.len()), 0);
+        }
+        assert!(queue.is_empty());
+        for (index, message) in received.iter().enumerate() {
+            assert_eq!(message, &format!(r#"{{"text":"[@] {index}"}}"#));
+        }
+        state.queued = 0;
+        assert!(state.execute("say shut", "@").is_ok());
+        assert!(state.execute(&format!("say {}", "x".repeat(65_536)), "@").is_err());
     }
 }

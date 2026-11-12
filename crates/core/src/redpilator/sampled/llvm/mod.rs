@@ -178,6 +178,13 @@ impl LlvmRuntime {
             commands.acknowledge(&self.library.commands, host_queued);
         }
     }
+
+    pub(in crate::redpilator) fn refresh_command_queue(&mut self, host_queued: usize) -> Result<(), ScratchError> {
+        if let Some(commands) = &mut self.commands {
+            commands.refresh_queue(&self.library.commands, host_queued)?;
+        }
+        Ok(())
+    }
     pub(in crate::redpilator) fn initialize_tick(&mut self, tick: u64) {
         if let Some(commands) = &mut self.commands {
             commands.logical_base = tick;
@@ -301,13 +308,13 @@ impl LlvmRuntime {
         self.call_status(status)
     }
 
-    /// Advance at most sixteen ticks, retaining the successfully completed prefix on failure.
+    /// Advance a bounded batch, retaining the successfully completed prefix on failure.
     pub(in crate::redpilator) fn tick_batch(&mut self, count: u32, completed: &mut u32) -> Result<(), ScratchError> {
         *completed = 0;
-        if count > 16 {
+        if count > crate::redpilator::MAX_LLVM_BATCH {
             return Err(ScratchError {
                 position: None,
-                reason: "LLVM tick batch exceeds sixteen ticks",
+                reason: "LLVM tick batch exceeds 64 ticks",
             });
         }
         if count != 0 {
@@ -508,6 +515,9 @@ pub(in crate::redpilator) struct LlvmRuntime;
 impl LlvmRuntime {
     pub(in crate::redpilator) fn has_effects(&self) -> bool {
         false
+    }
+    pub(in crate::redpilator) fn refresh_command_queue(&mut self, _: usize) -> Result<(), ScratchError> {
+        unreachable!()
     }
     pub(in crate::redpilator) fn tick_batch(&mut self, _: u32, _: &mut u32) -> Result<(), ScratchError> {
         unreachable!()

@@ -69,6 +69,17 @@ mod tests {
     }
 
     #[test]
+    fn movement_steps_inline_fixed_cases_and_preserve_conditional_metadata() {
+        let steps = bytes(&[2, 1, 0, 2, 2, 1, 3, 2, 0, 2, 2, u32::MAX]);
+        let cases = bytes(&[7, 1, 9, 0, 13, 4, 17, 2]);
+        assert_eq!(
+            inline_movement_cases(&steps, &cases),
+            [2, 1, 0, 2, 2, 1, 9, 0, 17, 2, 3, 2, 0, 2, 2, u32::MAX, 0, 0, 0, 0]
+        );
+        assert!(inline_movement_cases(&[], &[]).is_empty());
+    }
+
+    #[test]
     fn generated_empty_tables_and_cancelled_initialization_are_supported() {
         let mut empty = Program::new(vec![], vec![], vec![], vec![], vec![], vec![], vec![]).unwrap();
         empty.compile_movement_flips().unwrap();
@@ -124,6 +135,23 @@ fn descriptor_words(p: &NativeProgramDescriptor) -> [u32; 13] {
 
 fn bytes(words: &[u32]) -> Vec<u8> {
     words.iter().flat_map(|word| word.to_le_bytes()).collect()
+}
+
+fn inline_movement_cases(steps: &[u8], cases: &[u8]) -> Vec<u32> {
+    let mut words = Vec::with_capacity(steps.len() / 24 * 10);
+    for step in steps.chunks_exact(24) {
+        let row: [u32; 6] = std::array::from_fn(|i| u32::from_le_bytes(step[i * 4..i * 4 + 4].try_into().unwrap()));
+        words.extend_from_slice(&row);
+        for base in [row[2], row[3]] {
+            if row[5] == u32::MAX {
+                words.extend_from_slice(&[0, 0]);
+            } else {
+                let at = (base as usize + row[5] as usize) * 8;
+                words.extend(cases[at..at + 8].chunks_exact(4).map(|word| u32::from_le_bytes(word.try_into().unwrap())));
+            }
+        }
+    }
+    words
 }
 
 impl GeneratedProgram {
@@ -305,7 +333,17 @@ impl GeneratedProgram {
         .unwrap();
         writeln!(header, "static const uint32_t ne_static_sizes[{AUX_TABLES}] = {{{}}};", sizes.join(",")).unwrap();
         fs::write(directory.join("program.bin"), blob).map_err(|e| e.to_string())?;
+        let section = |index: usize| {
+            let at = directory_offset + index * 8;
+            let offset = u32::from_le_bytes(blob[at..at + 4].try_into().unwrap()) as usize;
+            let count = u32::from_le_bytes(blob[at + 4..at + 8].try_into().unwrap()) as usize;
+            &blob[offset..offset + count * 4]
+        };
+        // Keep proven fixed plans beside their rules to avoid a dependent lookup during movement.
+        let movement_steps = inline_movement_cases(section(20), section(21));
+        header.push_str("#define NE_OPTIMIZED_MOVEMENT_STEPS 1\n");
         for (name, words) in [
+            ("movement_steps", &movement_steps),
             ("command_blocks", &self.commands.blocks),
             ("command_components", &self.command_components),
             ("command_neighbors", &self.command_neighbors),

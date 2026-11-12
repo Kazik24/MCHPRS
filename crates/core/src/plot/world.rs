@@ -30,6 +30,7 @@ pub struct PlotWorld {
     pub(super) is_cursed: bool,
     pub(super) fast_rendering: bool,
     pub(super) command_messages: Vec<crate::chat_commands::ChatCommand>,
+    pub(super) command_delivery: crate::chat_commands::CommandBlockDelivery,
     pub(super) sounds: Vec<crate::sound::Emission>,
     pub(super) level_events: Vec<(u128, CEffect)>,
     pub(super) open_chests: HashSet<BlockPos>,
@@ -54,6 +55,12 @@ pub(super) struct UpdateStats {
     pub(super) projection: Duration,
     pub(super) plot: Duration,
     pub(super) simulated_ticks: u64,
+    pub(super) native_batches: u64,
+    pub(super) max_native_batch: u32,
+    pub(super) publications: u64,
+    pub(super) last_publication_tick: u64,
+    pub(super) last_publication_time: Option<Instant>,
+    pub(super) maximum_publication_gap: Duration,
 }
 
 impl PlotWorld {
@@ -74,6 +81,7 @@ impl PlotWorld {
             is_cursed: false,
             fast_rendering: false,
             command_messages: Vec::new(),
+            command_delivery: Default::default(),
             sounds: Vec::new(),
             level_events: Vec::new(),
             open_chests: HashSet::new(),

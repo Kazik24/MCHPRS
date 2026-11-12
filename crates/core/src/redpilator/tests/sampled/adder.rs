@@ -1,7 +1,7 @@
 //! Manifest acceptance against frozen reference traces and the Java-verified native component model.
 
-use super::*;
 use super::program::notification_component;
+use super::*;
 use crate::plot::worldedit::{load_schematic, paste_clipboard};
 use crate::plot::{PLOT_WIDTH, PlotWorld};
 use crate::world::storage::Chunk;
@@ -205,7 +205,10 @@ fn adder1bit_reference_manifest_arithmetic() {
                             if arrival == 0 { "departure" } else { "arrival" },
                             recipients
                                 .iter()
-                                .map(|&component| (program.positions[notification_component(component)], program.initial[notification_component(component)]))
+                                .map(|&component| (
+                                    program.positions[notification_component(component)],
+                                    program.initial[notification_component(component)]
+                                ))
                                 .collect::<Vec<_>>()
                         );
                     }
@@ -214,7 +217,10 @@ fn adder1bit_reference_manifest_arithmetic() {
                         token.cells[cell],
                         program.token_watchers[index][cell]
                             .iter()
-                            .map(|&component| (program.positions[notification_component(component)], program.initial[notification_component(component)]))
+                            .map(|&component| (
+                                program.positions[notification_component(component)],
+                                program.initial[notification_component(component)]
+                            ))
                             .collect::<Vec<_>>()
                     );
                     for (arrival, steps) in program.move_steps[index][cell].iter().enumerate() {

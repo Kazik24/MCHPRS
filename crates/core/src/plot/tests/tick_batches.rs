@@ -1,6 +1,18 @@
 use super::*;
 
 #[test]
+fn publication_clock_keeps_cadence_and_skips_expired_frames() {
+    let start = Instant::now();
+    let period = Duration::from_millis(100);
+    assert_eq!(publication_clock(start, start + period, period), start + period);
+    assert_eq!(publication_clock(start, start + Duration::from_millis(105), period), start + period);
+    assert_eq!(
+        publication_clock(start, start + Duration::from_millis(450), period),
+        start + Duration::from_millis(400)
+    );
+}
+
+#[test]
 fn native_batches_require_high_configured_and_observed_rate() {
     for uses_llvm in [false, true] {
         for tps in [Tps::Limited(0), Tps::Limited(20), Tps::Limited(99), Tps::Limited(100), Tps::Unlimited] {
@@ -106,12 +118,19 @@ fn benchmark_tick_limits_preserve_native_batch_tails() {
         )
         .unwrap();
     let clock = plot.world.piston_state().logical_tick;
-    for ticks in [1, 15, 16, 17] {
-        benchmark::run_ticks(&mut plot, ticks);
-        assert_eq!(plot.world.update_stats.simulated_ticks, u64::from(ticks));
+    let mut total = 0;
+    for batch in [16, 32, 64] {
+        for ticks in [1, 15, 16, 17, 31, 32, 33, 63, 64, 65] {
+            benchmark::run_ticks_batched(&mut plot, ticks, batch);
+            total += u64::from(ticks);
+            assert_eq!(plot.world.update_stats.simulated_ticks, u64::from(ticks));
+            if ticks >= batch {
+                assert_eq!(plot.world.update_stats.max_native_batch, batch);
+            }
+        }
     }
     plot.redpilator
         .try_reset(&mut plot.world, (BlockPos::new(30, 19, 30), BlockPos::new(38, 23, 38)))
         .unwrap();
-    assert_eq!(plot.world.piston_state().logical_tick, clock + 49);
+    assert_eq!(plot.world.piston_state().logical_tick, clock + total);
 }

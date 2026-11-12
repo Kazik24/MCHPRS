@@ -1,0 +1,1411 @@
+{
+  "recorded_at": "2026-11-12T10:37:55.963381+01:00",
+  "source_commit": "7c376d93afd1c54c86da65fd4ea6195edd23737d",
+  "scope": "ZCore12B generated C/LLVM/assembly investigation before movement-rule layout optimization",
+  "normal_batch_game_ticks": 16,
+  "native_semantic_version": 36,
+  "paired_performance": {
+    "strict": {
+      "protocol": "Native C kernel in 16-game-tick batches; same immutable frozen ZCore Program. Python dispatch included equally. No compile, publication or output reads in timer.",
+      "parity": "All 968 lamp outputs and completed game clock must match after timing. Full snapshot and logical-work differences are recorded and allowed. Separate every-tick 800-screen-lamp parity proof exists.",
+      "fixture": "ZCore12B_FIX.schem",
+      "timing_thread": "logical CPU24",
+      "ticks": 50000,
+      "preparation_ticks": 413,
+      "rounds": 3,
+      "warmup_game_ticks_per_variant": 50000,
+      "reference": "\\\\?\\F:\\rustrepos\\MCHPRS\\work\\llvm-static-program-20261111\\runtime-zcore-strict\\mroww-native-cache\\8a1dab49ced6dcc821886555062a15a260776f609e762801d791ed05496e3741-0\\engine.dll",
+      "candidate": "\\\\?\\F:\\rustrepos\\MCHPRS\\work\\llvm-quiet-start-20261111\\runtime-zcore-strict\\mroww-native-cache\\0d65aa449d29f714e0ccd7f5f03b55d6a90637268f1eb26acc7462492d40ae10-0\\engine.dll",
+      "dll_sha256": {
+        "reference": "7561596af12818854f314039cce63e3935f4a193be2665dc4169ce61450e4747",
+        "candidate": "7364ab5dad8b8095b7ebca497aaf46ffc5b64bf046ba8870d10ba7bd24914f72"
+      },
+      "results": [
+        {
+          "round": 1,
+          "variant": "reference",
+          "elapsed_seconds": 12.181169099996623,
+          "tps": 4104.696321801645,
+          "thread_cpu_seconds": 12.15625,
+          "cpu_fraction": 0.9979542932380251,
+          "lamp_output_sha256": "da8ddd8c64b56dbd0755fd0d03069bb8b53f9aa6db1a7278020392ed4e7c0338",
+          "final_snapshot_sha256": "11c3a0c7768c0b1adb3e9867b495d35d73328a032b78c5f7dcfac729defe90ce",
+          "game_ticks_completed": 50413,
+          "logical_work_count": 815512061
+        },
+        {
+          "round": 1,
+          "variant": "candidate",
+          "elapsed_seconds": 11.75384920000215,
+          "tps": 4253.925599112745,
+          "thread_cpu_seconds": 11.734375,
+          "cpu_fraction": 0.9983431640417721,
+          "lamp_output_sha256": "da8ddd8c64b56dbd0755fd0d03069bb8b53f9aa6db1a7278020392ed4e7c0338",
+          "final_snapshot_sha256": "11c3a0c7768c0b1adb3e9867b495d35d73328a032b78c5f7dcfac729defe90ce",
+          "game_ticks_completed": 50413,
+          "logical_work_count": 815512061
+        },
+        {
+          "round": 2,
+          "variant": "candidate",
+          "elapsed_seconds": 11.758321199995407,
+          "tps": 4252.30771889609,
+          "thread_cpu_seconds": 11.703125,
+          "cpu_fraction": 0.9953057754541159,
+          "lamp_output_sha256": "da8ddd8c64b56dbd0755fd0d03069bb8b53f9aa6db1a7278020392ed4e7c0338",
+          "final_snapshot_sha256": "11c3a0c7768c0b1adb3e9867b495d35d73328a032b78c5f7dcfac729defe90ce",
+          "game_ticks_completed": 50413,
+          "logical_work_count": 815512061
+        },
+        {
+          "round": 2,
+          "variant": "reference",
+          "elapsed_seconds": 12.15762459999678,
+          "tps": 4112.645491621221,
+          "thread_cpu_seconds": 12.109375,
+          "cpu_fraction": 0.9960313300020144,
+          "lamp_output_sha256": "da8ddd8c64b56dbd0755fd0d03069bb8b53f9aa6db1a7278020392ed4e7c0338",
+          "final_snapshot_sha256": "11c3a0c7768c0b1adb3e9867b495d35d73328a032b78c5f7dcfac729defe90ce",
+          "game_ticks_completed": 50413,
+          "logical_work_count": 815512061
+        },
+        {
+          "round": 3,
+          "variant": "reference",
+          "elapsed_seconds": 12.08686139999918,
+          "tps": 4136.7232026010815,
+          "thread_cpu_seconds": 12.0625,
+          "cpu_fraction": 0.997984472627511,
+          "lamp_output_sha256": "da8ddd8c64b56dbd0755fd0d03069bb8b53f9aa6db1a7278020392ed4e7c0338",
+          "final_snapshot_sha256": "11c3a0c7768c0b1adb3e9867b495d35d73328a032b78c5f7dcfac729defe90ce",
+          "game_ticks_completed": 50413,
+          "logical_work_count": 815512061
+        },
+        {
+          "round": 3,
+          "variant": "candidate",
+          "elapsed_seconds": 11.75628339999821,
+          "tps": 4253.044801557575,
+          "thread_cpu_seconds": 11.734375,
+          "cpu_fraction": 0.9981364518655433,
+          "lamp_output_sha256": "da8ddd8c64b56dbd0755fd0d03069bb8b53f9aa6db1a7278020392ed4e7c0338",
+          "final_snapshot_sha256": "11c3a0c7768c0b1adb3e9867b495d35d73328a032b78c5f7dcfac729defe90ce",
+          "game_ticks_completed": 50413,
+          "logical_work_count": 815512061
+        }
+      ],
+      "status": "ok",
+      "reference_median_tps": 4112.645491621221,
+      "candidate_median_tps": 4253.044801557575,
+      "median_ratio_gain_percent": 3.4138442086095955,
+      "paired_gain_percent": [
+        3.6355741231935745,
+        3.3959218600145835,
+        2.811926088826855
+      ],
+      "full_snapshot_matches": true,
+      "logical_work_matches": true
+    },
+    "relaxed": {
+      "protocol": "Native C kernel in 16-game-tick batches; same immutable frozen ZCore Program. Python dispatch included equally. No compile, publication or output reads in timer.",
+      "parity": "All 968 lamp outputs and completed game clock must match after timing. Full snapshot and logical-work differences are recorded and allowed. Separate every-tick 800-screen-lamp parity proof exists.",
+      "fixture": "ZCore12B_FIX.schem",
+      "timing_thread": "logical CPU24",
+      "ticks": 50000,
+      "preparation_ticks": 413,
+      "rounds": 3,
+      "warmup_game_ticks_per_variant": 50000,
+      "reference": "\\\\?\\F:\\rustrepos\\MCHPRS\\work\\llvm-static-program-20261111\\runtime-zcore-relaxed\\mroww-native-cache\\689a569d4f60beab26fcac4078d5cea12f92008998fd6b6f67c812684bcc8843-0\\engine.dll",
+      "candidate": "\\\\?\\F:\\rustrepos\\MCHPRS\\work\\llvm-quiet-start-20261111\\runtime-zcore-relaxed\\mroww-native-cache\\2a1ec648e655288cf165126a062e6abc1972802454a923c18470e254dd7f83be-0\\engine.dll",
+      "dll_sha256": {
+        "reference": "0aa7f01ae003f1a981bec063dddbe72258f71a63bae5da77b884210165beeb8e",
+        "candidate": "75df208f3b1501ce860e8f7671ac80f6fcd100b9c75efebf31616f92ca396bf3"
+      },
+      "results": [
+        {
+          "round": 1,
+          "variant": "reference",
+          "elapsed_seconds": 9.25646979999874,
+          "tps": 5401.627302884605,
+          "thread_cpu_seconds": 9.234375,
+          "cpu_fraction": 0.9976130425015006,
+          "lamp_output_sha256": "da8ddd8c64b56dbd0755fd0d03069bb8b53f9aa6db1a7278020392ed4e7c0338",
+          "final_snapshot_sha256": "35b9d4c8d014d028a030c852e505e1243266e83d9cab1711259c9924d0ae9551",
+          "game_ticks_completed": 50413,
+          "logical_work_count": 590521175
+        },
+        {
+          "round": 1,
+          "variant": "candidate",
+          "elapsed_seconds": 9.05593790000421,
+          "tps": 5521.239274396609,
+          "thread_cpu_seconds": 9.03125,
+          "cpu_fraction": 0.9972738439378876,
+          "lamp_output_sha256": "da8ddd8c64b56dbd0755fd0d03069bb8b53f9aa6db1a7278020392ed4e7c0338",
+          "final_snapshot_sha256": "35b9d4c8d014d028a030c852e505e1243266e83d9cab1711259c9924d0ae9551",
+          "game_ticks_completed": 50413,
+          "logical_work_count": 590521175
+        },
+        {
+          "round": 2,
+          "variant": "candidate",
+          "elapsed_seconds": 9.08746290000272,
+          "tps": 5502.085736161303,
+          "thread_cpu_seconds": 9.046875,
+          "cpu_fraction": 0.9955336378866859,
+          "lamp_output_sha256": "da8ddd8c64b56dbd0755fd0d03069bb8b53f9aa6db1a7278020392ed4e7c0338",
+          "final_snapshot_sha256": "35b9d4c8d014d028a030c852e505e1243266e83d9cab1711259c9924d0ae9551",
+          "game_ticks_completed": 50413,
+          "logical_work_count": 590521175
+        },
+        {
+          "round": 2,
+          "variant": "reference",
+          "elapsed_seconds": 9.171738500001084,
+          "tps": 5451.529173012738,
+          "thread_cpu_seconds": 9.140625,
+          "cpu_fraction": 0.9966076769413912,
+          "lamp_output_sha256": "da8ddd8c64b56dbd0755fd0d03069bb8b53f9aa6db1a7278020392ed4e7c0338",
+          "final_snapshot_sha256": "35b9d4c8d014d028a030c852e505e1243266e83d9cab1711259c9924d0ae9551",
+          "game_ticks_completed": 50413,
+          "logical_work_count": 590521175
+        },
+        {
+          "round": 3,
+          "variant": "reference",
+          "elapsed_seconds": 9.313102899999649,
+          "tps": 5368.779936921119,
+          "thread_cpu_seconds": 9.296875,
+          "cpu_fraction": 0.9982575195212705,
+          "lamp_output_sha256": "da8ddd8c64b56dbd0755fd0d03069bb8b53f9aa6db1a7278020392ed4e7c0338",
+          "final_snapshot_sha256": "35b9d4c8d014d028a030c852e505e1243266e83d9cab1711259c9924d0ae9551",
+          "game_ticks_completed": 50413,
+          "logical_work_count": 590521175
+        },
+        {
+          "round": 3,
+          "variant": "candidate",
+          "elapsed_seconds": 8.877353600000788,
+          "tps": 5632.309160242931,
+          "thread_cpu_seconds": 8.859375,
+          "cpu_fraction": 0.9979747793305443,
+          "lamp_output_sha256": "da8ddd8c64b56dbd0755fd0d03069bb8b53f9aa6db1a7278020392ed4e7c0338",
+          "final_snapshot_sha256": "35b9d4c8d014d028a030c852e505e1243266e83d9cab1711259c9924d0ae9551",
+          "game_ticks_completed": 50413,
+          "logical_work_count": 590521175
+        }
+      ],
+      "status": "ok",
+      "reference_median_tps": 5401.627302884605,
+      "candidate_median_tps": 5521.239274396609,
+      "median_ratio_gain_percent": 2.2143692040383467,
+      "paired_gain_percent": [
+        2.2143692040383467,
+        0.9273831533148646,
+        4.908549547906049
+      ],
+      "full_snapshot_matches": true,
+      "logical_work_matches": true
+    }
+  },
+  "sampling_profile": {
+    "protocol": "Same-process native worker, actual current DLL, 16-tick calls, CPU24; independent thread samples RIP using a requested one-millisecond high-resolution Python sleep. Diagnostic only: no TPS claim. Inline costs belong to the containing machine-code function.",
+    "sample_count": 6556,
+    "sampled_seconds": 10.356985899999927,
+    "native_module_sha256": "75df208f3b1501ce860e8f7671ac80f6fcd100b9c75efebf31616f92ca396bf3",
+    "final_state_and_work_match": true,
+    "functions": [
+      {
+        "function": "set_token_pos",
+        "samples": 2407,
+        "percent": 36.71446003660769
+      },
+      {
+        "function": "apply_movement_flip",
+        "samples": 812,
+        "percent": 12.385600976205003
+      },
+      {
+        "function": "set_arranged",
+        "samples": 642,
+        "percent": 9.792556436851738
+      },
+      {
+        "function": "run_piston_events",
+        "samples": 557,
+        "percent": 8.496034167175107
+      },
+      {
+        "function": "route_reader",
+        "samples": 370,
+        "percent": 5.643685173886516
+      },
+      {
+        "function": "update_piston",
+        "samples": 265,
+        "percent": 4.042098840756559
+      },
+      {
+        "function": "finish_piston",
+        "samples": 218,
+        "percent": 3.325198291641245
+      },
+      {
+        "function": "update_wire_watcher",
+        "samples": 202,
+        "percent": 3.0811470408785846
+      },
+      {
+        "function": "notify_shape",
+        "samples": 174,
+        "percent": 2.654057352043929
+      },
+      {
+        "function": "execute_output",
+        "samples": 163,
+        "percent": 2.4862721171446003
+      },
+      {
+        "function": "update_component",
+        "samples": 153,
+        "percent": 2.3337400854179378
+      },
+      {
+        "function": "tick_motions",
+        "samples": 128,
+        "percent": 1.9524100061012812
+      },
+      {
+        "function": "set_contribution",
+        "samples": 110,
+        "percent": 1.6778523489932886
+      },
+      {
+        "function": "add_motion",
+        "samples": 68,
+        "percent": 1.0372178157413057
+      },
+      {
+        "function": "set_component",
+        "samples": 65,
+        "percent": 0.9914582062233069
+      },
+      {
+        "function": "drain",
+        "samples": 61,
+        "percent": 0.9304453935326419
+      },
+      {
+        "function": "notify",
+        "samples": 59,
+        "percent": 0.8999389871873094
+      },
+      {
+        "function": "notify_home",
+        "samples": 49,
+        "percent": 0.7474069554606467
+      },
+      {
+        "function": "change_side_outputs",
+        "samples": 41,
+        "percent": 0.6253813300793166
+      },
+      {
+        "function": "update_repeater",
+        "samples": 7,
+        "percent": 0.10677242220866381
+      },
+      {
+        "function": "refresh_arranged",
+        "samples": 4,
+        "percent": 0.06101281269066504
+      },
+      {
+        "function": "outside_engine",
+        "samples": 1,
+        "percent": 0.01525320317266626
+      }
+    ],
+    "top_instructions": [
+      {
+        "text_offset": "0xc917",
+        "samples": 430,
+        "function": "set_token_pos"
+      },
+      {
+        "text_offset": "0xd3f7",
+        "samples": 338,
+        "function": "apply_movement_flip"
+      },
+      {
+        "text_offset": "0xb37a",
+        "samples": 196,
+        "function": "set_arranged"
+      },
+      {
+        "text_offset": "0xb3bb",
+        "samples": 138,
+        "function": "set_arranged"
+      },
+      {
+        "text_offset": "0xc897",
+        "samples": 137,
+        "function": "set_token_pos"
+      },
+      {
+        "text_offset": "0xcca3",
+        "samples": 129,
+        "function": "set_token_pos"
+      },
+      {
+        "text_offset": "0xcc53",
+        "samples": 127,
+        "function": "set_token_pos"
+      },
+      {
+        "text_offset": "0xd4ae",
+        "samples": 118,
+        "function": "apply_movement_flip"
+      },
+      {
+        "text_offset": "0xc78e",
+        "samples": 107,
+        "function": "set_token_pos"
+      },
+      {
+        "text_offset": "0xc7e4",
+        "samples": 99,
+        "function": "set_token_pos"
+      },
+      {
+        "text_offset": "0xcc13",
+        "samples": 87,
+        "function": "set_token_pos"
+      },
+      {
+        "text_offset": "0xd9b1",
+        "samples": 82,
+        "function": "route_reader"
+      },
+      {
+        "text_offset": "0x9c2d",
+        "samples": 79,
+        "function": "run_piston_events"
+      },
+      {
+        "text_offset": "0xc8a3",
+        "samples": 74,
+        "function": "set_token_pos"
+      },
+      {
+        "text_offset": "0xb3ef",
+        "samples": 73,
+        "function": "update_wire_watcher"
+      },
+      {
+        "text_offset": "0xa5eb",
+        "samples": 73,
+        "function": "tick_motions"
+      },
+      {
+        "text_offset": "0xd167",
+        "samples": 72,
+        "function": "notify_shape"
+      },
+      {
+        "text_offset": "0xb716",
+        "samples": 65,
+        "function": "update_piston"
+      },
+      {
+        "text_offset": "0xc7f0",
+        "samples": 61,
+        "function": "set_token_pos"
+      },
+      {
+        "text_offset": "0xc24b",
+        "samples": 59,
+        "function": "set_token_pos"
+      },
+      {
+        "text_offset": "0xb2f4",
+        "samples": 57,
+        "function": "set_arranged"
+      },
+      {
+        "text_offset": "0xce31",
+        "samples": 57,
+        "function": "set_token_pos"
+      },
+      {
+        "text_offset": "0xbe45",
+        "samples": 50,
+        "function": "finish_piston"
+      },
+      {
+        "text_offset": "0x3345",
+        "samples": 49,
+        "function": "execute_output"
+      },
+      {
+        "text_offset": "0xdaa8",
+        "samples": 48,
+        "function": "route_reader"
+      },
+      {
+        "text_offset": "0x9c5b",
+        "samples": 48,
+        "function": "run_piston_events"
+      },
+      {
+        "text_offset": "0xb3a7",
+        "samples": 48,
+        "function": "set_arranged"
+      },
+      {
+        "text_offset": "0xb365",
+        "samples": 45,
+        "function": "set_arranged"
+      },
+      {
+        "text_offset": "0xa0eb",
+        "samples": 42,
+        "function": "run_piston_events"
+      },
+      {
+        "text_offset": "0xb712",
+        "samples": 41,
+        "function": "update_piston"
+      }
+    ]
+  },
+  "logical_work_profile": {
+    "run_ticks": 50000,
+    "timing": "not measured; counters only",
+    "opcode_counts": {
+      "0": 19492371,
+      "1": 126053,
+      "2": 5106198,
+      "3": 3174037,
+      "4": 36503,
+      "5": 0,
+      "6": 0,
+      "7": 0,
+      "8": 0,
+      "9": 0,
+      "10": 167419,
+      "11": 0,
+      "12": 5523,
+      "13": 0
+    },
+    "ordinary_target_kinds": {
+      "0": 0,
+      "1": 0,
+      "2": 36503,
+      "3": 0,
+      "4": 4,
+      "5": 5069586,
+      "6": 5523,
+      "7": 0,
+      "8": 14380755,
+      "9": 0,
+      "10": 0,
+      "11": 0,
+      "12": 0,
+      "13": 0,
+      "14": 0,
+      "15": 0
+    },
+    "ordinary_contributions": 19492371,
+    "ordinary_unchanged": 0,
+    "ordinary_both_nonzero": 0,
+    "ordinary_changed": 19492371,
+    "ordinary_ineffective": 86869,
+    "arranged_contributions": 140713771,
+    "arranged_unchanged": 108431,
+    "arranged_side": 0,
+    "arranged_target_wire": 107480709,
+    "arranged_unwatched_wire": 50313358,
+    "ordinary_unchanged_percent": 0.0,
+    "arranged_unchanged_percent": 0.07705784531920476,
+    "output_range_invocations": 11717006,
+    "top_ranges": [
+      [
+        1029,
+        16664
+      ],
+      [
+        1055,
+        16664
+      ],
+      [
+        1081,
+        16664
+      ],
+      [
+        1107,
+        16664
+      ],
+      [
+        1133,
+        16664
+      ],
+      [
+        1300,
+        16664
+      ],
+      [
+        1324,
+        16664
+      ],
+      [
+        2186,
+        16664
+      ],
+      [
+        2187,
+        16664
+      ],
+      [
+        2188,
+        16664
+      ],
+      [
+        2195,
+        16664
+      ],
+      [
+        2196,
+        16664
+      ],
+      [
+        2208,
+        16664
+      ],
+      [
+        2256,
+        16664
+      ],
+      [
+        2260,
+        16664
+      ],
+      [
+        2263,
+        16664
+      ],
+      [
+        2305,
+        16664
+      ],
+      [
+        2392,
+        16664
+      ],
+      [
+        2401,
+        16664
+      ],
+      [
+        2718,
+        16664
+      ]
+    ],
+    "top_100_ranges_fraction": 0.14222063213076788,
+    "top_1000_ranges_fraction": 0.7130748247461851,
+    "final_state_and_work_match": true,
+    "fallback_step_cases": 68874325,
+    "fixed_fallback_cases": 65167207,
+    "empty_fixed_fallback_cases": 42682186,
+    "conditional_fallback_cases": 3707118,
+    "fixed_fallback_flips": 52327437,
+    "work_delta": 589186737,
+    "movement_consume_sites": [
+      {
+        "index": 40,
+        "function": "route_reader",
+        "line": 385,
+        "count": 38523614
+      },
+      {
+        "index": 41,
+        "function": "route_refresh",
+        "line": 435,
+        "count": 279442
+      },
+      {
+        "index": 42,
+        "function": "route_refresh",
+        "line": 441,
+        "count": 279399
+      },
+      {
+        "index": 43,
+        "function": "notify_shape",
+        "line": 634,
+        "count": 0
+      },
+      {
+        "index": 44,
+        "function": "notify_shape",
+        "line": 656,
+        "count": 0
+      },
+      {
+        "index": 45,
+        "function": "notify_shape",
+        "line": 670,
+        "count": 0
+      },
+      {
+        "index": 46,
+        "function": "notify_home",
+        "line": 686,
+        "count": 26380530
+      },
+      {
+        "index": 47,
+        "function": "set_token_pos",
+        "line": 797,
+        "count": 93706546
+      },
+      {
+        "index": 48,
+        "function": "set_token_pos",
+        "line": 816,
+        "count": 127701257
+      },
+      {
+        "index": 49,
+        "function": "set_token_pos",
+        "line": 839,
+        "count": 36006092
+      },
+      {
+        "index": 50,
+        "function": "set_token_pos",
+        "line": 860,
+        "count": 93928601
+      },
+      {
+        "index": 51,
+        "function": "run_piston_events",
+        "line": 1025,
+        "count": 24249300
+      },
+      {
+        "index": 52,
+        "function": "tick_motions",
+        "line": 1121,
+        "count": 16761654
+      }
+    ],
+    "flat_flip_operations": 46322331,
+    "flat_ranges": 13723667,
+    "ordinary_notify_callbacks": 45170835,
+    "scheduled_callbacks": 11769032,
+    "accounted_total": 589186737
+  },
+  "program_shape": {
+    "components": 87786,
+    "operations": 44044,
+    "links": 79569,
+    "unique_nonempty_ranges": 12563,
+    "total_operations_in_unique_ranges": 44044,
+    "range_lengths": {
+      "1": 8659,
+      "2": 384,
+      "11": 35,
+      "4": 716,
+      "15": 1,
+      "3": 13,
+      "5": 547,
+      "6": 21,
+      "24": 20,
+      "23": 28,
+      "22": 68,
+      "43": 25,
+      "7": 1576,
+      "32": 1,
+      "14": 217,
+      "25": 1,
+      "8": 44,
+      "34": 1,
+      "18": 16,
+      "19": 20,
+      "37": 1,
+      "31": 24,
+      "62": 2,
+      "67": 126,
+      "38": 1,
+      "12": 16
+    },
+    "top_patterns": [
+      [
+        [
+          0
+        ],
+        8260
+      ],
+      [
+        [
+          0,
+          0,
+          0,
+          2,
+          0,
+          2,
+          3
+        ],
+        1408
+      ],
+      [
+        [
+          0,
+          0,
+          2,
+          3
+        ],
+        716
+      ],
+      [
+        [
+          0,
+          0,
+          0,
+          2,
+          3
+        ],
+        535
+      ],
+      [
+        [
+          10
+        ],
+        399
+      ],
+      [
+        [
+          0,
+          12
+        ],
+        197
+      ],
+      [
+        [
+          0,
+          4,
+          0,
+          4,
+          0,
+          4,
+          0,
+          4,
+          0,
+          2,
+          0,
+          2,
+          0,
+          2
+        ],
+        192
+      ],
+      [
+        [
+          0,
+          0,
+          0,
+          4,
+          0,
+          2,
+          3
+        ],
+        168
+      ],
+      [
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          10,
+          0,
+          2,
+          3,
+          0,
+          2,
+          0,
+          2,
+          0,
+          2,
+          0,
+          2,
+          0,
+          2,
+          0,
+          2,
+          3,
+          0,
+          2,
+          3,
+          0,
+          2,
+          3,
+          0,
+          2,
+          3,
+          0,
+          2,
+          3,
+          0,
+          2,
+          3,
+          0,
+          2,
+          3,
+          0,
+          2,
+          3,
+          0,
+          2,
+          3,
+          0,
+          2,
+          3,
+          0,
+          2,
+          3,
+          0,
+          2,
+          3,
+          0,
+          2,
+          3,
+          0,
+          2
+        ],
+        126
+      ],
+      [
+        [
+          0,
+          0
+        ],
+        110
+      ],
+      [
+        [
+          0,
+          0,
+          0,
+          0,
+          2,
+          0,
+          2,
+          0,
+          2,
+          0,
+          2,
+          3,
+          0,
+          2,
+          3,
+          0,
+          2,
+          0,
+          2,
+          0,
+          2,
+          3
+        ],
+        66
+      ],
+      [
+        [
+          0,
+          10
+        ],
+        65
+      ]
+    ]
+  },
+  "ir_findings": [
+    "Generated static program address is directly referenced in optimized IR and assembly.",
+    "Unused reactive path is eliminated on this ZCore program.",
+    "Output execution still contains dynamic opcode and source-kind switches.",
+    "GVN LoadClobbered remarks report histogram/contribution writes blocking pointer-load elimination.",
+    "Caching buffer pointers causes the contribution helper to inline but does not produce a repeatable throughput gain.",
+    "Current 16-tick batch body is unrolled."
+  ],
+  "experiments": {
+    "cached_buffer_pointers": {
+      "status": "scratch_only; not adopted",
+      "rounds": 5,
+      "current_median_tps": 5144.80421900226,
+      "prototype_median_tps": 5174.023949356106,
+      "gain_percent": 0.5679464000966972,
+      "paired_gain_percent": [
+        -1.1817335322905853,
+        4.518830804423923,
+        0.0969953200473439,
+        0.3492631734577589,
+        -2.973755390517274
+      ],
+      "full_snapshot_and_work_match": true,
+      "samples": [
+        {
+          "round": 1,
+          "variant": "reference",
+          "elapsed_seconds": 8.746234600002936,
+          "tps": 5716.745809674853,
+          "thread_cpu_seconds": 8.703125,
+          "cpu_fraction": 0.9950710674965292,
+          "lamp_output_sha256": "da8ddd8c64b56dbd0755fd0d03069bb8b53f9aa6db1a7278020392ed4e7c0338",
+          "final_snapshot_sha256": "35b9d4c8d014d028a030c852e505e1243266e83d9cab1711259c9924d0ae9551",
+          "game_ticks_completed": 50413,
+          "logical_work_count": 590521175
+        },
+        {
+          "round": 1,
+          "variant": "candidate",
+          "elapsed_seconds": 8.850827800000843,
+          "tps": 5649.189107486109,
+          "thread_cpu_seconds": 8.609375,
+          "cpu_fraction": 0.9727197494452643,
+          "lamp_output_sha256": "da8ddd8c64b56dbd0755fd0d03069bb8b53f9aa6db1a7278020392ed4e7c0338",
+          "final_snapshot_sha256": "35b9d4c8d014d028a030c852e505e1243266e83d9cab1711259c9924d0ae9551",
+          "game_ticks_completed": 50413,
+          "logical_work_count": 590521175
+        },
+        {
+          "round": 2,
+          "variant": "candidate",
+          "elapsed_seconds": 9.298365399998147,
+          "tps": 5377.289216877835,
+          "thread_cpu_seconds": 9.265625,
+          "cpu_fraction": 0.9964789080026739,
+          "lamp_output_sha256": "da8ddd8c64b56dbd0755fd0d03069bb8b53f9aa6db1a7278020392ed4e7c0338",
+          "final_snapshot_sha256": "35b9d4c8d014d028a030c852e505e1243266e83d9cab1711259c9924d0ae9551",
+          "game_ticks_completed": 50413,
+          "logical_work_count": 590521175
+        },
+        {
+          "round": 2,
+          "variant": "reference",
+          "elapsed_seconds": 9.71854280000116,
+          "tps": 5144.80421900226,
+          "thread_cpu_seconds": 9.53125,
+          "cpu_fraction": 0.9807283042473057,
+          "lamp_output_sha256": "da8ddd8c64b56dbd0755fd0d03069bb8b53f9aa6db1a7278020392ed4e7c0338",
+          "final_snapshot_sha256": "35b9d4c8d014d028a030c852e505e1243266e83d9cab1711259c9924d0ae9551",
+          "game_ticks_completed": 50413,
+          "logical_work_count": 590521175
+        },
+        {
+          "round": 3,
+          "variant": "reference",
+          "elapsed_seconds": 9.982215900003212,
+          "tps": 5008.907891882394,
+          "thread_cpu_seconds": 9.796875,
+          "cpu_fraction": 0.9814328900657066,
+          "lamp_output_sha256": "da8ddd8c64b56dbd0755fd0d03069bb8b53f9aa6db1a7278020392ed4e7c0338",
+          "final_snapshot_sha256": "35b9d4c8d014d028a030c852e505e1243266e83d9cab1711259c9924d0ae9551",
+          "game_ticks_completed": 50413,
+          "logical_work_count": 590521175
+        },
+        {
+          "round": 3,
+          "variant": "candidate",
+          "elapsed_seconds": 9.972543000003498,
+          "tps": 5013.766298123002,
+          "thread_cpu_seconds": 9.75,
+          "cpu_fraction": 0.9776844281339855,
+          "lamp_output_sha256": "da8ddd8c64b56dbd0755fd0d03069bb8b53f9aa6db1a7278020392ed4e7c0338",
+          "final_snapshot_sha256": "35b9d4c8d014d028a030c852e505e1243266e83d9cab1711259c9924d0ae9551",
+          "game_ticks_completed": 50413,
+          "logical_work_count": 590521175
+        },
+        {
+          "round": 4,
+          "variant": "candidate",
+          "elapsed_seconds": 9.663658400000713,
+          "tps": 5174.023949356106,
+          "thread_cpu_seconds": 9.578125,
+          "cpu_fraction": 0.991148962798529,
+          "lamp_output_sha256": "da8ddd8c64b56dbd0755fd0d03069bb8b53f9aa6db1a7278020392ed4e7c0338",
+          "final_snapshot_sha256": "35b9d4c8d014d028a030c852e505e1243266e83d9cab1711259c9924d0ae9551",
+          "game_ticks_completed": 50413,
+          "logical_work_count": 590521175
+        },
+        {
+          "round": 4,
+          "variant": "reference",
+          "elapsed_seconds": 9.697410000000673,
+          "tps": 5156.0158846533795,
+          "thread_cpu_seconds": 9.578125,
+          "cpu_fraction": 0.987699292903913,
+          "lamp_output_sha256": "da8ddd8c64b56dbd0755fd0d03069bb8b53f9aa6db1a7278020392ed4e7c0338",
+          "final_snapshot_sha256": "35b9d4c8d014d028a030c852e505e1243266e83d9cab1711259c9924d0ae9551",
+          "game_ticks_completed": 50413,
+          "logical_work_count": 590521175
+        },
+        {
+          "round": 5,
+          "variant": "reference",
+          "elapsed_seconds": 9.785056599997915,
+          "tps": 5109.832476596063,
+          "thread_cpu_seconds": 9.6875,
+          "cpu_fraction": 0.9900300423404872,
+          "lamp_output_sha256": "da8ddd8c64b56dbd0755fd0d03069bb8b53f9aa6db1a7278020392ed4e7c0338",
+          "final_snapshot_sha256": "35b9d4c8d014d028a030c852e505e1243266e83d9cab1711259c9924d0ae9551",
+          "game_ticks_completed": 50413,
+          "logical_work_count": 590521175
+        },
+        {
+          "round": 5,
+          "variant": "candidate",
+          "elapsed_seconds": 10.084958599996753,
+          "tps": 4957.878557876886,
+          "thread_cpu_seconds": 9.984375,
+          "cpu_fraction": 0.9900263745260407,
+          "lamp_output_sha256": "da8ddd8c64b56dbd0755fd0d03069bb8b53f9aa6db1a7278020392ed4e7c0338",
+          "final_snapshot_sha256": "35b9d4c8d014d028a030c852e505e1243266e83d9cab1711259c9924d0ae9551",
+          "game_ticks_completed": 50413,
+          "logical_work_count": 590521175
+        }
+      ]
+    },
+    "deferred_unwatched_wire_histograms": {
+      "status": "scratch_only; not adopted",
+      "rounds": 5,
+      "current_median_tps": 5845.408720216606,
+      "prototype_median_tps": 5857.16314301069,
+      "gain_percent": 0.2010881250002372,
+      "paired_gain_percent": [
+        1.5090377277899858,
+        0.08382069033481265,
+        0.9986131475441029,
+        -0.22502007700442306,
+        0.6291356601398457
+      ],
+      "full_snapshot_and_work_match": true,
+      "samples": [
+        {
+          "round": 1,
+          "variant": "reference",
+          "elapsed_seconds": 8.61359000000084,
+          "tps": 5804.780585098098,
+          "thread_cpu_seconds": 8.5625,
+          "cpu_fraction": 0.9940686751980492,
+          "lamp_output_sha256": "da8ddd8c64b56dbd0755fd0d03069bb8b53f9aa6db1a7278020392ed4e7c0338",
+          "final_snapshot_sha256": "35b9d4c8d014d028a030c852e505e1243266e83d9cab1711259c9924d0ae9551",
+          "game_ticks_completed": 50413,
+          "logical_work_count": 590521175
+        },
+        {
+          "round": 1,
+          "variant": "candidate",
+          "elapsed_seconds": 8.485539999994216,
+          "tps": 5892.3769141426565,
+          "thread_cpu_seconds": 8.484375,
+          "cpu_fraction": 0.9998627076185821,
+          "lamp_output_sha256": "da8ddd8c64b56dbd0755fd0d03069bb8b53f9aa6db1a7278020392ed4e7c0338",
+          "final_snapshot_sha256": "35b9d4c8d014d028a030c852e505e1243266e83d9cab1711259c9924d0ae9551",
+          "game_ticks_completed": 50413,
+          "logical_work_count": 590521175
+        },
+        {
+          "round": 2,
+          "variant": "candidate",
+          "elapsed_seconds": 8.536555799997586,
+          "tps": 5857.16314301069,
+          "thread_cpu_seconds": 8.484375,
+          "cpu_fraction": 0.9938873708296265,
+          "lamp_output_sha256": "da8ddd8c64b56dbd0755fd0d03069bb8b53f9aa6db1a7278020392ed4e7c0338",
+          "final_snapshot_sha256": "35b9d4c8d014d028a030c852e505e1243266e83d9cab1711259c9924d0ae9551",
+          "game_ticks_completed": 50413,
+          "logical_work_count": 590521175
+        },
+        {
+          "round": 2,
+          "variant": "reference",
+          "elapsed_seconds": 8.543711199999962,
+          "tps": 5852.257740172705,
+          "thread_cpu_seconds": 8.46875,
+          "cpu_fraction": 0.9912261547417518,
+          "lamp_output_sha256": "da8ddd8c64b56dbd0755fd0d03069bb8b53f9aa6db1a7278020392ed4e7c0338",
+          "final_snapshot_sha256": "35b9d4c8d014d028a030c852e505e1243266e83d9cab1711259c9924d0ae9551",
+          "game_ticks_completed": 50413,
+          "logical_work_count": 590521175
+        },
+        {
+          "round": 3,
+          "variant": "reference",
+          "elapsed_seconds": 8.522073100000853,
+          "tps": 5867.117004663454,
+          "thread_cpu_seconds": 8.515625,
+          "cpu_fraction": 0.9992433648567446,
+          "lamp_output_sha256": "da8ddd8c64b56dbd0755fd0d03069bb8b53f9aa6db1a7278020392ed4e7c0338",
+          "final_snapshot_sha256": "35b9d4c8d014d028a030c852e505e1243266e83d9cab1711259c9924d0ae9551",
+          "game_ticks_completed": 50413,
+          "logical_work_count": 590521175
+        },
+        {
+          "round": 3,
+          "variant": "candidate",
+          "elapsed_seconds": 8.43781200000376,
+          "tps": 5925.70680645382,
+          "thread_cpu_seconds": 8.421875,
+          "cpu_fraction": 0.9981112402120653,
+          "lamp_output_sha256": "da8ddd8c64b56dbd0755fd0d03069bb8b53f9aa6db1a7278020392ed4e7c0338",
+          "final_snapshot_sha256": "35b9d4c8d014d028a030c852e505e1243266e83d9cab1711259c9924d0ae9551",
+          "game_ticks_completed": 50413,
+          "logical_work_count": 590521175
+        },
+        {
+          "round": 4,
+          "variant": "candidate",
+          "elapsed_seconds": 8.57301279999956,
+          "tps": 5832.255377013151,
+          "thread_cpu_seconds": 8.53125,
+          "cpu_fraction": 0.9951285737028688,
+          "lamp_output_sha256": "da8ddd8c64b56dbd0755fd0d03069bb8b53f9aa6db1a7278020392ed4e7c0338",
+          "final_snapshot_sha256": "35b9d4c8d014d028a030c852e505e1243266e83d9cab1711259c9924d0ae9551",
+          "game_ticks_completed": 50413,
+          "logical_work_count": 590521175
+        },
+        {
+          "round": 4,
+          "variant": "reference",
+          "elapsed_seconds": 8.553721799995401,
+          "tps": 5845.408720216606,
+          "thread_cpu_seconds": 8.546875,
+          "cpu_fraction": 0.9991995531120261,
+          "lamp_output_sha256": "da8ddd8c64b56dbd0755fd0d03069bb8b53f9aa6db1a7278020392ed4e7c0338",
+          "final_snapshot_sha256": "35b9d4c8d014d028a030c852e505e1243266e83d9cab1711259c9924d0ae9551",
+          "game_ticks_completed": 50413,
+          "logical_work_count": 590521175
+        },
+        {
+          "round": 5,
+          "variant": "reference",
+          "elapsed_seconds": 8.612652399999206,
+          "tps": 5805.4125114819,
+          "thread_cpu_seconds": 8.59375,
+          "cpu_fraction": 0.9978052754109514,
+          "lamp_output_sha256": "da8ddd8c64b56dbd0755fd0d03069bb8b53f9aa6db1a7278020392ed4e7c0338",
+          "final_snapshot_sha256": "35b9d4c8d014d028a030c852e505e1243266e83d9cab1711259c9924d0ae9551",
+          "game_ticks_completed": 50413,
+          "logical_work_count": 590521175
+        },
+        {
+          "round": 5,
+          "variant": "candidate",
+          "elapsed_seconds": 8.558805900000152,
+          "tps": 5841.936431809852,
+          "thread_cpu_seconds": 8.515625,
+          "cpu_fraction": 0.9949547985426155,
+          "lamp_output_sha256": "da8ddd8c64b56dbd0755fd0d03069bb8b53f9aa6db1a7278020392ed4e7c0338",
+          "final_snapshot_sha256": "35b9d4c8d014d028a030c852e505e1243266e83d9cab1711259c9924d0ae9551",
+          "game_ticks_completed": 50413,
+          "logical_work_count": 590521175
+        }
+      ]
+    },
+    "bulk_conditional_flip_accounting": {
+      "status": "scratch_only; not adopted",
+      "rounds": 5,
+      "current_median_tps": 5804.552138751632,
+      "prototype_median_tps": 5696.693738081007,
+      "gain_percent": -1.8581692108604608,
+      "paired_gain_percent": [
+        -2.640112117918747,
+        -1.6461560519021257,
+        -1.9084730645384407,
+        -6.497751419876718,
+        -1.8581692108604608
+      ],
+      "full_snapshot_and_work_match": true,
+      "samples": [
+        {
+          "round": 1,
+          "variant": "reference",
+          "elapsed_seconds": 8.58123479999631,
+          "tps": 5826.667276371636,
+          "thread_cpu_seconds": 8.5625,
+          "cpu_fraction": 0.9978167710786428,
+          "lamp_output_sha256": "da8ddd8c64b56dbd0755fd0d03069bb8b53f9aa6db1a7278020392ed4e7c0338",
+          "final_snapshot_sha256": "35b9d4c8d014d028a030c852e505e1243266e83d9cab1711259c9924d0ae9551",
+          "game_ticks_completed": 50413,
+          "logical_work_count": 590521175
+        },
+        {
+          "round": 1,
+          "variant": "candidate",
+          "elapsed_seconds": 8.813932499993825,
+          "tps": 5672.836727537342,
+          "thread_cpu_seconds": 8.78125,
+          "cpu_fraction": 0.9962919502737457,
+          "lamp_output_sha256": "da8ddd8c64b56dbd0755fd0d03069bb8b53f9aa6db1a7278020392ed4e7c0338",
+          "final_snapshot_sha256": "35b9d4c8d014d028a030c852e505e1243266e83d9cab1711259c9924d0ae9551",
+          "game_ticks_completed": 50413,
+          "logical_work_count": 590521175
+        },
+        {
+          "round": 2,
+          "variant": "candidate",
+          "elapsed_seconds": 8.77290460000222,
+          "tps": 5699.3666612979405,
+          "thread_cpu_seconds": 8.765625,
+          "cpu_fraction": 0.9991702178087951,
+          "lamp_output_sha256": "da8ddd8c64b56dbd0755fd0d03069bb8b53f9aa6db1a7278020392ed4e7c0338",
+          "final_snapshot_sha256": "35b9d4c8d014d028a030c852e505e1243266e83d9cab1711259c9924d0ae9551",
+          "game_ticks_completed": 50413,
+          "logical_work_count": 590521175
+        },
+        {
+          "round": 2,
+          "variant": "reference",
+          "elapsed_seconds": 8.628488900001685,
+          "tps": 5794.757411114041,
+          "thread_cpu_seconds": 8.625,
+          "cpu_fraction": 0.999595653417172,
+          "lamp_output_sha256": "da8ddd8c64b56dbd0755fd0d03069bb8b53f9aa6db1a7278020392ed4e7c0338",
+          "final_snapshot_sha256": "35b9d4c8d014d028a030c852e505e1243266e83d9cab1711259c9924d0ae9551",
+          "game_ticks_completed": 50413,
+          "logical_work_count": 590521175
+        },
+        {
+          "round": 3,
+          "variant": "reference",
+          "elapsed_seconds": 8.606600599996455,
+          "tps": 5809.494633690867,
+          "thread_cpu_seconds": 8.609375,
+          "cpu_fraction": 1.0003223572386462,
+          "lamp_output_sha256": "da8ddd8c64b56dbd0755fd0d03069bb8b53f9aa6db1a7278020392ed4e7c0338",
+          "final_snapshot_sha256": "35b9d4c8d014d028a030c852e505e1243266e83d9cab1711259c9924d0ae9551",
+          "game_ticks_completed": 50413,
+          "logical_work_count": 590521175
+        },
+        {
+          "round": 3,
+          "variant": "candidate",
+          "elapsed_seconds": 8.774051000000327,
+          "tps": 5698.62199342107,
+          "thread_cpu_seconds": 8.78125,
+          "cpu_fraction": 1.0008204875945754,
+          "lamp_output_sha256": "da8ddd8c64b56dbd0755fd0d03069bb8b53f9aa6db1a7278020392ed4e7c0338",
+          "final_snapshot_sha256": "35b9d4c8d014d028a030c852e505e1243266e83d9cab1711259c9924d0ae9551",
+          "game_ticks_completed": 50413,
+          "logical_work_count": 590521175
+        },
+        {
+          "round": 4,
+          "variant": "candidate",
+          "elapsed_seconds": 9.241009100005613,
+          "tps": 5410.664512814908,
+          "thread_cpu_seconds": 9.125,
+          "cpu_fraction": 0.9874462735887207,
+          "lamp_output_sha256": "da8ddd8c64b56dbd0755fd0d03069bb8b53f9aa6db1a7278020392ed4e7c0338",
+          "final_snapshot_sha256": "35b9d4c8d014d028a030c852e505e1243266e83d9cab1711259c9924d0ae9551",
+          "game_ticks_completed": 50413,
+          "logical_work_count": 590521175
+        },
+        {
+          "round": 4,
+          "variant": "reference",
+          "elapsed_seconds": 8.64055129999906,
+          "tps": 5786.667802088674,
+          "thread_cpu_seconds": 8.609375,
+          "cpu_fraction": 0.9963918621721436,
+          "lamp_output_sha256": "da8ddd8c64b56dbd0755fd0d03069bb8b53f9aa6db1a7278020392ed4e7c0338",
+          "final_snapshot_sha256": "35b9d4c8d014d028a030c852e505e1243266e83d9cab1711259c9924d0ae9551",
+          "game_ticks_completed": 50413,
+          "logical_work_count": 590521175
+        },
+        {
+          "round": 5,
+          "variant": "reference",
+          "elapsed_seconds": 8.613928999999189,
+          "tps": 5804.552138751632,
+          "thread_cpu_seconds": 8.609375,
+          "cpu_fraction": 0.9994713213912967,
+          "lamp_output_sha256": "da8ddd8c64b56dbd0755fd0d03069bb8b53f9aa6db1a7278020392ed4e7c0338",
+          "final_snapshot_sha256": "35b9d4c8d014d028a030c852e505e1243266e83d9cab1711259c9924d0ae9551",
+          "game_ticks_completed": 50413,
+          "logical_work_count": 590521175
+        },
+        {
+          "round": 5,
+          "variant": "candidate",
+          "elapsed_seconds": 8.777020899993659,
+          "tps": 5696.693738081007,
+          "thread_cpu_seconds": 8.734375,
+          "cpu_fraction": 0.995141187371026,
+          "lamp_output_sha256": "da8ddd8c64b56dbd0755fd0d03069bb8b53f9aa6db1a7278020392ed4e7c0338",
+          "final_snapshot_sha256": "35b9d4c8d014d028a030c852e505e1243266e83d9cab1711259c9924d0ae9551",
+          "game_ticks_completed": 50413,
+          "logical_work_count": 590521175
+        }
+      ]
+    },
+    "inline_fixed_movement_ranges": {
+      "status": "adopted; actual generated module verified",
+      "prototype_gain_percent": 3.914944488514638,
+      "results": "llvm_movement_layout_results.json"
+    }
+  },
+  "pending_experiment": null,
+  "limitations": [
+    "Sampled instruction addresses attribute inline work to the containing function.",
+    "Logical work counts are not CPU-time percentages.",
+    "Benchmarks run without publication; live-server throughput and PM1/FPU timings were not remeasured."
+  ],
+  "native_source_sha256": {
+    "engine.c": "3847c27199dab5500dd5cfafa70d60eeb6b403f601dfa07a00447683c68e4d77",
+    "llvm_movement.c": "b41bfd29d8405e3a084e371898962694c58b9452c12a17234fb836591cfc9140",
+    "command_engine.c": "b50bda357f9505c88273b599a422d648d85915576ccc1fd50c02c1f4d5baca7a",
+    "abi.h": "95d6e4b1a86e87c5409af3de9cf15c2cda1f6a35b5cd80ba6f0635f833f5be76"
+  },
+  "production_change": {
+    "status": "implemented_and_verified",
+    "description": "Generated movement records retain the six canonical rule words and inline fixed departure/arrival start/count pairs. Conditional cases, group bounds, replay order and budget checks retain existing behavior.",
+    "results": "llvm_movement_layout_results.json",
+    "performance_summary": {
+      "strict": {
+        "previous_median_tps": 3866.527531477831,
+        "current_median_tps": 4195.679616394035,
+        "gain_percent": 8.512860240526955,
+        "rounds": 3,
+        "paired_gain_percent": [
+          5.697231024761962,
+          12.041835457108352,
+          3.115112254136432
+        ],
+        "minimum_thread_cpu_fraction": 0.993851609133337
+      },
+      "relaxed": {
+        "previous_median_tps": 5421.44491135354,
+        "current_median_tps": 5695.3988604009255,
+        "gain_percent": 5.053153790674392,
+        "rounds": 5,
+        "paired_gain_percent": [
+          2.9735736695057913,
+          5.35249520387322,
+          3.704190597024981,
+          8.264753387513668,
+          14.003745006612789
+        ],
+        "minimum_thread_cpu_fraction": 0.9936404767427718
+      }
+    }
+  }
+}

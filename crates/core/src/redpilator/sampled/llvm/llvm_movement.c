@@ -719,6 +719,15 @@ static inline uint32_t apply_movement_flip(NEEngine *e, const uint32_t *flip, ui
     }
     return switched_count;
 }
+static const uint32_t *movement_step(const NEEngine *e, uint32_t index) {
+#if defined(MCHPRS_EMBEDDED_PROGRAM) && NE_OPTIMIZED_MOVEMENT_STEPS
+    (void)e;
+    return ne_static_movement_steps + (size_t)index * 10u;
+#else
+    return table(e, 20u) + (size_t)index * 6u;
+#endif
+}
+
 /**
  * Apply a payload departure or arrival and its recorded electrical effects.
  *
@@ -755,14 +764,14 @@ static uint32_t set_token_pos(NEEngine *e, uint32_t token, uint32_t position) {
     uint32_t flat_count = position != NONE ? row[9] : row[7];
     uint32_t flat = !e->error && flat_start != NONE && flat_count <= NE_MAX_TICK_OPERATIONS - e->tick_operations;
     for (uint32_t i = 0; i < row[1] && flat; ++i) {
-        const uint32_t *r = table(e, 20u) + (row[0] + i) * 6u;
+        const uint32_t *r = movement_step(e, row[0] + i);
         uint32_t before = e->groups[r[0]];
         if (before >= r[4] || (position != NONE ? r[1] > r[4] - 1u - before : before < r[1]))
             flat = 0u;
     }
     if (flat) {
         for (uint32_t i = 0; i < row[1]; ++i) {
-            const uint32_t *r = table(e, 20u) + (row[0] + i) * 6u;
+            const uint32_t *r = movement_step(e, row[0] + i);
             e->groups[r[0]] = position != NONE ? e->groups[r[0]] + r[1] : e->groups[r[0]] - r[1];
         }
         e->tick_operations += flat_count;
@@ -770,7 +779,7 @@ static uint32_t set_token_pos(NEEngine *e, uint32_t token, uint32_t position) {
         for (uint32_t i = 0; i < flat_count; ++i)
             switched_count = apply_movement_flip(e, table(e, 22u) + (flat_start + i) * 4u, switched_count);
     } else for (uint32_t i = 0; i < row[1]; ++i) {
-        const uint32_t *r = table(e, 20u) + (row[0] + i) * 6u;
+        const uint32_t *r = movement_step(e, row[0] + i);
         uint32_t before = e->groups[r[0]], after;
         if (position != NONE) {
             if (before > UINT32_MAX - r[1])
@@ -783,9 +792,17 @@ static uint32_t set_token_pos(NEEngine *e, uint32_t token, uint32_t position) {
         }
         if (before >= r[4] || after >= r[4])
             return e->error = NE_INVALID;
-        uint32_t state = r[5] != NONE ? r[5] : position != NONE ? after : before;
-        uint32_t base = position != NONE ? r[3] : r[2];
-        const uint32_t *flips = table(e, 21u) + (base + state) * 2u;
+        const uint32_t *flips;
+#if defined(MCHPRS_EMBEDDED_PROGRAM) && NE_OPTIMIZED_MOVEMENT_STEPS
+        if (r[5] != NONE)
+            flips = r + (position != NONE ? 8u : 6u);
+        else
+#endif
+        {
+            uint32_t state = r[5] != NONE ? r[5] : position != NONE ? after : before;
+            uint32_t base = position != NONE ? r[3] : r[2];
+            flips = table(e, 21u) + (base + state) * 2u;
+        }
         e->groups[r[0]] = after;
         for (uint32_t j = 0; j < flips[1]; ++j) {
             const uint32_t *flip = table(e, 22u) + (flips[0] + j) * 4u;

@@ -186,7 +186,7 @@ static int precedence_case(uint32_t available, uint32_t limited, uint32_t count,
     uint32_t queued, uint32_t result, uint32_t message_len, uint32_t expected_error) {
     static union { uint64_t align; uint8_t bytes[2048]; } memory;
     MchprsNativeComponent components[3] = {0};
-    const uint8_t strings[] = {'b','a','d','x','x','x','x','x','x','x'};
+    static const uint8_t strings[65540] = {'b','a','d','x','x','x','x','x','x','x'};
     uint32_t block[TEST_BLOCK_WORDS] = {0};
     block[0] = 0u; block[1] = 0u; block[2] = 0u; block[3] = 5u;
     block[4] = TEST_ENTITY | TEST_CONDITION_MET | TEST_TRACK_OUTPUT | TEST_UPDATE_LAST_EXECUTION;
@@ -207,7 +207,7 @@ static int precedence_case(uint32_t available, uint32_t limited, uint32_t count,
     if (ne_command_tick(memory.bytes, 0u, 7u, 1u, &hooks) != 0u) return 2;
     uint32_t state[TEST_STATE_WORDS];
     if (ne_command_read_state(memory.bytes, state, TEST_STATE_WORDS) != 0u) return 3;
-    if (state[5] != 2u || state[8] != expected_error) return 4;
+    if (state[5] != (expected_error ? 2u : 1u) || state[8] != expected_error) return 4;
     return 0;
 }
 
@@ -230,16 +230,19 @@ int ne_command_engine_test(void) {
     /* Unavailable state wins over a stored static parser error. */
     result = precedence_case(0u, 0u, 0u, 0u, 0u, 2u, 0u, 1u);
     if (result) return 200 + result;
-    /* Count/queue rate limits win over a static parser error. */
-    result = precedence_case(1u, 1u, 64u, 0u, 0u, 2u, 0u, 2u);
+    /* Delivery count does not suppress execution; a full queue still does. */
+    result = precedence_case(1u, 1u, 1024u, 0u, 0u, 2u, 0u, 4u);
     if (result) return 300 + result;
-    result = precedence_case(1u, 1u, 0u, 0u, 64u, 2u, 0u, 2u);
+    result = precedence_case(1u, 1u, 0u, 0u, 4096u, 2u, 0u, 2u);
     if (result) return 350 + result;
     /* A static parser error wins over the parsed-message byte limit. */
     result = precedence_case(1u, 1u, 0u, 65536u, 0u, 2u, 0u, 4u);
     if (result) return 400 + result;
-    /* A parsed success can still fail the output-byte limit. */
-    result = precedence_case(1u, 1u, 0u, 65530u, 0u, 1u, 7u, 3u);
+    /* Earlier output bytes do not suppress a valid buffered message. */
+    result = precedence_case(1u, 1u, 0u, 65530u, 0u, 1u, 7u, 0u);
     if (result) return 500 + result;
+    /* Individual messages remain bounded. */
+    result = precedence_case(1u, 1u, 0u, 0u, 0u, 1u, 65537u, 3u);
+    if (result) return 600 + result;
     return 0;
 }

@@ -203,7 +203,10 @@ fn pm1_full_replay_effects() {
     let (mut projected, mut compiler, elapsed) = cpus::compile_cpu_with_options(
         native.activation_snapshot(),
         cpu,
-        CompilerOptions { publication: Some(PublicationMode::All), ..Default::default() },
+        CompilerOptions {
+            publication: Some(PublicationMode::All),
+            ..Default::default()
+        },
     );
     eprintln!("PM1 replay compile: {elapsed:?}");
     let positions = compiler.runtime.as_ref().unwrap().program.projection_positions.clone();
@@ -220,18 +223,24 @@ fn pm1_full_replay_effects() {
         compiler.tick().unwrap();
         cpus::collect_chat(&native, tick, &mut native_chat);
         let runtime = compiler.runtime.as_ref().unwrap();
-        compiled_chat.extend(runtime.command_emissions[emission_cursor..].iter().map(|event| {
-            (event.tick as u32, event.message.message.clone())
-        }));
+        compiled_chat.extend(
+            runtime.command_emissions[emission_cursor..]
+                .iter()
+                .map(|event| (event.tick as u32, event.message.message.clone())),
+        );
         emission_cursor = runtime.command_emissions.len();
         if tick >= cpu.active_ticks {
-            if native_quiet.is_none() && native.scheduler().iter_entries().next().is_none()
-                && native.piston_state().events.is_empty() && native.piston_state().motions.is_empty()
+            if native_quiet.is_none()
+                && native.scheduler().iter_entries().next().is_none()
+                && native.piston_state().events.is_empty()
+                && native.piston_state().motions.is_empty()
             {
                 native_quiet = Some(tick);
             }
-            if compiled_quiet.is_none() && runtime.pending_entries().is_empty()
-                && runtime.pending_piston_events().is_empty() && !runtime.has_motions()
+            if compiled_quiet.is_none()
+                && runtime.pending_entries().is_empty()
+                && runtime.pending_piston_events().is_empty()
+                && !runtime.has_motions()
             {
                 compiled_quiet = Some(tick);
             }
@@ -254,7 +263,13 @@ fn pm1_full_replay_effects() {
                     entity_differences.push(json!({"pos":pos,"interpreter":a,"compiled":b}));
                 }
             }
-            eprintln!("PM1 replay tick {tick}: messages={}/{} blocks={} entities={}", native_chat.len(), compiled_chat.len(), differences.len(), entity_differences.len());
+            eprintln!(
+                "PM1 replay tick {tick}: messages={}/{} blocks={} entities={}",
+                native_chat.len(),
+                compiled_chat.len(),
+                differences.len(),
+                entity_differences.len()
+            );
             checkpoints.push(json!({"tick":tick,"differences":differences,"entity_differences":entity_differences,
                 "native_messages":native_chat.len(),"compiled_messages":compiled_chat.len(),
                 "native_pending":native.scheduler().iter_entries().collect::<Vec<_>>(),"compiled_pending":runtime.pending_entries(),
@@ -272,17 +287,24 @@ fn pm1_full_replay_effects() {
     write(&root, "native-chat.json", &native_chat);
     write(&root, "compiled-chat.json", &compiled_chat);
     write(&root, "checkpoints.json", &checkpoints);
-    write(&root, "result.json", &json!({
-        "schematic_sha256":cpu.sha256,"ticks":50_000,"compile_ms":elapsed.as_millis(),
-        "native_first_quiet_after_halt":native_quiet,"compiled_first_quiet_after_halt":compiled_quiet,
-        "native_final":native_final,"compiled_final":compiled_final,
-        "exact_chat_equal":native_chat==compiled_chat,
-        "message_order_equal":native_chat.iter().map(|(_,s)|s).eq(compiled_chat.iter().map(|(_,s)|s)),
-    }));
+    write(
+        &root,
+        "result.json",
+        &json!({
+            "schematic_sha256":cpu.sha256,"ticks":50_000,"compile_ms":elapsed.as_millis(),
+            "native_first_quiet_after_halt":native_quiet,"compiled_first_quiet_after_halt":compiled_quiet,
+            "native_final":native_final,"compiled_final":compiled_final,
+            "exact_chat_equal":native_chat==compiled_chat,
+            "message_order_equal":native_chat.iter().map(|(_,s)|s).eq(compiled_chat.iter().map(|(_,s)|s)),
+        }),
+    );
     let expected = cpus::reference(cpus::CPUS[0]);
     let expected: Vec<_> = expected.chat_trace.into_iter().filter(|(tick, _)| *tick <= 50_000).collect();
     assert_eq!(native_chat, expected, "interpreter instruction trace changed from frozen reference");
-    assert_eq!(projected.command_output().collect::<Vec<_>>(), compiled_chat.iter().map(|(_,s)|s.as_str()).collect::<Vec<_>>());
+    assert_eq!(
+        projected.command_output().collect::<Vec<_>>(),
+        compiled_chat.iter().map(|(_, s)| s.as_str()).collect::<Vec<_>>()
+    );
     eprintln!("PM1 replay artifacts: {}", root.display());
 }
 
@@ -298,9 +320,10 @@ fn pm1_final_screen_capture() {
         sha256: "ad68a0160990c72612c0105802fade337758de127dcdbd4cc1a195059ad2d893",
         ..cpus::CPUS[0]
     };
-    let clip = crate::plot::worldedit::load_schematic(std::fs::File::open(
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../test_data").join(cpu.schematic),
-    ).unwrap()).unwrap();
+    let clip = crate::plot::worldedit::load_schematic(
+        std::fs::File::open(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../test_data").join(cpu.schematic)).unwrap(),
+    )
+    .unwrap();
     let mut lamps = Vec::new();
     for y in 0..clip.size_y {
         for z in 0..clip.size_z {
@@ -313,24 +336,43 @@ fn pm1_final_screen_capture() {
         }
     }
     let mut world = cpus::load_cpu(cpu);
-    let screen = cpus::Cpu { screen: Some(cpus::Screen {
-        x: 230, top_y: 71, bottom_y: 40, left_z: 81, right_z: 112, sparse: false,
-    }), ..cpu };
+    let screen = cpus::Cpu {
+        screen: Some(cpus::Screen {
+            x: 230,
+            top_y: 71,
+            bottom_y: 40,
+            left_z: 81,
+            right_z: 112,
+            sparse: false,
+        }),
+        ..cpu
+    };
     let mut frames = Vec::new();
     cpus::collect_screen(&world, screen, 0, &mut frames);
     cpus::click_cpu(&mut world, cpu, cpu.start);
     for tick in 1..=12_055 {
         world.tick_interpreted();
         cpus::collect_screen(&world, screen, tick, &mut frames);
-        if tick % 1000 == 0 { eprintln!("PM1 screen reached {tick}"); }
+        if tick % 1000 == 0 {
+            eprintln!("PM1 screen reached {tick}");
+        }
     }
     let mut chat = Vec::new();
     cpus::collect_chat(&world, 12_055, &mut chat);
-    let final_lamps: Vec<_> = lamps.iter().map(|(pos, _)| {
-        let Block::RedstoneLamp { lit } = world.get_block(*pos) else { panic!("lamp removed at {pos:?}"); };
-        (*pos, lit)
-    }).collect();
-    write(&root, "lamps.json", &json!({"schematic_sha256":cpu.sha256,"initial":lamps,"final":final_lamps}));
+    let final_lamps: Vec<_> = lamps
+        .iter()
+        .map(|(pos, _)| {
+            let Block::RedstoneLamp { lit } = world.get_block(*pos) else {
+                panic!("lamp removed at {pos:?}");
+            };
+            (*pos, lit)
+        })
+        .collect();
+    write(
+        &root,
+        "lamps.json",
+        &json!({"schematic_sha256":cpu.sha256,"initial":lamps,"final":final_lamps}),
+    );
     write(&root, "screen-frames.json", &frames);
     write(&root, "final-checkpoint.json", &cpus::checkpoint(&world, 12_055, &chat));
     assert_eq!(chat.len(), 1534);

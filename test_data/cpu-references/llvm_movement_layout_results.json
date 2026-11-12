@@ -1,0 +1,392 @@
+{
+  "status": "implemented_and_verified",
+  "recorded_at": "2026-11-12T11:01:36.799117+01:00",
+  "source_base_commit": "7c376d93afd1c54c86da65fd4ea6195edd23737d",
+  "native_semantic_version": 36,
+  "change": "Generated movement records retain the six canonical rule words and inline fixed departure/arrival start/count pairs. Conditional cases, group bounds, replay order and budget checks retain existing behavior.",
+  "normal_batch_game_ticks": 16,
+  "performance_summary": {
+    "strict": {
+      "previous_median_tps": 3866.527531477831,
+      "current_median_tps": 4195.679616394035,
+      "gain_percent": 8.512860240526955,
+      "rounds": 3,
+      "paired_gain_percent": [
+        5.697231024761962,
+        12.041835457108352,
+        3.115112254136432
+      ],
+      "minimum_thread_cpu_fraction": 0.993851609133337
+    },
+    "relaxed": {
+      "previous_median_tps": 5421.44491135354,
+      "current_median_tps": 5695.3988604009255,
+      "gain_percent": 5.053153790674392,
+      "rounds": 5,
+      "paired_gain_percent": [
+        2.9735736695057913,
+        5.35249520387322,
+        3.704190597024981,
+        8.264753387513668,
+        14.003745006612789
+      ],
+      "minimum_thread_cpu_fraction": 0.9936404767427718
+    }
+  },
+  "performance_protocol": "Matched immutable circuit and mode, CPU24, 50000-tick warmup per variant, alternating paired 50000-tick runs, 16-tick native calls. Preparation, compilation, output reads and publication outside the timer. Python dispatch included equally.",
+  "benchmark_samples": {
+    "strict": {
+      "protocol": "Native C kernel in 16-game-tick batches; same immutable frozen ZCore Program. Python dispatch included equally. No compile, publication or output reads in timer.",
+      "parity": "All 968 lamp outputs and completed game clock must match after timing. Full snapshot and logical-work differences are recorded and allowed. Separate every-tick 800-screen-lamp parity proof exists.",
+      "fixture": "ZCore12B_FIX.schem",
+      "timing_thread": "logical CPU24",
+      "ticks": 50000,
+      "preparation_ticks": 413,
+      "rounds": 3,
+      "warmup_game_ticks_per_variant": 50000,
+      "reference": "\\\\?\\F:\\rustrepos\\MCHPRS\\work\\llvm-quiet-start-20261111\\runtime-zcore-strict\\mroww-native-cache\\0d65aa449d29f714e0ccd7f5f03b55d6a90637268f1eb26acc7462492d40ae10-0\\engine.dll",
+      "candidate": "\\\\?\\F:\\rustrepos\\MCHPRS\\work\\llvm-rule-layout-20261112\\runtime-zcore-strict\\mroww-native-cache\\ec39dda5f757f40c5a43cdceb6d757157bb631494910a29f2913023da8ecdffa-0\\engine.dll",
+      "dll_sha256": {
+        "reference": "7364ab5dad8b8095b7ebca497aaf46ffc5b64bf046ba8870d10ba7bd24914f72",
+        "candidate": "b3a80801f19b2b5f1a331f4ddba2fe9085c9635573a4fc104a1eda5e19714892"
+      },
+      "results": [
+        {
+          "round": 1,
+          "variant": "reference",
+          "elapsed_seconds": 11.64802299999974,
+          "tps": 4292.573941517897,
+          "thread_cpu_seconds": 11.609375,
+          "cpu_fraction": 0.9966820120461867,
+          "lamp_output_sha256": "da8ddd8c64b56dbd0755fd0d03069bb8b53f9aa6db1a7278020392ed4e7c0338",
+          "final_snapshot_sha256": "11c3a0c7768c0b1adb3e9867b495d35d73328a032b78c5f7dcfac729defe90ce",
+          "game_ticks_completed": 50413,
+          "logical_work_count": 815512061
+        },
+        {
+          "round": 1,
+          "variant": "candidate",
+          "elapsed_seconds": 11.02017799999976,
+          "tps": 4537.131795874902,
+          "thread_cpu_seconds": 10.96875,
+          "cpu_fraction": 0.9953332877200567,
+          "lamp_output_sha256": "da8ddd8c64b56dbd0755fd0d03069bb8b53f9aa6db1a7278020392ed4e7c0338",
+          "final_snapshot_sha256": "11c3a0c7768c0b1adb3e9867b495d35d73328a032b78c5f7dcfac729defe90ce",
+          "game_ticks_completed": 50413,
+          "logical_work_count": 815512061
+        },
+        {
+          "round": 2,
+          "variant": "candidate",
+          "elapsed_seconds": 11.917020500000035,
+          "tps": 4195.679616394035,
+          "thread_cpu_seconds": 11.84375,
+          "cpu_fraction": 0.993851609133337,
+          "lamp_output_sha256": "da8ddd8c64b56dbd0755fd0d03069bb8b53f9aa6db1a7278020392ed4e7c0338",
+          "final_snapshot_sha256": "11c3a0c7768c0b1adb3e9867b495d35d73328a032b78c5f7dcfac729defe90ce",
+          "game_ticks_completed": 50413,
+          "logical_work_count": 815512061
+        },
+        {
+          "round": 2,
+          "variant": "reference",
+          "elapsed_seconds": 13.35204849999991,
+          "tps": 3744.7437372625136,
+          "thread_cpu_seconds": 13.28125,
+          "cpu_fraction": 0.9946975552103552,
+          "lamp_output_sha256": "da8ddd8c64b56dbd0755fd0d03069bb8b53f9aa6db1a7278020392ed4e7c0338",
+          "final_snapshot_sha256": "11c3a0c7768c0b1adb3e9867b495d35d73328a032b78c5f7dcfac729defe90ce",
+          "game_ticks_completed": 50413,
+          "logical_work_count": 815512061
+        },
+        {
+          "round": 3,
+          "variant": "reference",
+          "elapsed_seconds": 12.931499799999983,
+          "tps": 3866.527531477831,
+          "thread_cpu_seconds": 12.875,
+          "cpu_fraction": 0.9956308393555414,
+          "lamp_output_sha256": "da8ddd8c64b56dbd0755fd0d03069bb8b53f9aa6db1a7278020392ed4e7c0338",
+          "final_snapshot_sha256": "11c3a0c7768c0b1adb3e9867b495d35d73328a032b78c5f7dcfac729defe90ce",
+          "game_ticks_completed": 50413,
+          "logical_work_count": 815512061
+        },
+        {
+          "round": 3,
+          "variant": "candidate",
+          "elapsed_seconds": 12.540838599999915,
+          "tps": 3986.9742044204554,
+          "thread_cpu_seconds": 12.484375,
+          "cpu_fraction": 0.9954976216662325,
+          "lamp_output_sha256": "da8ddd8c64b56dbd0755fd0d03069bb8b53f9aa6db1a7278020392ed4e7c0338",
+          "final_snapshot_sha256": "11c3a0c7768c0b1adb3e9867b495d35d73328a032b78c5f7dcfac729defe90ce",
+          "game_ticks_completed": 50413,
+          "logical_work_count": 815512061
+        }
+      ],
+      "status": "ok",
+      "reference_median_tps": 3866.527531477831,
+      "candidate_median_tps": 4195.679616394035,
+      "median_ratio_gain_percent": 8.512860240526955,
+      "paired_gain_percent": [
+        5.697231024761962,
+        12.041835457108352,
+        3.115112254136432
+      ],
+      "full_snapshot_matches": true,
+      "logical_work_matches": true
+    },
+    "relaxed": {
+      "protocol": "Native C kernel in 16-game-tick batches; same immutable frozen ZCore Program. Python dispatch included equally. No compile, publication or output reads in timer.",
+      "parity": "All 968 lamp outputs and completed game clock must match after timing. Full snapshot and logical-work differences are recorded and allowed. Separate every-tick 800-screen-lamp parity proof exists.",
+      "fixture": "ZCore12B_FIX.schem",
+      "timing_thread": "logical CPU24",
+      "ticks": 50000,
+      "preparation_ticks": 413,
+      "rounds": 5,
+      "warmup_game_ticks_per_variant": 50000,
+      "reference": "\\\\?\\F:\\rustrepos\\MCHPRS\\work\\llvm-quiet-start-20261111\\runtime-zcore-relaxed\\mroww-native-cache\\2a1ec648e655288cf165126a062e6abc1972802454a923c18470e254dd7f83be-0\\engine.dll",
+      "candidate": "\\\\?\\F:\\rustrepos\\MCHPRS\\work\\llvm-rule-layout-20261112\\runtime-zcore-relaxed\\mroww-native-cache\\55a52eb625036bb017b56dd0fc3d882edb52dc046d2eb0aca24ee9bf268c472f-0\\engine.dll",
+      "dll_sha256": {
+        "reference": "75df208f3b1501ce860e8f7671ac80f6fcd100b9c75efebf31616f92ca396bf3",
+        "candidate": "44c58d403dd13b1e6970036501f4ec2e4789326c63824652ebfabe55dcfd57ac"
+      },
+      "results": [
+        {
+          "round": 1,
+          "variant": "reference",
+          "elapsed_seconds": 9.055614900000364,
+          "tps": 5521.436208600036,
+          "thread_cpu_seconds": 9.03125,
+          "cpu_fraction": 0.9973094151783813,
+          "lamp_output_sha256": "da8ddd8c64b56dbd0755fd0d03069bb8b53f9aa6db1a7278020392ed4e7c0338",
+          "final_snapshot_sha256": "35b9d4c8d014d028a030c852e505e1243266e83d9cab1711259c9924d0ae9551",
+          "game_ticks_completed": 50413,
+          "logical_work_count": 590521175
+        },
+        {
+          "round": 1,
+          "variant": "candidate",
+          "elapsed_seconds": 8.79411540000001,
+          "tps": 5685.620181877525,
+          "thread_cpu_seconds": 8.75,
+          "cpu_fraction": 0.9949835318285669,
+          "lamp_output_sha256": "da8ddd8c64b56dbd0755fd0d03069bb8b53f9aa6db1a7278020392ed4e7c0338",
+          "final_snapshot_sha256": "35b9d4c8d014d028a030c852e505e1243266e83d9cab1711259c9924d0ae9551",
+          "game_ticks_completed": 50413,
+          "logical_work_count": 590521175
+        },
+        {
+          "round": 2,
+          "variant": "candidate",
+          "elapsed_seconds": 8.75407229999928,
+          "tps": 5711.627490214368,
+          "thread_cpu_seconds": 8.703125,
+          "cpu_fraction": 0.9941801600154383,
+          "lamp_output_sha256": "da8ddd8c64b56dbd0755fd0d03069bb8b53f9aa6db1a7278020392ed4e7c0338",
+          "final_snapshot_sha256": "35b9d4c8d014d028a030c852e505e1243266e83d9cab1711259c9924d0ae9551",
+          "game_ticks_completed": 50413,
+          "logical_work_count": 590521175
+        },
+        {
+          "round": 2,
+          "variant": "reference",
+          "elapsed_seconds": 9.222633600000336,
+          "tps": 5421.44491135354,
+          "thread_cpu_seconds": 9.1875,
+          "cpu_fraction": 0.996190502461213,
+          "lamp_output_sha256": "da8ddd8c64b56dbd0755fd0d03069bb8b53f9aa6db1a7278020392ed4e7c0338",
+          "final_snapshot_sha256": "35b9d4c8d014d028a030c852e505e1243266e83d9cab1711259c9924d0ae9551",
+          "game_ticks_completed": 50413,
+          "logical_work_count": 590521175
+        },
+        {
+          "round": 3,
+          "variant": "reference",
+          "elapsed_seconds": 9.104207899999892,
+          "tps": 5491.965973228774,
+          "thread_cpu_seconds": 9.109375,
+          "cpu_fraction": 1.0005675507476173,
+          "lamp_output_sha256": "da8ddd8c64b56dbd0755fd0d03069bb8b53f9aa6db1a7278020392ed4e7c0338",
+          "final_snapshot_sha256": "35b9d4c8d014d028a030c852e505e1243266e83d9cab1711259c9924d0ae9551",
+          "game_ticks_completed": 50413,
+          "logical_work_count": 590521175
+        },
+        {
+          "round": 3,
+          "variant": "candidate",
+          "elapsed_seconds": 8.779016399999819,
+          "tps": 5695.3988604009255,
+          "thread_cpu_seconds": 8.75,
+          "cpu_fraction": 0.9966948005701619,
+          "lamp_output_sha256": "da8ddd8c64b56dbd0755fd0d03069bb8b53f9aa6db1a7278020392ed4e7c0338",
+          "final_snapshot_sha256": "35b9d4c8d014d028a030c852e505e1243266e83d9cab1711259c9924d0ae9551",
+          "game_ticks_completed": 50413,
+          "logical_work_count": 590521175
+        },
+        {
+          "round": 4,
+          "variant": "candidate",
+          "elapsed_seconds": 8.791552100000445,
+          "tps": 5687.277903977555,
+          "thread_cpu_seconds": 8.765625,
+          "cpu_fraction": 0.9970509075410651,
+          "lamp_output_sha256": "da8ddd8c64b56dbd0755fd0d03069bb8b53f9aa6db1a7278020392ed4e7c0338",
+          "final_snapshot_sha256": "35b9d4c8d014d028a030c852e505e1243266e83d9cab1711259c9924d0ae9551",
+          "game_ticks_completed": 50413,
+          "logical_work_count": 590521175
+        },
+        {
+          "round": 4,
+          "variant": "reference",
+          "elapsed_seconds": 9.518152200000259,
+          "tps": 5253.1204533584405,
+          "thread_cpu_seconds": 9.5,
+          "cpu_fraction": 0.9980928861381038,
+          "lamp_output_sha256": "da8ddd8c64b56dbd0755fd0d03069bb8b53f9aa6db1a7278020392ed4e7c0338",
+          "final_snapshot_sha256": "35b9d4c8d014d028a030c852e505e1243266e83d9cab1711259c9924d0ae9551",
+          "game_ticks_completed": 50413,
+          "logical_work_count": 590521175
+        },
+        {
+          "round": 5,
+          "variant": "reference",
+          "elapsed_seconds": 9.812402200000179,
+          "tps": 5095.592188424471,
+          "thread_cpu_seconds": 9.75,
+          "cpu_fraction": 0.9936404767427718,
+          "lamp_output_sha256": "da8ddd8c64b56dbd0755fd0d03069bb8b53f9aa6db1a7278020392ed4e7c0338",
+          "final_snapshot_sha256": "35b9d4c8d014d028a030c852e505e1243266e83d9cab1711259c9924d0ae9551",
+          "game_ticks_completed": 50413,
+          "logical_work_count": 590521175
+        },
+        {
+          "round": 5,
+          "variant": "candidate",
+          "elapsed_seconds": 8.607087600000341,
+          "tps": 5809.165925068314,
+          "thread_cpu_seconds": 8.578125,
+          "cpu_fraction": 0.9966350290195327,
+          "lamp_output_sha256": "da8ddd8c64b56dbd0755fd0d03069bb8b53f9aa6db1a7278020392ed4e7c0338",
+          "final_snapshot_sha256": "35b9d4c8d014d028a030c852e505e1243266e83d9cab1711259c9924d0ae9551",
+          "game_ticks_completed": 50413,
+          "logical_work_count": 590521175
+        }
+      ],
+      "status": "ok",
+      "reference_median_tps": 5421.44491135354,
+      "candidate_median_tps": 5695.3988604009255,
+      "median_ratio_gain_percent": 5.053153790674392,
+      "paired_gain_percent": [
+        2.9735736695057913,
+        5.35249520387322,
+        3.704190597024981,
+        8.264753387513668,
+        14.003745006612789
+      ],
+      "full_snapshot_matches": true,
+      "logical_work_matches": true
+    }
+  },
+  "validation": {
+    "unit_tests": {
+      "passed": 286,
+      "failed": 0,
+      "ignored": 29
+    },
+    "zcore": {
+      "matching_screen_frames_per_mode": 50001,
+      "screen_lamps_per_frame": 800,
+      "strict_and_relaxed": true,
+      "full_final_native_snapshots_and_ordered_pending_ticks_and_work_match": true,
+      "trace_sha256": "7ade7a6101ca8818aed319a331253a89769879c6da56398790594ddfc36dbb28"
+    },
+    "pm1": {
+      "ticks_to_halt": 12070,
+      "ram_pairs": 1792,
+      "lamps": 1452,
+      "ordered_messages": 1534,
+      "all_match": true
+    },
+    "fpu": {
+      "matching_output_words": 10000,
+      "control_repetitions": 128,
+      "scope": "Retained seeded protocol, opcode 010 only; not exhaustive; clock falling-edge parity remains unverified."
+    },
+    "production_generator_matches_independent_prototype_metadata": true,
+    "machine_code": {
+      "actual_object_references_inline_metadata": true,
+      "optimized_IR_references_inline_metadata": true,
+      "preprocessed_movement_code_matches_current_source": true,
+      "preprocessed_movement_sha256": "93403d0141cdb577f9e6529678b527d0e2211377b1530d66ea053a69f6c9ee0d"
+    },
+    "linux_cross_build": {
+      "status": "compiled_and_linked",
+      "undefined_symbols": 0,
+      "runtime_executed": false
+    }
+  },
+  "modules": {
+    "zcore-strict": {
+      "dll_sha256": "b3a80801f19b2b5f1a331f4ddba2fe9085c9635573a4fc104a1eda5e19714892",
+      "dll_bytes": 109769728,
+      "previous_dll_bytes": 105942016,
+      "extra_immutable_metadata_bytes": 3828040,
+      "instance_state_bytes": 21053193,
+      "instance_state_size_unchanged": true,
+      "canonical_program_sha256": "1699e0b8bcba2f054a007e1a3c05dd7ce5c9e90403864ec0de87ee4cb3f684ff",
+      "canonical_program_unchanged": true,
+      "emission_ms": 212.4445,
+      "native_build_ms": 2709.7891999999997
+    },
+    "zcore-relaxed": {
+      "dll_sha256": "44c58d403dd13b1e6970036501f4ec2e4789326c63824652ebfabe55dcfd57ac",
+      "dll_bytes": 104693248,
+      "previous_dll_bytes": 100865024,
+      "extra_immutable_metadata_bytes": 3828040,
+      "instance_state_bytes": 21053193,
+      "instance_state_size_unchanged": true,
+      "canonical_program_sha256": "b40ca104c8130faf2a75180269b5e149e003dc6389e2433ad965d9672ffa6a2a",
+      "canonical_program_unchanged": true,
+      "emission_ms": 198.1094,
+      "native_build_ms": 2685.5748999999996
+    },
+    "pm1": {
+      "dll_sha256": "3ff53073fafb6a2835d4f60cb181d3e9c881c214836ef541b146dc512c604be3",
+      "dll_bytes": 238490112,
+      "previous_dll_bytes": 228273152,
+      "extra_immutable_metadata_bytes": 10216960,
+      "instance_state_bytes": 81047201,
+      "instance_state_size_unchanged": true,
+      "canonical_program_sha256": "d898681d0fc08647c31a54e3b61b328f9762f3d09c765f49e1c217a583d06479",
+      "canonical_program_unchanged": true,
+      "emission_ms": 506.32480000000004,
+      "native_build_ms": 5334.8037
+    },
+    "fpu": {
+      "dll_sha256": "769fc8b9dda118a45a43f79538762f0e067418b29e5817197bdb7e9195f94c18",
+      "dll_bytes": 69486592,
+      "previous_dll_bytes": 67528704,
+      "extra_immutable_metadata_bytes": 1957840,
+      "instance_state_bytes": 11119201,
+      "instance_state_size_unchanged": true,
+      "canonical_program_sha256": "3c7f7e89d20fd7eb3e1cfa913c2663064bc8c461fae97288802c15769f58c864",
+      "canonical_program_unchanged": true,
+      "emission_ms": 157.2103,
+      "native_build_ms": 2017.0731
+    }
+  },
+  "native_source_sha256": {
+    "engine.c": "3847c27199dab5500dd5cfafa70d60eeb6b403f601dfa07a00447683c68e4d77",
+    "llvm_movement.c": "19b8d50e3adff01650b7ff5b07d73dc0b1111aaf04f716ad753278cfeefdbb2e",
+    "command_engine.c": "b50bda357f9505c88273b599a422d648d85915576ccc1fd50c02c1f4d5baca7a",
+    "abi.h": "95d6e4b1a86e87c5409af3de9cf15c2cda1f6a35b5cd80ba6f0635f833f5be76",
+    "generated.rs": "56f265d2f4d3bba1479f1bf88d2077c31d32c43a449764f880c513bf4922c45f"
+  },
+  "limitations": [
+    "Kernel-only timing; live server and packet/publication throughput were not remeasured.",
+    "Strict comparison contains three pairs; relaxed comparison contains five pairs.",
+    "PM1/FPU verified for correctness, without a new paired performance comparison.",
+    "Linux module cross-compiled/linked but not executed."
+  ]
+}

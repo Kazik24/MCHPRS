@@ -55,11 +55,11 @@ fn command_blocks_cannot_dispatch_privileged_commands_or_flood_output() {
     ] {
         assert!(world.execute_command_block(command, "@").is_err(), "{command}");
     }
-    for _ in 0..64 {
+    for _ in 0..crate::chat_commands::COMMAND_OUTPUT_QUEUE_LIMIT {
         world.execute_command_block("say hello", "@").unwrap();
     }
     assert!(world.execute_command_block("say overflow", "@").is_err());
-    assert_eq!(world.command_output().count(), 64);
+    assert_eq!(world.command_output().count(), crate::chat_commands::COMMAND_OUTPUT_QUEUE_LIMIT);
 }
 
 #[test]
@@ -296,8 +296,8 @@ fn looping_chain_stops_at_the_command_limit() {
     }
     redstone::command_block::update(&mut world, start);
     advance(&mut world, 2);
-    // The chain still terminates at 256 links; only 64 messages may be queued.
-    assert_eq!(world.command_messages.len(), 64);
+    // The chain still terminates at 256 links; the burst stays queued for delivery.
+    assert_eq!(world.command_messages.len(), 257);
 }
 
 #[test]
