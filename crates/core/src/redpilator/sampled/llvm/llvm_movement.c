@@ -77,8 +77,15 @@ static uint32_t valid_movement(const MchprsNativeProgramDescriptor *p, const uin
     for (uint32_t i = 0; i < n[22]; i += 4u) {
         const uint32_t *r = t[22] + i;
         if (r[0] >= nodes || !valid_source(r[1], nodes, tokens) || r[2] >= p->arrangement_link_count ||
-            (r[3] & ~0x000f030fu))
+            (r[3] & ~0x000f070fu))
             return 0u;
+#if defined(NE_STATIC_ANALOG_FLIPS)
+        uint32_t kind = blob[p->component_offset + (size_t)r[0] * 32u + 12u];
+        if (((r[3] & 0x400u) != 0u) != (kind == 9u || (!(r[3] & 0x200u) && kind == 5u)))
+            return 0u;
+#else
+        if (r[3] & 0x400u) return 0u;
+#endif
         uint32_t cached = 0u, attenuation = r[3] & 15u;
         if (r[1] & 0x80000000u) {
             uint32_t strength = t[11][(r[1] & 0x7fffffffu) * 3u + 1u];
@@ -284,7 +291,7 @@ static uint8_t arrangement_output(const NEEngine *e, uint32_t source) {
  * Remove the old level and add the new level in the target's corresponding count/histogram, then
  * invalidate repeated-update suppression when the effective input changes.
  */
-static void set_arranged(NEEngine *e, uint32_t index, uint32_t target, uint32_t side, uint8_t value) {
+static void set_arranged(NEEngine *e, uint32_t index, uint32_t target, uint32_t side, uint8_t value, uint32_t analog) {
     uint8_t old = e->arrangement_contributions[index];
     e->arrangement_contributions[index] = value;
     if (old == value)
@@ -292,20 +299,20 @@ static void set_arranged(NEEngine *e, uint32_t index, uint32_t target, uint32_t 
     if (side) {
         if (old) {
             e->side_count[target]--;
-            histogram_remove(e->side_histograms + (size_t)target * 16u, old);
+            if (analog) histogram_remove(e->side_histograms + (size_t)target * 16u, old);
         }
         if (value) {
             e->side_count[target]++;
-            histogram_add(e->side_histograms + (size_t)target * 16u, value);
+            if (analog) histogram_add(e->side_histograms + (size_t)target * 16u, value);
         }
     } else {
         if (old) {
             e->input_count[target]--;
-            histogram_remove(e->histograms + (size_t)target * 16u, old);
+            if (analog) histogram_remove(e->histograms + (size_t)target * 16u, old);
         }
         if (value) {
             e->input_count[target]++;
-            histogram_add(e->histograms + (size_t)target * 16u, value);
+            if (analog) histogram_add(e->histograms + (size_t)target * 16u, value);
         }
     }
 }
@@ -317,7 +324,7 @@ static void refresh_arranged(NEEngine *e, uint32_t index) {
         uint8_t strength = arrangement_output(e, r[3]);
         value = strength > attenuation ? (uint8_t)(strength - attenuation) : 0u;
     }
-    set_arranged(e, index, r[0], r[1], value);
+    set_arranged(e, index, r[0], r[1], value, input_reads_levels(e, r[0], r[1]));
     if ((old != 0u) != (value != 0u) ||
         (old != value && (components(e)[r[0]].kind == 9u || e->watched_by_component[r[0]] != NONE)))
         e->updated[r[0]] = 0u;
@@ -430,13 +437,14 @@ static uint32_t route_refresh(NEEngine *e, uint32_t token, uint32_t *switched_co
                 if (consume(e))
                     return e->error;
                 e->route_attenuation[index] = 255u;
-                set_arranged(e, index, link[0], link[1], 0u);
+                set_arranged(e, index, link[0], link[1], 0u, input_reads_levels(e, link[0], link[1]));
             }
             if (next != 255u) {
                 if (consume(e))
                     return e->error;
                 e->route_attenuation[index] = next;
-                set_arranged(e, index, link[0], link[1], strength > next ? (uint8_t)(strength - next) : 0u);
+                set_arranged(e, index, link[0], link[1], strength > next ? (uint8_t)(strength - next) : 0u,
+                             input_reads_levels(e, link[0], link[1]));
             }
             if (strength > old || strength > next)
                 e->updated[link[0]] = 0u;
@@ -709,7 +717,12 @@ static inline uint32_t apply_movement_flip(NEEngine *e, const uint32_t *flip, ui
         uint8_t strength = output(e, flip[1]);
         contribution = strength > attenuation ? (uint8_t)(strength - attenuation) : 0u;
     }
-    set_arranged(e, flip[2], flip[0], (flags >> 9u) & 1u, flags & 0x100u ? contribution : 0u);
+#if defined(NE_STATIC_ANALOG_FLIPS)
+    uint32_t analog = flags & 0x400u;
+#else
+    uint32_t analog = input_reads_levels(e, flip[0], (flags >> 9u) & 1u);
+#endif
+    set_arranged(e, flip[2], flip[0], (flags >> 9u) & 1u, flags & 0x100u ? contribution : 0u, analog);
     if (contribution)
         e->updated[flip[0]] = 0u;
     if (components(e)[flip[0]].kind != 8u && !e->switched[flip[0]] &&
@@ -736,6 +749,40 @@ static const uint32_t *movement_step(const NEEngine *e, uint32_t index) {
  * Validate the transition, update token digits and routing, apply arrangement flips and ordered
  * movement callbacks, then notify changed wires and switched recipients without duplicate deliveries.
  */
+#if defined(NE_STATIC_WIRE_GRAPH)
+static uint8_t graph_contribution(const NEEngine *e, uint32_t index) {
+    const uint32_t *r = table(e,25u) + (size_t)index * 8u;
+    if (!table(e,26u)[r[6] + e->groups[r[5]]]) return 0u;
+    uint8_t strength = arrangement_output(e,r[3]);
+    return strength > r[4] ? (uint8_t)(strength-r[4]) : 0u;
+}
+static void graph_materialize(NEEngine *e) {
+    if (!e->graph_active) return;
+    e->graph_active = 0u;
+    for (uint32_t node=0;node<engine_program(e)->component_count;++node) {
+        if (ne_static_graph_rows[(size_t)node*2u+1u]==NONE) continue;
+        e->input_count[node]=0u;
+        for (uint32_t level=0;level<16u;++level) e->histograms[(size_t)node*16u+level]=0u;
+    }
+    for (uint32_t i=0;i<engine_program(e)->link_count;++i) {
+        uint32_t node=read_u32(links(e)+(size_t)i*12u+4u);
+        if (!links(e)[(size_t)i*12u+9u] || ne_static_graph_rows[(size_t)node*2u+1u]==NONE) continue;
+        uint8_t value=e->contributions[i];
+        if (value) { e->input_count[node]++; histogram_add(e->histograms+(size_t)node*16u,value); }
+    }
+    for (uint32_t i=0;i<engine_program(e)->arrangement_link_count;++i) {
+        uint32_t node=table(e,25u)[(size_t)i*8u];
+        if (ne_static_graph_rows[(size_t)node*2u+1u]==NONE) continue;
+        uint8_t value=graph_contribution(e,i); e->arrangement_contributions[i]=value;
+        if (value) { e->input_count[node]++; histogram_add(e->histograms+(size_t)node*16u,value); }
+    }
+}
+static inline __attribute__((always_inline)) uint32_t graph_replay(NEEngine *e,uint32_t start,uint32_t count,uint32_t switched) {
+    uint32_t begin=ne_static_graph_prefix[start],end=ne_static_graph_prefix[start+count];
+    for (uint32_t i=begin;i<end;++i) switched=apply_movement_flip(e,ne_static_graph_flips+(size_t)i*4u,switched);
+    return switched;
+}
+#endif
 static uint32_t set_token_pos(NEEngine *e, uint32_t token, uint32_t position) {
     uint32_t old = e->token_cell[token];
     if (old == position)
@@ -776,6 +823,10 @@ static uint32_t set_token_pos(NEEngine *e, uint32_t token, uint32_t position) {
         }
         e->tick_operations += flat_count;
         e->work_count += flat_count;
+#if defined(NE_STATIC_WIRE_GRAPH)
+        if (e->graph_active) switched_count = graph_replay(e, flat_start, flat_count, switched_count);
+        else
+#endif
         for (uint32_t i = 0; i < flat_count; ++i)
             switched_count = apply_movement_flip(e, table(e, 22u) + (flat_start + i) * 4u, switched_count);
     } else for (uint32_t i = 0; i < row[1]; ++i) {
@@ -803,6 +854,15 @@ static uint32_t set_token_pos(NEEngine *e, uint32_t token, uint32_t position) {
             uint32_t base = position != NONE ? r[3] : r[2];
             flips = table(e, 21u) + (base + state) * 2u;
         }
+#if defined(NE_STATIC_WIRE_GRAPH)
+        if (e->graph_active && flips[1] <= NE_MAX_TICK_OPERATIONS - e->tick_operations) {
+            e->groups[r[0]] = after;
+            e->tick_operations += flips[1]; e->work_count += flips[1];
+            switched_count = graph_replay(e, flips[0], flips[1], switched_count);
+            continue;
+        }
+        graph_materialize(e);
+#endif
         e->groups[r[0]] = after;
         for (uint32_t j = 0; j < flips[1]; ++j) {
             const uint32_t *flip = table(e, 22u) + (flips[0] + j) * 4u;
@@ -819,18 +879,33 @@ static uint32_t set_token_pos(NEEngine *e, uint32_t token, uint32_t position) {
             refresh_wire(e, node, input_strength(e, node));
     }
     uint32_t start = position != NONE ? row[4] : row[2], count = position != NONE ? row[5] : row[3];
+#if defined(NE_STATIC_MOVEMENT_MASKS)
+    uint64_t changed_bits = 0u;
+#endif
     for (uint32_t i = 0; i < count; ++i) {
         const uint32_t *r = table(e, 23u) + (start + i) * 5u;
         uint32_t notification = r[0], node = notification_component(notification);
         uint32_t deliver = (!(notification & PISTON_HEAD_NOTIFICATION) && e->switched[node]) || r[1];
-        for (uint32_t j = 0; j < r[4] && !deliver; ++j)
-            deliver = e->changed[table(e, 24u)[r[3] + j]];
+        if (!deliver && r[4]) {
+#if defined(NE_STATIC_MOVEMENT_MASKS)
+            const uint32_t *bits = ne_static_movement_masks + (size_t)(start + i) * 2u;
+            uint64_t mask = count <= 64u ? (uint64_t)bits[0] | ((uint64_t)bits[1] << 32u) : UINT64_MAX;
+            if (mask != UINT64_MAX)
+                deliver = (changed_bits & mask) != 0u;
+            else
+#endif
+            for (uint32_t j = 0; j < r[4] && !deliver; ++j)
+                deliver = e->changed[table(e, 24u)[r[3] + j]];
+        }
         if (consume(e))
             return e->error;
         if (r[2]) {
             if (e->switched[node]) {
                 e->switched[node] = 0u;
                 if (mark_wire(e, node)) {
+#if defined(NE_STATIC_MOVEMENT_MASKS)
+                    if (i < 64u) changed_bits |= UINT64_C(1) << i;
+#endif
                     e->changed[node] = 1u;
                     e->changed_nodes[changed_count++] = node;
                 }
@@ -1215,14 +1290,23 @@ uint32_t ne_read_snapshot(const void *memory, uint32_t *out, uint32_t words) {
     }
     for (uint32_t i = 0; i < engine_program(e)->link_count; ++i)
         out[cursor++] = e->contributions[i];
-    for (uint32_t i = 0; i < engine_program(e)->arrangement_link_count; ++i)
+    for (uint32_t i = 0; i < engine_program(e)->arrangement_link_count; ++i) {
+#if defined(NE_STATIC_WIRE_GRAPH)
+        uint32_t node=table(e,25u)[(size_t)i*8u];
+        if (graph_node(e,node)) { out[cursor++]=graph_contribution(e,i); continue; }
+#endif
         out[cursor++] = e->arrangement_contributions[i];
+    }
     for (uint32_t i = 0; i < table_words(e, 27u); ++i)
         out[cursor++] = e->groups[i];
     for (uint32_t i = 0; i < engine_program(e)->watched_wire_count; ++i)
         out[cursor++] = e->watched_strengths[i];
     for (uint32_t i = 0; i < engine_program(e)->component_count; ++i) {
+#if defined(NE_STATIC_WIRE_GRAPH)
+        out[cursor++] = graph_node(e,i) ? graph_value(e,i)>>8u : e->input_count[i];
+#else
         out[cursor++] = e->input_count[i];
+#endif
         out[cursor++] = e->side_count[i];
     }
     for (uint32_t i = 0; i < engine_program(e)->component_count; ++i)

@@ -263,15 +263,14 @@ fn compiled_copper_bulb_matches_native(name: &str, lit: bool, powered: bool, llv
     let bounds = (BULB - BlockPos::new(4, 2, 4), BULB + BlockPos::new(4, 2, 4));
     let ticks = world.scheduler().iter_entries().collect();
     let mut compiler = Compiler::default();
-    compiler
-        .compile(
-            &compiled_world,
-            bounds,
-            CompilerOptions { llvm, ..Default::default() },
-            ticks,
-            Default::default(),
-        )
-        .unwrap();
+    crate::redpilator::compile_test_entry(
+        &mut compiler,
+        &compiled_world,
+        bounds,
+        CompilerOptions { llvm, ..Default::default() },
+        ticks,
+    )
+    .unwrap();
     compiled_world.clear_scheduled_ticks();
 
     let positions = [

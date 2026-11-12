@@ -1,0 +1,549 @@
+{
+  "schema_version": 1,
+  "date": "2026-11-12",
+  "native_semantic_version": 39,
+  "scope": "Three experiments executed in order; all retained in their measured scope. Strict remains default. No deployment or target/native_engine.dll overwrite.",
+  "protocol": {
+    "fixture": "ZCore12B_FIX.schem",
+    "ticks": 50000,
+    "preparation_ticks": 413,
+    "batch": 16,
+    "affinity_logical_cpu": 24,
+    "alternating_pairs": true,
+    "full_untimed_warmup_per_variant": 50000,
+    "timed": "native kernel and equal Python batch dispatch; compilation, preparation, publication and final verification excluded",
+    "contamination_guard": "No cargo, rustc, clang, lld-link, core tests or benchmark runners concurrently with timed pairs. Outliers retained in raw results."
+  },
+  "experiments": [
+    {
+      "name": "Boolean versus analog input bookkeeping",
+      "status": "retained in strict and relaxed",
+      "relaxed": {
+        "reference_median_tps": 5532.77552038201,
+        "candidate_median_tps": 5580.19160547649,
+        "median_ratio_gain_percent": 0.8570035946660948,
+        "paired_gain_percent": [
+          -0.2188590954304126,
+          1.3362317163894133,
+          1.9829861400500137,
+          0.04029137556651463,
+          1.7979165305298306
+        ],
+        "dll_sha256": {
+          "reference": "d9b2a1a995bafa48ad912fe92b6abc010c961fbd66384374f04999a42797218c",
+          "candidate": "14ab26033145358707b6e5e47c851e8e6e20b05b03af40274d397f53f85b2046"
+        },
+        "full_snapshot_matches": true,
+        "logical_work_matches": true,
+        "artifact": "work\\llvm-mair-opt-20261112\\01-flags-relaxed-paired-5.json"
+      },
+      "strict": {
+        "reference_median_tps": 3954.2906461676976,
+        "candidate_median_tps": 4095.6356816075922,
+        "median_ratio_gain_percent": 3.5744725941397215,
+        "paired_gain_percent": [
+          4.3263556282060245,
+          1.7144605577767313,
+          5.197073347218684,
+          2.0348970947720257,
+          0.7027617975828182
+        ],
+        "dll_sha256": {
+          "reference": "dfe09ee40e0eaf2c332643803d350ba1614a153c2b2828f7d2ca0d97da3b7051",
+          "candidate": "430296e55a5a0bb9c4fe443cc98c3da66c90edcd2868803f1784528a53cfd7a2"
+        },
+        "full_snapshot_matches": true,
+        "logical_work_matches": true,
+        "artifact": "work\\llvm-mair-opt-20261112\\01-flags-strict-paired-5.json"
+      },
+      "normal_generated_module_confirmation": {
+        "relaxed": {
+          "reference_median_tps": 5405.805961015939,
+          "candidate_median_tps": 5653.9211565907935,
+          "median_ratio_gain_percent": 4.589791001825483,
+          "paired_gain_percent": [
+            -7.533747859737872,
+            5.958422912105199,
+            7.341294348366545
+          ],
+          "dll_sha256": {
+            "reference": "d9b2a1a995bafa48ad912fe92b6abc010c961fbd66384374f04999a42797218c",
+            "candidate": "bf9ff42c98c198100eb47e79f92c148f74dd02625381987c7ce8e62106b7ca85"
+          },
+          "full_snapshot_matches": true,
+          "logical_work_matches": true,
+          "artifact": "work\\llvm-mair-opt-20261112\\01-kept-relaxed-paired-3.json"
+        },
+        "strict": {
+          "reference_median_tps": 4154.333489120689,
+          "candidate_median_tps": 4208.903468942719,
+          "median_ratio_gain_percent": 1.31356762679109,
+          "paired_gain_percent": [
+            2.1836002856692183,
+            1.31356762679109,
+            -3.0759144658864312
+          ],
+          "dll_sha256": {
+            "reference": "dfe09ee40e0eaf2c332643803d350ba1614a153c2b2828f7d2ca0d97da3b7051",
+            "candidate": "ceab8f2c0f46f5109e0298d5e5c0d447050041acb67e1fe24f958aac3d7f05c8"
+          },
+          "full_snapshot_matches": true,
+          "logical_work_matches": true,
+          "artifact": "work\\llvm-mair-opt-20261112\\01-kept-strict-paired-3.json"
+        }
+      },
+      "evidence": "All nine histogram mutation sites maintain levels only for main wire inputs or comparator main/side inputs. Active counts and contribution bytes remain complete. Bit10 of generated flip flags supplies the classification directly in hot replay.",
+      "proof": "Kinds are immutable for the instance. All input_strength, comparator side-level and Boolean-count consumers inspected; all set_arranged callers updated. Generic data retain runtime classification. Generated classification validated against component kind/side, and included before program hashing.",
+      "validation": [
+        "old/new level0..15 matrix for ordinary/arranged, main/side, duplicate strengths",
+        "strict and relaxed mixed1/16/32/64-batch full state parity"
+      ]
+    },
+    {
+      "name": "Ordered movement dependency masks",
+      "status": "retained only when lazy_wire_power is proven; strict implementation rejected",
+      "relaxed": {
+        "reference_median_tps": 5738.927158987294,
+        "candidate_median_tps": 5778.828158129931,
+        "median_ratio_gain_percent": 0.695269307960289,
+        "paired_gain_percent": [
+          1.91337007160981,
+          2.647269157788079,
+          -0.01584323528509568,
+          25.633467522621324,
+          1.291474000874615
+        ],
+        "dll_sha256": {
+          "reference": "bf9ff42c98c198100eb47e79f92c148f74dd02625381987c7ce8e62106b7ca85",
+          "candidate": "ca6f978c33159c2286123969f0377284ea24cb97ee637df1065e7280b3f93751"
+        },
+        "full_snapshot_matches": true,
+        "logical_work_matches": true,
+        "artifact": "work\\llvm-mair-opt-20261112\\02-masks-relaxed-paired-5.json"
+      },
+      "strict_rejected": {
+        "reference_median_tps": 4217.634139218143,
+        "candidate_median_tps": 4171.52082210966,
+        "median_ratio_gain_percent": -1.0933455958091143,
+        "paired_gain_percent": [
+          -0.20858804377368312,
+          13.555971803911016,
+          -1.0933455958091143,
+          -1.6669488974689006,
+          -0.028439863342544225
+        ],
+        "dll_sha256": {
+          "reference": "ceab8f2c0f46f5109e0298d5e5c0d447050041acb67e1fe24f958aac3d7f05c8",
+          "candidate": "0ad7052a75bb4fce9438b3441a959d1c71ad56749b95e3b89891b21688d0d7de"
+        },
+        "full_snapshot_matches": true,
+        "logical_work_matches": true,
+        "artifact": "work\\llvm-mair-opt-20261112\\02-masks-strict-paired-5.json"
+      },
+      "screening": {
+        "relaxed": {
+          "reference_median_tps": 5711.017706782122,
+          "candidate_median_tps": 5803.956847580858,
+          "median_ratio_gain_percent": 1.6273656565337857,
+          "paired_gain_percent": [
+            1.6273656565337857,
+            0.7369695780613528,
+            1.205055530859922
+          ],
+          "dll_sha256": {
+            "reference": "bf9ff42c98c198100eb47e79f92c148f74dd02625381987c7ce8e62106b7ca85",
+            "candidate": "ca6f978c33159c2286123969f0377284ea24cb97ee637df1065e7280b3f93751"
+          },
+          "full_snapshot_matches": true,
+          "logical_work_matches": true,
+          "artifact": "work\\llvm-mair-opt-20261112\\02-masks-relaxed-paired-3.json"
+        },
+        "strict": {
+          "reference_median_tps": 4248.469856226978,
+          "candidate_median_tps": 4296.396649937431,
+          "median_ratio_gain_percent": 1.1280954162875112,
+          "paired_gain_percent": [
+            2.859162605471055,
+            -2.567904864949988,
+            0.5876654210193566
+          ],
+          "dll_sha256": {
+            "reference": "ceab8f2c0f46f5109e0298d5e5c0d447050041acb67e1fe24f958aac3d7f05c8",
+            "candidate": "0ad7052a75bb4fce9438b3441a959d1c71ad56749b95e3b89891b21688d0d7de"
+          },
+          "full_snapshot_matches": true,
+          "logical_work_matches": true,
+          "artifact": "work\\llvm-mair-opt-20261112\\02-masks-strict-paired-3.json"
+        }
+      },
+      "layout": {
+        "mask_bytes": 1926856,
+        "steps": 240857,
+        "masked_dependencies": 88144,
+        "fallback_steps": 0
+      },
+      "evidence": "Actual optimized assembly loads one64-bit mask and tests it against changed_bits. Dynamic dependency-index and changed-byte scan remains as fallback.",
+      "proof": "Bits refer only to earlier changed-wire steps. Duplicate wire steps are ORed. Conflicting shared-step layouts and plans over64 steps use the original ordered scan. Callbacks, consumed operations and cleanup order are preserved.",
+      "validation": "Generator tests cover preceding/future dependencies, combined bits, overlapping plans, >64 fallback and empty input; full snapshots/pending/work match."
+    },
+    {
+      "name": "Smaller replay graph for presentation-only wires",
+      "status": "retained only in eligible relaxed circuits",
+      "relaxed": {
+        "reference_median_tps": 5843.6191646551915,
+        "candidate_median_tps": 5990.715110465776,
+        "median_ratio_gain_percent": 2.517206232402791,
+        "paired_gain_percent": [
+          2.517206232402791,
+          1.5639125500856776,
+          2.5597752887473346,
+          3.384385454501837,
+          1.9396552005342738
+        ],
+        "dll_sha256": {
+          "reference": "ca6f978c33159c2286123969f0377284ea24cb97ee637df1065e7280b3f93751",
+          "candidate": "ae3782e4611d50120aabbe05a1d2050c03b888a3f71d9b11411c396d93d41604"
+        },
+        "full_snapshot_matches": true,
+        "logical_work_matches": true,
+        "artifact": "work\\llvm-mair-opt-20261112\\03-inline-relaxed-paired-5.json"
+      },
+      "screening": {
+        "reference_median_tps": 5764.168432644985,
+        "candidate_median_tps": 5881.093141836067,
+        "median_ratio_gain_percent": 2.0284748885699866,
+        "paired_gain_percent": [
+          3.32107682154803,
+          0.49407582690705887,
+          4.217951172001344
+        ],
+        "dll_sha256": {
+          "reference": "ca6f978c33159c2286123969f0377284ea24cb97ee637df1065e7280b3f93751",
+          "candidate": "ae3782e4611d50120aabbe05a1d2050c03b888a3f71d9b11411c396d93d41604"
+        },
+        "full_snapshot_matches": true,
+        "logical_work_matches": true,
+        "artifact": "work\\llvm-mair-opt-20261112\\03-inline-relaxed-paired-3.json"
+      },
+      "rejected_out_of_line_version": {
+        "reference_median_tps": 5865.823739974441,
+        "candidate_median_tps": 5765.988310057265,
+        "median_ratio_gain_percent": -1.701984825026659,
+        "paired_gain_percent": [
+          -1.5309335304323213,
+          -1.701984825026659,
+          -0.31405978201892726
+        ],
+        "dll_sha256": {
+          "reference": "ca6f978c33159c2286123969f0377284ea24cb97ee637df1065e7280b3f93751",
+          "candidate": "6bfc7d92fa9e93dc2f270715c4cabd5c29e418269073699d772edd33f65c2121"
+        },
+        "full_snapshot_matches": true,
+        "logical_work_matches": true,
+        "artifact": "work\\llvm-mair-opt-20261112\\03-graph-relaxed-paired-3.json"
+      },
+      "layout": {
+        "eligible_unwatched_wires": 15381,
+        "filtered_flip_records": 327344,
+        "canonical_flip_records": 2168794,
+        "lookup_values": 149788,
+        "lookup_bytes": 599152,
+        "retained_flip_bytes": 29463200,
+        "prefix_bytes": 8675180,
+        "correctness": "Constant sources only; no outgoing electrical, routed, reactive or watched consumers; one group <=4096 states. Canonical replay retained for operation-limit prefix; snapshot views derive canonical group state."
+      },
+      "evidence": "Out-of-line graph_replay regressed1.7%; always-inline replay improved2.5% in confirmation. Actual normal generated tables match prototype hashes. Full canonical tables remain available.",
+      "proof": "Omitted targets are unwatched wires with no outgoing electrical, routed or reactive consumers, no side inputs and only immutable token/constant-block sources. At most one movement group with <=4096 states supplies a bounded lookup. Complete counts are packed only if they fit24 bits; other nodes retain32-bit scalar state. Lookups are capped at4MiB, with canonical fallback.",
+      "failure_prefix": "Full-budget ranges charge exactly the original operation count and preserve callback order. Before partial scalar replay, materialize canonical per-link bytes, counts and histograms at the current group state; ignore non-counting ordinary links. Sticky-error snapshots retain the successful prefix. No initial-idle assumption is extended to execution.",
+      "publication": "Component/wire reads and full snapshots derive omitted state from immutable inputs and current groups; ordinary link bytes, ordered pending ticks, piston state and effects remain canonical. No read mutates state."
+    }
+  ],
+  "combined_final_modules": {
+    "relaxed": {
+      "reference_median_tps": 5961.672573948086,
+      "candidate_median_tps": 6271.202229227037,
+      "median_ratio_gain_percent": 5.191993546099205,
+      "paired_gain_percent": [
+        4.083048520699029,
+        4.586158933274187,
+        4.069300229895356,
+        5.908743045521869,
+        5.522338327477838
+      ],
+      "dll_sha256": {
+        "reference": "d9b2a1a995bafa48ad912fe92b6abc010c961fbd66384374f04999a42797218c",
+        "candidate": "b46e3ff03c2d26588f8dd80c5b42b9d0ba2f91d560f44a48301270dee2625061"
+      },
+      "full_snapshot_matches": true,
+      "logical_work_matches": true,
+      "artifact": "work\\llvm-mair-opt-20261112\\final-kept-relaxed-paired-5.json"
+    },
+    "strict": {
+      "reference_median_tps": 3673.000413065355,
+      "candidate_median_tps": 3743.7262168093694,
+      "median_ratio_gain_percent": 1.9255593735419518,
+      "paired_gain_percent": [
+        11.303928821031661,
+        4.279177701453585,
+        6.173707660743788,
+        1.4884269255679872,
+        4.135514785835981
+      ],
+      "dll_sha256": {
+        "reference": "dfe09ee40e0eaf2c332643803d350ba1614a153c2b2828f7d2ca0d97da3b7051",
+        "candidate": "a999c1ee36c0bccbd9a1eceb88bdf3d8baa1127f607b20f0ddc924efddf1bf14"
+      },
+      "full_snapshot_matches": true,
+      "logical_work_matches": true,
+      "artifact": "work\\llvm-mair-opt-20261112\\final-kept-strict-paired-5.json"
+    }
+  },
+  "current_live_batch16": {
+    "status": "ok",
+    "batch": 16,
+    "source_sha256": {
+      "crates\\core\\src\\redpilator\\sampled\\llvm\\engine.c": "7bdfce0ff31dd019b1d58a245c1aa07347eb9d9ca87ef8596cc919764fc099af",
+      "crates\\core\\src\\redpilator\\sampled\\llvm\\llvm_movement.c": "cf5359e06d8004cbaf33c4f553dc67a5416e0665454fac9a4ffbf9391349ccda",
+      "crates\\core\\src\\redpilator\\sampled\\llvm\\generated.rs": "efd09567a26dbad7de0293f81ce53fd6249102b5284e2b77018c440a6fb9601c",
+      "crates\\core\\src\\redpilator\\sampled\\llvm\\library.rs": "cacaa8d9ec79d38a14616122e894c4ce3c670f44402fa63f4a5af215ab336f31",
+      "crates\\core\\src\\redpilator\\sampled\\llvm\\cache.rs": "4ae4166f8c967ee8b6234b7216d1f84b82e805c2f408e71bb65565602924132a",
+      "crates\\core\\src\\redpilator\\sampled\\llvm\\abi.h": "95d6e4b1a86e87c5409af3de9cf15c2cda1f6a35b5cd80ba6f0635f833f5be76",
+      "crates\\core\\src\\redpilator\\sampled\\llvm\\command_engine.c": "413a0802550bce9ed59880abc3ea71fedf15ebc438337f6a39248f0cb7344cc4",
+      "target\\release\\examples\\bench_pm1_server.exe": "be64c70babe098a42fe61b6d076f73dac118ae3e05ce4e2442d738a9be55c005"
+    },
+    "results": {
+      "zcore": {
+        "none": {
+          "median_tps": 5908.594748275547,
+          "observed_publication_rate_hz": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "command_delivery_drain_ms": [
+            0.0028,
+            0.00019999999999999998,
+            0.00039999999999999996
+          ]
+        },
+        "io": {
+          "median_tps": 5444.814264699014,
+          "observed_publication_rate_hz": [
+            9.910031938399417,
+            9.963441348215174,
+            9.9482465843834
+          ],
+          "command_delivery_drain_ms": [
+            0.00019999999999999998,
+            0.0003,
+            0.00039999999999999996
+          ]
+        }
+      },
+      "pm1": {
+        "none": {
+          "median_tps": 5452.930726636677,
+          "observed_publication_rate_hz": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "command_delivery_drain_ms": [
+            0.0028,
+            0.0003,
+            0.0005
+          ]
+        },
+        "io": {
+          "median_tps": 5545.015788823748,
+          "observed_publication_rate_hz": [
+            9.862273352630515,
+            9.189718616329799,
+            9.868445648833411
+          ],
+          "command_delivery_drain_ms": [
+            0.00039999999999999996,
+            0.0009,
+            0.0003
+          ]
+        }
+      }
+    }
+  },
+  "correctness": {
+    "normal_runner_fixtures": {
+      "status": "ok",
+      "modules": {
+        "pm1": "E:\\codex-builds\\llvm-mair-opt-20261112\\fixtures\\final-pm1\\engine.dll",
+        "fpu": "E:\\codex-builds\\llvm-mair-opt-20261112\\fixtures\\final-fpu\\engine.dll",
+        "zcore-relaxed": "E:\\codex-builds\\llvm-mair-opt-20261112\\fixtures\\final-zcore-relaxed\\engine.dll",
+        "zcore-strict": "E:\\codex-builds\\llvm-mair-opt-20261112\\fixtures\\final-zcore-strict\\engine.dll"
+      },
+      "pm1_messages": 1534,
+      "fpu_matching_words": 10000,
+      "zcore_matching_modes": [
+        "strict",
+        "relaxed"
+      ]
+    },
+    "isolated_dependency_mask_fixtures": {
+      "status": "ok",
+      "pm1_messages": 1534,
+      "fpu_matching_words": 10000,
+      "method": "Semantic39 normal generated modules with only NE_STATIC_WIRE_GRAPH undefined; Boolean handling and movement masks remain enabled. Actual program identities retained; normal Rust runners load the modules."
+    },
+    "final_full_state_parity": {
+      "relaxed": {
+        "status": "ok",
+        "stage": "final-kept",
+        "mode": "relaxed",
+        "preparation_ticks": 413,
+        "run_ticks": 5000,
+        "compared": "all native snapshot words, ordered pending ticks, tick clock and logical work at every preparation tick and mixed-batch boundary",
+        "snapshot_sha256": "26ceb259e1697b65bb314d5873478ef239c8598ac4f219719b62afd72d47ffba",
+        "logical_work": 58663548
+      },
+      "strict": {
+        "status": "ok",
+        "stage": "final-kept",
+        "mode": "strict",
+        "preparation_ticks": 413,
+        "run_ticks": 5000,
+        "compared": "all native snapshot words, ordered pending ticks, tick clock and logical work at every preparation tick and mixed-batch boundary",
+        "snapshot_sha256": "0379ba6b4b34b0c3e118a4f93c0d31973ab465d4479fa40badbfc75e79ea9662",
+        "logical_work": 80931245
+      }
+    },
+    "operation_limit_prefix_cases": 48,
+    "native_c_checks": "Input level matrix and graph materialization test passed, including non-counting fixed links and idempotent materialization.",
+    "generator_tests": "7 passed; log work/llvm-mair-opt-20261112/final-generated-tests.log",
+    "core_tests": "Initial direct invocation from repository root:880 passed,50 failed,36 ignored. All50 failed cases passed on rerun from Cargo crate directory. Total930 passing cases across both invocations; no claim of one uninterrupted green full-suite run.",
+    "core_logs": [
+      "work/llvm-mair-opt-20261112/final-core-tests.log",
+      "work/llvm-mair-opt-20261112/final-core-retry.log"
+    ],
+    "release_build": "Passed; work/llvm-mair-opt-20261112/final-release-build.log"
+  },
+  "execution_counts": {
+    "scope": "Untimed final-semantic39 relaxed ZCore work counts; after 413 preparation ticks and Run, counters reset; 5000 game ticks in batch16. Every batch checked against uninstrumented native snapshot/pending/clock/work.",
+    "before": {
+      "token_moves": 3222796,
+      "movement_flips": 13618597,
+      "wire_target_flips": 10455148,
+      "unwatched_wire_target_flips": 4871315,
+      "arranged_calls": 13686022,
+      "arranged_changes": 13675752,
+      "histogram_mutations": 15579169,
+      "boolean_receiver_histogram_mutations": 4637141,
+      "scheduled_events": 1138502,
+      "refresh_wire_calls": 5980861,
+      "mark_wire_calls": 5484363,
+      "update_once_requests": 20160663,
+      "head_update_once_requests": 9636340,
+      "update_component_calls": 8001471
+    },
+    "after": {
+      "token_moves": 3222796,
+      "movement_flips": 8805320,
+      "wire_target_flips": 5641871,
+      "unwatched_wire_target_flips": 58038,
+      "arranged_calls": 8872745,
+      "arranged_changes": 8862475,
+      "histogram_mutations": 6128751,
+      "boolean_receiver_histogram_mutations": 0,
+      "scheduled_events": 1138502,
+      "refresh_wire_calls": 5980861,
+      "mark_wire_calls": 5484363,
+      "update_once_requests": 20160663,
+      "head_update_once_requests": 9636340,
+      "update_component_calls": 8001471,
+      "graph_ranges": 8022034,
+      "graph_skipped_flips": 4813277,
+      "mask_tests": 1404400,
+      "graph_materializations": 0,
+      "head_no_piston": 0,
+      "head_flags_rejected": 4501778,
+      "head_delivered": 5134562,
+      "normal_update_suppressed": 2522928,
+      "canonical_empty_graph_ranges": 4596800,
+      "retained_empty_graph_ranges": 4596800
+    },
+    "saved_mair": {
+      "flip_visits": 6417312,
+      "flip_target_wirewatch": 3198515,
+      "flip_target_other": 3218797,
+      "flip_source_const": 6329416,
+      "link_visits": 7841483,
+      "link_changes": 7836975,
+      "link_changes_analog": 3199840,
+      "link_changes_boolean": 4637135,
+      "histogram_updates": 3199840,
+      "max_level_reads": 3190353,
+      "movement_step_visits": 12028315,
+      "movement_step_wire_visits": 3429999,
+      "movement_step_wire_refreshes": 1852079,
+      "wirewatch_refreshes": 3190353,
+      "wirewatch_changes": 2603728,
+      "movement_step_callback_requests": 3336526,
+      "movement_residual_visits": 1367618,
+      "wirewatch_follower_callback_requests": 2515907,
+      "update_once_visits": 12330723,
+      "update_once_delivered": 8577168,
+      "update_once_suppressed": 3753555,
+      "update_calls": 10226585,
+      "output_writes": 3738925,
+      "output_mutations": 3738925,
+      "scheduled_tick_visits": 1138502,
+      "token_moves": 3222796,
+      "notify_cell_visits": 805403,
+      "notify_cell_shape_only_visits": 805403,
+      "notify_home_visits": 2440810,
+      "notify_home_shape_only_visits": 806581,
+      "notify_source_visits": 6338224,
+      "notify_source_target_visits": 3462193,
+      "wire_publication_writes": 0,
+      "own_group_visits": 3164123,
+      "shared_group_visits": 865671,
+      "flip_nonzero_signal": 6412804,
+      "flip_zero_signal": 4508
+    },
+    "instrumentation_was_never_timed": true,
+    "full_state_parity_every_batch": true,
+    "limits": "MAIR counts come from saved5000-tick diagnostics. Token moves and scheduled events match exactly; other categories have related but not universally identical granularity."
+  },
+  "why_mair_still_does_less": [
+    "Native components remain87786 including43454 wires; MAIR has61989 nodes including17657 WireWatch nodes. This change filters replay records, not the full component address space or all state arrays.",
+    "Native26166 watched wires remain unchanged. MAIR has17657; additional native dependencies cannot all be dropped without checking observer/piston/command ordering.",
+    "Of4871315 previous unwatched-wire flip calls,4813277 are now skipped (98.8%). Remaining wire-target flips are5641871, including58038 unwatched; the5583833 watched-wire calls exceed MAIR3198515 WireWatch-target flips. Nonwire flips are3163449 versus MAIR3218797. Most of the remaining flip-count gap is therefore in watched-wire demand.",
+    "Native update_once requests remain20160663, including9636340 head requests. MAIR records12330723 update_once visits. These are raw demand counters, not interchangeable delivered-callback counts.",
+    "MAIR flips carry recipient-step metadata and update a register bitset. Native still updates switched bytes/lists and scans residual recipients. The mask change covers changed-wire dependency tests only.",
+    "MAIR SwitchOwnGroups assigns token-owned states and replays a compiled range; SwitchSharedGroups handles dynamic shared state separately. Native still selects/validates generic group transitions and performs per-range prefix lookups.",
+    "Final diagnostics recorded8022034 graph ranges,4596800 with zero canonical flips. Of9636340 head requests,4501778 returned because the live head flags rejected forwarding, while5134562 were forwarded. These counters expose overhead and genuine dynamic decisions; they are not CPU-time percentages or permission to remove callbacks.",
+    "Dense main/side histogram storage remains allocated for all native components even after Boolean histogram writes are removed. Actual CPU cost depends on memory accesses and branches, not logical work totals.",
+    "Logical work counters intentionally charge omitted records to preserve the existing operation limit and failure prefix; unchanged logical totals do not mean unchanged executed work."
+  ],
+  "evidence": {
+    "actual_optimized_ir": "work/llvm-mair-opt-20261112/final-hot-functions.ll",
+    "actual_assembly": "work/llvm-mair-opt-20261112/final-movement.asm",
+    "optimization_remarks": "E:/codex-builds/llvm-mair-opt-20261112/evidence/final-remarks.yaml",
+    "hash_checks": "Actual emitted C sources matched current repository sources; graph rows/values/flips/prefix and movement masks matched measured prototype tables.",
+    "llvm_finding": "Immutable tables and dimensions remain compilation constants. Indexed signals, group states and callback recipients remain dynamic. Inlining removes replay call overhead; rejected drain/run_piston_events/tick_motions inlining is reported as excessive cost, not LLVM malfunction."
+  },
+  "limits": [
+    "Paired throughput evidence covers ZCore batch16 only. PM1 and FPU checks establish correctness, not paired performance gains.",
+    "Batch default stays16. Semantic39 live none/IO comparisons cover batch16 only, at an isolated10Hz cap with a real compressed client;32/64 were not rerun. Existing semantic38 records remain historical.",
+    "Derived replay data enlarge modules; canonical data are retained for exact failure handling. Final full-publication cost is not covered by the kernel timings.",
+    "No new MAIR timing or full strict-semantics equivalence proof; the saved PM1 MAIR loader still omits command entities and is not a valid PM1 throughput reference.",
+    "Connect4 skipped as requested. Full workspace suite and deployment not performed."
+  ],
+  "source_sha256": {
+    "crates\\core\\src\\redpilator\\sampled\\llvm\\engine.c": "7bdfce0ff31dd019b1d58a245c1aa07347eb9d9ca87ef8596cc919764fc099af",
+    "crates\\core\\src\\redpilator\\sampled\\llvm\\llvm_movement.c": "cf5359e06d8004cbaf33c4f553dc67a5416e0665454fac9a4ffbf9391349ccda",
+    "crates\\core\\src\\redpilator\\sampled\\llvm\\generated.rs": "efd09567a26dbad7de0293f81ce53fd6249102b5284e2b77018c440a6fb9601c",
+    "crates\\core\\src\\redpilator\\sampled\\llvm\\library.rs": "cacaa8d9ec79d38a14616122e894c4ce3c670f44402fa63f4a5af215ab336f31",
+    "crates\\core\\src\\redpilator\\sampled\\llvm\\input_engine_test.c": "ec1eb87cfc3d478a70c9db890b5a7e1a8f614856d603877f44824eba00ee2d48",
+    "crates\\core\\src\\redpilator\\sampled\\llvm\\command_engine.c": "413a0802550bce9ed59880abc3ea71fedf15ebc438337f6a39248f0cb7344cc4",
+    "crates\\core\\src\\redpilator\\sampled\\llvm\\abi.h": "95d6e4b1a86e87c5409af3de9cf15c2cda1f6a35b5cd80ba6f0635f833f5be76",
+    "crates\\core\\src\\redpilator\\sampled\\llvm\\cache.rs": "4ae4166f8c967ee8b6234b7216d1f84b82e805c2f408e71bb65565602924132a"
+  }
+}

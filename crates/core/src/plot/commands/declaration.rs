@@ -378,6 +378,7 @@ pub(super) fn declared_command_nodes() -> Vec<Node<'static>> {
 
     let redbox = crate::redbox::enabled();
     let mut root_children = nodes[0].children.to_vec();
+    root_children.push(visual as i32);
     let hl = nodes.len() as i32;
     let hl_args = hl + 1;
     nodes.push(Node::literal("hl", Box::leak(vec![hl_args].into_boxed_slice())).executable());

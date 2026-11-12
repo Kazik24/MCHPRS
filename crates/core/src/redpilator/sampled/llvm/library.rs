@@ -133,7 +133,7 @@ impl Library {
         // SAFETY: ne_api_descriptor takes no arguments and returns the repr(C) descriptor from abi.h; self owns
         // the module.
         let descriptor = unsafe { (self.api_descriptor)() };
-        if descriptor.abi_version != ABI_VERSION || descriptor.descriptor_bytes != 16 || descriptor.semantic_version != 38 {
+        if descriptor.abi_version != ABI_VERSION || descriptor.descriptor_bytes != 16 || descriptor.semantic_version != 39 {
             return Err(ScratchError {
                 position: None,
                 reason: "LLVM DLL ABI/version mismatch",

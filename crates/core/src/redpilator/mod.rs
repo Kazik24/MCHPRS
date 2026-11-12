@@ -18,6 +18,8 @@ mod task_monitor;
 #[cfg(test)]
 #[path = "tests/compiler.rs"]
 mod tests;
+#[cfg(test)]
+pub(crate) use tests::compile_test_entry;
 
 pub use crate::world::scheduler::{Queues, ScheduledBlockTick, TickScheduler};
 pub use compiler::{CompileError, CompileStatistics, Compiler, ExecutionError};

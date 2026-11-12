@@ -52,6 +52,7 @@ typedef struct {
     uint8_t *reactive_strengths;
     uint8_t has_reactive;
     uint8_t lazy_wire_power;
+    uint8_t graph_active;
     uint8_t *note_instruments, *note_queued;
     uint32_t *note_events, note_count;
     uint32_t *watched_by_component;
@@ -235,7 +236,19 @@ static uint32_t read_u32(const uint8_t *data) {
 }
 
 static uint8_t input_strength(const NEEngine *, uint32_t);
+#if defined(NE_STATIC_WIRE_GRAPH)
+static uint32_t graph_value(const NEEngine *e, uint32_t node) {
+    const uint32_t *r = ne_static_graph_rows + (size_t)node * 2u;
+    return ne_static_graph_values[r[1] + (r[0] == NONE ? 0u : e->groups[r[0]])];
+}
+static uint32_t graph_node(const NEEngine *e, uint32_t node) {
+    return e->graph_active && ne_static_graph_rows[(size_t)node * 2u + 1u] != NONE;
+}
+#endif
 static uint8_t represented_state(const NEEngine *e, uint32_t node) {
+#if defined(NE_STATIC_WIRE_GRAPH)
+    if (graph_node(e, node)) return (uint8_t)graph_value(e, node);
+#endif
     return ne_lazy_wire_power(e) && components(e)[node].kind == 5u ? input_strength(e, node) : e->component_state[node];
 }
 
@@ -378,6 +391,10 @@ static inline void histogram_add(uint32_t *histogram, uint32_t level) {
 static uint8_t histogram_strength(const uint32_t *histogram) {
     return (uint8_t)(31u - (uint32_t)__builtin_clz(histogram[0] | 1u));
 }
+static uint32_t input_reads_levels(const NEEngine *e, uint32_t node, uint32_t side) {
+    uint8_t kind = components(e)[node].kind;
+    return kind == 9u || (!side && kind == 5u);
+}
 
 /**
  * Update the side-input histograms fed by a changed source.
@@ -397,11 +414,11 @@ static void change_side_outputs(NEEngine *e, uint32_t node, uint8_t old, uint8_t
         uint8_t after = value > attenuation ? (uint8_t)(value - attenuation) : 0u;
         if (before) {
             e->side_count[target]--;
-            histogram_remove(e->side_histograms + (size_t)target * 16u, before);
+            if (input_reads_levels(e, target, 1u)) histogram_remove(e->side_histograms + (size_t)target * 16u, before);
         }
         if (after) {
             e->side_count[target]++;
-            histogram_add(e->side_histograms + (size_t)target * 16u, after);
+            if (input_reads_levels(e, target, 1u)) histogram_add(e->side_histograms + (size_t)target * 16u, after);
         }
     }
 }
@@ -427,11 +444,11 @@ static void set_contribution(NEEngine *e, uint32_t index, uint8_t value) {
     if (link[9] && old != value) {
         if (old) {
             e->input_count[target]--;
-            histogram_remove(e->histograms + (size_t)target * 16u, old);
+            if (input_reads_levels(e, target, 0u)) histogram_remove(e->histograms + (size_t)target * 16u, old);
         }
         if (value) {
             e->input_count[target]++;
-            histogram_add(e->histograms + (size_t)target * 16u, value);
+            if (input_reads_levels(e, target, 0u)) histogram_add(e->histograms + (size_t)target * 16u, value);
         }
     }
     if ((old != 0u) != (value != 0u) ||
@@ -1148,7 +1165,7 @@ const uint8_t *ne_program_identity(void) {
 }
 
 MchprsNativeApiDescriptor ne_api_descriptor(void) {
-    MchprsNativeApiDescriptor value = {3u, 16u, 38u};
+    MchprsNativeApiDescriptor value = {3u, 16u, 39u};
     return value;
 }
 
@@ -1308,6 +1325,7 @@ uint32_t ne_create(const MchprsNativeProgramDescriptor *program, const uint8_t *
     engine->command_now_ns = engine->command_logical_base = 0u;
     engine->has_reactive = 0u;
     engine->lazy_wire_power = 0u;
+    engine->graph_active = 0u;
     engine->note_count = 0u;
     for (uint32_t i = 0; i < program->component_count; ++i) {
         engine->component_state[i] = components(engine)[i].initial_state;
@@ -1361,7 +1379,7 @@ uint32_t ne_create(const MchprsNativeProgramDescriptor *program, const uint8_t *
                 uint32_t target = side_data[index];
                 uint8_t level = (uint8_t)(strength - side_data[index + 1u]);
                 engine->side_count[target]++;
-                histogram_add(engine->side_histograms + (size_t)target * 16u, level);
+                if (input_reads_levels(engine, target, 1u)) histogram_add(engine->side_histograms + (size_t)target * 16u, level);
             }
         }
     }
@@ -1369,6 +1387,9 @@ uint32_t ne_create(const MchprsNativeProgramDescriptor *program, const uint8_t *
 #ifdef MCHPRS_EMBEDDED_PROGRAM
     if (engine->lazy_wire_power != NE_STATIC_LAZY_WIRE_POWER || engine->has_reactive != NE_STATIC_HAS_REACTIVE)
         return NE_INVALID;
+#endif
+#if defined(NE_STATIC_WIRE_GRAPH)
+    engine->graph_active = 1u;
 #endif
     return NE_OK;
 }

@@ -483,7 +483,7 @@ fn llvm_continuation_ticks_preserve_priority_and_duplicates() {
 }
 
 // Continuation imports remain supported internally; fresh LLVM compilation requires an empty queue.
-pub(super) fn compile_test_entry(
+pub(crate) fn compile_test_entry(
     compiler: &mut Compiler,
     world: &PlotWorld,
     bounds: (BlockPos, BlockPos),

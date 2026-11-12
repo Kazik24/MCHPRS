@@ -297,6 +297,7 @@ fn main() {
                     .unwrap();
                 let started = Instant::now();
                 let loop_elapsed = benchmark::run_ticks_batched(&mut plot, ticks, batch);
+                let timings = benchmark::timings(&plot);
                 let command_drain = benchmark::drain_commands(&mut plot);
                 sender.send_packet(&CKeepAlive { id: END }.encode());
                 let received = messages.recv_timeout(Duration::from_secs(30)).unwrap().unwrap().unwrap();
@@ -319,7 +320,6 @@ fn main() {
                 for (&position, &state) in &received.blocks {
                     assert_eq!(plot.world.get_block_raw(position), state, "client differs from latest published world");
                 }
-                let timings = benchmark::timings(&plot);
                 assert_eq!(timings["ticks"], ticks);
                 benchmark::materialize(&mut plot, bounds);
                 let observed = if let Some(p) = &protocol {
@@ -347,8 +347,9 @@ fn main() {
                 }
                 let row = json!({"cpu":cpu.name,"backend":backend,"relaxed":relaxed,"sample":sample,"publication":mode,"batch":batch,
                 "ticks":ticks,"preparation_ticks":if protocol.is_some(){0}else{413},"elapsed_ms":elapsed.as_secs_f64()*1000.0,
-                "tps":ticks as f64/elapsed.as_secs_f64(),"plot_loop_ms":loop_elapsed.as_secs_f64()*1000.0,
-                "writer_drain_ms":elapsed.saturating_sub(loop_elapsed).as_secs_f64()*1000.0,
+                "tps":ticks as f64/elapsed.as_secs_f64(),"plot_loop_tps":ticks as f64/loop_elapsed.as_secs_f64(),
+                "plot_loop_ms":loop_elapsed.as_secs_f64()*1000.0,
+                "writer_drain_ms":elapsed.saturating_sub(loop_elapsed + command_drain).as_secs_f64()*1000.0,
                 "command_delivery_drain_ms":command_drain.as_secs_f64()*1000.0,"live_command_limits":true,
                 "compile_ms":compile_elapsed.as_secs_f64()*1000.0,"configured_send_rate_hz":if mode=="none" {0} else {hz},
                 "observed_publication_rate_hz":timings["publications"].as_u64().unwrap() as f64/loop_elapsed.as_secs_f64(),
