@@ -27,6 +27,7 @@ services:
     networks:
       - backend
       - redstonefun
+      - minecraft-dev
     volumes:
       - /srv/mchprs/data:/data
       - /srv/mchprs/backend-config:/run/config
@@ -58,3 +59,6 @@ networks:
   redstonefun:
     external: true
     name: redstonefun-network
+  minecraft-dev:
+    external: true
+    name: minecraft-dev

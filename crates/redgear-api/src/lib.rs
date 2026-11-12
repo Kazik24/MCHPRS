@@ -78,16 +78,14 @@ struct Output {
 }
 impl Output {
     fn send(&self, value: &Value, terminal: bool) -> std::io::Result<()> {
-        let bytes = serde_json::to_vec(value)?;
+        let mut bytes = serde_json::to_vec(value)?;
         let mut stream = self.stream.lock().unwrap();
         let mut outstanding = terminal.then(|| self.outstanding.lock().unwrap());
         let result = if bytes.len() as u64 + 1 > MAX_MESSAGE {
             Err(std::io::Error::other("API response exceeds limit"))
         } else {
-            stream
-                .write_all(&bytes)
-                .and_then(|_| stream.write_all(b"\n"))
-                .and_then(|_| stream.flush())
+            bytes.push(b'\n');
+            stream.write_all(&bytes).and_then(|_| stream.flush())
         };
         if result.is_err() {
             let _ = stream.shutdown(Shutdown::Both);
