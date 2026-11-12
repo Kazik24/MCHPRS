@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-# Classic-builder friendly variant of Dockerfile-plot-scale-5. The production
+# Classic-builder friendly variant of the root Dockerfile. The production
 # image uses BuildKit cache mounts; this one avoids them so it also builds with
 # the legacy builder when the buildx CLI plugin is unavailable.
 
@@ -19,9 +19,8 @@ ENV CARGO_HOME=/var/cache/cargo \
     CARGO_TARGET_DIR=/app/target
 
 COPY . ./
-RUN sed -i 's/pub const PLOT_SCALE: u32 = 4;/pub const PLOT_SCALE: u32 = 5;/' crates/core/src/plot/mod.rs \
-    && grep -q '^pub const PLOT_SCALE: u32 = 5;' crates/core/src/plot/mod.rs \
-    && cargo build --release --locked --bin mroww \
+# Use the server's default 512x512-block plots.
+RUN cargo build --release --locked --bin mroww \
     && install -D /app/target/release/mroww /out/mroww
 
 FROM debian:bookworm-slim AS runtime
@@ -30,7 +29,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /out/mroww /usr/local/bin/mroww
-COPY docker/Config.toml /etc/mchprs/Config.toml
+COPY Config.docker.toml /etc/mchprs/Config.toml
 ENV MCHPRS_CONFIG=/etc/mchprs/Config.toml
 ENV MCHPRS_LLVM_WORK_DIR=/data/work/llvm \
     MCHPRS_LLVM_CLANG=/usr/bin/clang \

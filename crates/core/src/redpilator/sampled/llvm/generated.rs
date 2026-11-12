@@ -80,6 +80,21 @@ mod tests {
     }
 
     #[test]
+    fn movement_graph_ranges_keep_original_costs_and_fixed_metadata() {
+        let plans = bytes(&[0, 1, 0, 0, 0, 0, 0, 6, u32::MAX, 0]);
+        let cases = bytes(&[0, 3, 3, 3]);
+        let steps = [7, 1, 0, 1, 3, 1, 0, 3, 3, 3];
+        let ([direct_cases, direct_plans, direct_steps], bits) = direct_movement_ranges(&plans, &cases, &steps, &[0, 1, 1, 2, 2, 2, 3]).unwrap();
+        assert_eq!(bits, 3);
+        assert_eq!(direct_cases, [0, 19, 2, 11]);
+        assert_eq!(&direct_plans[..10], &[0, 1, 0, 0, 0, 0, 0, 6, u32::MAX, 0]);
+        assert_eq!(&direct_plans[10..], &[0, 3, 0, 0]);
+        assert_eq!(&direct_steps[..6], &steps[..6]);
+        assert_eq!(&direct_steps[6..], &[0, 19, 2, 11]);
+        assert!(direct_movement_ranges(&[], &bytes(&[0, 65536]), &[], &[]).is_none());
+    }
+
+    #[test]
     fn movement_masks_preserve_order_and_fall_back_for_shared_or_large_plans() {
         let steps = bytes(&[7, 0, 1, 0, 0, 9, 0, 0, 0, 1, 10, 0, 0, 1, 1, 8, 0, 1, 0, 0, 11, 0, 0, 2, 2]);
         let dependencies = bytes(&[7, 8, 7, 8]);
@@ -239,6 +254,49 @@ fn inline_movement_cases(steps: &[u8], cases: &[u8]) -> Vec<u32> {
         }
     }
     words
+}
+
+// Filtered case ranges, extended flat plans and inline steps; retain canonical costs for failure handling.
+fn direct_movement_ranges(plans: &[u8], cases: &[u8], steps: &[u32], prefix: &[u32]) -> Option<([Vec<u32>; 3], u32)> {
+    let read = |data: &[u8], at: usize| u32::from_le_bytes(data[at * 4..at * 4 + 4].try_into().unwrap());
+    let maximum = cases
+        .chunks_exact(8)
+        .map(|row| read(row, 1))
+        .chain(plans.chunks_exact(40).flat_map(|row| [read(row, 7), read(row, 9)]))
+        .max()
+        .unwrap_or(0);
+    let bits = (32 - maximum.leading_zeros()).max(1);
+    if bits > 16 {
+        return None;
+    }
+    let range = |start: u32, count: u32| {
+        let first = prefix[start as usize];
+        let retained = prefix[start as usize + count as usize] - first;
+        assert!(retained <= count);
+        [first, count | retained << bits]
+    };
+    let direct_cases = cases.chunks_exact(8).flat_map(|row| range(read(row, 0), read(row, 1))).collect();
+    let mut direct_plans = Vec::with_capacity(plans.len() / 40 * 14);
+    for row in plans.chunks_exact(40) {
+        direct_plans.extend((0..10).map(|i| read(row, i)));
+        for edge in [6, 8] {
+            let start = read(row, edge);
+            let count = read(row, edge + 1);
+            direct_plans.extend(if start == u32::MAX {
+                [0, 0]
+            } else {
+                [prefix[start as usize], prefix[start as usize + count as usize] - prefix[start as usize]]
+            });
+        }
+    }
+    let mut direct_steps = steps.to_vec();
+    for row in direct_steps.chunks_exact_mut(10) {
+        for at in [6, 8] {
+            let packed = range(row[at], row[at + 1]);
+            row[at..at + 2].copy_from_slice(&packed);
+        }
+    }
+    Some(([direct_cases, direct_plans, direct_steps], bits))
 }
 
 fn movement_dependency_masks(plans: &[u8], steps: &[u8], dependencies: &[u8]) -> Vec<u32> {
@@ -597,7 +655,7 @@ impl GeneratedProgram {
             &blob[offset..offset + count * 4]
         };
         // Keep proven fixed plans beside their rules to avoid a dependent lookup during movement.
-        let movement_steps = inline_movement_cases(section(20), section(21));
+        let mut movement_steps = inline_movement_cases(section(20), section(21));
         let movement_masks = if self.lazy_wire_power {
             movement_dependency_masks(section(19), section(23), section(24))
         } else {
@@ -615,6 +673,22 @@ impl GeneratedProgram {
         if !graph[1].is_empty() {
             header.push_str("#define NE_STATIC_WIRE_GRAPH 1\n");
         }
+        let mut direct_cases = Vec::new();
+        let mut direct_programs = Vec::new();
+        if !graph[1].is_empty()
+            && let Some(([cases, plans, steps], bits)) = direct_movement_ranges(section(19), section(21), &movement_steps, &graph[3])
+        {
+            direct_cases = cases;
+            direct_programs = plans;
+            movement_steps = steps;
+            graph[3].clear();
+            writeln!(
+                header,
+                "#define NE_STATIC_DIRECT_RANGES 1\n#define NE_RANGE_COST_BITS {bits}u\n#define NE_RANGE_COST_MASK {}u",
+                (1u32 << bits) - 1
+            )
+            .unwrap();
+        }
         for (name, words) in [
             ("graph_rows", &graph[0]),
             ("graph_values", &graph[1]),
@@ -622,6 +696,8 @@ impl GeneratedProgram {
             ("graph_prefix", &graph[3]),
             ("movement_steps", &movement_steps),
             ("movement_masks", &movement_masks),
+            ("direct_cases", &direct_cases),
+            ("direct_programs", &direct_programs),
             ("command_blocks", &self.commands.blocks),
             ("command_components", &self.command_components),
             ("command_neighbors", &self.command_neighbors),

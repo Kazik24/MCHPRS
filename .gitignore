@@ -5,7 +5,6 @@ work/
 test_proxy/
 generators
 Config.toml
-!docker/Config.toml
 /world/
 logs/
 schems/

@@ -1,9 +1,8 @@
-# Allow only compilation inputs, including generated assets when present.
+# Allow only compilation inputs for Dockerfile, including generated assets when present.
 **
 !Cargo.toml
 !Cargo.lock
-!docker/
-!docker/Config.toml
+!Config.docker.toml
 !build.rs
 !src/
 !src/**

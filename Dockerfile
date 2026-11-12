@@ -18,8 +18,8 @@ ENV CARGO_HOME=/var/cache/cargo \
 # The adjacent .dockerignore includes only build inputs, including optional
 # pinned mc_data assets. Runtime data/docs stay excluded.
 COPY . ./
-RUN sed -i 's/pub const PLOT_SCALE: u32 = 4;/pub const PLOT_SCALE: u32 = 5;/' crates/core/src/plot/mod.rs \
-    && grep -q '^pub const PLOT_SCALE: u32 = 5;' crates/core/src/plot/mod.rs
+
+# Use the server's default 512x512-block plots.
 
 # BuildKit stores both caches on the builder selected by the Docker context.
 # Lock the mounts to prevent concurrent builds from changing cached artifacts.
@@ -27,7 +27,7 @@ RUN sed -i 's/pub const PLOT_SCALE: u32 = 4;/pub const PLOT_SCALE: u32 = 5;/' cr
 # changed files even when COPY brings in timestamps older than cached artifacts.
 # Copy the executable out in this RUN: cache mounts are absent in later layers.
 RUN --mount=type=cache,id=mchprs-cargo,target=/var/cache/cargo,sharing=locked \
-    --mount=type=cache,id=mchprs-plot-scale-5-${RUST_VERSION}-${TARGETARCH},target=/app/target,sharing=locked \
+    --mount=type=cache,id=mchprs-target-${RUST_VERSION}-${TARGETARCH},target=/app/target,sharing=locked \
     find . -path ./target -prune -o -type f -exec sh -c ' \
         for source do \
             cached="$CARGO_TARGET_DIR/.mchprs-sources/$source"; \
@@ -49,7 +49,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /out/mroww /usr/local/bin/mroww
-COPY docker/Config.toml /etc/mchprs/Config.toml
+COPY Config.docker.toml /etc/mchprs/Config.toml
 ENV MCHPRS_CONFIG=/etc/mchprs/Config.toml
 ENV MCHPRS_LLVM_WORK_DIR=/data/work/llvm \
     MCHPRS_LLVM_CLANG=/usr/bin/clang \

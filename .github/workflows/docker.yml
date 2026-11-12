@@ -26,14 +26,6 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: ./docker/Dockerfile-plot-scale-5
+          file: ./Dockerfile
           push: true
           tags: ${{ secrets.DOCKER_HUB_USERNAME }}/mchprs:latest
-      -
-        name: Build and push plot-scale-5
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: ./docker/Dockerfile-plot-scale-5
-          push: true
-          tags: ${{ secrets.DOCKER_HUB_USERNAME }}/mchprs:plot-scale-5

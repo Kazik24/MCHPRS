@@ -778,7 +778,11 @@ static void graph_materialize(NEEngine *e) {
     }
 }
 static inline __attribute__((always_inline)) uint32_t graph_replay(NEEngine *e,uint32_t start,uint32_t count,uint32_t switched) {
+#if defined(NE_STATIC_DIRECT_RANGES)
+    uint32_t begin=start,end=start+count;
+#else
     uint32_t begin=ne_static_graph_prefix[start],end=ne_static_graph_prefix[start+count];
+#endif
     for (uint32_t i=begin;i<end;++i) switched=apply_movement_flip(e,ne_static_graph_flips+(size_t)i*4u,switched);
     return switched;
 }
@@ -806,7 +810,11 @@ static uint32_t set_token_pos(NEEngine *e, uint32_t token, uint32_t position) {
     const uint32_t *affected = table(e, 14u) + token * 2u;
     for (uint32_t i = 0; i < affected[1]; ++i)
         e->updated[table(e, 15u)[affected[0] + i]] = 0u;
+#if defined(NE_STATIC_DIRECT_RANGES)
+    const uint32_t *row = ne_static_direct_programs + (size_t)(table(e, 18u)[token * 2u] + local) * 14u;
+#else
     const uint32_t *row = table(e, 19u) + (table(e, 18u)[token * 2u] + local) * 10u;
+#endif
     uint32_t flat_start = position != NONE ? row[8] : row[6];
     uint32_t flat_count = position != NONE ? row[9] : row[7];
     uint32_t flat = !e->error && flat_start != NONE && flat_count <= NE_MAX_TICK_OPERATIONS - e->tick_operations;
@@ -824,7 +832,13 @@ static uint32_t set_token_pos(NEEngine *e, uint32_t token, uint32_t position) {
         e->tick_operations += flat_count;
         e->work_count += flat_count;
 #if defined(NE_STATIC_WIRE_GRAPH)
-        if (e->graph_active) switched_count = graph_replay(e, flat_start, flat_count, switched_count);
+        if (e->graph_active) {
+#if defined(NE_STATIC_DIRECT_RANGES)
+            switched_count = graph_replay(e, row[position != NONE ? 12u : 10u], row[position != NONE ? 13u : 11u], switched_count);
+#else
+            switched_count = graph_replay(e, flat_start, flat_count, switched_count);
+#endif
+        }
         else
 #endif
         for (uint32_t i = 0; i < flat_count; ++i)
@@ -845,23 +859,47 @@ static uint32_t set_token_pos(NEEngine *e, uint32_t token, uint32_t position) {
             return e->error = NE_INVALID;
         const uint32_t *flips;
 #if defined(MCHPRS_EMBEDDED_PROGRAM) && NE_OPTIMIZED_MOVEMENT_STEPS
-        if (r[5] != NONE)
+        if (r[5] != NONE
+#if defined(NE_STATIC_DIRECT_RANGES)
+            && e->graph_active
+#endif
+        )
             flips = r + (position != NONE ? 8u : 6u);
         else
 #endif
         {
             uint32_t state = r[5] != NONE ? r[5] : position != NONE ? after : before;
             uint32_t base = position != NONE ? r[3] : r[2];
+#if defined(NE_STATIC_DIRECT_RANGES)
+            flips = (e->graph_active ? ne_static_direct_cases : table(e, 21u)) + (size_t)(base + state) * 2u;
+#else
             flips = table(e, 21u) + (base + state) * 2u;
+#endif
         }
 #if defined(NE_STATIC_WIRE_GRAPH)
-        if (e->graph_active && flips[1] <= NE_MAX_TICK_OPERATIONS - e->tick_operations) {
+        uint32_t cost = flips[1];
+#if defined(NE_STATIC_DIRECT_RANGES)
+        if (e->graph_active) cost &= NE_RANGE_COST_MASK;
+#endif
+        if (e->graph_active && cost <= NE_MAX_TICK_OPERATIONS - e->tick_operations) {
             e->groups[r[0]] = after;
-            e->tick_operations += flips[1]; e->work_count += flips[1];
+            e->tick_operations += cost; e->work_count += cost;
+#if defined(NE_STATIC_DIRECT_RANGES)
+            switched_count = graph_replay(e, flips[0], flips[1] >> NE_RANGE_COST_BITS, switched_count);
+#else
             switched_count = graph_replay(e, flips[0], flips[1], switched_count);
+#endif
             continue;
         }
         graph_materialize(e);
+#if defined(NE_STATIC_DIRECT_RANGES)
+        // A partial range must replay canonical records to preserve its successful prefix.
+        {
+            uint32_t state = r[5] != NONE ? r[5] : position != NONE ? after : before;
+            uint32_t base = position != NONE ? r[3] : r[2];
+            flips = table(e, 21u) + (size_t)(base + state) * 2u;
+        }
+#endif
 #endif
         e->groups[r[0]] = after;
         for (uint32_t j = 0; j < flips[1]; ++j) {
