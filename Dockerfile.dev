@@ -24,8 +24,25 @@ RUN cargo build --release --locked --bin mroww \
     && install -D /app/target/release/mroww /out/mroww
 
 FROM debian:bookworm-slim AS runtime
+# C23 #embed needs Clang 19; preserve the paths used by Compose overrides.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates libssl3 clang lld \
+    && apt-get install -y --no-install-recommends ca-certificates libssl3 clang-19 lld-19 \
+    && ln -s /usr/bin/clang-19 /usr/bin/clang \
+    && ln -s /usr/bin/ld.lld-19 /usr/bin/ld.lld \
+    && printf '\001\002\003' > /tmp/llvm-embed.bin \
+    && printf '%s\n' \
+        'static const unsigned char data[] = {' \
+        '#embed "/tmp/llvm-embed.bin"' \
+        '};' \
+        'int main(void) { return sizeof(data) != 3 || data[0] != 1 || data[1] != 2 || data[2] != 3; }' \
+        > /tmp/llvm-embed.c \
+    && clang -std=c23 -O3 -ffreestanding -fno-builtin -Werror \
+        --ld-path=/usr/bin/ld.lld /tmp/llvm-embed.c -o /tmp/llvm-embed \
+    && /tmp/llvm-embed \
+    && clang -std=c23 -O3 -ffreestanding -fno-builtin -Werror -fPIC -shared \
+        --ld-path=/usr/bin/ld.lld -Wl,-z,defs -Wl,-z,relro -Wl,-z,now \
+        /tmp/llvm-embed.c -o /tmp/llvm-embed.so \
+    && rm -f /tmp/llvm-embed.bin /tmp/llvm-embed.c /tmp/llvm-embed /tmp/llvm-embed.so \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /out/mroww /usr/local/bin/mroww
