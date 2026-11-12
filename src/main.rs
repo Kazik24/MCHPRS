@@ -37,5 +37,16 @@ fn main() {
         );
     }
 
+    if let Ok(address) = std::env::var("MCHPRS_REDGEAR_BIND") {
+        let listener = std::net::TcpListener::bind(&address).expect("Cannot bind RedGear API");
+        std::thread::Builder::new()
+            .name("redgear-api".into())
+            .spawn(move || {
+                if let Err(error) = mroww_redgear_api::serve_listener(listener) {
+                    tracing::error!(%error, "RedGear API failed");
+                }
+            })
+            .expect("Cannot start RedGear API thread");
+    }
     MinecraftServer::run();
 }

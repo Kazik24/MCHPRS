@@ -18,6 +18,7 @@ services:
     memswap_limit: 6g
     cpus: 4.0
     environment:
+      MCHPRS_REDGEAR_BIND: "0.0.0.0:8766"
       MCHPRS_CONFIG: /run/config/Config.toml
       MCHPRS_LLVM_WORK_DIR: /data/work/llvm
       MCHPRS_LLVM_CLANG: /usr/bin/clang

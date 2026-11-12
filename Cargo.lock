@@ -1724,6 +1724,7 @@ name = "mroww"
 version = "1.0.0"
 dependencies = [
  "mchprs_core",
+ "mroww-redgear-api",
  "tracing",
  "tracing-appender",
  "tracing-subscriber",

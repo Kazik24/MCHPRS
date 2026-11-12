@@ -40,6 +40,7 @@ redpilator-trace = ["mchprs_core/redpilator-trace"]
 redpilator-full-publication = ["mchprs_core/redpilator-full-publication"]
 
 [dependencies]
+mroww-redgear-api = { path = "crates/redgear-api" }
 mchprs_core = { path = "./crates/core" }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing-appender = "0.2"
