@@ -174,6 +174,7 @@ pub(super) struct PistonBinding {
 pub(crate) struct Program {
     /// Runtime semantics; incompatible relaxed modes cannot share a prepared program.
     pub(crate) relaxed_mode: bool,
+    pub(crate) movement_folding: bool,
     /// Position-keyed sampling artifacts survive topology changes between compilations.
     pub(crate) source_order_cache: Option<std::sync::Arc<super::SourceOrderCache>>,
     pub(super) routing: Option<std::sync::Arc<super::routing::WireGraph>>,
@@ -813,6 +814,7 @@ impl Program {
             .collect();
         Ok(Self {
             relaxed_mode: false,
+            movement_folding: false,
             source_order_cache: None,
             command_blocks: HashMap::new(),
             command_output_state: None,

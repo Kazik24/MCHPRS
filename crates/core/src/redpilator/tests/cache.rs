@@ -422,3 +422,36 @@ fn prepared_program_and_executor_cache_keep_relaxed_modes_separate() {
     ));
     assert!(!resumed.is_active());
 }
+
+#[test]
+fn prepared_program_and_executor_cache_keep_movement_folding_modes_separate() {
+    let (world, _, bounds) = fixture();
+    let enabled = CompilerOptions::parse("--relaxed").unwrap();
+    let disabled = CompilerOptions::parse("--relaxed --no-movement-folding").unwrap();
+    let mut folded = Compiler::default();
+    folded.compile(&world, bounds, enabled.clone(), vec![], Default::default()).unwrap();
+    let folded_program = folded.cached_program().unwrap();
+    assert!(folded_program.movement_folding);
+    let mut unfolded = Compiler::default();
+    unfolded
+        .compile_cached(&world, bounds, disabled.clone(), vec![], Default::default(), Some(folded_program.clone()))
+        .unwrap();
+    let unfolded_program = unfolded.cached_program().unwrap();
+    assert!(!unfolded_program.movement_folding && !unfolded.stats().unwrap().cached);
+    let mut enabled_again = Compiler::default();
+    enabled_again
+        .compile_cached(&world, bounds, enabled.clone(), vec![], Default::default(), Some(unfolded_program))
+        .unwrap();
+    assert!(enabled_again.cached_program().unwrap().movement_folding && !enabled_again.stats().unwrap().cached);
+    let mut same_mode = Compiler::default();
+    same_mode
+        .compile_cached(&world, bounds, enabled, vec![], Default::default(), Some(folded_program.clone()))
+        .unwrap();
+    assert!(Arc::ptr_eq(&folded_program, &same_mode.cached_program().unwrap()));
+    let mut resumed = Compiler::default();
+    assert!(matches!(
+        resumed.resume_cached(&world, disabled, Default::default(), folded),
+        Err(CompileError::Unsupported(_))
+    ));
+    assert!(!resumed.is_active());
+}

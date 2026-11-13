@@ -35,6 +35,8 @@ pub struct CompilerOptions {
     pub llvm: bool,
     /// Skip wire-shape replay; LLVM also defers wire power when wires have no electrical outputs.
     pub relaxed_mode: bool,
+    /// Disable equivalent electrical movement-state folding in relaxed Rust execution.
+    pub no_movement_folding: bool,
     /// Override the build's default publication scope.
     pub publication: Option<PublicationMode>,
     /// Update all blocks in the input region after reset.
@@ -42,6 +44,10 @@ pub struct CompilerOptions {
 }
 
 impl CompilerOptions {
+    pub(crate) fn movement_folding(&self) -> bool {
+        self.relaxed_mode && !self.llvm && !self.no_movement_folding
+    }
+
     pub fn publication_mode(&self) -> PublicationMode {
         if self.io_only {
             PublicationMode::Io
@@ -64,6 +70,7 @@ impl CompilerOptions {
                 match option {
                     "--llvm" => options.llvm = true,
                     "--relaxed" => options.relaxed_mode = true,
+                    "--no-movement-folding" => options.no_movement_folding = true,
                     "--publish-all" | "--publish-redstone" | "--publish-io" => {
                         let mode = PublicationMode::parse(option.strip_prefix("--publish-").unwrap()).unwrap();
                         if options.publication.is_some_and(|previous| previous != mode) {

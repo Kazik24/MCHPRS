@@ -788,6 +788,7 @@ impl Program {
         self.movement_groups = groups;
         self.movement_flips = flips;
         self.arrangement_links = links;
+        self.movement_folding = false;
         self.outgoing_arrangements = vec![vec![]; self.initial.len()];
         self.input_groups_by_target = vec![SmallVec::new(); self.initial.len()];
         for (index, group) in self.input_arrangements.iter().enumerate() {
@@ -798,6 +799,19 @@ impl Program {
                 self.outgoing_arrangements[source].push(index);
             }
         }
+        self.index_movement_plans()
+    }
+
+    pub(super) fn index_movement_plans(&mut self) -> Result<(), ScratchError> {
+        let canonical = self
+            .movement_groups
+            .iter()
+            .flat_map(|group| &group.axes)
+            .flat_map(|axis| axis.depart.iter().chain(&axis.arrive))
+            .map(|range| range.end)
+            .max()
+            .unwrap_or(0);
+        self.movement_flips.truncate(canonical);
         self.token_movement_groups = vec![vec![]; self.tokens.len()];
         for shared in [false, true] {
             for (group, record) in self.movement_groups.iter().enumerate() {

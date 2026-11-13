@@ -13,6 +13,7 @@ mod compiler;
 mod cpu_trace;
 mod diagnostics;
 mod executor;
+mod fold_movement;
 mod group_probe;
 #[cfg(test)]
 #[path = "../tests/sampled/incremental_input.rs"]

@@ -297,7 +297,12 @@ impl Compiler {
             return Err(CompileError::Cancelled);
         }
         options.io_only = options.publication_mode() == PublicationMode::Io;
-        if !cached.is_active() || options.update || options.llvm != cached.options.llvm || options.relaxed_mode != cached.options.relaxed_mode {
+        if !cached.is_active()
+            || options.update
+            || options.llvm != cached.options.llvm
+            || options.relaxed_mode != cached.options.relaxed_mode
+            || options.movement_folding() != cached.options.movement_folding()
+        {
             return Err(CompileError::Unsupported(ScratchError {
                 position: None,
                 reason: "incompatible executor checkpoint",
@@ -371,7 +376,7 @@ impl Compiler {
             scheduled: ticks.clone(),
             piston: world.piston_state().clone(),
         };
-        let cached = cached.filter(|program| program.relaxed_mode == options.relaxed_mode);
+        let cached = cached.filter(|program| program.relaxed_mode == options.relaxed_mode && program.movement_folding == options.movement_folding());
         let cache_hit = cached.is_some();
         let program = if let Some(program) = cached {
             program
@@ -386,6 +391,10 @@ impl Compiler {
                 })?;
             if options.relaxed_mode {
                 program.enable_relaxed_wire_shapes().map_err(CompileError::Unsupported)?;
+            }
+            if options.movement_folding() {
+                monitor.set_phase("folding equivalent movement states");
+                program.fold_movement_states().map_err(CompileError::Unsupported)?;
             }
             Arc::new(program)
         };

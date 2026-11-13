@@ -1524,6 +1524,10 @@ mod security_tests {
         assert!(!CompilerOptions::default().relaxed_mode);
         let relaxed = CompilerOptions::parse("--relaxed").unwrap();
         assert!(relaxed.relaxed_mode && !relaxed.llvm);
+        assert!(relaxed.movement_folding());
+        assert!(!CompilerOptions::default().movement_folding());
+        assert!(!CompilerOptions::parse("--relaxed --no-movement-folding").unwrap().movement_folding());
+        assert!(!CompilerOptions::parse("--relaxed --llvm").unwrap().movement_folding());
         assert!(CompilerOptions::parse("--relaxed --llvm --publish-io").unwrap().relaxed_mode);
         assert_eq!(
             CompilerOptions::parse("--publish-all").unwrap().publication,
@@ -1558,11 +1562,25 @@ mod security_tests {
         for (text, expected) in [
             (
                 "/rp compile --",
-                vec!["--publish-all", "--publish-redstone", "--publish-io", "--llvm", "--relaxed"],
+                vec![
+                    "--publish-all",
+                    "--publish-redstone",
+                    "--publish-io",
+                    "--llvm",
+                    "--relaxed",
+                    "--no-movement-folding",
+                ],
             ),
             (
                 "/redpilator c -",
-                vec!["--publish-all", "--publish-redstone", "--publish-io", "--llvm", "--relaxed"],
+                vec![
+                    "--publish-all",
+                    "--publish-redstone",
+                    "--publish-io",
+                    "--llvm",
+                    "--relaxed",
+                    "--no-movement-folding",
+                ],
             ),
             ("/rp publish ", vec!["all", "redstone", "io", "auto"]),
             ("/visual publish ", vec!["all", "redstone", "io", "auto"]),
