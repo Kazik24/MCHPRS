@@ -424,34 +424,25 @@ fn prepared_program_and_executor_cache_keep_relaxed_modes_separate() {
 }
 
 #[test]
-fn prepared_program_and_executor_cache_keep_movement_folding_modes_separate() {
+fn relaxed_rust_cache_rebuilds_unfolded_programs() {
     let (world, _, bounds) = fixture();
-    let enabled = CompilerOptions::parse("--relaxed").unwrap();
-    let disabled = CompilerOptions::parse("--relaxed --no-movement-folding").unwrap();
+    let options = CompilerOptions::parse("--relaxed").unwrap();
+    let mut strict = Compiler::default();
+    strict
+        .compile(&world, bounds, CompilerOptions::default(), vec![], Default::default())
+        .unwrap();
+    let mut unfolded = (*strict.cached_program().unwrap()).clone();
+    unfolded.enable_relaxed_wire_shapes().unwrap();
+    assert!(!unfolded.movement_folding);
     let mut folded = Compiler::default();
-    folded.compile(&world, bounds, enabled.clone(), vec![], Default::default()).unwrap();
+    folded
+        .compile_cached(&world, bounds, options.clone(), vec![], Default::default(), Some(Arc::new(unfolded)))
+        .unwrap();
     let folded_program = folded.cached_program().unwrap();
-    assert!(folded_program.movement_folding);
-    let mut unfolded = Compiler::default();
-    unfolded
-        .compile_cached(&world, bounds, disabled.clone(), vec![], Default::default(), Some(folded_program.clone()))
-        .unwrap();
-    let unfolded_program = unfolded.cached_program().unwrap();
-    assert!(!unfolded_program.movement_folding && !unfolded.stats().unwrap().cached);
-    let mut enabled_again = Compiler::default();
-    enabled_again
-        .compile_cached(&world, bounds, enabled.clone(), vec![], Default::default(), Some(unfolded_program))
-        .unwrap();
-    assert!(enabled_again.cached_program().unwrap().movement_folding && !enabled_again.stats().unwrap().cached);
+    assert!(folded_program.movement_folding && !folded.stats().unwrap().cached);
     let mut same_mode = Compiler::default();
     same_mode
-        .compile_cached(&world, bounds, enabled, vec![], Default::default(), Some(folded_program.clone()))
+        .compile_cached(&world, bounds, options, vec![], Default::default(), Some(folded_program.clone()))
         .unwrap();
     assert!(Arc::ptr_eq(&folded_program, &same_mode.cached_program().unwrap()));
-    let mut resumed = Compiler::default();
-    assert!(matches!(
-        resumed.resume_cached(&world, disabled, Default::default(), folded),
-        Err(CompileError::Unsupported(_))
-    ));
-    assert!(!resumed.is_active());
 }

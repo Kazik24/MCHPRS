@@ -17,14 +17,9 @@ pub(in crate::plot) fn complete_redpilator(id: i32, text: &str) -> Option<CTabCo
     let words: Vec<_> = text[..start].split_whitespace().collect();
     let command = words.first().copied()?;
     let candidates: &[&str] = match words.get(1) {
-        Some(&"compile" | &"c") if matches!(command, "/rp" | "/redpilator") => &[
-            "--publish-all",
-            "--publish-redstone",
-            "--publish-io",
-            "--llvm",
-            "--relaxed",
-            "--no-movement-folding",
-        ],
+        Some(&"compile" | &"c") if matches!(command, "/rp" | "/redpilator") => {
+            &["--publish-all", "--publish-redstone", "--publish-io", "--llvm", "--relaxed"]
+        }
         Some(&"publish") if words.len() == 2 && matches!(command, "/visual" | "/rp" | "/redpilator") => &PublicationSetting::CHOICES,
         _ => return None,
     };

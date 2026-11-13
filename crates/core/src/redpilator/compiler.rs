@@ -297,12 +297,7 @@ impl Compiler {
             return Err(CompileError::Cancelled);
         }
         options.io_only = options.publication_mode() == PublicationMode::Io;
-        if !cached.is_active()
-            || options.update
-            || options.llvm != cached.options.llvm
-            || options.relaxed_mode != cached.options.relaxed_mode
-            || options.movement_folding() != cached.options.movement_folding()
-        {
+        if !cached.is_active() || options.update || options.llvm != cached.options.llvm || options.relaxed_mode != cached.options.relaxed_mode {
             return Err(CompileError::Unsupported(ScratchError {
                 position: None,
                 reason: "incompatible executor checkpoint",
