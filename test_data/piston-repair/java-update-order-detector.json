@@ -1,0 +1,217 @@
+{
+  "version": "1.21.5",
+  "server_sha1": "e6ec2f64e6080b9b5d9b471b291c33cc7f509733",
+  "schematic_sha256": "964ee07c8f23e5af8d6740ce54edaa83cb94864712a98428340334a047fa4e8f",
+  "setup": "Strict saved-state paste and saved block entities in a fresh frozen void region per case; settle 40 game ticks; actual UseItemOn button presses in listed order before tick 1; observe ticks 0 through 60.",
+  "buttons_local": [
+    [
+      2,
+      1,
+      9
+    ],
+    [
+      4,
+      1,
+      9
+    ]
+  ],
+  "lamp_local": [
+    2,
+    3,
+    6
+  ],
+  "cases": [
+    {
+      "origin": [
+        40,
+        30,
+        40
+      ],
+      "presses": [
+        0
+      ],
+      "lamp_lit_ticks": [
+        16,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23
+      ],
+      "interactions": [
+        {
+          "event": "sent",
+          "id": 1,
+          "interaction": {
+            "hand": 0,
+            "location": {
+              "x": 42,
+              "y": 31,
+              "z": 49
+            },
+            "direction": 1,
+            "cursorX": 0.5,
+            "cursorY": 0.5,
+            "cursorZ": 0.5,
+            "insideBlock": false,
+            "worldBorderHit": false,
+            "sequence": 1
+          },
+          "teleportId": 2
+        }
+      ]
+    },
+    {
+      "origin": [
+        104,
+        30,
+        40
+      ],
+      "presses": [
+        1
+      ],
+      "lamp_lit_ticks": [],
+      "interactions": [
+        {
+          "event": "sent",
+          "id": 2,
+          "interaction": {
+            "hand": 0,
+            "location": {
+              "x": 108,
+              "y": 31,
+              "z": 49
+            },
+            "direction": 1,
+            "cursorX": 0.5,
+            "cursorY": 0.5,
+            "cursorZ": 0.5,
+            "insideBlock": false,
+            "worldBorderHit": false,
+            "sequence": 2
+          },
+          "teleportId": 3
+        }
+      ]
+    },
+    {
+      "origin": [
+        168,
+        30,
+        40
+      ],
+      "presses": [
+        0,
+        1
+      ],
+      "lamp_lit_ticks": [
+        16,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23
+      ],
+      "interactions": [
+        {
+          "event": "sent",
+          "id": 3,
+          "interaction": {
+            "hand": 0,
+            "location": {
+              "x": 170,
+              "y": 31,
+              "z": 49
+            },
+            "direction": 1,
+            "cursorX": 0.5,
+            "cursorY": 0.5,
+            "cursorZ": 0.5,
+            "insideBlock": false,
+            "worldBorderHit": false,
+            "sequence": 3
+          },
+          "teleportId": 4
+        },
+        {
+          "event": "sent",
+          "id": 4,
+          "interaction": {
+            "hand": 0,
+            "location": {
+              "x": 172,
+              "y": 31,
+              "z": 49
+            },
+            "direction": 1,
+            "cursorX": 0.5,
+            "cursorY": 0.5,
+            "cursorZ": 0.5,
+            "insideBlock": false,
+            "worldBorderHit": false,
+            "sequence": 4
+          },
+          "teleportId": 5
+        }
+      ]
+    },
+    {
+      "origin": [
+        232,
+        30,
+        40
+      ],
+      "presses": [
+        1,
+        0
+      ],
+      "lamp_lit_ticks": [],
+      "interactions": [
+        {
+          "event": "sent",
+          "id": 5,
+          "interaction": {
+            "hand": 0,
+            "location": {
+              "x": 236,
+              "y": 31,
+              "z": 49
+            },
+            "direction": 1,
+            "cursorX": 0.5,
+            "cursorY": 0.5,
+            "cursorZ": 0.5,
+            "insideBlock": false,
+            "worldBorderHit": false,
+            "sequence": 5
+          },
+          "teleportId": 6
+        },
+        {
+          "event": "sent",
+          "id": 6,
+          "interaction": {
+            "hand": 0,
+            "location": {
+              "x": 234,
+              "y": 31,
+              "z": 49
+            },
+            "direction": 1,
+            "cursorX": 0.5,
+            "cursorY": 0.5,
+            "cursorZ": 0.5,
+            "insideBlock": false,
+            "worldBorderHit": false,
+            "sequence": 6
+          },
+          "teleportId": 7
+        }
+      ]
+    }
+  ]
+}

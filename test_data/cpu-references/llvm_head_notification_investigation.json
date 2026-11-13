@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "recorded_at": "2026-11-13T16:30:23.515883+00:00",
+  "scope": "Current semantic39 native LLVM, relaxed ZCore12B_FIX. Work counts: 5000 ticks after Load,413 preparation ticks,Run; counters reset after Run. Instrumentation checked against full baseline snapshot/pending/clock/work every batch16. Counts do not measure elapsed-time shares.",
+  "source_sha256": {
+    "engine.c": "7bdfce0ff31dd019b1d58a245c1aa07347eb9d9ca87ef8596cc919764fc099af",
+    "llvm_movement.c": "5221529779038e7e9ff99ed46b163b2aafdd092546840e20ed68a242830096ac",
+    "command_engine.c": "413a0802550bce9ed59880abc3ea71fedf15ebc438337f6a39248f0cb7344cc4",
+    "abi.h": "95d6e4b1a86e87c5409af3de9cf15c2cda1f6a35b5cd80ba6f0635f833f5be76"
+  },
+  "baseline_module_sha256": "ca4ac3c95ea6d379f977fb62c2a38f6383916a2772d0b1f0b257a08e18e2a650",
+  "head_callbacks": {
+    "total": 9636340,
+    "head_absent_or_moving": 4501778,
+    "retraction_in_progress": 2421039,
+    "power_matches_extension": 2005704,
+    "reaches_request_piston": 707819
+  },
+  "target_inventory": {
+    "unique_targets": 7537,
+    "always_rejected_in_this_trace": 92,
+    "requests_to_always_rejected_targets": 9676,
+    "warning": "Trace observation is not proof that a target is statically unreachable."
+  },
+  "experiments": {
+    "early_gate": "Check live head eligibility before movement notification dependencies.",
+    "effect_gate": "Also check retraction and unchanged power before movement notification dependencies; preserve consume() charges.",
+    "head_effect": "Specialize shared head dispatch by hoisting the pure no-op conditions from update_piston; leave all callbacks capable of requesting an action."
+  },
+  "validation": {
+    "effect-gate": {
+      "zcore_ticks": 50000,
+      "preparation_ticks": 413,
+      "full_snapshot_pending_clock_work_match": true,
+      "failure_prefix_cases": 72,
+      "pm1": {
+        "ticks": 12070,
+        "ordered_messages": 1534,
+        "outputs_match_interpreter_reference": true,
+        "quiet": true
+      }
+    },
+    "head-effect": {
+      "zcore_ticks": 50000,
+      "preparation_ticks": 413,
+      "full_snapshot_pending_clock_work_match": true,
+      "failure_prefix_cases": 72,
+      "pm1": "not run; this experiment only changes the shared head dispatch guard"
+    }
+  },
+  "timing": {
+    "status": "No reliable speedup established",
+    "early_gate": "Three pairs had mixed gains (-0.69%,+36.46%,-7.90%) and substantial SMT sibling activity; excluded from a speedup claim.",
+    "effect_gate": "Five-pair attempt stopped by process guard when unrelated cargo/rustc started; no completed timing report.",
+    "head_effect": "Five-pair attempt likewise stopped when unrelated cargo/rustc started; no completed timing report."
+  },
+  "conclusion": "Substantial dynamic no-op work confirmed. Compile-time deletion cannot be inferred from rejection totals. Experimental early gates preserve checked behavior; throughput benefit remains unverified. No production runtime changes retained.",
+  "artifacts": "work/head-notifications-20261113: experiment.py, probe.py, validate.py, prefix.py, raw reports. Scratch DLLs: E:/codex-builds/head-notifications-20261113."
+}

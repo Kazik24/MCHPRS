@@ -256,7 +256,7 @@ catalog! {
         AUTO_STACK_ALWAYS_COPIES_REMOVALS = "Auto stack always copies removals; omit -a and -w.";
         AUTO_STACK_NEEDS_NONZERO_COPIES_AND_SPACING = "Auto stack needs at least one copy and nonzero spacing.";
         HELP_SCHEMATICS = "Schematics\n//load <file>.schem loads a schematic; //paste places it.\nTo save: select the build, //copy, then //save <file>.schem. Your nickname is added automatically: Nick@file.schem. Save names accept letters, numbers, underscores and hyphens.\nRedstoneFun schematics are in the rf/ folder.";
-        HELP_TICKS = "Tick control\n/tps shows or sets speed: 20 is normal, 0 pauses, unlimited runs as fast as possible.\n/adv [count] steps game ticks. Pause first.\n/adv nano 1 steps a nanotick; /adv pico 1 steps a picotick.";
+        HELP_TICKS = "Tick control\n/tps shows or sets speed: 20 is normal, 0 pauses, unlimited runs as fast as possible. Use k/K for thousands or m/M for millions, such as /tps 10k or /tps 2M.\n/adv [count] steps game ticks. Pause first.\n/adv nano 1 steps a nanotick; /adv pico 1 steps a picotick.";
         HELP_WORLD_EDIT = "WorldEdit\nThis server supports a subset of WorldEdit. Type // and use tab completion to see available commands.\n//desel or /desel clears your selection.";
         WE_HELP_INVALIDATE_CACHES = "Clears interpreter caches for the current plot";
         INTERPRETER_CACHES_INVALIDATED = "Interpreter caches cleared for this plot.";
@@ -430,7 +430,7 @@ catalog! {
         TOOL_PERMISSION_DENIED = "Your permissions don't include this command trick.";
         TOO_MANY_ARGUMENTS = "Too many arguments crowded into this trick. Check its syntax.";
         UNABLE_ALLOCATE_HISTORY_BUFFER = "Unable to allocate the history buffer.";
-        UNABLE_PARSE_RTPS = "TPS has me chasing my tail. Use a number or unlimited.";
+        UNABLE_PARSE_RTPS = "TPS has me chasing my tail. Use a number (10k or 2M also work) or unlimited.";
         UNABLE_PARSE_SEND_RATE = "Invalid world send rate, pup. Use a nonnegative integer in hertz.";
         UNABLE_PARSE_SPEED_VALUE = "Can't make a flying pace out of that value. Try /speed <0-10>.";
         UNBALANCED_MASK_PROPERTIES = "The mask has unbalanced property brackets. Pair each [ with ] so these paws can read it.";

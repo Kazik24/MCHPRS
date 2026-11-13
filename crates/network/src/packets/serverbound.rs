@@ -1,6 +1,7 @@
 use super::{DecodeResult, PackedPos, PacketDecoderExt, SlotData};
 
 pub trait ServerBoundPacketHandler {
+    fn handle_client_command(&mut self, _packet: SClientCommand, _player_idx: usize) {}
     fn handle_teleport_confirm(&mut self, _packet: STeleportConfirm, _player_idx: usize) {}
     fn handle_handshake(&mut self, _packet: SHandshake, _player_idx: usize) {}
     fn handle_request(&mut self, _packet: SRequest, _player_idx: usize) {}
@@ -42,6 +43,22 @@ pub trait ServerBoundPacket: Send {
         Self: Sized;
 
     fn handle(self: Box<Self>, handler: &mut dyn ServerBoundPacketHandler, player_idx: usize);
+}
+
+pub struct SClientCommand {
+    pub action_id: i32,
+}
+
+impl ServerBoundPacket for SClientCommand {
+    fn decode<T: PacketDecoderExt>(reader: &mut T) -> DecodeResult<Self> {
+        Ok(Self {
+            action_id: reader.read_varint()?,
+        })
+    }
+
+    fn handle(self: Box<Self>, handler: &mut dyn ServerBoundPacketHandler, player_idx: usize) {
+        handler.handle_client_command(*self, player_idx);
+    }
 }
 
 macro_rules! empty_packet {

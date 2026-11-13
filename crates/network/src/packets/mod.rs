@@ -148,6 +148,7 @@ fn decode_packet<T: PacketDecoderExt>(reader: &mut T, state: &mut NetworkState, 
             }
             0x06 => Box::new(SChatCommand::decode(reader)?),
             0x07 => Box::new(SChatMessage::decode(reader)?),
+            0x0a => Box::new(SClientCommand::decode(reader)?),
             0x0c => Box::new(SClientSettings::decode(reader)?),
             0x0d => Box::new(STabComplete::decode(reader)?),
             0x10 => Box::new(SContainerClick::decode(reader)?),

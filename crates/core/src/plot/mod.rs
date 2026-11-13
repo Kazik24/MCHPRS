@@ -43,6 +43,7 @@ mod scoreboard;
 mod screen_updates;
 #[cfg(test)]
 mod sign_tests;
+mod sign_watch;
 mod snowballs;
 mod visuals;
 mod world;
@@ -1076,6 +1077,7 @@ impl Plot {
         for player_idx in 0..self.players.len() {
             self.handle_packets_for_player(player_idx);
         }
+        sign_watch::tick(&self.players);
         self.sync_small_models();
     }
 

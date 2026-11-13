@@ -1,4 +1,4 @@
-use super::Plot;
+use super::{Plot, sign_watch};
 use crate::config::CONFIG;
 use crate::interaction::{self, UseOnBlockContext};
 use crate::messages;
@@ -418,6 +418,10 @@ impl Plot {
                 return;
             }
 
+            if !sign_watch::modified(&self.world, &self.players[player], block_pos, block) {
+                self.send_block_change(block_pos, block.get_id());
+                return;
+            }
             interaction::destroy(block, &mut self.world, block_pos);
             if self.world.screen_only() && !matches!(block, Block::Air) {
                 for viewer in &self.players {
@@ -546,6 +550,12 @@ impl Plot {
 }
 
 impl ServerBoundPacketHandler for Plot {
+    fn handle_client_command(&mut self, packet: SClientCommand, player: usize) {
+        if packet.action_id == 0 {
+            sign_watch::respawn(&mut self.players[player]);
+        }
+    }
+
     fn handle_teleport_confirm(&mut self, packet: STeleportConfirm, player: usize) {
         if self.players[player].confirm_teleport(packet.id) {
             let position = self.players[player].entity_teleport_packet();
@@ -1016,6 +1026,12 @@ impl ServerBoundPacketHandler for Plot {
         let mut sign = (**sign).clone();
         if let Err(error) = self.prepare_block_edit() {
             self.players[player].send_error_message(&error);
+            return;
+        }
+        if !sign_watch::text_changed(if packet.front { &sign.rows } else { &sign.back_rows }, &packet.lines) {
+            return;
+        }
+        if !sign_watch::modified(&self.world, &self.players[player], pos, self.world.get_block(pos)) {
             return;
         }
         let updated = packet.lines.map(|line| json!({ "text": line }).to_string());

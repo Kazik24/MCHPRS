@@ -10,6 +10,94 @@ fn world() -> PlotWorld {
 }
 
 #[test]
+fn update_order_detector_matches_java() {
+    use crate::plot::worldedit::{load_schematic, paste_clipboard};
+    use sha2::{Digest, Sha256};
+    use std::io::Cursor;
+
+    let schematic = include_bytes!("../../../../test_data/update_order_detector.schem");
+    let reference: serde_json::Value =
+        serde_json::from_str(include_str!("../../../../test_data/piston-repair/java-update-order-detector.json")).unwrap();
+    assert_eq!(
+        format!("{:x}", Sha256::digest(schematic)),
+        reference["schematic_sha256"].as_str().unwrap()
+    );
+    let clipboard = load_schematic(Cursor::new(schematic)).unwrap();
+    assert_eq!((clipboard.size_x, clipboard.size_y, clipboard.size_z), (7, 4, 10));
+    assert_eq!(clipboard.block_entities.len(), 3);
+    for backend in ["interpreted", "rust", "llvm"] {
+        if backend == "llvm" && !cfg!(any(windows, target_os = "linux")) {
+            continue;
+        }
+        for case in reference["cases"].as_array().unwrap() {
+            let [x, y, z]: [i32; 3] = serde_json::from_value(case["origin"].clone()).unwrap();
+            let origin = BlockPos::new(x, y, z);
+            let max = origin + BlockPos::new(6, 3, 9);
+            let lamp = origin + BlockPos::new(2, 3, 6);
+            let buttons = [origin + BlockPos::new(2, 1, 9), origin + BlockPos::new(4, 1, 9)];
+            let presses: Vec<usize> = serde_json::from_value(case["presses"].clone()).unwrap();
+            let expected_lit_ticks: Vec<u32> = serde_json::from_value(case["lamp_lit_ticks"].clone()).unwrap();
+            let mut world = world();
+            paste_clipboard(
+                &mut world,
+                &clipboard,
+                origin + BlockPos::new(clipboard.offset_x, clipboard.offset_y, clipboard.offset_z),
+                false,
+            );
+            for _ in 0..40 {
+                world.tick_interpreted();
+            }
+            assert_eq!(world.get_block(lamp), Block::RedstoneLamp { lit: false });
+            let mut compiler = Compiler::default();
+            if backend != "interpreted" {
+                compiler
+                    .compile(
+                        &world,
+                        (origin, max),
+                        CompilerOptions {
+                            llvm: backend == "llvm",
+                            ..Default::default()
+                        },
+                        world.scheduler().iter_entries().collect(),
+                        Default::default(),
+                    )
+                    .unwrap();
+            }
+            let mut lit_ticks = Vec::new();
+            for tick in 0..=60 {
+                if tick == 0 {
+                    for &index in &presses {
+                        if backend == "interpreted" {
+                            let Block::StoneButton { button } = world.get_block(buttons[index]) else {
+                                panic!("missing button at {:?}", buttons[index]);
+                            };
+                            super::button::press(button, &mut world, buttons[index], None);
+                        } else {
+                            compiler.try_on_use_block(buttons[index]).unwrap();
+                        }
+                    }
+                } else if backend == "interpreted" {
+                    world.tick_interpreted();
+                } else {
+                    compiler.tick().unwrap();
+                }
+                if backend != "interpreted" {
+                    compiler.try_flush(&mut world).unwrap();
+                }
+                if world.get_block(lamp) == (Block::RedstoneLamp { lit: true }) {
+                    lit_ticks.push(tick);
+                }
+            }
+            println!("{backend}, presses={presses:?}: lamp lit at {lit_ticks:?}");
+            assert_eq!(lit_ticks, expected_lit_ticks, "{backend}, presses={presses:?}");
+            for button in buttons {
+                assert!(matches!(world.get_block(button), Block::StoneButton { button } if !button.powered));
+            }
+        }
+    }
+}
+
+#[test]
 fn threshold_power_matches_analog_queries_for_every_registry_state_and_face() {
     let mut w = world();
     let pos = BlockPos::new(40, 30, 40);

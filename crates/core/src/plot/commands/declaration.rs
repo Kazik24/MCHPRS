@@ -36,7 +36,7 @@ pub(super) fn declared_command_nodes() -> Vec<Node<'static>> {
         // /tps
         Node::literal("tps", &[9, 112]).executable(),
         // /tps [tps]
-        Node::argument("tps", Parser::Integer(0, i32::MAX), &[]).executable(),
+        Node::argument("tps", Parser::String(0), &[]).executable(),
         // //pos1
         Node::literal("/pos1", &[11]).executable(),
         // //pos1 [pos]

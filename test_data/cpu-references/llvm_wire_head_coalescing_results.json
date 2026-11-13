@@ -1,0 +1,99 @@
+{
+  "schema_version": 1,
+  "date": "2026-11-13",
+  "fixture": "ZCore12B_FIX.schem",
+  "mode": "--llvm --relaxed",
+  "experiment": "Coalesce repeated head notifications across changed wire callbacks, retaining the first delivery. Invalidate before any callback except torch/observer/piston handlers, which only schedule or queue actions. Scope is one movement wire fanout; all original operation charges retained.",
+  "timing_scope": "Same process, main thread CPU24, batch16, 413 untimed preparation ticks, 50000 untimed warmup ticks per module, five alternating pairs of 50000 timed game ticks. Compilation, input changes, publication, output checks and GC excluded.",
+  "variants": [
+    {
+      "variant": "Multiple target cache",
+      "pairs": 5,
+      "ticks_per_sample": 50000,
+      "baseline_median_tps": 5922.566119972356,
+      "candidate_median_tps": 5592.681515400142,
+      "median_tps_change_percent": -5.5699606874756835,
+      "paired_tps_change_percent": [
+        0.49434326163553255,
+        -3.6503991519168277,
+        -0.8800146936736364,
+        -16.256221530599756,
+        -0.978717445321664
+      ],
+      "full_snapshot_matches": true,
+      "ordered_pending_matches": true,
+      "logical_work_matches": true,
+      "smt_sibling_busy_fractions": [
+        0.1975736568457539,
+        0.14310645724258286,
+        0.17657342657342656,
+        0.12704174228675136,
+        0.17222222222222228,
+        0.18933823529411764,
+        0.09687500000000004,
+        0.18063314711359402,
+        0.11296296296296293,
+        0.11721611721611724
+      ],
+      "raw_results": "work\\llvm-parity-20261112\\wire-head-coalesce-paired-5.json"
+    },
+    {
+      "variant": "Most recent target cache",
+      "pairs": 5,
+      "ticks_per_sample": 50000,
+      "baseline_median_tps": 6023.489029160421,
+      "candidate_median_tps": 5855.838256687905,
+      "median_tps_change_percent": -2.783283436906714,
+      "paired_tps_change_percent": [
+        -5.049584878686875,
+        -3.1406979521751754,
+        -4.102203256801751,
+        -5.055070970927433,
+        1.3977826764335122
+      ],
+      "full_snapshot_matches": true,
+      "ordered_pending_matches": true,
+      "logical_work_matches": true,
+      "smt_sibling_busy_fractions": [
+        0.15977443609022557,
+        0.2767857142857143,
+        0.17877094972067042,
+        0.22543352601156075,
+        0.10687022900763354,
+        0.16849816849816845,
+        0.20572450805008946,
+        0.13559322033898302,
+        0.18198529411764708,
+        0.17164179104477617
+      ],
+      "raw_results": "work\\llvm-parity-20261112\\wire-head-last-paired-5.json"
+    }
+  ],
+  "multiple_target_cache_counts": {
+    "ticks": 5000,
+    "full_snapshots_match": true,
+    "wire_head_attempts": 4367655,
+    "wire_head_duplicates_skipped": 629600,
+    "percent_skipped": 14.415057965887874
+  },
+  "validation": {
+    "multiple_target_cache_50000_tick_full_state_parity": true,
+    "paired_final_states_match_for_both_variants": true,
+    "standalone_c_checks": [
+      "wire_head_checks: pass for both cache implementations",
+      "input_checks: pass for both cache implementations",
+      "graph_checks: pass for both cache implementations"
+    ]
+  },
+  "limitations": [
+    "SMT sibling activity was present; reported differences are observations, not isolated causal estimates. Each variant was slower in four of five pairs.",
+    "PM1, FPU, strict-mode fixture and full-suite runs skipped after both variants failed the performance screen.",
+    "Fewer callback evaluations do not imply proportional throughput gains; callback-list visits and operation charging remain."
+  ],
+  "decision": "Rejected both runtime caches and reverted all production/test source edits from this experiment. Existing unrelated working-tree changes preserved.",
+  "artifacts": {
+    "multiple_target_sources": "E:/codex-builds/head-notifications-20261113/coalesce",
+    "last_target_sources": "E:/codex-builds/head-notifications-20261113/coalesce-last",
+    "diagnostics": "work/head-notifications-20261113"
+  }
+}

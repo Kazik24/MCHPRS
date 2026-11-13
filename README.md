@@ -41,7 +41,7 @@ Plots and movement:
 
 Simulation:
 
-- `/tps 20` runs normally, `/tps 0` pauses, `/tps unlimited` runs as fast as possible. `/tps timings` shows timing data.
+- `/tps 20` runs normally, `/tps 0` pauses, `/tps unlimited` runs as fast as possible. Use `k`/`K` for thousands or `m`/`M` for millions, such as `/tps 10k` or `/tps 2M`. `/tps timings` shows timing data.
 - Pause, then `/adv 1` advances one game tick. `/adv nano 1` and `/adv pico 1` step interpreter operations inside a tick. Two game ticks make one redstone tick.
 - The interpreter handles supported dust, torches, repeaters, comparators, containers, lamps, copper bulbs, observers, BUD updates, pistons, moving blocks and instant piston circuits. Exact behavior is in the [redstone](docs/REDSTONE_MODEL.md) and [piston](docs/PISTON_MODEL.md) models.
 - `/visual pistons auto|on|off` controls piston animation. `/visual rate <0-1000>` changes client update frequency. `/visual displayonly on|off` limits simulation updates to lamps and copper bulbs. `/visual publish all|redstone|io|auto` selects compiled publication.

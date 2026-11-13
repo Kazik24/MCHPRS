@@ -109,6 +109,18 @@ fn valid_warp_name(name: &str) -> bool {
     (1..=32).contains(&name.len()) && name.bytes().all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
 }
 
+fn parse_tps(value: &str) -> Option<Tps> {
+    if !value.is_empty() && "unlimited".starts_with(value) {
+        return Some(Tps::Unlimited);
+    }
+    let (number, multiplier) = match value.as_bytes().last()? {
+        b'k' | b'K' => (&value[..value.len() - 1], 1_000),
+        b'm' | b'M' => (&value[..value.len() - 1], 1_000_000),
+        _ => (value, 1),
+    };
+    number.parse::<u32>().ok()?.checked_mul(multiplier).map(Tps::Limited)
+}
+
 fn advance_bounded(ticks: u32, mut step: impl FnMut() -> bool) -> u32 {
     let started = Instant::now();
     let budget = std::time::Duration::from_millis(crate::config::CONFIG.command_work_time_ms);
@@ -429,11 +441,7 @@ impl Plot {
                     return false;
                 }
 
-                let tps = if let Ok(tps) = args[0].parse::<u32>() {
-                    Tps::Limited(tps)
-                } else if !args[0].is_empty() && "unlimited".starts_with(args[0]) {
-                    Tps::Unlimited
-                } else {
+                let Some(tps) = parse_tps(args[0]) else {
                     self.players[player].send_error_message(messages::UNABLE_PARSE_RTPS);
                     return false;
                 };
@@ -1014,6 +1022,37 @@ mod security_tests {
         assert!(!plot.handle_command(0, "/stop", vec![]));
         assert!(matches!(receiver.try_recv(), Ok(crate::server::Message::Shutdown)));
         assert!(mchprs_network::test_support::read_frame(&mut peer, false).is_ok());
+    }
+
+    #[test]
+    fn tps_command_accepts_case_insensitive_suffixes_and_rejects_overflow() {
+        use mchprs_network::packets::clientbound::CDeclareCommandsNodeParser as Parser;
+
+        let (mut plot, _peer) = super::super::client_sync_tests::fixture(false);
+        plot.owner = Some(plot.players[0].uuid);
+        plot.players[0].set_test_permissions(&["commands.rtps.set"]);
+        for (input, expected) in [
+            ("2m", Tps::Limited(2_000_000)),
+            ("2M", Tps::Limited(2_000_000)),
+            ("10k", Tps::Limited(10_000)),
+            ("10K", Tps::Limited(10_000)),
+            ("4294967k", Tps::Limited(4_294_967_000)),
+            ("4294967295", Tps::Limited(u32::MAX)),
+            ("20", Tps::Limited(20)),
+            ("0", Tps::Limited(0)),
+            ("unlimited", Tps::Unlimited),
+            ("u", Tps::Unlimited),
+        ] {
+            assert!(!plot.handle_command(0, "/tps", vec![input]));
+            assert_eq!(plot.tps, expected, "{input}");
+        }
+        for input in ["", "k", "M", "-1m", "2mm", "4294968k", "4295m", "4294967296", "🦀M"] {
+            assert!(!plot.handle_command(0, "/tps", vec![input]));
+            assert_eq!(plot.tps, Tps::Unlimited, "invalid value {input} changed TPS");
+        }
+        let nodes = super::declaration::declared_command_nodes();
+        let tps = nodes.iter().find(|node| node.name == Some("tps") && node.parser.is_none()).unwrap();
+        assert!(matches!(nodes[tps.children[0] as usize].parser, Some(Parser::String(0))));
     }
 
     #[test]
