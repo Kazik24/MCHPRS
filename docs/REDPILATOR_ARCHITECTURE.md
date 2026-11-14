@@ -2,6 +2,51 @@
 
 Redpilator compiles a circuit into a program, then runs that program instead of searching the world for connections on each update. Rust is the default executor. The optional LLVM backend runs a native C executor built with Clang.
 
+## Reading and changing the code
+
+Follow the data in this order:
+
+```text
+plot snapshot → ScratchWorld probes → ordered compiler passes → shared Program
+                                                               ↓
+                                             Rust Runtime or LlvmRuntime
+                                                               ↓
+                                         publication → plot world / interpreter
+```
+
+`Compiler` owns the active executors and exposes the plot-facing API. Its implementation
+is divided by operation: `compiler/compilation.rs` validates and activates programs or
+cached executors, `compiler/execution.rs` dispatches ticks and controls,
+`compiler/publication.rs` publishes state, and `compiler/lifecycle.rs` exports pending
+work before reset or suspension. `compiler/diagnostics.rs` owns caller-facing errors
+and statistics. These modules implement the same `Compiler`; they add no runtime layer.
+
+`ScratchEntry` captures scheduled ticks and piston state. `ScratchWorld` owns the isolated
+interpreter snapshot, probe workers and restoration; `scratch/discovery.rs` discovers
+electrical sources and wire watchers. Discovery records connections; scratch probes
+establish their observable callback order.
+
+The sampled compiler already has an explicit sequence of passes, documented in the
+[pass guide](../crates/core/src/redpilator/sampled/passes/README.md). Keep orchestration
+there and put discovery or lowering rules in the matching pass. `Program` owns immutable
+tables and indexes; `Runtime` owns mutable simulation state. Input slots, component IDs,
+token IDs and projection-cell IDs refer to different arrays and must stay distinct.
+
+Rust and LLVM implement the same program contract. Preserve symmetry by following each
+behavior across its representations, rather than introducing a common dispatch trait:
+
+| Concern | Rust implementation | Native boundary / execution |
+| --- | --- | --- |
+| Ticks and controls | `sampled/executor.rs`, `sampled/scheduler.rs` | `sampled/llvm/mod.rs`, native executor |
+| Motion and connectivity | Executor piston/movement helpers and `sampled/routing.rs` | `sampled/llvm/movement.rs`, `sampled/llvm/routing.rs`, native executor |
+| Commands and effects | `sampled/commands.rs` | `sampled/llvm/command.rs`, `sampled/llvm/effects.rs` |
+| Visible state and handoff | `sampled/publication.rs`, `compiler/publication.rs` | `sampled/llvm/publication.rs` |
+
+The Rust runtime remains the publication projection when LLVM executes; it does not run
+a second simulation. Preserve validation at native boundaries, cancellation checks before
+activation, callback ordering, and export-before-reset error handling. Keep execution
+buffers and their allocation order intact when reorganizing hot code.
+
 ## Compilation
 
 The plot takes a snapshot of blocks, block entities, scheduled ticks and piston state. A worker thread compiles the snapshot. The plot keeps handling packets and commands while simulation is paused. Edits are blocked during compilation and remain blocked while the compiled runtime is active.
@@ -114,7 +159,13 @@ Compilation and execution share the server process. A native fault or an OS OOM 
 | File | Purpose |
 | --- | --- |
 | [Plot compilation](../crates/core/src/plot/redpilator_compilation/mod.rs) | Snapshot, worker thread, progress and activation |
-| [Compiler](../crates/core/src/redpilator/compiler.rs) | Entry checks, backend setup, publishing and reset |
+| [Compiler](../crates/core/src/redpilator/compiler.rs) | Executor ownership, status and public API |
+| [Compilation](../crates/core/src/redpilator/compiler/compilation.rs) | Entry checks, cache restoration, program building and backend activation |
+| [Execution dispatch](../crates/core/src/redpilator/compiler/execution.rs) | Ticks, batches and external controls |
+| [Lifecycle](../crates/core/src/redpilator/compiler/lifecycle.rs) | Export, reset and suspend |
+| [Compiler diagnostics](../crates/core/src/redpilator/compiler/diagnostics.rs) | Errors, recovery hints and compile statistics |
+| [Scratch world](../crates/core/src/redpilator/scratch.rs) | Isolated interpreter snapshots, bounded probing and restoration |
+| [Electrical discovery](../crates/core/src/redpilator/scratch/discovery.rs) | Sources, wire ports and watchers |
 | [Compiler passes](../crates/core/src/redpilator/sampled/passes/README.md) | Discovery and instruction generation |
 | [Source probe cache](../crates/core/src/redpilator/sampled/source_cache.rs) | Dependency certificates, retained callback traces and memory reservations |
 | [Program](../crates/core/src/redpilator/sampled/program.rs) | Compiled circuit data |
